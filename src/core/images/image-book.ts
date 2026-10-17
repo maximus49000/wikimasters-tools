@@ -6,8 +6,8 @@
 // car les images des API passent toujours devant les images de remplacement.
 export type CardImage = { url: string | null; candidates: string[]; rejected: string[]; art?: true; artCheckedAt?: number; artV?: number };
 
-// À augmenter quand une source officielle est ajoutée (1 : Spotify, TMDB ; 2 : jeux vidéo).
-export const ART_VERSION = 3;
+// À augmenter quand une source officielle est ajoutée (1 : Spotify, TMDB ; 2 : jeux vidéo ; 3 : livres ; 4 : devant TheGamesDB).
+export const ART_VERSION = 4;
 
 // Clé : slug de l'article Wikipédia.
 export type ImageState = Record<string, CardImage>;
@@ -50,4 +50,15 @@ export function addCandidates(state: ImageState, slug: string, fresh: string[]):
   const known = state[slug] ?? { url: null, candidates: [], rejected: [] };
   const candidates = [...known.candidates, ...fresh.filter((url) => !known.candidates.includes(url))];
   return { ...state, [slug]: { ...known, candidates, url: pickImage(candidates, known.rejected) } };
+}
+
+// Anciennes adresses Steam fabriquées sur l'identifiant (`…/apps/<id>/library_600x900.jpg`, `…/header.jpg`) : introuvables (404)
+// pour les jeux récents, dont les images sont rangées dans un dossier à empreinte. Les adresses rendues par Steam portent `?t=`.
+const LEGACY_STEAM = /^https:\/\/shared\.akamai\.steamstatic\.com\/store_item_assets\/steam\/apps\/\d+\/(library_600x900|header)\.jpg$/;
+
+// Cartes dont une image vient de ces adresses : oubliées, pour être cherchées à nouveau (même état si rien à oublier).
+export function dropLegacySteamArt(state: ImageState): ImageState {
+  const stale = (image: CardImage): boolean => [image.url, ...image.candidates].some((url) => url !== null && LEGACY_STEAM.test(url));
+  if (!Object.values(state).some(stale)) return state;
+  return Object.fromEntries(Object.entries(state).filter(([, image]) => !stale(image)));
 }

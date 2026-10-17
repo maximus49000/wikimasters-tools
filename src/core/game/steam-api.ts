@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { STEAM_API_BASE, STEAM_STORE_BASE } from './config';
+import { STEAM_API_BASE, STEAM_ASSETS_BASE, STEAM_STORE_BASE } from './config';
 import { GameError } from './errors';
 import type { GameCandidate, GameDetail, GameFetch } from './game-detail';
 import { formatPrice, steamPageUrl, verdictFr, yearOfText } from './game-format';
@@ -35,6 +35,21 @@ const searchSchema = z.object({
   items: z.array(z.object({ type: z.string(), id: z.number(), name: z.string(), tiny_image: z.string().optional(), platforms: platformFlags.optional() })),
 });
 
+// Images d'un jeu (IStoreBrowseService/GetItems) : les jeux récents rangent leurs fichiers dans un dossier à empreinte,
+// impossible à deviner depuis l'identifiant seul ; `asset_url_format` donne le chemin, `${FILENAME}` à remplacer.
+const itemsSchema = z.object({
+  response: z.object({
+    store_items: z
+      .array(
+        z.object({
+          appid: z.number().optional(),
+          assets: z.object({ asset_url_format: z.string(), library_capsule: z.string().optional(), header: z.string().optional() }).optional(),
+        }),
+      )
+      .optional(),
+  }),
+});
+
 const platformNames = (flags: z.infer<typeof platformFlags> | undefined): string[] => [
   ...(flags?.windows ? ['Windows'] : []),
   ...(flags?.mac ? ['macOS'] : []),
@@ -50,12 +65,25 @@ export function createSteamApi(deps: { fetch: GameFetch }) {
       return null;
     });
 
+  // Affiches d'un jeu, la meilleure d'abord : portrait (celle d'une carte, d'une boîte), puis bandeau ; liste vide si Steam n'en a pas.
+  async function art(appid: number): Promise<string[]> {
+    const input = { ids: [{ appid }], context: { language: 'french', country_code: 'FR' }, data_request: { include_assets: true } };
+    const data = await get(`${STEAM_API_BASE}/IStoreBrowseService/GetItems/v1/?input_json=${encodeURIComponent(JSON.stringify(input))}`, itemsSchema);
+    const assets = data.response.store_items?.find((item) => item.appid === appid)?.assets;
+    if (!assets) return [];
+    const files = [assets.library_capsule, assets.header].filter((file): file is string => !!file);
+    return files.map((file) => `${STEAM_ASSETS_BASE}/${assets.asset_url_format.replace('${FILENAME}', file)}`);
+  }
+
   return {
+    art,
+
     async detail(appid: number): Promise<GameDetail | null> {
-      const [details, reviews, players] = await Promise.all([
+      const [details, reviews, players, posters] = await Promise.all([
         get(`${STEAM_STORE_BASE}/api/appdetails?appids=${appid}&l=french&cc=fr`, detailsSchema),
         optional(get(`${STEAM_STORE_BASE}/appreviews/${appid}?json=1&language=all&purchase_type=all&num_per_page=1`, reviewsSchema)),
         optional(get(`${STEAM_API_BASE}/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid=${appid}`, playersSchema)),
+        optional(art(appid)),
       ]);
       const entry = details[String(appid)];
       const data = entry?.success ? entry.data : undefined;
@@ -85,7 +113,8 @@ export function createSteamApi(deps: { fetch: GameFetch }) {
         ...(price ? { price } : {}),
         ...(players?.response.player_count !== undefined ? { playersOnline: players.response.player_count } : {}),
         ...(movie?.hls_h264 ? { trailer: { kind: 'hls' as const, url: movie.hls_h264, ...(movie.thumbnail ? { poster: movie.thumbnail } : {}) } } : {}),
-        ...(data.header_image ? { coverUrl: data.header_image } : {}),
+        // Couverture (boîte du jeu) : l'affiche portrait de Steam, sinon son bandeau.
+        ...(posters?.[0] ?? data.header_image ? { coverUrl: posters?.[0] ?? data.header_image } : {}),
         pageUrl: steamPageUrl(appid),
       };
     },

@@ -2,7 +2,8 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ItemCase } from '../../src/content/opened-item/item-case';
+import { ItemCase, gameGeometry } from '../../src/content/opened-item/item-case';
+import type { BoxFormat } from '../../src/core/game/platform-boxes';
 import type { Opening } from '../../src/core/library/opened-item';
 import type { Box } from '../../src/core/library/zoom-target';
 
@@ -10,7 +11,7 @@ import type { Box } from '../../src/core/library/zoom-target';
 
 type Opts = {
   opening?: Opening; phase?: 'opening' | 'open' | 'closing'; from?: Box | null; to?: Box | null; cover?: string | null;
-  disc?: 'in' | 'spinning' | 'away'; reduced?: boolean; right?: ReactNode;
+  disc?: 'in' | 'spinning' | 'away'; reduced?: boolean; right?: ReactNode; format?: BoxFormat; caseColor?: string;
 };
 
 function mount(o: Opts = {}) {
@@ -20,7 +21,8 @@ function mount(o: Opts = {}) {
     createRoot(container).render(
       <ItemCase opening={o.opening ?? 'jewel-cd'} phase={o.phase ?? 'open'} from={o.from ?? null} to={o.to ?? null} cover={o.cover ?? null}
         color="#C0504D" title="Discovery" disc={o.disc ?? 'in'} reduced={o.reduced ?? false}
-        selector={<ul data-test-selector=""><li>Piste 1</li></ul>} {...(o.right !== undefined ? { right: o.right } : {})} />,
+        selector={<ul data-test-selector=""><li>Piste 1</li></ul>} {...(o.right !== undefined ? { right: o.right } : {})}
+        {...(o.format ? { format: o.format } : {})} {...(o.caseColor ? { caseColor: o.caseColor } : {})} />,
     );
   });
   return container;
@@ -146,5 +148,63 @@ describe('boîtier ouvert', () => {
     const c = mount({ opening });
     expect(caseOf(c).getAttribute('data-opening')).toBe(opening);
     expect(c.querySelectorAll('svg [stroke-width="2"]').length).toBeGreaterThan(3);
+  });
+});
+
+describe('boîte de jeu aux vraies dimensions', () => {
+  it('Switch : moitié de 105 × 170 mm, cartouche 21 × 31 centrée, sélecteur = moitié gauche moins 9 mm', () => {
+    const g = gameGeometry('switch');
+    expect(g.w).toBe(105);
+    expect(g.h).toBe(170);
+    expect(g.disc).toMatchObject({ kind: 'cart', w: 21, h: 31, cx: 52.5, cy: 85 });
+    expect(g.selector).toEqual({ x: 9, y: 9, w: 87, h: 152 });
+  });
+
+  it('Blu-ray : disque de 120 mm qui tient dans sa moitié', () => {
+    const g = gameGeometry('bluray');
+    expect(g.w).toBe(135);
+    expect(g.h).toBe(170);
+    const d = g.disc!;
+    expect(d.kind).toBe('game');
+    expect(d.d).toBe(120);
+    expect(d.cx - d.d / 2).toBeGreaterThanOrEqual(0);
+    expect(d.cx + d.d / 2).toBeLessThanOrEqual(g.w);
+    expect(d.cy - d.d / 2).toBeGreaterThanOrEqual(0);
+    expect(d.cy + d.d / 2).toBeLessThanOrEqual(g.h);
+  });
+
+  it('GameCube : mini-disque de 80 mm ; PSP : UMD', () => {
+    expect(gameGeometry('gamecube').disc).toMatchObject({ kind: 'mini', d: 80 });
+    expect(gameGeometry('psp').disc).toMatchObject({ kind: 'umd', w: 65, h: 64 });
+  });
+
+  it.each<[BoxFormat, number, number]>([['switch', 105, 170], ['bluray', 135, 170], ['ds', 135, 122]])('%s : deux moitiés de même largeur (couvercle = plateau)', (format, w, h) => {
+    const c = mount({ opening: 'game-case', format });
+    const tray = c.querySelector('[data-case-tray] > svg')!;
+    const lid = c.querySelector('[data-case-lid-inner] > svg')!;
+    expect(tray.getAttribute('viewBox')).toBe(`0 0 ${w} ${h}`);
+    expect(lid.getAttribute('viewBox')).toBe(`0 0 ${w} ${h}`);
+    const box = caseOf(c);
+    expect(parseFloat(box.style.width) / parseFloat(box.style.height)).toBeCloseTo(w / h, 2);
+  });
+
+  it('Switch : la cartouche dessinée (étiquette = pochette), pas de disque rond', () => {
+    const c = mount({ opening: 'game-case', format: 'switch', cover: 'https://exemple.org/devant.jpg' });
+    const cart = c.querySelector<HTMLElement>('[data-case-disc][data-support="cart"]')!;
+    expect(cart).not.toBeNull();
+    expect(cart.querySelector('image')!.getAttribute('href')).toBe('https://exemple.org/devant.jpg');
+    // Rectangle aux proportions de la cartouche (21 × 31), jamais tourné.
+    expect(parseFloat(cart.style.width) / parseFloat(cart.style.height)).toBeCloseTo(21 / 31, 2);
+    expect(cart.querySelector('[data-case-disc-spin]')).toBeNull();
+  });
+
+  it('Switch au poste : « La cartouche est sur le poste »', () => {
+    const c = mount({ opening: 'game-case', format: 'switch', disc: 'away' });
+    expect(c.querySelector('[data-case-tray-empty]')!.textContent).toContain('La cartouche est sur le poste');
+  });
+
+  it('couleur du boîtier de la console', () => {
+    const c = mount({ opening: 'game-case', format: 'switch', caseColor: '#E60012' });
+    expect(c.querySelector('[data-case-tray] [fill="#E60012"]')).not.toBeNull();
   });
 });

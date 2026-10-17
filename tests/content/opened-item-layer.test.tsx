@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenedItemLayer } from '../../src/content/opened-item/OpenedItemLayer';
 import type { Placed } from '../../src/core/library/library-types';
+import type { GameBox } from '../../src/content/game-box-service';
+import { useOpenedItem } from '../../src/content/opened-item/use-opened-item';
+import { caseStyleOfPlatformName } from '../../src/core/game/platform-boxes';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -83,5 +86,152 @@ describe('OpenedItemLayer', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+  it('jeu : le format donne la boîte (Switch : cartouche) et le vol part en « cart »', () => {
+    vi.useFakeTimers();
+    try {
+      const game: Placed = { id: 'g1', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'Zelda' };
+      act(() => root.render(
+        <OpenedItemLayer placed={game} format="switch" caseColor="#E60012" card={{ title: 'Zelda' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+          disc="flying" hasHifi onInfo={vi.fn()} onClose={vi.fn()} onAddHifi={vi.fn()} flight={{ id: 1, target: { x: 600, y: 100, w: 30, h: 30 }, onLanded: vi.fn() }} />,
+      ));
+      expect(container.querySelector('[data-case-tray] > svg')!.getAttribute('viewBox')).toBe('0 0 105 170');
+      expect(container.querySelector('[data-case-disc][data-support="cart"]')).not.toBeNull();
+      expect(container.querySelector('[data-disc-flight]')!.getAttribute('data-kind')).toBe('cart');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('jeu Blu-ray : le disque vole en « game »', () => {
+    const game: Placed = { id: 'g1', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'RDR2' };
+    act(() => root.render(
+      <OpenedItemLayer placed={game} format="bluray" card={{ title: 'RDR2' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+        disc="flying" hasHifi onInfo={vi.fn()} onClose={vi.fn()} onAddHifi={vi.fn()} flight={{ id: 1, target: { x: 600, y: 100, w: 30, h: 30 }, onLanded: vi.fn() }} />,
+    ));
+    expect(container.querySelector('[data-disc-flight]')!.getAttribute('data-kind')).toBe('game');
+  });
+
+  describe('retourner (⟲) la boîte de jeu', () => {
+    const game: Placed = { id: 'g1', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'RDR2' };
+    const caseBox = () => {
+      const t = container.querySelector<HTMLElement>('[data-item-case]')!.style.transform;
+      const m = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(t)!;
+      return { x: Number(m[1]), y: Number(m[2]) };
+    };
+    const drawGame = (extra: Record<string, unknown> = {}) => act(() => root.render(
+      <OpenedItemLayer placed={game} format="bluray" card={{ title: 'RDR2' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+        disc="in" hasHifi onInfo={vi.fn()} onClose={vi.fn()} onAddHifi={vi.fn()} {...extra} />,
+    ));
+    it('bouton ⟲ au-dessus de la boîte, centré sur elle ; absent pour un CD', () => {
+      mount();
+      expect(btn('flip')).toBeNull();
+      drawGame();
+      const b = btn('flip')!;
+      expect(b.textContent).toBe('⟲');
+      expect(b.style.width).toBe('44px');
+      // La charnière (bord gauche du plateau) est le centre de la boîte ouverte.
+      expect(parseFloat(b.style.left) + 22).toBeCloseTo(caseBox().x, 1);
+      expect(parseFloat(b.style.top) + 44).toBeLessThanOrEqual(caseBox().y);
+      expect(parseFloat(b.style.top)).toBeGreaterThanOrEqual(0);
+    });
+    it('⟲ montre l’extérieur (dos, tranche, devant), ⟲ à nouveau l’intérieur', () => {
+      drawGame();
+      const flipped = () => container.querySelector('[data-item-case]')!.getAttribute('data-flipped');
+      expect(flipped()).toBe('false');
+      act(() => btn('flip')!.click());
+      expect(flipped()).toBe('true');
+      expect([...container.querySelectorAll<HTMLElement>('[data-case-outside] [data-outside-zone]')].map((z) => z.dataset.outsideZone)).toEqual(['back', 'spine', 'front']);
+      act(() => btn('flip')!.click());
+      expect(flipped()).toBe('false');
+    });
+    it('couche tournée (écran en hauteur) : le bouton reste au-dessus de la boîte dans le repère tourné (Review Focus 4)', () => {
+      Object.assign(window, { innerWidth: 400, innerHeight: 800 });
+      drawGame();
+      expect(container.querySelector<HTMLElement>('[data-opened-item]')!.style.transform).toContain('rotate(90deg)');
+      const b = btn('flip')!;
+      // Repère du calque : 800 × 400.
+      expect(caseBox().x).toBeCloseTo(400, 1);
+      expect(parseFloat(b.style.left) + 22).toBeCloseTo(400, 1);
+      expect(parseFloat(b.style.top) + 44).toBeLessThanOrEqual(caseBox().y);
+    });
+    it('une vidéo en cours est arrêtée au retournement', () => {
+      const onFlip = vi.fn();
+      drawGame({ right: <video data-test-video="" />, onFlip });
+      expect(container.querySelector('[data-test-video]')).not.toBeNull();
+      act(() => btn('flip')!.click());
+      expect(container.querySelector('[data-test-video]')).toBeNull();
+      expect(onFlip).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('loupe sur le dos', () => {
+    const game: Placed = { id: 'g1', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, slug: 'RDR2' };
+    const box: GameBox = {
+      format: 'bluray', style: caseStyleOfPlatformName('Sony Playstation 4'), platformName: 'Sony Playstation 4',
+      backUrl: 'https://img/medium/back.jpg', backFullUrl: 'https://img/original/back.jpg', shots: [], title: 'RDR2',
+    };
+    const flipped = () => container.querySelector('[data-item-case]')!.getAttribute('data-flipped');
+    const magnifier = () => container.querySelector('[data-back-magnifier]');
+    const magnify = () => act(() => container.querySelector<HTMLButtonElement>('button[data-action="magnify"]')!.click());
+    it('🔍 ouvre la loupe ; ✕ la ferme et la boîte reste retournée', () => {
+      const onClose = vi.fn();
+      act(() => root.render(
+        <OpenedItemLayer placed={game} format="bluray" box={box} card={{ title: 'RDR2' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+          disc="in" hasHifi onInfo={vi.fn()} onClose={onClose} onAddHifi={vi.fn()} />,
+      ));
+      act(() => btn('flip')!.click());
+      expect(magnifier()).toBeNull();
+      magnify();
+      expect(magnifier()).not.toBeNull();
+      act(() => btn('close-magnifier')!.click());
+      expect(magnifier()).toBeNull();
+      expect(flipped()).toBe('true');
+      expect(onClose).not.toHaveBeenCalled();
+    });
+    it('Échap ferme la loupe d’abord, pas la boîte', () => {
+      const onClose = vi.fn();
+      act(() => root.render(
+        <OpenedItemLayer placed={game} format="bluray" box={box} card={{ title: 'RDR2' }} cover={null} color="#c33" state={{ placedId: 'g1', from: null, to: null, phase: 'open' }}
+          disc="in" hasHifi onInfo={vi.fn()} onClose={onClose} onAddHifi={vi.fn()} />,
+      ));
+      act(() => btn('flip')!.click());
+      magnify();
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+      expect(magnifier()).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(flipped()).toBe('true');
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+    it('retour (popstate) : ferme la loupe sans fermer la boîte, puis ferme la boîte', () => {
+      vi.useFakeTimers();
+      try {
+        let api: ReturnType<typeof useOpenedItem> | null = null;
+        function Harness() {
+          const back = useRef<(() => boolean) | null>(null);
+          const h = useOpenedItem({ onBeforeClose: () => back.current?.() ?? false, restoreOrientation: () => {} });
+          api = h;
+          if (!h.opened) return null;
+          return (
+            <OpenedItemLayer placed={game} format="bluray" box={box} card={{ title: 'RDR2' }} cover={null} color="#c33" state={h.opened}
+              disc="in" hasHifi onInfo={vi.fn()} onClose={() => h.close()} onAddHifi={vi.fn()} backRef={back} />
+          );
+        }
+        act(() => root.render(<Harness />));
+        act(() => api!.open('g1', null));
+        act(() => { vi.advanceTimersByTime(1300); });
+        act(() => btn('flip')!.click());
+        magnify();
+        expect(magnifier()).not.toBeNull();
+        act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+        expect(magnifier()).toBeNull();
+        expect(api!.opened?.phase).toBe('open');
+        expect(flipped()).toBe('true');
+        act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+        expect(api!.opened?.phase).toBe('closing');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

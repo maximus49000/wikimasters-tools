@@ -71,6 +71,33 @@ describe('createImageService', () => {
     expect(service.peekGameArt('Jeu')).toBe('https://steam/b.jpg');
     expect(service.peek('Jeu')).toBe('https://steam/b.jpg');
   });
+  it('au chargement, oublie les anciennes adresses Steam fabriquées : la carte est cherchée à nouveau', async () => {
+    const OLD = 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2483190/library_600x900.jpg';
+    const store = createMemoryStore();
+    await store.set('card-images', { Forza: { url: OLD, candidates: [OLD], rejected: [], art: true }, Livre: { url: 'https://c/l.jpg', candidates: [], rejected: [] } });
+    const art = vi.fn(async () => ['https://steam/new.jpg']);
+    const service = createImageService({ store, search: vi.fn(async () => []), art, settings: settings('on') });
+    expect(await service.resolve('Forza', 'Forza')).toBe('https://steam/new.jpg');
+    expect(service.peek('Livre')).toBe('https://c/l.jpg');
+    expect(art).toHaveBeenCalledTimes(1);
+    expect((await store.get<Record<string, { url: string }>>('card-images'))?.Forza?.url).toBe('https://steam/new.jpg');
+  });
+
+  it('displayUrl : une image qui ne se charge pas est sautée (affiche du jeu, puis image de la carte, puis remplacement)', async () => {
+    const gameArt = vi.fn(async () => ['https://steam/casse.jpg']);
+    const service = createImageService({ store: createMemoryStore(), search: vi.fn(async () => ['https://wiki/r.jpg']), gameArt, settings: settings('on') });
+    await service.requestGameArt('Jeu', 'Jeu');
+    const broken = new Set(['https://steam/casse.jpg']);
+    const usable = (url: string) => !broken.has(url);
+    expect(service.displayUrl('Jeu', 'https://own/a.jpg', usable)).toBe('https://own/a.jpg');
+    broken.add('https://own/a.jpg');
+    expect(service.displayUrl('Jeu', 'https://own/a.jpg', usable)).toBeUndefined();
+    await service.resolve('Seul', 'Seul');
+    expect(service.displayUrl('Seul', undefined, usable)).toBe('https://wiki/r.jpg');
+    broken.add('https://wiki/r.jpg');
+    expect(service.displayUrl('Seul', undefined, usable)).toBeUndefined();
+  });
+
   it('inactif par défaut : aucune recherche ni image', async () => {
     const { service, search } = make(undefined, null);
     expect(service.enabled()).toBe(false);

@@ -2,6 +2,8 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setGameBoxService } from '../../src/content/game-box-registry';
+import type { GameBoxService } from '../../src/content/game-box-service';
 import { setGameService } from '../../src/content/game-registry';
 import type { GameService, GameView } from '../../src/content/game-service';
 import { GameSection } from '../../src/content/GameSection';
@@ -94,5 +96,37 @@ describe('GameSection', () => {
     await act(async () => root.render(<GameSection slug="Elden_Ring" title="Elden Ring" />));
     expect(container.querySelector('[role="status"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Changer de jeu"]')).not.toBeNull();
+  });
+
+  describe('version (console)', () => {
+    const versionsOf = (count: number) => Array.from({ length: count }, (_, index) => ({ id: index + 1, title: 'Elden Ring', platformId: index + 1, platformName: `Console ${index + 1}`, format: 'bluray' as const, style: { plastic: '#000', band: null } }));
+    async function withVersions(count: number) {
+      const box = { versions: vi.fn(async () => versionsOf(count)), peek: vi.fn(() => ({ tgdbId: 2 })), chooseVersion: vi.fn(async () => undefined), resetVersion: vi.fn(async () => undefined) };
+      setGameBoxService(box as unknown as GameBoxService);
+      await show({ status: 'detail', detail: steam });
+      return box;
+    }
+
+    it('le bouton apparaît avec au moins deux versions', async () => {
+      await withVersions(2);
+      expect(container.querySelector('[aria-label="Changer de version"]')).not.toBeNull();
+    });
+
+    it('pas de bouton avec une seule version', async () => {
+      await withVersions(1);
+      expect(container.querySelector('[aria-label="Changer de version"]')).toBeNull();
+    });
+
+    it('pas de bouton sans service des boîtes', async () => {
+      await show({ status: 'detail', detail: steam });
+      expect(container.querySelector('[aria-label="Changer de version"]')).toBeNull();
+    });
+
+    it('le bouton ouvre la fenêtre des versions', async () => {
+      await withVersions(3);
+      await act(async () => container.querySelector<HTMLElement>('[aria-label="Changer de version"]')!.click());
+      const host = Array.from(document.body.children).find((child) => child.shadowRoot);
+      expect(host?.shadowRoot?.textContent).toContain('Console 3');
+    });
   });
 });

@@ -5,6 +5,7 @@ import { createIssue } from './issues';
 import { createLimiter } from './limiter';
 import type { ProxyResult } from './proxy';
 import { proxyTmdb } from './tmdb';
+import { proxyTgdb } from './tgdb';
 import { proxyWeather } from './weather';
 import { proxySchoolCalendar } from './school-calendar';
 import { proxyDepartment } from './department';
@@ -30,6 +31,7 @@ export type Env = {
   USAGE_DB?: D1Like;
   STATS_TOKEN?: string;
   TMDB_API_KEY?: string;
+  TGDB_API_KEY?: string;
   IGDB_CLIENT_ID?: string;
   IGDB_CLIENT_SECRET?: string;
   GITHUB_ISSUES_TOKEN?: string;
@@ -94,7 +96,7 @@ async function oembed(id: string): Promise<Response> {
 }
 
 // Limites par adresse (compteurs en mémoire, voir limiter.ts) : [nombre d'appels, fenêtre en ms].
-const LIMITS = { tmdb: [300, 60_000], igdb: [240, 60_000], books: [60, 60_000], weather: [60, 60_000], schoolCalendar: [30, 60_000], department: [60, 60_000], geocode: [60, 60_000], deezer: [60, 60_000], shops: [20, 60_000], busLines: [20, 60_000], issues: [5, 3_600_000] } as const;
+const LIMITS = { tmdb: [300, 60_000], tgdb: [60, 60_000], igdb: [240, 60_000], books: [60, 60_000], weather: [60, 60_000], schoolCalendar: [30, 60_000], department: [60, 60_000], geocode: [60, 60_000], deezer: [60, 60_000], shops: [20, 60_000], busLines: [20, 60_000], issues: [5, 3_600_000] } as const;
 const limiter = createLimiter(() => Date.now());
 const igdbToken: TokenState = { current: null };
 
@@ -136,6 +138,7 @@ async function relay(request: Request, url: URL, env: Env): Promise<Response | n
   const get = request.method === 'GET';
   const post = request.method === 'POST';
   if (get && url.pathname.startsWith('/tmdb/')) return limited(request, 'tmdb') ?? relayed(await proxyTmdb(url, { fetch: net, apiKey: env.TMDB_API_KEY }));
+  if (get && url.pathname.startsWith('/tgdb/')) return limited(request, 'tgdb') ?? relayed(await proxyTgdb(url, { fetch: net, apiKey: env.TGDB_API_KEY, kv: env.DOC_CACHE }));
   if (get && url.pathname.startsWith('/books/')) return limited(request, 'books') ?? relayed(await proxyBooks(url, { fetch: net, apiKey: env.GOOGLE_BOOKS_API_KEY }));
   if (get && url.pathname === '/weather') return limited(request, 'weather') ?? relayed(await proxyWeather(url, { fetch: net, now: () => Date.now() }));
   if (get && url.pathname === '/school-calendar') return limited(request, 'schoolCalendar') ?? relayed(await proxySchoolCalendar(url, { fetch: net, now: () => Date.now() }));
@@ -169,6 +172,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       kv: Boolean(env.DOC_CACHE),
       debugToken: Boolean(env.DEBUG_TOKEN),
       tmdbKey: Boolean(env.TMDB_API_KEY),
+      tgdbKey: Boolean(env.TGDB_API_KEY),
       igdb: Boolean(env.IGDB_CLIENT_ID) && Boolean(env.IGDB_CLIENT_SECRET),
       issuesToken: Boolean(env.GITHUB_ISSUES_TOKEN),
       booksKey: Boolean(env.GOOGLE_BOOKS_API_KEY),

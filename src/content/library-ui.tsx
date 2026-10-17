@@ -80,6 +80,8 @@ export const ICONS = {
   // Présentation d'un objet rangé : de face (boîtier vu de face, son image) ou sur la tranche (dos alignés, le dernier penché).
   cover: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M8 16l3-4 2 2.5 1.5-1.5L17 16z', 'M14.5 8h.01'],
   spine: ['M4 4h3v16H4z', 'M9 4h3v16H9z', 'M14 5.2l2.9-.8 3.6 15.2-2.9.8z'],
+  // De dos (jeu) : dos de la boîte, lignes de texte et code-barres.
+  boxBack: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M8 7h8', 'M8 10h8', 'M8 13h5', 'M9 16v2', 'M11 16v2', 'M12.5 16v2', 'M15 16v2'],
 } as const;
 
 export function Btn({ label, pressed, disabled, onClick, data, children, className }: { label: string; pressed?: boolean; disabled?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode; className?: string }): ReactElement {
