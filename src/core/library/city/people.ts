@@ -64,7 +64,8 @@ export function outfitFor(profile: Profile, rng: () => number): Outfit {
   }
 }
 
-export type FestiveMark = 'crown' | 'heart-balloon' | 'basket' | 'lily' | 'flag' | 'poppy' | 'streamer' | 'note';
+export const FESTIVE_MARKS = ['crown', 'heart-balloon', 'basket', 'lily', 'flag', 'poppy', 'streamer', 'note'] as const;
+export type FestiveMark = (typeof FESTIVE_MARKS)[number];
 const MARK_OF: Readonly<Record<FestivityId, FestiveMark | null>> = {
   epiphany: 'crown', valentine: 'heart-balloon', easter: 'basket', 'may-day': 'lily', bastille: 'flag', armistice: 'poppy', 'new-year': 'streamer', music: 'note', 'christmas-eve': null,
 };

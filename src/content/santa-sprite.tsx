@@ -3,7 +3,7 @@ import { REINDEER_CYCLE_S, REINDEER_IDLE_S, TRAIL_CYCLE_S } from '../core/librar
 import type { SantaPose } from '../core/library/city/santa';
 import { mixHex, type Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
-import { CycledProp, PropImage, PropInMirror, type PropSpec } from './prop/prop-host';
+import { CycledInMirror, PropImage, PropInMirror, type PropSpec } from './prop/prop-host';
 
 // Le traîneau du père Noël. Repère : bas du traîneau (patins) à y = 0, centré en x = 0, tourné vers +x (le calque applique
 // `scale(dir, 1)`) ; les rennes sont devant (x > 0), la traînée derrière. Aucun id SVG fixe ; une animation SMIL par élément
@@ -127,16 +127,6 @@ const specOf = (id: string, g: GhibliBase, args: Record<string, string | number 
   day: g.sky.daylight,
   lit: true,
 });
-// Image cyclique dans le repère retourné par l'hôte (même règle que PropInMirror).
-function CycledInMirror({ spec, period, phase, fallback }: { spec: Omit<PropSpec, 'frame'>; period: number; phase: number; fallback: ReactNode }): ReactElement {
-  if ((spec.dir ?? 1) === 1) return <CycledProp spec={spec} period={period} phase={phase} fallback={fallback} />;
-  return (
-    <g transform="scale(-1 1)">
-      <CycledProp spec={spec} period={period} phase={phase} fallback={<g transform="scale(-1 1)">{fallback}</g>} />
-    </g>
-  );
-}
-
 // Positions de l'attelage dans le repère du traîneau (unités), en vol et posé sur un immeuble (classique, inchangé) ; sur la
 // colline, le calque étage les rennes sur la pente à partir des mêmes x (santa-layer).
 export type TeamSpot = { x: number; y: number; lead: boolean };

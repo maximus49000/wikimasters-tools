@@ -40,7 +40,7 @@ import { InstallLayer, collectFlags, placeFlags, type WavingFlag } from './insta
 import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
-import { PropContext, PropImage } from './prop/prop-host';
+import { PropContext, PropImage, collectCycles, placeCycles, type CycledNode } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { ghibliStaffPost } from './shop/ghibli-shop-glass';
 import { collectCarriers, collectCups, collectTerraceGuests, collectWaiters, placeCarriers, placeCups, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type CupNode, type TerraceGuestNode, type Waiter } from './shop-terrace';
@@ -474,6 +474,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let workers: PlacedWorker[] = [];
     // Ghibli : drapeaux de fête qui ondulent (poses clés choisies par la boucle).
     let flags: WavingFlag[] = [];
+    // Ghibli : signes de fête à poses cycliques tenus par les passants (ballon, note, serpentin, drapeau : festive-marks.tsx).
+    let cycles: CycledNode[] = [];
     // Figures Ghibli de chaque passant (compagnons, puis lui-même, au même pas), trouvées à la collecte des nœuds.
     const pedFigs = new Map<string, Element[]>();
     // Nœuds de porte des habitants (<svg> imbriqués), par trajet.
@@ -512,10 +514,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         staffWalks = ghibli ? collectStaffWalks(el) : [];
         workers = ghibli ? collectWorkers(el) : [];
         flags = ghibli ? collectFlags(el) : [];
+        cycles = [];
         if (ghibli) {
           for (const p of peds) {
             const node = nodes.get(p.id);
-            if (node) pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
+            if (!node) continue;
+            pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
+            cycles.push(...collectCycles(node));
           }
         }
         scene = ghibli ? collectScene(el) : null;
@@ -615,6 +620,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           placeStaffWalks(staffWalks, t, metrics, figures);
           placeWorkers(workers, t, figures);
           placeFlags(flags, t, props);
+          placeCycles(cycles, t, props);
         }
       }
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
@@ -861,7 +867,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   umbrella={intensity.umbrellas}
                   initial={{ ...pedPose(p, metrics, t0, still), arms: markArms(mark) }}
                   hidden={!active}
-                  held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} /> }] : undefined}
+                  held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} day={sky.daylight} still={still} phase={p.phase} /> }] : undefined}
                 />
               ) : (
                 <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={mark} />

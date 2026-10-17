@@ -1,6 +1,10 @@
 import type { ReactElement } from 'react';
 import type { FestiveMark } from '../core/library/city/people';
 import type { ArmPose } from '../core/library/figure/skeleton';
+import type { PropArgs } from '../core/library/paint/props/index';
+import { MARK_CYCLE_S } from '../core/library/paint/props/moving';
+import '../core/library/paint/props/moving';
+import { CycledInMirror, PropInMirror } from './prop/prop-host';
 
 // Signes de fête portés par les passants (repère du PersonSprite : pieds à l'origine, tête centrée à y = -33).
 // `t` assombrit les couleurs la nuit.
@@ -88,20 +92,30 @@ export const markAnchor = (mark: FestiveMark, umbrella = false): 'headTop' | 'ha
   HELD_AT[mark].anchor === 'handR' && umbrella ? 'handL' : HELD_AT[mark].anchor;
 export const markArms = (mark: FestiveMark | null | undefined): ArmPose => (mark && HELD_AT[mark].anchor === 'handR' ? 'hold' : 'swing');
 
-export function MarkHeld({ mark, t, dir }: { mark: FestiveMark; t: (c: string) => string; dir: 1 | -1 }): ReactElement {
+// G5 : le signe est l'image cellulo `mark` (props/moving.ts), au cadre du dessin ci-dessus (même décalage HELD_AT), cuite
+// dans le sens `dir` (le miroir du groupe est annulé autour de l'image : jamais d'image retournée). Ballon, note, serpentin
+// et drapeau ont 8 poses choisies par la boucle des passants (city-life, placeCycles) sur la période MARK_CYCLE_S du signe,
+// décalées par `phase` (en cycles) ; mouvement réduit (`still`) : pose 0, drapeau plat. Le dessin SVG reste le repli tant
+// que l'image n'est pas cuite (ou sans registre).
+export function MarkHeld({ mark, t, dir, day, still = false, phase = 0 }: { mark: FestiveMark; t: (c: string) => string; dir: 1 | -1; day: number; still?: boolean; phase?: number }): ReactElement {
   const { dx, dy } = HELD_AT[mark];
+  const fallback =
+    mark === 'streamer' ? (
+      // Serpentin tenu au bout d'un bâtonnet (le chapeau pointu du dessin classique n'irait pas à la main).
+      <g>
+        <line x1={0} y1={1} x2={0.8} y2={-4} stroke="#6B5B4A" strokeWidth={0.8} />
+        <path d="M0.8 -4 Q5 -7 1.5 -10 Q-2.5 -13 2.5 -16 Q6.5 -19 2.5 -22" stroke={t('#E07A8C')} strokeWidth={1.2} fill="none" />
+        <path d="M0.8 -4 Q-3 -8 0 -12 Q2.5 -15 -0.5 -18" stroke={t('#F2C94C')} strokeWidth={1} fill="none" />
+      </g>
+    ) : (
+      <MarkArt mark={mark} t={t} />
+    );
+  const period = MARK_CYCLE_S[mark];
+  const args: PropArgs = still && mark === 'flag' ? { kind: mark, still: true } : { kind: mark };
+  const spec = { id: 'mark', args, dir, day };
   return (
-    <g transform={`scale(${dir} 1) translate(${dx} ${dy})`}>
-      {mark === 'streamer' ? (
-        // Serpentin tenu au bout d'un bâtonnet (le chapeau pointu du dessin classique n'irait pas à la main).
-        <g data-mark-art="streamer">
-          <line x1={0} y1={1} x2={0.8} y2={-4} stroke="#6B5B4A" strokeWidth={0.8} />
-          <path d="M0.8 -4 Q5 -7 1.5 -10 Q-2.5 -13 2.5 -16 Q6.5 -19 2.5 -22" stroke={t('#E07A8C')} strokeWidth={1.2} fill="none" />
-          <path d="M0.8 -4 Q-3 -8 0 -12 Q2.5 -15 -0.5 -18" stroke={t('#F2C94C')} strokeWidth={1} fill="none" />
-        </g>
-      ) : (
-        <MarkArt mark={mark} t={t} />
-      )}
+    <g data-mark-art={mark} transform={`scale(${dir} 1) translate(${dx} ${dy})`}>
+      {period === null || still ? <PropInMirror spec={{ ...spec, frame: 0 }} fallback={fallback} /> : <CycledInMirror spec={spec} period={period} phase={phase} fallback={fallback} />}
     </g>
   );
 }

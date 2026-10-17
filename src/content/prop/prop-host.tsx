@@ -193,3 +193,12 @@ export function PropInMirror({ spec, fallback = null }: { spec: PropSpec; fallba
     </g>
   );
 }
+// Image cyclique dans le repère retourné par l'hôte (même règle que PropInMirror).
+export function CycledInMirror({ spec, period, phase = 0, fallback = null }: { spec: Omit<PropSpec, 'frame'>; period: number; phase?: number; fallback?: ReactNode }): ReactElement {
+  if ((spec.dir ?? 1) === 1) return <CycledProp spec={spec} period={period} phase={phase} fallback={fallback} />;
+  return (
+    <g transform="scale(-1 1)">
+      <CycledProp spec={spec} period={period} phase={phase} fallback={<g transform="scale(-1 1)">{fallback}</g>} />
+    </g>
+  );
+}
