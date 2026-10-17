@@ -140,6 +140,13 @@ export const FAMILLES: Famille[] = [
     fichiers: [...c('figure/**', 'city-life.*', 'city-life-ghibli.*', 'city-sprites.*'), ...lib('figure/**', 'figure-g4b-poses.*', 'city-people.*')],
   },
   {
+    // Habitants 3D : interrupteur, garde-robe, catalogue, visages, hôte three.js des figures.
+    // (les motifs `core/citizens` et `figure-host-3d.*` s'ajoutent avec leurs premiers tests)
+    nom: 'scene-habitants3d',
+    lourde: true,
+    fichiers: [...c('citizens/**')],
+  },
+  {
     // Commerces : boutiques, employés, clients, terrasses, metteur en scène, déménagements de boutiques.
     nom: 'scene-commerces',
     lourde: true,
