@@ -112,6 +112,7 @@ import { openingOf } from '../core/library/opened-item';
 import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
 import { ArrangeView } from './arrange/ArrangeView';
+import { useArrangeView } from './arrange/use-arrange-view';
 import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
 import { useOpenedItem } from './opened-item/use-opened-item';
 import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
@@ -308,10 +309,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   useEffect(() => () => stopFollow.current?.(), []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Vue Modifier (✋) du plateau d'un porteur (bureau, dessus d'étagère) : fermée avec Aménager ou au changement de pièce.
-  const [arrangeHostId, setArrangeHostId] = useState<string | null>(null);
+  // Entrée d'historique propre (use-arrange-view) : le retour Android la ferme.
+  const arrange = useArrangeView();
+  const arrangeHostId = arrange.hostId;
+  const arrangeRef = useRef(arrange);
+  arrangeRef.current = arrange;
   const activeRoomId = lib ? activeRoom(lib).id : null;
-  useEffect(() => { if (mode !== 'edit') setArrangeHostId(null); }, [mode]);
-  useEffect(() => { setArrangeHostId(null); }, [activeRoomId]);
+  useEffect(() => { if (mode !== 'edit') arrangeRef.current.reset(); }, [mode]);
+  useEffect(() => { arrangeRef.current.reset(); }, [activeRoomId]);
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
   // Bulle du plein écran : chaque nouveau message s'y montre un instant ; l'aide du placement une seule fois par placement,
@@ -1311,7 +1316,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <Icon paths={ICONS.trash} />
             </Btn>
             {selectedItem && (selectedItem.kind === 'desk' || selectedItem.kind === 'shelf') && (
-              <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => setArrangeHostId(selectedItem.id)}>✋</Btn>
+              <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => arrange.open(selectedItem.id)}>✋</Btn>
             )}
             {selectedItem && isStanding(selectedItem) && (
               <>
@@ -1459,7 +1464,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             sceneView={sceneView}
             imageOf={imageOfCard}
             onCommit={(next) => void editLayout(() => next)}
-            onClose={() => setArrangeHostId(null)}
+            onClose={arrange.close}
           />
         )}
         {opened && (() => {

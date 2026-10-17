@@ -1,6 +1,6 @@
 // Vue Modifier d'un plateau (✋) : couche plein écran, paysage (tournée de 90° en CSS si l'écran reste en hauteur, comme l'objet ouvert),
 // mur et sol de la pièce en fond, le meuble et ses objets dessinés avec les mêmes modèles 3D que la pièce, sous la caméra plongeante.
-// On y glisse les objets posés au cm (use-top-drag) ; l'ordinateur reste fixé à son bureau. Dessin provisoire Opus : Fable n'est pas passé.
+// On y glisse les objets posés au cm (use-top-drag) ; l'ordinateur reste fixé à son bureau.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
 import type { ArrangeFrame } from '../../core/library/arrange';
 import { topToScreen } from '../../core/library/arrange';
@@ -106,7 +106,7 @@ export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView
   const layer = layerFrame(screen);
   const fit = useMemo(() => (hostKind ? arrangeFrameFor(hostKind, layer) : null), [hostKind, layer.w, layer.h]); // eslint-disable-line react-hooks/exhaustive-deps
   const frame: ArrangeFrame = useMemo(() => (fit ? { hostKind: fit.hostKind, scale: fit.scale, origin: fit.origin } : { hostKind: 'desk', scale: 1, origin: [0, 0] }), [fit]);
-  const { drag, grab } = useTopDrag({ layout, hostId, frame, rotated: layer.rotated, onCommit });
+  const { drag, pending, grab } = useTopDrag({ layout, hostId, frame, rotated: layer.rotated, onCommit });
   const items = useMemo(() => topItemsOf(layout, hostId), [layout, hostId]);
   const decoScene = useDecoScene(sceneView, false, items.some((i) => i.placed.kind === 'small' && isTableClock(i.placed.item)));
   if (!hostKind || !fit) return null;
@@ -121,6 +121,8 @@ export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView
     return undefined;
   };
   const dragged = drag ? items.find((i) => i.placed.id === drag.id) : undefined;
+  // Objet déplacé à l'écran : tenu, ou lâché en vert et en attente de la disposition écrite.
+  const lifted = drag ?? pending;
   const geometry: CSSProperties = layer.rotated
     ? { top: 0, left: screen.w, width: layer.w, height: layer.h, transformOrigin: '0 0', transform: 'rotate(90deg)' }
     : { inset: 0 };
@@ -135,16 +137,17 @@ export function ArrangeView({ layout, room, hostId, onCommit, onClose, sceneView
         <rect data-backdrop="skirt" y={floorY - 4} width={layer.w} height={5} fill={palette.skirt} opacity={0.6} />
         <Model3DArt kind={hostKind} angle={0} rect={fit.rect} palette={palette} steampunk={steampunk} camera={PLUNGE_CAMERA} />
         {/* Ombres nettes des objets sur le plateau (cellulo), puis l'empreinte de l'objet tenu. */}
-        {items.filter((i) => i.placed.id !== drag?.id).map((i) => <polygon key={`s${i.placed.id}`} data-shadow={i.placed.id} points={quad(frame, i.rect, 1.5, 2)} fill="#10080E" opacity={0.18} pointerEvents="none" />)}
+        {items.filter((i) => i.placed.id !== lifted?.id).map((i) => <polygon key={`s${i.placed.id}`} data-shadow={i.placed.id} points={quad(frame, i.rect, 1.5, 2)} fill="#10080E" opacity={0.18} pointerEvents="none" />)}
         {drag && dragged && (
           <polygon data-footprint={drag.id} data-ok={drag.ok ? 'true' : 'false'} points={quad(frame, { ...dragged.rect, x: drag.x, z: drag.z })}
             fill={drag.ok ? 'rgba(62,155,90,.28)' : 'rgba(200,68,58,.3)'} stroke={drag.ok ? '#3E9B5A' : '#C8443A'} strokeWidth={2.5} strokeDasharray="7 5" pointerEvents="none" />
         )}
         {items.map((i) => {
           const held = drag?.id === i.placed.id;
+          const moved = lifted?.id === i.placed.id ? lifted : null;
           return (
             <g key={i.placed.id} data-arrange-item={i.placed.id} {...(i.fixed ? { 'data-fixed': '' } : {})}
-              style={{ cursor: i.fixed ? 'default' : held ? 'grabbing' : 'grab', ...(held ? { transform: `translate(${r1(drag!.tx)}px, ${r1(drag!.ty - LIFT_PX)}px)`, opacity: 0.9 } : {}) }}
+              style={{ cursor: i.fixed ? 'default' : held ? 'grabbing' : 'grab', ...(moved ? { transform: `translate(${r1(moved.tx)}px, ${r1(moved.ty - (held ? LIFT_PX : 0))}px)` } : {}), ...(held ? { opacity: 0.9 } : {}) }}
               onPointerDown={i.fixed ? undefined : (e) => grab(i.placed.id, e)}>
               <CarriedItem3D host={hostKind} angle={0} rect={fit.rect} placement={i.placement} palette={palette} steampunk={steampunk} content={contentOf(i.placed)} camera={PLUNGE_CAMERA} />
             </g>

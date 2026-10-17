@@ -24,8 +24,13 @@ async function click(selector: string) {
   await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
   await settle();
 }
-const pointer = (type: string, target: EventTarget, x: number, y: number) =>
-  act(async () => { target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y })); });
+// jsdom n'a pas PointerEvent : un MouseEvent du même type, auquel on accroche le `pointerId` (1 = le doigt qui tient).
+const pointer = (type: string, target: EventTarget, x: number, y: number, pointerId = 1) =>
+  act(async () => {
+    const ev = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    Object.defineProperty(ev, 'pointerId', { value: pointerId });
+    target.dispatchEvent(ev);
+  });
 
 // Bureau avec écran, lampe (15 × 15) devant à gauche, plante (15 × 15) devant à droite, réveil (18 × 7) devant au milieu.
 const DESK: Layout = [
@@ -81,6 +86,26 @@ describe('bulle d’un meuble porteur', () => {
     await click('[data-arrange-view] [aria-label="Terminer"]');
     expect(q('[data-arrange-view]')).toBeNull();
   });
+
+  it('pousse une entrée d’historique ; le retour (popstate) ferme la vue ; ✓ retire l’entrée', async () => {
+    await seed(DESK);
+    await click('[data-action="edit"]');
+    await click('[data-furniture="desk"]');
+    expect(history.state?.wmtArrange).toBeUndefined();
+    await click('[data-action="arrange"]');
+    expect(typeof history.state?.wmtArrange).toBe('string');
+    // Retour Android : l'entrée est retirée par le navigateur, la vue se ferme sans toucher à l'historique.
+    const back = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    await act(async () => { window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(q('[data-arrange-view]')).toBeNull();
+    expect(back).not.toHaveBeenCalled();
+    // Le bureau reste sélectionné (sa bulle aussi). ✓ : la vue retire elle-même son entrée (au-dessus de la pile).
+    expect(q('[data-action-bubble]')).not.toBeNull();
+    await click('[data-action="arrange"]');
+    await click('[data-arrange-view] [aria-label="Terminer"]');
+    expect(q('[data-arrange-view]')).toBeNull();
+    expect(back).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ArrangeView : glissé sur le plateau', () => {
@@ -114,6 +139,43 @@ describe('ArrangeView : glissé sur le plateau', () => {
     const next = h.onCommit.mock.calls[0]![0] as Layout;
     expect(next.find((p) => p.id === 'a')).toMatchObject({ x: 60, z: 20 });
     expect(q('[data-footprint]')).toBeNull();
+  });
+
+  it('lâché en vert : l’objet reste à sa nouvelle place tant que la disposition écrite n’est pas revenue, puis se pose sans sauter', async () => {
+    const h = mount();
+    await drag('a', delta(40, 2, 60, 20));
+    expect(h.onCommit).toHaveBeenCalledTimes(1);
+    // Le dépôt n'a pas encore répondu : la translation du lâcher tient toujours, sans empreinte.
+    const t = item('a').style.transform;
+    expect(t).toContain('translate');
+    expect(q('[data-footprint]')).toBeNull();
+    // Pas de nouvelle prise de cet objet en attendant.
+    await pointer('pointerdown', item('a'), 300, 200);
+    await pointer('pointermove', window, 400, 200);
+    expect(q('[data-footprint]')).toBeNull();
+    expect(item('a').style.transform).toBe(t);
+    await pointer('pointerup', window, 400, 200);
+    // La disposition écrite arrive : l'objet est dessiné à (60, 20), plus de translation.
+    const next = h.onCommit.mock.calls[0]![0] as Layout;
+    act(() => root.render(<ArrangeView layout={next} room={{ style: 'scandinave' }} hostId="d" mode="move" {...h} />));
+    expect(item('a').style.transform).toBe('');
+    expect(h.onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('un autre doigt ne déplace pas l’objet tenu et ne termine pas le glissé', async () => {
+    const h = mount();
+    const [dx, dy] = delta(40, 2, 60, 20);
+    await pointer('pointerdown', item('a'), 300, 200);
+    await pointer('pointermove', window, 300 + dx, 200 + dy);
+    const t = item('a').style.transform;
+    expect(t).toContain('translate');
+    await pointer('pointermove', window, 100, 100, 2);
+    expect(item('a').style.transform).toBe(t);
+    await pointer('pointerup', window, 100, 100, 2);
+    expect(h.onCommit).not.toHaveBeenCalled();
+    expect(q('[data-footprint]')?.getAttribute('data-ok')).toBe('true');
+    await pointer('pointerup', window, 300 + dx, 200 + dy);
+    expect(h.onCommit).toHaveBeenCalledTimes(1);
   });
 
   it('au-dessus de la lampe : empreinte rouge ; lâcher : rien n’est enregistré, l’objet revient', async () => {
