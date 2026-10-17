@@ -114,6 +114,18 @@ describe('boîte de jeu : dos et bandeau de console', () => {
   });
 });
 
+describe('jaquette d’un jeu : entière, comme sur la boîte ouverte', () => {
+  const pal = paletteOf('scandinave');
+  it('jeu : image entière (meet) sur le plastique du boîtier ; CD : toujours remplie et rognée', () => {
+    const game = draw(<Item3DArt shape="game" angle={0} rect={rect} palette={pal} box="snes" color="#1B1B1F" content={{ url: 'face.png', title: 'WWF', printed: true }} />);
+    const img = game.querySelector('image[href="face.png"]')!;
+    expect(img.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet');
+    expect(game.querySelector('[data-cover-ground]')!.getAttribute('fill')!.toUpperCase()).toBe('#1B1B1F');
+    const cd = draw(<Item3DArt shape="cd" angle={0} rect={rect} palette={pal} content={{ url: 'face.png', title: 'Album' }} />);
+    expect(cd.querySelector('image[href="face.png"]')!.getAttribute('preserveAspectRatio')).toBe('xMidYMid slice');
+  });
+});
+
 describe('boîtier blanc (PS5, Wii, DS)', () => {
   const pal = paletteOf('scandinave');
   const PS5 = { color: '#FFFFFF', label: 'PS5' };
