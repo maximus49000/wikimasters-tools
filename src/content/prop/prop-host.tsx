@@ -110,9 +110,12 @@ export function useProp(spec: PropSpec | null): Shown | null {
 }
 
 // <image> au cadre du peintre ; sinon (registre absent, peintre inconnu, première image pas encore cuite) `fallback`.
+// Avec un registre (Ghibli), le repli est enveloppé dans <g data-prop-fallback> : le banc attend qu'il n'en reste aucun, et
+// un repli qui reste affiché se voit ; sans registre (classique), le repli est rendu nu (DOM inchangé).
 export function PropImage({ spec, fallback = null }: { spec: PropSpec; fallback?: ReactNode }): ReactElement {
   const shown = useProp(spec);
-  if (!shown) return <>{fallback}</>;
+  const reg = useContext(PropContext);
+  if (!shown) return reg && fallback !== null ? <g data-prop-fallback="">{fallback}</g> : <>{fallback}</>;
   const [x, y, w, h] = shown.box;
   return <image href={shown.url} x={x} y={y} width={w} height={h} preserveAspectRatio="none" />;
 }

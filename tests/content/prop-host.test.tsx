@@ -88,6 +88,20 @@ describe('registre des accessoires', () => {
     expect(host.querySelector('image')).not.toBeNull();
     expect(host.querySelector('[data-classic]')).toBeNull();
   });
+  it('repli marqué data-prop-fallback tant que l’image n’est pas cuite (banc : attendre qu’il n’en reste aucun)', async () => {
+    const { jobs, host, show } = mount();
+    await act(async () => show({ id: 'test', day: 1 }));
+    expect(host.querySelector('[data-prop-fallback] > [data-classic]')).not.toBeNull();
+    await act(async () => jobs.shift()!());
+    expect(host.querySelector('[data-prop-fallback]')).toBeNull();
+  });
+  it('sans registre (classique) : repli nu, sans marque', async () => {
+    const host = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const root = createRoot(host);
+    await act(async () => root.render(<PropContext.Provider value={null}><PropImage spec={{ id: 'test', day: 1 }} fallback={<rect data-classic="" />} /></PropContext.Provider>));
+    expect(host.querySelector('[data-classic]')!.parentElement).toBe(host);
+    expect(host.querySelector('[data-prop-fallback]')).toBeNull();
+  });
   it('dir = −1 : <image> au cadre retourné', async () => {
     const { jobs, host, show } = mount();
     await act(async () => show({ id: 'asym', day: 1, dir: -1 }));
