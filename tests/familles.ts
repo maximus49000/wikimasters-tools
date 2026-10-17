@@ -144,7 +144,7 @@ export const FAMILLES: Famille[] = [
     // (les motifs `core/citizens` et `figure-host-3d.*` s'ajoutent avec leurs premiers tests)
     nom: 'scene-habitants3d',
     lourde: true,
-    fichiers: [...c('citizens/**')],
+    fichiers: [...c('citizens/**'), 'tests/core/citizens/**'],
   },
   {
     // Commerces : boutiques, employés, clients, terrasses, metteur en scène, déménagements de boutiques.
