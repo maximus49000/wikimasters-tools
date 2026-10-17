@@ -155,11 +155,11 @@ export const FAMILLES: Famille[] = [
     fichiers: [
       ...c(
         'city-event*', 'city-extras-ghibli.*', 'concert-light.*', 'install-*', 'parade-*', 'music-fest.*', 'music-street*', 'stage-band.*',
-        'santa-*', 'use-city-calendar.*', 'use-city-events.*', 'zone-setting.*', 'prop-host.*', 'flypast-*',
+        'santa-*', 'use-city-calendar.*', 'use-city-events.*', 'zone-setting.*', 'prop-host.*', 'flypast-*', 'gulls-layer.*',
       ),
       ...lib(
         'city-calendar.*', 'city-school-calendar.*', 'city-event*', 'city-install.*', 'city-music-crowd.*', 'city-parade.*', 'city-santa.*',
-        'city/concert.*', 'paint/props/flags.*', 'paint/props/install.*', 'paint/props/kit.*', 'paint/props/music.*', 'paint/props/parade.*',
+        'city/concert.*', 'city/gulls.*', 'paint/props/flags.*', 'paint/props/install.*', 'paint/props/kit.*', 'paint/props/music.*', 'paint/props/parade.*',
         'paint/props/santa.*', 'paint/props/street.*', 'paint/props/moving.*', 'paint/props/sky.*', 'paint/props/dog.*', 'paint/props/gull.*',
       ),
     ],

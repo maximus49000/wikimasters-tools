@@ -43,13 +43,8 @@ describe('fond : colline de maisons empilées', () => {
     for (const l of plan.hill.landmarks) expect(l.top).toBeGreaterThan(0);
   });
 
-  it('mouettes au-dessus du haut du fond', () => {
-    const plan = cityPaintPlan(1080, 340, 1);
-    expect(plan.hill.gulls.length).toBeGreaterThanOrEqual(3);
-    for (const g of plan.hill.gulls) {
-      expect(g.y).toBeLessThan(hillTopY(plan, g.x));
-      expect(g.y).toBeGreaterThan(hillTopY(plan, g.x) - 45);
-    }
+  it('plus de mouettes figées au-dessus du fond (G5 : volées animées, city/gulls.ts)', () => {
+    expect(cityPaintPlan(1080, 340, 1).hill.gulls).toEqual([]);
   });
 
   it('maison et repère : aucun tirage, dessin identique à chaque appel', () => {

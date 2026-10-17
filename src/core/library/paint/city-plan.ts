@@ -35,6 +35,7 @@ export type Span = { x0: number; x1: number };
 // Maison du fond : `row` 0 (le plus loin) à 2 ; `base` = sol du rang ; `s` échelle ; `haze` brume ; `top` = haut du toit.
 export type HillHouse = { row: 0 | 1 | 2; x: number; w: number; h: number; base: number; top: number; s: number; haze: number; wall: Rgb; roof: Rgb; kind: 'gable' | 'hip' | 'mansard'; dormers: boolean; chimney: number | null; trees: { x: number; r: number } | null };
 export type Landmark = { kind: 'tower' | 'dome'; x: number; s: number; base: number; top: number; w: number };
+// Mouette figée du décor : vide depuis G5 (volées animées du calque gulls-layer.tsx) ; le champ reste pour `paintGull`.
 export type Gull = { x: number; y: number; s: number };
 export type Hill = { houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; phase: [number, number] };
 export type FurnitureKind = 'bench' | 'mailbox' | 'bike' | 'poster' | 'pigeon';
@@ -174,7 +175,6 @@ function hillPlan(width: number, height: number, seed: number): Hill {
     }
   });
   const landmarks: Landmark[] = [];
-  const gulls: Gull[] = [];
   const base0 = height * HILL_ROWS[0].y;
   const base1 = height * HILL_ROWS[1].y;
   for (let k = 0; k * BAND < width; k++) {
@@ -192,15 +192,9 @@ function hillPlan(width: number, height: number, seed: number): Hill {
       const d2x = k * BAND + 60 + r() * (BAND - 160);
       if (Math.abs(d2x - tx) >= 120 && Math.abs(d2x - dx) >= 120) landmarks.push({ kind: 'dome', x: d2x, s: 0.55 + r() * 0.1, base: base1, top: base1 - DOME.h * 0.65, w: DOME.w * 0.65 });
     }
-    const n = 3 + Math.floor(r() * 3);
-    for (let i = 0; i < n; i++) gulls.push({ x: k * BAND + 20 + r() * (BAND - 40), y: 0, s: 0.7 + r() * 0.5 });
   }
-  const partial = { height, hill: { houses, landmarks, gulls: [], phase } };
-  for (const g of gulls) {
-    const r = mulberry32(seed ^ hashString('ghibli-gull') ^ Math.round(g.x * 8));
-    g.y = hillTopY(partial, g.x) - 8 - r() * 34;
-  }
-  return { houses, landmarks, gulls, phase };
+  // G5 : plus de mouettes figées dans le décor ; elles volent en volées dans leur calque animé (city/gulls.ts, gulls-layer.tsx).
+  return { houses, landmarks, gulls: [], phase };
 }
 
 // ── Mobilier peint à hauteur du mur ───────────────────────────────────────────────────────────────────────────────────

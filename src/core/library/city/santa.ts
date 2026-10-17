@@ -252,6 +252,10 @@ export function roofSlope(r: SantaHillRoof, x: number): number {
 export const landDx = (r: SantaHillRoof): number => (r.kind === 'mansard' ? -0.4 : -0.45) * (r.w / 2);
 // Bouche de la cheminée peinte (scène) : centre de la brique, à son sommet.
 export const chimneyHole = (r: SantaHillRoof): Pt => ({ x: r.cx - r.w / 2 + r.w * r.chimney + 1.5 * r.s, y: r.y - 4 * r.s + 0.4 * r.rh });
+// Haut de la cheminée d'une maison de la colline (même point que `chimneyHole`, depuis la maison) ; null sans cheminée. Sert
+// aussi aux mouettes qui s'y posent (city/gulls.ts).
+export const hillChimneyTop = (h: HillHouse): Pt | null =>
+  h.chimney === null ? null : { x: h.x + h.w * h.chimney + 1.5 * h.s, y: h.top - 4 * h.s + 0.4 * h.h * HILL_ROOF_RATIO };
 export const santaHillScale = (r: SantaHillRoof): number => SANTA_FAR_K * r.s;
 // Première fenêtre de la maison (grille de paintHillHouse) : s'allume pendant la visite.
 export const santaHillWindow = (r: SantaHillRoof): { x: number; y: number; w: number; h: number } => ({ x: r.cx - r.w / 2 + 3 * r.s, y: r.y + r.rh + 4 * r.s, w: 3.2 * r.s, h: 4.5 * r.s });

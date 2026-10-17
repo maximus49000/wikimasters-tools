@@ -50,6 +50,7 @@ import { FrontSidewalk } from './front-sidewalk';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
 import { CROSS_HALF, type ScheduledArrival, type TrafficEnv } from '../core/library/city/traffic/engine';
 import { SantaLayer } from './santa-layer';
+import { GullsLayer } from './gulls-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -352,6 +353,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
 
   // Terrasses : météo de la minute et des 10 précédentes (hystérésis du moteur).
   const terraceSky = useTerraceWeather(weather, rainy, city.minutes);
+  // Mouettes (G5) : intensité de la pluie relue à la minute (sans horloge météo, `rainy` compte pour une pluie franche).
+  const gullRain = useMemo(() => {
+    if (!weather) return rainy ? 0.65 : 0;
+    const w = weather.read(Date.now());
+    return w.kind === 'rain' ? w.precip : 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weather, rainy, city.minutes]);
 
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
   // Fêtes actives à la minute de la scène (père Noël : 24 décembre de nuit).
@@ -695,6 +703,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         </defs>
       )}
       <g data-city-events-back="">
+        {/* Mouettes (G5) : derrière les immeubles, au fond du ciel, sous la grue, les engins du ciel (cerf-volant, ballons, père Noël,
+            défilé aérien) et le feu d'artifice. */}
+        <GullsLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} minutes={city.minutes} rain={gullRain} still={still} frozenT={frozen.current ?? 0} ghibli={ghibli} />
         {fireworks.length > 0 && <g data-event-mask="skyline" mask={`url(#${maskBase}-skyline)`}>{fireworks.map(eventNode)}</g>}
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
         {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment' || e.id === 'bells').map(eventNode)}
