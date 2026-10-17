@@ -267,6 +267,19 @@ describe('LibraryPanel : cartes', () => {
     expect(layoutNow().length).toBe(0);
   });
 
+  it('un bureau qui ne porte qu’une carte posée demande confirmation avant d’être retiré', async () => {
+    await seed([
+      { id: 'f2', kind: 'desk', col: 12, row: 10 },
+      { id: 'f3', kind: 'posed', shape: 'cd', hostId: 'f2', x: 4, z: 4, slug: 'Daft_Punk' },
+    ]);
+    await click('[data-action="edit"]');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await click('[data-furniture="desk"]');
+    await click('[data-action="remove"]');
+    expect(confirm).toHaveBeenCalledWith('Retirer aussi ce qui est posé dessus ?');
+    expect(layoutNow().length).toBe(2);
+  });
+
   it('grise dans le sélecteur une carte déjà posée', async () => {
     await seed([{ id: 'f1', kind: 'wall', shape: 'poster', col: 4, row: 4, slug: 'Paris' }]);
     await click('[data-action="edit"]');

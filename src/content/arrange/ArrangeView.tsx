@@ -15,6 +15,7 @@ import { paletteOf } from '../../core/library/styles';
 import { computerTopRect, topSize, topThingOf, type TopRect } from '../../core/library/surface';
 import { isTableClock, tableFaceContent, useDecoScene } from '../deco-live';
 import { CarriedItem3D, Model3DArt, type ItemContent } from '../model3d-art';
+import { gameBoxContent } from '../game-box-content';
 import type { SceneView } from '../RoomView';
 import { axesOf, topPx, useTopDrag, type TopAxes } from './use-top-drag';
 
@@ -142,6 +143,11 @@ export function ArrangeView({ layout, room, hostId, hostIds, onMove, onClose, on
   const steampunk = room.style === 'steampunk';
   const contentOf = (p: Placed): ItemContent | undefined => {
     if (p.kind === 'computer') return { url: p.slug ? imageOf?.(p.slug) : undefined };
+    // Carte posée : l'image de sa pochette (et le dos d'une boîte de jeu), comme dans la pièce.
+    if (p.kind === 'posed') {
+      const url = imageOf?.(p.slug);
+      return { url, ...gameBoxContent(p.shape, p.slug, url) };
+    }
     if (p.kind !== 'small') return undefined;
     if (isTableClock(p.item) && decoScene) return tableFaceContent(p.item, p.city, room.style, decoScene);
     if (p.item === 'lamp') return { lit: isLit(p) };

@@ -182,3 +182,12 @@ describe('porteurs superposés : le lâcher vise celui de devant', () => {
     expect(boardAt(shelves, board.x + 2, board.y + 2)).toMatchObject({ shelfId: 'front', level: 0 });
   });
 });
+
+describe('carte posée', () => {
+  it('refusée avec une raison (pas encore déplaçable dans la pièce)', () => {
+    const layout: Layout = [desk('d', 4, 10), { id: 'p', kind: 'posed', shape: 'cd', hostId: 'd', x: 0, z: 0, slug: 'S' }];
+    const t = dropTargetFor(layout, COLS, 'p', 4, 10);
+    expect(t.ok).toBe(false);
+    expect(t.reason).toBeDefined();
+  });
+});

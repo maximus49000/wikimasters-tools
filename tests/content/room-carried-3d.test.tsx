@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setPlayerSource } from '../../src/content/music-registry';
+import type { PlayerSource } from '../../src/content/player-source';
 import { RoomView } from '../../src/content/RoomView';
 import { computerPlacement, placementRectPx, screenQuad, storedFrontQuad, storedPlacementsOf } from '../../src/core/library/carried-items';
 import { drawSize } from '../../src/core/library/footprint';
@@ -130,5 +132,34 @@ describe('écran et petits objets en 3D', () => {
     const c = mount(carried(0));
     expect(c.querySelector('[data-furniture="small"][data-id="o"] [data-item3d="small-plant"]')).not.toBeNull();
     expect(c.querySelector('[data-furniture="small"][data-id="l"] [data-item3d="small-lamp"] [data-lamp-halo]')).not.toBeNull();
+  });
+});
+
+describe('cartes posées en 3D sur le plateau', () => {
+  const layout = (): Layout => [
+    { id: 'd', kind: 'desk', col: 2, row: 11, angle: 0 },
+    { id: 'cd', kind: 'posed', shape: 'cd', hostId: 'd', x: 4, z: 4, slug: 'Daft_Punk' },
+    { id: 'dv', kind: 'posed', shape: 'dvd', hostId: 'd', x: 60, z: 4, pose: 'flat', slug: 'Paris' },
+  ];
+  afterEach(() => setPlayerSource(null));
+
+  it('un CD sur trépied et un DVD à plat sont dessinés, avec leur pochette', () => {
+    const c = mount(layout());
+    const cd = c.querySelector('[data-furniture="posed"][data-id="cd"]')!;
+    expect(cd.querySelector('[data-item3d="cd"] image')!.getAttribute('href')).toBe(IMG);
+    // Trépied : socle, rebord, béquille + boîtier ; à plat : un seul boîtier, couverture sur le dessus.
+    const dvd = c.querySelector('[data-furniture="posed"][data-id="dv"]')!;
+    expect(dvd.querySelector('[data-item3d="dvd"] image')!.getAttribute('href')).toBe(IMG);
+    expect(dvd.querySelectorAll('[data-item3d="dvd"] polygon').length).toBeLessThan(cd.querySelectorAll('[data-item3d="cd"] polygon').length);
+  });
+
+  it('une carte posée jouée sur la chaîne disparaît de sa place pendant la lecture', () => {
+    const withHifi: Layout = [...layout(), { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 100, z: 2 }];
+    const view = { linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Discovery' }, track: { uri: 'u', title: 'T', artist: 'A', imageUrl: null, playing: true } };
+    setPlayerSource({ current: () => view, subscribe: () => () => undefined } as unknown as PlayerSource);
+    const c = mount(withHifi);
+    expect(c.querySelector('[data-furniture="posed"][data-id="cd"]')).toBeNull();
+    expect(c.querySelector('[data-furniture="posed"][data-id="dv"]')).not.toBeNull();
+    expect(c.querySelector('[data-hifi-sleeve="Daft_Punk"]')).not.toBeNull();
   });
 });

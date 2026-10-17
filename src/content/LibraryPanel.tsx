@@ -1006,8 +1006,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const item = layout.find((p) => p.id === selectedId);
     // Un meuble qui porte quelque chose (cartes rangées, carte à l'écran, petits objets) demande confirmation : tout part avec lui.
     const holdsMore =
-      (item?.kind === 'shelf' && layout.some((p) => (p.kind === 'stored' && p.shelfId === item.id) || (p.kind === 'small' && p.hostId === item.id))) ||
-      (item?.kind === 'desk' && layout.some((p) => (p.kind === 'computer' && p.deskId === item.id && p.slug) || (p.kind === 'small' && p.hostId === item.id)));
+      (item?.kind === 'shelf' && layout.some((p) => (p.kind === 'stored' && p.shelfId === item.id) || ((p.kind === 'small' || p.kind === 'posed') && p.hostId === item.id))) ||
+      (item?.kind === 'desk' && layout.some((p) => (p.kind === 'computer' && p.deskId === item.id && p.slug) || ((p.kind === 'small' || p.kind === 'posed') && p.hostId === item.id)));
     if (holdsMore && !window.confirm('Retirer aussi ce qui est posé dessus ?')) return;
     // Un objet de carte se range ; un ordinateur qui affiche une carte ne vide d'abord que son écran.
     if (item?.kind === 'wall' || item?.kind === 'stored' || (item?.kind === 'computer' && item.slug)) await editLayout((l) => unplaceCard(l, selectedId));

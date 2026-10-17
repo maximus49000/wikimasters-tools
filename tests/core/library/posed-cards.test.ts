@@ -5,7 +5,7 @@ import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import { ITEM_MODELS, itemPieces, storedModel } from '../../../src/core/library/item-models';
 import { poseOf, type Layout, type Posed } from '../../../src/core/library/library-types';
 import { moveToBoard, moveToTop, poseCard, setPose } from '../../../src/core/library/room-grid';
-import { POSED_DEPTH_CM, topSize } from '../../../src/core/library/surface';
+import { POSED_DEPTH_CM, topSize, topThingOf } from '../../../src/core/library/surface';
 
 const desk = { id: 'd', kind: 'desk', col: 0, row: 10 } as const;
 const shelf = { id: 'sh', kind: 'shelf', col: 8, row: 6 } as const;
@@ -131,5 +131,21 @@ describe('cartes posées : trépied ou à plat', () => {
     const stand = itemPieces(posedPlacement(upright, 'desk'));
     expect(stand).toHaveLength(4);
     expect(carriedPlacementOf([desk, p], p)!.placement).toEqual(pl);
+  });
+
+  it('dessin à plat : l’emprise du boîtier couché = l’empreinte du plateau (livre, jeu au format de boîte)', () => {
+    const y = FURNITURE_MODELS.desk.h;
+    const book: Posed = { id: 'b', kind: 'posed', shape: 'book', hostId: 'd', x: 3, z: 2, pose: 'flat', slug: 'Dune' };
+    const game: Posed = { id: 'g', kind: 'posed', shape: 'game', hostId: 'd', x: 40, z: 5, pose: 'flat', box: 'gamecube', slug: 'Zelda' };
+    for (const p of [book, game]) {
+      const [x0, x1, y0, y1, z0, z1] = placementBounds(posedPlacement(p, 'desk'));
+      const size = topSize(topThingOf(p));
+      expect(x1 - x0, p.shape).toBeCloseTo(size.w);
+      expect(z1 - z0, p.shape).toBeCloseTo(size.d);
+      expect(x0).toBe(p.x);
+      expect(z0).toBe(p.z);
+      expect(y0).toBeCloseTo(y);
+      expect(y1).toBeGreaterThan(y0);
+    }
   });
 });

@@ -147,7 +147,7 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     return { ok: true, cells: [], ghost, deskId };
   }
   // Carte posée sur un plateau : pas encore déplaçable dans la pièce (vue Modifier du meuble).
-  if (item.kind === 'posed') return { ok: false, cells: [], ghost: null };
+  if (item.kind === 'posed') return { ok: false, reason: 'not-host', cells: [], ghost: null };
   if (item.kind === 'small') {
     const cellHost = hostAtCell(layout, col, row);
     const hostId = cellHost ?? hostAtSurface(layout, x, y, item.item, id);
