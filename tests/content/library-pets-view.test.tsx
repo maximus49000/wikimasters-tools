@@ -73,7 +73,7 @@ describe('RoomView : couches du chat', () => {
     layout: [
       { id: 'a', kind: 'sofa', col: 2, row: 12 },
       { id: 'c', kind: 'desk', col: 12, row: 14 },
-      { id: 'd', kind: 'small', item: 'plant', hostId: 'c', slot: 0 },
+      { id: 'd', kind: 'small', item: 'plant', hostId: 'c', x: 7.5, z: 22.5 },
       { id: 'e', kind: 'computer', deskId: 'c' },
       { id: 'w', kind: 'wall', shape: 'poster', col: 30, row: 5, slug: 'Paris' },
     ],

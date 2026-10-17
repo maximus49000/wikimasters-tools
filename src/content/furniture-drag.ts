@@ -1,7 +1,8 @@
 import { wallSizeOf } from '../core/library/furniture-catalog';
 import { drawSize, floorCells } from '../core/library/footprint';
 import type { Layout, ShelfLevel, SmallItem } from '../core/library/library-types';
-import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, decoSizeOf, dropOnShelf, firstFreeSurfaceSlot, moveStored, pxRect, rectOf, shelfLayoutOf, SURFACE_SLOTS, canHostSmall, smallSpan, surfaceSlotRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { angleOf, boardAt, boardItems, CELL_H, CELL_W, canHang, canHangRect, canPlace, byDrawOrder, canPlaceComputer, decoSizeOf, dropOnShelf, moveStored, pxRect, rectOf, shelfLayoutOf, topRectOn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
+import { HOST_TOP, firstFreeTopSpot } from '../core/library/surface';
 
 export type ClientRect = { left: number; top: number; width: number; height: number };
 
@@ -36,19 +37,16 @@ export function hostAtCell(layout: Layout, col: number, row: number): string | n
   return null;
 }
 
-// Le bureau ou l'étagère dont un emplacement de petit objet (posé sur le dessus projeté, à tout angle, comme `surfaceSlotRectOn`)
-// contient le point (x, y).
-export function hostAtSurface(layout: Layout, x: number, y: number, item?: SmallItem): string | null {
+// Le bureau ou l'étagère dont le plateau (projeté sur son dessus, à tout angle, prolongé de la hauteur d'un petit objet : `topRectOn`)
+// contient le point (x, y) et qui a encore une place pour l'objet (`item`, réveil par défaut ; `ignoreId` : l'objet qu'on déplace).
+export function hostAtSurface(layout: Layout, x: number, y: number, item: SmallItem = 'alarm', ignoreId?: string): string | null {
   for (const placed of hostsFrontFirst(layout, true)) {
     const r = rectOf(placed);
     if (!r || (placed.kind !== 'desk' && placed.kind !== 'shelf')) continue;
-    const draw = pxRect(r);
-    if (item && !canHostSmall(placed.kind, item)) continue;
-    const span = item ? smallSpan(item) : 1;
-    for (let i = 0; i + span <= SURFACE_SLOTS[placed.kind]; i++) {
-      const s = surfaceSlotRectOn(draw, placed.kind, angleOf(placed), i, span);
-      if (x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h) return placed.id;
-    }
+    const top = HOST_TOP[placed.kind];
+    const s = topRectOn(pxRect(r), placed.kind, angleOf(placed), { x: 0, z: 0, ...top });
+    if (x < s.x || x >= s.x + s.w || y < s.y || y >= s.y + s.h) continue;
+    if (firstFreeTopSpot(layout, placed.id, { item }, ignoreId) !== null) return placed.id;
   }
   return null;
 }
@@ -145,12 +143,14 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     }
     return { ok: true, cells: [], ghost, deskId };
   }
+  // Carte posée sur un plateau : pas encore déplaçable dans la pièce (vue Modifier du meuble).
+  if (item.kind === 'posed') return { ok: false, cells: [], ghost: null };
   if (item.kind === 'small') {
-    const hostId = hostAtCell(layout, col, row) ?? hostAtSurface(layout, x, y, item.item);
+    const hostId = hostAtCell(layout, col, row) ?? hostAtSurface(layout, x, y, item.item, id);
     if (!hostId) return { ok: false, reason: 'not-host', cells: [{ col, row }], ghost: { col, row, w: 1, h: 1 } };
     const host = layout.find((p) => p.id === hostId);
     const ghost = host ? rectOf(host) : null;
-    const room = hostId === item.hostId || firstFreeSurfaceSlot(layout, hostId, id, item.item) !== null;
+    const room = (hostId === item.hostId && 'x' in item) || firstFreeTopSpot(layout, hostId, { item: item.item }, id) !== null;
     return room ? { ok: true, cells: [], ghost, hostId } : { ok: false, reason: 'host-busy', cells: [], ghost, hostId };
   }
   const angle = angleOf(item);

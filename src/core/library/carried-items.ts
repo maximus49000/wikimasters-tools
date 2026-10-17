@@ -6,8 +6,9 @@ import { drawSize, type Angle } from './footprint';
 import { FURNITURE_MODELS } from './furniture-models';
 import { CELL_H, CELL_W, levelsOf, localPointOf, pieceBounds, projectOf, type V3t } from './furniture-render3d';
 import { ITEM_MODELS, bookColor, itemModel, itemPieces, storedFrontCorners, type ItemPlacement, type ItemShape } from './item-models';
-import type { Layout, Placed, ShelfLevel, SmallItem } from './library-types';
-import { SHELF_GAP_CM, SURFACE_SLOTS, smallSpan, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
+import { isOnBoard, type Layout, type Placed, type Posed, type ShelfLevel, type SmallItem } from './library-types';
+import { SHELF_GAP_CM, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
+import { SLEEVE_ZONE_CM } from './surface';
 
 const SHELF = FURNITURE_MODELS.shelf;
 const DESK = FURNITURE_MODELS.desk;
@@ -57,21 +58,33 @@ export function computerPlacement(id: string): ItemPlacement {
   return { key: id, shape: 'monitor', x: (DESK.w - m.w) / 2, y: DESK.h, z: MONITOR_Z_CM };
 }
 
-// Petit objet : centré sur son emplacement (les emplacements se suivent le long de la largeur du porteur), à mi-profondeur du dessus.
-export function smallPlacement(id: string, item: SmallItem, hostKind: HostKind, slot: number): ItemPlacement {
-  const host = FURNITURE_MODELS[hostKind];
+// Petit objet posé sur le dessus de son porteur, coin avant gauche de son empreinte en (x, z) cm (surface.ts) ; la chaîne hi-fi a devant
+// elle la zone de sa pochette : son poste commence 14,5 cm plus loin.
+export function smallPlacement(id: string, item: SmallItem, hostKind: HostKind, x: number, z: number): ItemPlacement {
   const shape = SMALL_SHAPE[item];
-  const m = ITEM_MODELS[shape];
-  return { key: id, shape, x: (host.w * (slot + smallSpan(item) / 2)) / SURFACE_SLOTS[hostKind] - m.w / 2, y: host.h, z: host.d / 2 - m.d / 2 };
+  return { key: id, shape, x, y: FURNITURE_MODELS[hostKind].h, z: item === 'hifi' ? z + SLEEVE_ZONE_CM : z };
+}
+
+// Carte posée sur le plateau de son porteur : de face, à (x, z) cm (coin avant gauche de son empreinte) ; un livre prend la couleur de
+// dos de sa carte, un jeu son format et sa couleur de boîtier (comme rangé).
+export function posedPlacement(p: Posed, hostKind: HostKind): ItemPlacement {
+  return {
+    key: p.id, shape: p.shape, display: 'cover', x: p.x, y: FURNITURE_MODELS[hostKind].h, z: p.z,
+    ...(p.shape === 'book' && { color: bookColor(p.slug) }),
+    ...(p.box && { box: p.box }),
+    ...(p.box && p.caseColor && { color: p.caseColor }),
+  };
 }
 
 // Porteur et pose d'un objet porté ; null pour un autre objet ou un porteur absent. Un objet rangé est posé d'après ses voisins de tablette.
 export function carriedPlacementOf(layout: Layout, p: Placed): { hostId: string; hostKind: HostKind; placement: ItemPlacement } | null {
-  const hostId = p.kind === 'computer' ? p.deskId : p.kind === 'small' ? p.hostId : p.kind === 'stored' ? p.shelfId : null;
+  const hostId = p.kind === 'computer' ? p.deskId : p.kind === 'small' || p.kind === 'posed' ? p.hostId : p.kind === 'stored' ? p.shelfId : null;
   const host = hostId ? layout.find((x) => x.id === hostId) : undefined;
   if (!host || (host.kind !== 'desk' && host.kind !== 'shelf')) return null;
   if (p.kind === 'computer') return host.kind === 'desk' ? { hostId: host.id, hostKind: 'desk', placement: computerPlacement(p.id) } : null;
-  if (p.kind === 'small') return { hostId: host.id, hostKind: host.kind, placement: smallPlacement(p.id, p.item, host.kind, p.slot) };
+  // Petit objet de tablette : posé avec les objets rangés (pas encore dessiné).
+  if (p.kind === 'small') return isOnBoard(p) ? null : { hostId: host.id, hostKind: host.kind, placement: smallPlacement(p.id, p.item, host.kind, p.x, p.z) };
+  if (p.kind === 'posed') return { hostId: host.id, hostKind: host.kind, placement: posedPlacement(p, host.kind) };
   if (p.kind === 'stored' && host.kind === 'shelf') {
     const placement = storedPlacementsOf(layout, host.id).get(p.id);
     return placement ? { hostId: host.id, hostKind: 'shelf', placement } : null;

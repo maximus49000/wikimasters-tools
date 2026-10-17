@@ -1,11 +1,14 @@
 import { z } from 'zod';
-import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type StandingKind, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
+import { ALL_COATS, PAIR_SCENES, coatsOf, PET_ACTIONS, SCENE_IDS, SMALL_ITEMS, STANDING_KINDS, STYLE_IDS, type Coat, type Layout, type LibraryState, type Orientation, type Pet, type PetPlan, type Placed, type Room, type SceneId, type SmallItem, type StandingKind, type Species, type StyleId, type TimeSetting, WEATHER_STATES, type WeatherSetting } from './library-types';
 import { DECO_KINDS, MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN } from './deco';
 import { isKnownTz } from './clock-cities';
 import { drawSize, isAngle, type Angle } from './footprint';
 import { STEAMPUNK_ONLY, WINDOW_MAX, WINDOW_MIN } from './furniture-catalog';
 import { BOX_FORMATS, type BoxFormat } from '../game/platform-boxes';
-import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, SURFACE_SLOTS, canHostSmall, smallSpan, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow } from './room-grid';
+import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, canHostSmall, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow, type HostKind } from './room-grid';
+import { FURNITURE_MODELS } from './furniture-models';
+import { ITEM_MODELS } from './item-models';
+import { SLEEVE_ZONE_CM, canPutOnTop, firstFreeTopSpot, type TopThing } from './surface';
 
 const BOX_FORMAT_IDS = Object.keys(BOX_FORMATS) as [BoxFormat, ...BoxFormat[]];
 export const MAX_ROOMS = 12;
@@ -39,12 +42,25 @@ const decoSchema = z.object({
   text: z.string().max(MAX_PANEL_TEXT).optional(),
   neon: z.enum(['pink', 'cyan', 'yellow', 'green', 'white']).optional(),
 });
-const smallSchema = z.object({ id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), slot: z.number().int().min(0).max(3), lit: z.boolean().optional(), city: citySchema.optional() });
+// Petit objet : sur le plateau de son porteur (x/z en cm, ≥ 0) ou sur une tablette d'étagère (tablette + rang).
+const smallBase = { id: z.string(), kind: z.literal('small'), item: z.enum(SMALL_ITEMS), hostId: z.string(), lit: z.boolean().optional(), city: citySchema.optional() };
+const cm = z.number().min(0);
+const levelSchema = z.union([z.literal(0), z.literal(1), z.literal(2)]);
+const smallSchema = z.union([
+  z.object({ ...smallBase, x: cm, z: cm }),
+  z.object({ ...smallBase, level: levelSchema, order: z.number().int().min(0) }),
+]);
+const boxSchema = z.enum(BOX_FORMAT_IDS).optional().catch(undefined);
+const caseColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().catch(undefined);
+// Carte posée sur le plateau d'un bureau ou d'une étagère : format et couleur de boîtier pour un jeu seulement (comme rangée).
+const posedSchema = z.object({ id: z.string(), kind: z.literal('posed'), shape: z.enum(['cd', 'dvd', 'game', 'book']), hostId: z.string(), x: cm, z: cm, box: boxSchema, caseColor: caseColorSchema, slug: z.string() })
+  .transform(({ box, caseColor, ...rest }) => ({ ...rest, ...(rest.shape === 'game' && box && { box }), ...(rest.shape === 'game' && box && caseColor && { caseColor }) }));
 const placedSchema = z.union([
   z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: halfCol, row: z.number().int(), lit: z.boolean().optional(), angle: z.unknown().optional(), unlinked: z.literal(true).optional() })
     .transform(({ angle, ...rest }) => (isAngle(angle) && angle !== 0 ? { ...rest, angle } : rest)),
   z.object({ id: z.string(), kind: z.literal('computer'), deskId: z.string(), slug: z.string().optional() }),
   smallSchema,
+  posedSchema,
   z.object({
     id: z.string(),
     kind: z.literal('wall'),
@@ -61,11 +77,11 @@ const placedSchema = z.union([
     kind: z.literal('stored'),
     shape: z.enum(['cd', 'dvd', 'game', 'book']),
     shelfId: z.string(),
-    level: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+    level: levelSchema,
     order: z.number().int().min(0),
     display: z.enum(['cover', 'spine', 'back']).optional(),
-    box: z.enum(BOX_FORMAT_IDS).optional().catch(undefined),
-    caseColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().catch(undefined),
+    box: boxSchema,
+    caseColor: caseColorSchema,
     slug: z.string(),
   }).transform(({ box, caseColor, display, ...rest }) => ({
     ...rest,
@@ -120,7 +136,7 @@ const roomSchema = z.object({
   cityEpoch: z.number().int().optional(),
 });
 const stateSchema = z.object({
-  version: z.literal(8),
+  version: z.literal(9),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
   time: z.union([
@@ -158,7 +174,7 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 8, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 9, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -172,45 +188,55 @@ function stripLit(p: Placed): Placed {
   return rest as Placed;
 }
 
-// Nettoie un aménagement lu : un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau, un objet rangé sans étagère
-// ou un petit objet sans porteur, hors emplacements ou sur un emplacement déjà pris (objet rangé : même tablette et même rang),
-// et une carte dont le slug a déjà été vu (ordre du tableau, écran compris) le sont aussi. Les rangs de chaque tablette sont ensuite
-// recompactés 0..n−1 (une tablette qui déborde garde ses objets).
+// Nettoie un aménagement lu : un meuble à identifiant déjà vu est ignoré ; un ordinateur sans bureau, un objet rangé sans étagère,
+// un petit objet ou une carte posée sans porteur (bureau ou étagère ; sur une tablette, une étagère), un objet de tablette sur un
+// rang déjà pris (même tablette, objets rangés et petits objets confondus), et une carte dont le slug a déjà été vu (ordre du tableau,
+// écran et cartes posées compris) le sont aussi. Un objet du plateau qui chevauche un objet déjà gardé (ou l'écran) prend la première
+// place libre du plateau, sinon il est retiré. Les rangs de chaque tablette sont ensuite recompactés 0..n−1 (une tablette qui déborde
+// garde ses objets).
 function cleanLayout(layout: Layout): Layout {
   return compactShelves(cleanEntries(layout));
 }
 function cleanEntries(layout: Layout): Layout {
   const ids = new Set<string>();
   const unique = layout.filter((p) => !ids.has(p.id) && Boolean(ids.add(p.id)));
-  const deskIds = new Set(unique.filter((p) => p.kind === 'desk').map((p) => p.id));
-  const shelfIds = new Set(unique.filter((p) => p.kind === 'shelf').map((p) => p.id));
+  const kindOf = new Map(unique.map((p) => [p.id, p.kind]));
+  const hostKindOf = (id: string): HostKind | null => {
+    const kind = kindOf.get(id);
+    return kind === 'desk' || kind === 'shelf' ? kind : null;
+  };
   const slots = new Set<string>();
   const slugs = new Set<string>();
-  return unique.map(stripLit).filter((p) => {
-    if (p.kind === 'computer' && !deskIds.has(p.deskId)) return false;
-    if (p.kind === 'stored') {
-      if (!shelfIds.has(p.shelfId)) return false;
-      const key = `${p.shelfId}:${p.level}:${p.order}`;
-      if (slots.has(key)) return false;
+  // Ce que voient les contrôles du plateau : les porteurs et les écrans, puis chaque objet du plateau gardé (ordre du tableau).
+  const onTops: Layout = unique.filter((p) => p.kind !== 'small' && p.kind !== 'posed');
+  const out: Layout = [];
+  for (const raw of unique) {
+    let p = stripLit(raw);
+    if (p.kind === 'computer' && hostKindOf(p.deskId) !== 'desk') continue;
+    if (p.kind === 'stored' || (p.kind === 'small' && 'level' in p)) {
+      const shelfId = p.kind === 'stored' ? p.shelfId : p.hostId;
+      if (hostKindOf(shelfId) !== 'shelf') continue;
+      const key = `${shelfId}:${p.level}:${p.order}`;
+      if (slots.has(key)) continue;
       slots.add(key);
+    } else if (p.kind === 'small' || p.kind === 'posed') {
+      const hostKind = hostKindOf(p.hostId);
+      if (!hostKind || (p.kind === 'small' && !canHostSmall(hostKind, p.item))) continue;
+      const thing: TopThing = p.kind === 'small' ? { item: p.item } : { shape: p.shape, box: p.box };
+      if (!canPutOnTop(onTops, p.hostId, thing, p.x, p.z)) {
+        const spot = firstFreeTopSpot(onTops, p.hostId, thing);
+        if (!spot) continue;
+        p = { ...p, ...spot };
+      }
     }
-    if (p.kind === 'small') {
-      const host = unique.find((q) => q.id === p.hostId);
-      if (!host || (host.kind !== 'desk' && host.kind !== 'shelf') || !canHostSmall(host.kind, p.item)) return false;
-      const hostKind = host.kind;
-      const covered = Array.from({ length: smallSpan(p.item) }, (_, i) => p.slot + i);
-      if (covered.some((c) => c >= SURFACE_SLOTS[hostKind])) return false;
-      const keys = covered.map((c) => `${p.hostId}:small:${c}`);
-      if (keys.some((k) => slots.has(k))) return false;
-      if (host.kind === 'desk' && covered.some((c) => c === 1 || c === 2) && unique.some((q) => q.kind === 'computer' && q.deskId === host.id)) return false;
-      for (const k of keys) slots.add(k);
-    }
-    if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer') && p.slug !== undefined) {
-      if (slugs.has(p.slug)) return false;
+    if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer' || p.kind === 'posed') && p.slug !== undefined) {
+      if (slugs.has(p.slug)) continue;
       slugs.add(p.slug);
     }
-    return true;
-  });
+    if (p.kind === 'small' || p.kind === 'posed') onTops.push(p);
+    out.push(p);
+  }
+  return out;
 }
 
 // Une pièce v1 avait 12 lignes (9 de mur, 3 de sol) ; la v2 en a 18 (12 + 6). Tout descend de 3 lignes : le sol d'origine reste contre le mur.
@@ -350,7 +376,47 @@ export function migrateV7(raw: unknown): unknown {
   return { ...(raw as object), version: 8 };
 }
 
-const migrate = (raw: unknown): unknown => migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(raw)))))));
+// Emplacements entiers d'avant la v9 (figés ici) : 4 sur un bureau, 3 sur une étagère, la chaîne hi-fi sur deux.
+const V8_SLOTS: Record<HostKind, number> = { desk: 4, shelf: 3 };
+
+// Coin avant gauche (cm, plateau du porteur) d'un petit objet posé sur l'emplacement `slot` d'avant la v9 : même centre (milieu de
+// l'emplacement, mi-profondeur) ; la chaîne compte devant elle la zone de sa pochette (son poste reste à la même place).
+export function slotToTop(hostKind: HostKind, item: SmallItem, slot: number): { x: number; z: number } {
+  const host = FURNITURE_MODELS[hostKind];
+  const m = ITEM_MODELS[`small-${item}`];
+  const span = item === 'hifi' ? 2 : 1;
+  return { x: (host.w * (slot + span / 2)) / V8_SLOTS[hostKind] - m.w / 2, z: host.d / 2 - m.d / 2 - (item === 'hifi' ? SLEEVE_ZONE_CM : 0) };
+}
+
+// La v9 pose les petits objets en cm : l'emplacement `slot` devient `x`/`z` (slotToTop), à la même place à l'écran. Un petit objet sans
+// porteur (bureau ou étagère) est retiré, comme le faisait la lecture ; un emplacement abîmé est laissé tel quel : la lecture écartera
+// cet objet comme avant.
+export function migrateV8(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 8) return raw;
+  const state = raw as { rooms?: unknown };
+  const rooms = Array.isArray(state.rooms)
+    ? state.rooms.map((room: unknown) => {
+        const r = room as { layout?: unknown } | null;
+        if (typeof r !== 'object' || r === null || !Array.isArray(r.layout)) return room;
+        const layout = r.layout as unknown[];
+        const hostKind = (id: unknown): HostKind | null => {
+          const host = layout.find((q) => typeof q === 'object' && q !== null && (q as { id?: unknown }).id === id) as { kind?: unknown } | undefined;
+          return host?.kind === 'desk' || host?.kind === 'shelf' ? host.kind : null;
+        };
+        const converted = layout.flatMap((p: unknown): unknown[] => {
+          if (typeof p !== 'object' || p === null || (p as { kind?: unknown }).kind !== 'small') return [p];
+          const { slot, ...rest } = p as { slot?: unknown; hostId?: unknown; item?: unknown };
+          if (typeof slot !== 'number' || !Number.isInteger(slot) || slot < 0 || slot > 3 || !(SMALL_ITEMS as readonly unknown[]).includes(rest.item)) return [p];
+          const kind = hostKind(rest.hostId);
+          return kind ? [{ ...rest, ...slotToTop(kind, rest.item as SmallItem, slot) }] : [];
+        });
+        return { ...r, layout: converted };
+      })
+    : state.rooms;
+  return { ...state, version: 9, rooms };
+}
+
+const migrate = (raw: unknown): unknown => migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(raw))))))));
 
 // Un animal impossible (espèce ou pelage inconnus…) est ignoré sans faire perdre la pièce ; trois au plus.
 function cleanPets(raw: unknown): unknown {
@@ -372,6 +438,7 @@ function dropBadWallItems(raw: unknown): unknown {
     if (kind === 'deco') return decoSchema.safeParse(p).success;
     // Réveil ou pendulette à ville inconnue : seul cet objet disparaît (comme un objet du mur).
     if (kind === 'small') return smallSchema.safeParse(p).success;
+    if (kind === 'posed') return posedSchema.safeParse(p).success;
     return true;
   };
   const rooms = (raw as { rooms: unknown[] }).rooms.map((room) =>

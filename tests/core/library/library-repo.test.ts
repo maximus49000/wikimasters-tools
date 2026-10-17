@@ -97,7 +97,7 @@ describe('createLibraryRepo', () => {
       const spied = { get: store.get.bind(store), set: vi.fn(async (k: string, v: unknown) => { calls.push(k); await store.set(k, v); }) };
       const repo = createLibraryRepo(spied as never);
       await repo.update(addRoom);
-      expect(calls).toEqual(['library-backup-pre-v7', 'library']);
+      expect(calls).toEqual(['library-backup-pre-v7', 'library-backup-pre-v9', 'library']);
       expect(await store.get('library-backup-pre-v7')).toEqual(v6);
       // Les vraies données ont bien été converties puis complétées (pas remplacées par la pièce vide).
       expect((await store.get<{ rooms: { name: string }[] }>('library'))?.rooms.map((r) => r.name)).toEqual(['Salon', 'Pièce 2']);
@@ -105,6 +105,7 @@ describe('createLibraryRepo', () => {
       await createLibraryRepo(spied as never).load();
       await createLibraryRepo(spied as never).update(addRoom);
       expect(calls.filter((k) => k === 'library-backup-pre-v7')).toHaveLength(1);
+      expect(calls.filter((k) => k === 'library-backup-pre-v9')).toHaveLength(1);
       expect(await store.get('library-backup-pre-v7')).toEqual(v6);
     });
 
@@ -142,6 +143,21 @@ describe('createLibraryRepo', () => {
       const repo = createLibraryRepo({ get: store.get.bind(store), set } as never);
       await expect(repo.update(addRoom)).rejects.toThrow('plein');
       expect(await store.get('library')).toEqual(v6);
+    });
+
+    it('un état v8 : seule la copie d avant la v9 est faite, une seule fois', async () => {
+      const v8 = { version: 8, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [{ id: 'r1', name: 'Salon', orientation: 'landscape', cols: 24, style: 'scandinave', scene: 'city', pets: [], layout: [{ id: 'd', kind: 'desk', col: 0, row: 10 }, { id: 'a', kind: 'small', item: 'alarm', hostId: 'd', slot: 0 }] }] };
+      const store = createMemoryStore();
+      await store.set('library', v8);
+      const calls: string[] = [];
+      const spied = { get: store.get.bind(store), set: vi.fn(async (k: string, v: unknown) => { calls.push(k); await store.set(k, v); }) };
+      await createLibraryRepo(spied as never).update(addRoom);
+      await createLibraryRepo(spied as never).update(addRoom);
+      expect(calls).toEqual(['library-backup-pre-v9', 'library', 'library']);
+      expect(await store.get('library-backup-pre-v9')).toEqual(v8);
+      expect(await store.get('library-backup-pre-v7')).toBeUndefined();
+      // Le réveil est relu en cm, à sa place.
+      expect((await store.get<{ rooms: { layout: unknown[] }[] }>('library'))?.rooms[0]!.layout[1]).toEqual({ id: 'a', kind: 'small', item: 'alarm', hostId: 'd', x: 6, z: 26.5 });
     });
 
     it('un état enregistré illisible n est jamais écrasé par la pièce vide', async () => {

@@ -218,7 +218,7 @@ describe('zoom : objets en 3D', () => {
     expect(Number(hit.getAttribute('height'))).toBeCloseTo(q[3]![1] - q[0]![1], 1);
   });
   it('bureau : écran et petits objets en 3D, dessinés après le plateau ; la carte de l’écran se touche sur la vitre ; le pivot montre aussi les objets', () => {
-    const desk: Room = { ...room, layout: [{ id: 'd', kind: 'desk', col: 0, row: 10, angle: 1 }, { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Daft_Punk' }, { id: 'l', kind: 'small', item: 'lamp', hostId: 'd', slot: 0 }] };
+    const desk: Room = { ...room, layout: [{ id: 'd', kind: 'desk', col: 0, row: 10, angle: 1 }, { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Daft_Punk' }, { id: 'l', kind: 'small', item: 'lamp', hostId: 'd', x: 7.5, z: 22.5 }] };
     const { container, onCard } = zoomOf(desk, { kind: 'desk', id: 'd' });
     const model = container.querySelector('.wmt-lib-zoom-piece')!;
     expect(model.querySelector('image')!.getAttribute('href')).toBe(IMG);
@@ -240,9 +240,9 @@ describe('objets de table au zoom', () => {
   it('le réveil, la pendulette et la station montrent leur face (pas un rectangle sombre)', () => {
     const desk: Room = { ...room, layout: [
       { id: 'd', kind: 'desk', col: 0, row: 12 },
-      { id: 'a', kind: 'small', item: 'alarm', hostId: 'd', slot: 0 },
-      { id: 'k', kind: 'small', item: 'clock', hostId: 'd', slot: 1 },
-      { id: 'w', kind: 'small', item: 'station', hostId: 'd', slot: 2 },
+      { id: 'a', kind: 'small', item: 'alarm', hostId: 'd', x: 6, z: 26.5 },
+      { id: 'k', kind: 'small', item: 'clock', hostId: 'd', x: 38, z: 27 },
+      { id: 'w', kind: 'small', item: 'station', hostId: 'd', x: 67.5, z: 27 },
     ] };
     const container = document.createElement('div');
     document.body.append(container);

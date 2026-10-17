@@ -121,7 +121,7 @@ describe('porteurs superposés : le lâcher vise celui de devant', () => {
     { id: 'sh', kind: 'shelf', col: 0, row: 6 },
     { id: 'dk', kind: 'desk', col: 0, row: 11 },
     { id: 'far', kind: 'desk', col: 15, row: 11 },
-    { id: 'o', kind: 'small', item: 'plant', hostId: 'far', slot: 0 },
+    { id: 'o', kind: 'small', item: 'plant', hostId: 'far', x: 7.5, z: 22.5 },
   ];
   it('un petit objet lâché sur les cases communes va sur le bureau de devant', () => {
     expect(hostAtCell(layout, 1, 12)).toBe('dk');

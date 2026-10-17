@@ -5,13 +5,17 @@ import type { LibraryState } from './library-types';
 
 const KEY = 'library';
 const CARDS_KEY = 'library-cards';
-// Copie du blob brut d'avant la v7 (rangement par largeur réelle), écrite une seule fois avant la première écriture, jamais remplacée.
-const BACKUP_KEY = 'library-backup-pre-v7';
+// Copies du blob brut d'avant une conversion des données (v7 : rangement par largeur réelle ; v9 : petits objets posés en cm), chacune
+// écrite une seule fois avant la première écriture, jamais remplacée.
+const BACKUPS = [
+  { key: 'library-backup-pre-v7', before: 7 },
+  { key: 'library-backup-pre-v9', before: 9 },
+] as const;
 
-// État brut enregistré par une version d'avant la v7 (à copier avant de le convertir).
-const isPreV7 = (raw: unknown): boolean => {
+// État brut enregistré par une version d'avant `before` (à copier avant de le convertir).
+const isBefore = (raw: unknown, before: number): boolean => {
   const version = typeof raw === 'object' && raw !== null ? (raw as { version?: unknown }).version : undefined;
-  return typeof version === 'number' && version < 7;
+  return typeof version === 'number' && version < before;
 };
 
 // Copie locale des cartes affichées dans les pièces : la pièce se dessine sans dépendre de la Collection.
@@ -28,12 +32,14 @@ export function createLibraryRepo(store: KeyValueStore) {
   const notify = (): void => {
     for (const listener of listeners) listener();
   };
-  // Copie de sécurité faite (ou déjà présente) : plus besoin de relire sa clé.
-  let backedUp = false;
+  // Copies de sécurité faites (ou déjà présentes) : plus besoin de relire leur clé.
+  const backedUp = new Set<string>();
   const backup = async (raw: unknown): Promise<void> => {
-    if (backedUp || !isPreV7(raw)) return;
-    if ((await store.get<unknown>(BACKUP_KEY)) === undefined) await store.set(BACKUP_KEY, raw);
-    backedUp = true;
+    for (const { key, before } of BACKUPS) {
+      if (backedUp.has(key) || !isBefore(raw, before)) continue;
+      if ((await store.get<unknown>(key)) === undefined) await store.set(key, raw);
+      backedUp.add(key);
+    }
   };
   // Lecture analysée ; `damaged` : un état était enregistré mais il est illisible (pièce vide affichée, à ne jamais écrire par-dessus).
   const read = async (): Promise<{ raw: unknown; state: LibraryState; damaged: boolean }> => {

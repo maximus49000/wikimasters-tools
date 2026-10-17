@@ -95,7 +95,7 @@ describe('objets rangés en 3D dans la pièce', () => {
 
 describe('écran et petits objets en 3D', () => {
   const desk = (angle: 0 | 1 | 4 = 0) => ({ id: 'd', kind: 'desk', col: 2, row: 11, angle }) as const;
-  const carried = (angle: 0 | 1 | 4 = 0): Layout => [desk(angle), { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Paris' }, { id: 'o', kind: 'small', item: 'plant', hostId: 'd', slot: 0 }, { id: 'l', kind: 'small', item: 'lamp', hostId: 'd', slot: 3, lit: true }];
+  const carried = (angle: 0 | 1 | 4 = 0): Layout => [desk(angle), { id: 'pc', kind: 'computer', deskId: 'd', slug: 'Paris' }, { id: 'o', kind: 'small', item: 'plant', hostId: 'd', x: 7.5, z: 22.5 }, { id: 'l', kind: 'small', item: 'lamp', hostId: 'd', x: 97.5, z: 22.5, lit: true }];
 
   it('l’écran est un modèle 3D qui affiche la carte ; sa zone touchable dépasse au-dessus du bureau, comme lui', () => {
     const c = mount(carried(1));

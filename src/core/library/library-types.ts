@@ -36,9 +36,12 @@ export type StandDepth = 1 | 2 | 3;
 export type SmallOnTop = { id: string; kind: 'small'; item: SmallItem; hostId: string; x: number; z: number; lit?: boolean; city?: CityTime };
 export type SmallOnBoard = { id: string; kind: 'small'; item: SmallItem; hostId: string; level: ShelfLevel; order: number; lit?: boolean; city?: CityTime };
 export type Posed = { id: string; kind: 'posed'; shape: ShelfShape; hostId: string; x: number; z: number; box?: BoxFormat; caseColor?: string; slug: string };
+export type SmallPlaced = SmallOnTop | SmallOnBoard;
+export const isOnBoard = (p: SmallPlaced): p is SmallOnBoard => 'level' in p;
 
 // Un meuble au sol : (col, row) est sa case en haut à gauche. L'ordinateur n'a pas de case : il suit son bureau (et peut afficher une carte).
-// `small` : petit objet posé sur l'emplacement `slot` de la surface du bureau ou de l'étagère `hostId`.
+// `small` : petit objet posé sur le plateau du bureau ou de l'étagère `hostId` (x/z en cm), ou sur une tablette de l'étagère `hostId` (level/order,
+// rangs partagés avec les objets rangés). `posed` : carte posée sur le plateau d'un bureau ou d'une étagère (x/z en cm, comme un petit objet).
 // `lit` (lampes seulement) : faux = éteinte ; absent = allumée. `city` (réveil, pendulette) : ville de l'heure affichée, absent = heure de la scène.
 // `depth` : niveau choisi s'il diffère du niveau par défaut du type.
 // `angle` (meubles debout) : rotation par pas de 45° (footprint.ts) ; absent = de face.
@@ -49,7 +52,9 @@ export type Posed = { id: string; kind: 'posed'; shape: ShelfShape; hostId: stri
 export type Placed =
   | { id: string; kind: StandingKind; col: number; row: number; lit?: boolean; depth?: StandDepth; angle?: Angle; unlinked?: true }
   | { id: string; kind: 'computer'; deskId: string; slug?: string }
-  | { id: string; kind: 'small'; item: SmallItem; hostId: string; slot: number; lit?: boolean; city?: CityTime }
+  | SmallOnTop
+  | SmallOnBoard
+  | Posed
   | { id: string; kind: 'wall'; shape: WallShape; col: number; row: number; slug: string; color?: VinylColor }
   | { id: string; kind: 'window'; col: number; row: number; w: number; h: number }
   | { id: string; kind: 'deco'; deco: DecoKind; col: number; row: number; w?: number; h?: number; city?: CityTime; text?: string; neon?: NeonColor }
@@ -119,7 +124,7 @@ export type Room = {
 };
 
 export type LibraryState = {
-  version: 8;
+  version: 9;
   activeRoomId: string;
   homeRoomId: string | null;
   // Heure globale de la Bibliothèque (toutes les pièces).

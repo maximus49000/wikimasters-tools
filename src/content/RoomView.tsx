@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactElement } from 'react';
-import type { FurnitureKind, Placed, Room, TimeSetting, WeatherState } from '../core/library/library-types';
+import { isOnBoard, type FurnitureKind, type Placed, type Room, type TimeSetting, type WeatherState } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
 import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
@@ -147,9 +147,9 @@ function topPlacementIn(hosts: ReadonlyMap<string, Host>, placed: Placed): { hos
     const host = hosts.get(placed.deskId);
     return host?.kind === 'desk' ? { host, pl: computerPlacement(placed.id) } : null;
   }
-  if (placed.kind !== 'small') return null;
+  if (placed.kind !== 'small' || isOnBoard(placed)) return null;
   const host = hosts.get(placed.hostId);
-  return host ? { host, pl: smallPlacement(placed.id, placed.item, host.kind, placed.slot) } : null;
+  return host ? { host, pl: smallPlacement(placed.id, placed.item, host.kind, placed.x, placed.z) } : null;
 }
 type Carried = { tops: Placed[]; stored: Extract<Placed, { kind: 'stored' }>[]; computers: Placed[] };
 

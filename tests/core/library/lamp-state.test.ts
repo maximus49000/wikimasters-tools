@@ -7,8 +7,8 @@ const layout: Layout = [
   // Lampe de 9 rangées : lignes 8 à 16.
   { id: 'f1', kind: 'lamp', col: 2, row: 8 },
   { id: 'f2', kind: 'desk', col: 6, row: 12 },
-  { id: 'f3', kind: 'small', item: 'lamp', hostId: 'f2', slot: 0 },
-  { id: 'f4', kind: 'small', item: 'plant', hostId: 'f2', slot: 3 },
+  { id: 'f3', kind: 'small', item: 'lamp', hostId: 'f2', x: 7.5, z: 22.5 },
+  { id: 'f4', kind: 'small', item: 'plant', hostId: 'f2', x: 97.5, z: 22.5 },
 ];
 
 describe('lampes', () => {

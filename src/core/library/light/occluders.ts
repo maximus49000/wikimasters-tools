@@ -5,7 +5,7 @@ import { SHELF_GAP_CM, angleOf, boardItems, isLamp, isLit, isStanding, pxRect, r
 import { computerPlacement, placementBounds, smallPlacement, storedPlacement } from '../carried-items';
 import { itemPieces, type ItemPlacement } from '../item-models';
 import type { PxRect } from '../room-grid';
-import type { Layout, Placed, StandingKind } from '../library-types';
+import { isOnBoard, type Layout, type Placed, type StandingKind } from '../library-types';
 import { ROOM_DEPTH_FACTOR } from './beam';
 
 // Monde : x = pixels de la pièce, d = profondeur (0 = fond du mur, depthMax = devant), z = hauteur en px.
@@ -61,9 +61,9 @@ function topPlacementOf(p: Placed, layout: Layout, g: Geom): { host: HostFrame; 
     const host = hostFrame(layout, p.deskId, g);
     return host && host.kind === 'desk' ? { host, pl: computerPlacement(p.id) } : null;
   }
-  if (p.kind !== 'small') return null;
+  if (p.kind !== 'small' || isOnBoard(p)) return null;
   const host = hostFrame(layout, p.hostId, g);
-  return host ? { host, pl: smallPlacement(p.id, p.item, host.kind, p.slot) } : null;
+  return host ? { host, pl: smallPlacement(p.id, p.item, host.kind, p.x, p.z) } : null;
 }
 
 export function boxesOf(layout: Layout, geom: Geom): Box[] {

@@ -13,6 +13,9 @@ describe('openingOf', () => {
     expect(openingOf(stored('game'))).toBe('game-case');
     expect(openingOf(stored('book'))).toBe('book');
   });
+  it('carte posée sur un plateau : comme rangée', () => {
+    expect(openingOf({ id: 'p', kind: 'posed', shape: 'cd', hostId: 'd', x: 0, z: 0, slug: 'x' })).toBe('jewel-cd');
+  });
   it('objets accrochés', () => {
     expect(openingOf(wall('vinyl'))).toBe('vinyl-sleeve');
     expect(openingOf(wall('sleeve-square'))).toBe('vinyl-sleeve');
@@ -21,7 +24,7 @@ describe('openingOf', () => {
     expect(openingOf(wall('poster'))).toBeNull();
   });
   it('le reste', () => {
-    expect(openingOf({ id: 'a', kind: 'small', item: 'lamp' as never, hostId: 'h', slot: 0 })).toBeNull();
+    expect(openingOf({ id: 'a', kind: 'small', item: 'lamp' as never, hostId: 'h', x: 0, z: 0 })).toBeNull();
     expect(openingOf({ id: 'c', kind: 'computer', deskId: 'd' })).toBeNull();
   });
 });

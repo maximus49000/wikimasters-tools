@@ -56,7 +56,7 @@ function probeOf(subject: Subject): Placed | null {
   if (kind === 'window') return { id: DRAFT_ID, kind: 'window', col: 0, row: 0, ...WINDOW_DEFAULT };
   if (isDecoKind(kind)) return { id: DRAFT_ID, kind: 'deco', deco: kind, col: 0, row: 0, ...(isPanel(kind) ? decoDefaultSize(kind) : {}) };
   if (kind === 'computer') return { id: DRAFT_ID, kind: 'computer', deskId: '' };
-  if (isSmallKind(kind)) return { id: DRAFT_ID, kind: 'small', item: SMALL_ITEM_OF[kind], hostId: '', slot: 0 };
+  if (isSmallKind(kind)) return { id: DRAFT_ID, kind: 'small', item: SMALL_ITEM_OF[kind], hostId: '', x: 0, z: 0 };
   if (isStandingKind(kind)) return { id: DRAFT_ID, kind, col: 0, row: 0 };
   return null;
 }

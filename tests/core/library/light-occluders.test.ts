@@ -4,7 +4,7 @@ import type { Layout } from '../../../src/core/library/library-types';
 import { SURF, buildSurfaceMap } from '../../../src/core/library/light/surfaces';
 import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import { pxRect, rectOf, surfaceSlotRectOn } from '../../../src/core/library/room-grid';
+import { pxRect, rectOf, topRectOn } from '../../../src/core/library/room-grid';
 import { computerPlacement, placementRectPx } from '../../../src/core/library/carried-items';
 import { ITEM_MODELS } from '../../../src/core/library/item-models';
 import { drawSize } from '../../../src/core/library/footprint';
@@ -78,7 +78,7 @@ describe('boxesOf', () => {
     expect(lampsOf(off, geom)).toEqual([]);
   });
   it('une petite lampe repose sur le dessus du bureau, sur son emplacement, à mi-profondeur, à la taille de son modèle', () => {
-    const l: Layout = [{ id: 'd', kind: 'desk', col: 2, row: 11 }, { id: 's', kind: 'small', item: 'lamp', hostId: 'd', slot: 0 }];
+    const l: Layout = [{ id: 'd', kind: 'desk', col: 2, row: 11 }, { id: 's', kind: 'small', item: 'lamp', hostId: 'd', x: 7.5, z: 22.5 }];
     const b = boxesOf(l, geom).filter((x) => x.owner === 's');
     expect(b.length).toBeGreaterThan(0);
     const [z0, z1] = [Math.min(...b.map((x) => x.z0)), Math.max(...b.map((x) => x.z1))];
@@ -86,7 +86,7 @@ describe('boxesOf', () => {
     // Jusqu'au haut de l'abat-jour (l'embout, minuscule, ne compte pas pour la lumière).
     expect(z1).toBeGreaterThan(deskTop + 28 * PX_PER_CM_Y);
     expect(z1).toBeLessThanOrEqual(deskTop + ITEM_MODELS['small-lamp'].h * PX_PER_CM_Y + 1e-6);
-    const slot = surfaceSlotRectOn(pxRect(rectOf(l[0]!)!), 'desk', 0, 0);
+    const slot = topRectOn(pxRect(rectOf(l[0]!)!), 'desk', 0, { x: 7.5, z: 22.5, w: 15, d: 15 });
     const [x0, x1] = [Math.min(...b.map((x) => x.x0)), Math.max(...b.map((x) => x.x1))];
     expect((x0 + x1) / 2).toBeCloseTo(slot.x + slot.w / 2, 6);
     const [d0, d1] = [Math.min(...b.map((x) => x.d0)), Math.max(...b.map((x) => x.d1))];

@@ -40,8 +40,8 @@ describe('sauvegarde des objets décoratifs', () => {
 
   it('retire seulement un réveil de table dont le fuseau est inconnu, la bibliothèque reste lisible', () => {
     const desk = { id: 'd1', kind: 'desk', col: 4, row: 13 };
-    const alarm = { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', slot: 0, city: { name: 'Atlantide', tz: 'Ocean/Atlantis' } };
-    const good = { id: 's2', kind: 'small', item: 'clock', hostId: 'd1', slot: 1, city: { name: 'Tokyo', tz: 'Asia/Tokyo' } };
+    const alarm = { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', x: 6, z: 26.5, city: { name: 'Atlantide', tz: 'Ocean/Atlantis' } };
+    const good = { id: 's2', kind: 'small', item: 'clock', hostId: 'd1', x: 38, z: 27, city: { name: 'Tokyo', tz: 'Asia/Tokyo' } };
     const read = parseStoredLibraryState(withLayout([desk, alarm, good, clock]));
     expect(read).not.toBeNull();
     expect(read!.rooms[0]!.layout.map((p) => p.id)).toEqual(['d1', 's2', 'f1']);

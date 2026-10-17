@@ -10,7 +10,7 @@ export type Opening = 'jewel-cd' | 'vinyl-sleeve' | 'dvd-case' | 'game-case' | '
 
 // Comment s'ouvre un objet posé ; null = rien à ouvrir (poster, petit objet, ordinateur…).
 export function openingOf(p: Placed): Opening | null {
-  if (p.kind === 'stored') {
+  if (p.kind === 'stored' || p.kind === 'posed') {
     switch (p.shape) {
       case 'cd': return 'jewel-cd';
       case 'dvd': return 'dvd-case';

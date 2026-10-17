@@ -24,7 +24,7 @@ describe('niveaux de profondeur', () => {
       { id: 'p', kind: 'wall', shape: 'poster', col: 8, row: 1, slug: 'Paris' },
       { id: 'd', kind: 'desk', col: 10, row: 13, depth: 3 },
       { id: 'c', kind: 'computer', deskId: 'd' },
-      { id: 's', kind: 'small', item: 'plant', hostId: 'd', slot: 0 },
+      { id: 's', kind: 'small', item: 'plant', hostId: 'd', x: 7.5, z: 22.5 },
       { id: 'sh', kind: 'shelf', col: 20, row: 8 },
       { id: 'st', kind: 'stored', shape: 'book', shelfId: 'sh', level: 0, order: 0, slug: 'X' },
     ];
