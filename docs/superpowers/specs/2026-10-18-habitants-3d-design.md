@@ -1,6 +1,6 @@
 # Habitants 3D — conception
 
-Date : 2026-10-18. Statut : relu (contrôle constructeur fait), à valider par l'utilisateur.
+Date : 2026-10-18. Statut : validé par l'utilisateur (2026-10-18), pré-prod sans mesure préalable des performances.
 
 ## Intention
 
@@ -43,7 +43,8 @@ Les habitants 3D reprennent tout ce qui a été mis au point au banc d'essai
    pilote les os du modèle 3D. Aucune scène n'a besoin d'être réécrite.
 3. Chaque personnage a une identité 3D **stable** (même graine → même habitant, d'une ouverture à l'autre).
 4. Aucune attente visible : tant que l'image 3D d'une pose n'est pas prête, l'ancien pantin s'affiche à sa place.
-5. Fluidité sur le S26 (Android d'abord) mesurée sur le vrai téléphone avant la pré-prod.
+5. Fluidité sur le S26 (Android d'abord), jugée **en pré-prod** par l'utilisateur (pas de mesure bloquante avant la
+   pré-prod, décision de l'utilisateur du 2026-10-18) ; si elle ne tient pas, retour arrière par l'interrupteur.
 6. Retour arrière en changeant une seule constante.
 
 ## Non-objectifs
@@ -140,7 +141,8 @@ téléchargement (comme les pochettes). Tant qu'ils ne sont pas là, le pantin s
 
 - Tests : familles `scene-pietons`, `scene-commerces`, `scene-circulation`, `scene-evenements` + nouvelle famille pour le
   rendu 3D (à créer, ou rattachée à `scene-pietons`).
-- Mesure sur le S26 (cadence, temps d'apparition, mémoire) avant la pré-prod ; comparaison avec l'interrupteur à `false`.
+- Pas de mesure S26 bloquante : la pré-prod part après les tests et les captures ; l'utilisateur juge la fluidité en
+  pré-prod et on revient en arrière (interrupteur à `false`) si besoin.
 - Captures montrées à l'utilisateur au fil de l'eau.
 - Fiche WikiHow (nouveauté visible) dans la même PR que la fonctionnalité.
 
