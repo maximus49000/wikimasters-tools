@@ -7,6 +7,7 @@ import { anchorsOf } from '../core/library/figure/bake';
 import { shapeOf, signatureOf } from '../core/library/figure/dress';
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import type { ArmPose } from '../core/library/figure/skeleton';
+import { DOG_CYCLE_S, collarOf, dogOf } from '../core/library/paint/props/dog';
 import { BALLOON_CYCLE_S, BANNER_CYCLE_S, BELLS_CYCLE_S, DRONE_CYCLE_S, FEST_BALLOONS_CYCLE_S, HELI_CYCLE_S, KITE_CYCLE_S } from '../core/library/paint/props/sky';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
@@ -50,13 +51,13 @@ export function poseEventFigures(reg: FigureRegistry, node: Element, e: CityEven
 }
 // Décalage des pas d'un marcheur au suivant dans un groupe (unités).
 const WALKER_OFFSET = 7;
-// Laisse tenue à la main (accroche du pantin) jusqu'au collier du chien (repère du sprite, comme le dessin classique) : la
-// main est lue sur la pose debout, la laisse suit ensuite la main pendant la marche (le bout bouge d'une unité au plus).
-function leashFrom(o: Outfit, umbrella: boolean, dir: 1 | -1, hand: 'handR' | 'handL'): string {
+// Laisse tenue à la main (accroche du pantin) jusqu'au collier du chien `collar` (repère du sprite) : la main est lue sur la
+// pose debout, la laisse suit ensuite la main pendant la marche (le bout bouge d'une unité au plus).
+function leashFrom(o: Outfit, umbrella: boolean, dir: 1 | -1, hand: 'handR' | 'handL', collar: readonly [number, number]): string {
   const a = anchorsOf({ sig: signatureOf(shapeOf(o, umbrella)), yaw: facingYaw(dir), gait: 'stand', phase: 0, head: 0, arms: 'hold', lean: 0 })[hand];
-  // Collier en (22, -9) dans le sprite ; repère du pantin : x multiplié par `dir` (retournement annulé).
-  const dx = 22 * dir - a[0];
-  const dy = -9 - a[1];
+  // Repère du pantin : x multiplié par `dir` (retournement annulé).
+  const dx = collar[0] * dir - a[0];
+  const dy = collar[1] - a[1];
   return `M0 0 Q${(dx / 2).toFixed(1)} ${(dy / 2 + 4).toFixed(1)} ${dx.toFixed(1)} ${dy.toFixed(1)}`;
 }
 
@@ -76,12 +77,12 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
   // SMIL seulement en classique : en Ghibli, le dessin classique ne sert que de repli, figé, le temps de la cuisson.
   const smil = anim && !ghibli;
   const night = sky.daylight < 0.3;
-  // Ghibli (G5) : image de l'engin au cadre de son sprite classique (peintres paint/props/sky.ts). Événements du ciel et de la
-  // rue : le groupe est retourné par placeEvent selon `dir`, l'image est cuite dans le sens de vol et le miroir annulé autour
-  // d'elle (jamais de miroir d'image) ; événements fixes : pas de retournement. `period` : poses cycliques réglées sur le temps
-  // de l'événement, pose 0 en mouvement réduit. Le repli classique reste affiché tant que l'image n'est pas cuite.
+  // Ghibli (G5) : image de l'engin au cadre de son sprite classique (peintres paint/props/sky.ts). Événements du ciel, de la
+  // rue et du trottoir : le groupe est retourné par placeEvent selon `dir`, l'image est cuite dans le sens du déplacement et
+  // le miroir annulé autour d'elle (jamais de miroir d'image) ; événements fixes : pas de retournement. `period` : poses
+  // cycliques réglées sur le temps de l'événement, pose 0 en mouvement réduit. Le repli classique reste affiché tant que l'image n'est pas cuite.
   const art = (spec: Omit<PropSpec, 'frame' | 'dir' | 'day'>, fallback: ReactElement, period?: number): ReactElement => {
-    const s: Omit<PropSpec, 'frame'> = { ...spec, day: sky.daylight, dir: e.layer === 'sky' || e.layer === 'street' ? e.dir : 1 };
+    const s: Omit<PropSpec, 'frame'> = { ...spec, day: sky.daylight, dir: e.layer === 'fixed' ? 1 : e.dir };
     if (period && anim) return <CycledInMirror spec={s} period={period} phase={eventCyclePhase(e, period)} fallback={fallback} />;
     return <PropInMirror spec={{ ...s, frame: 0 }} fallback={fallback} />;
   };
@@ -321,8 +322,25 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
       case 'dog-walker': {
         const [walker] = outfitsOf(e.key, 'stroller', 1);
         const coat = t(pickOf(['#8A5A2B', '#222222', '#E8D9B8', '#B97A52'], e.variant));
-        // Ghibli : laisse dans la main libre (la droite tient le parapluie sous la pluie).
+        // Ghibli : laisse dans la main libre (la droite tient le parapluie sous la pluie), jusqu'au collier du chien peint (une
+        // race et une robe par promeneur : paint/props/dog.ts), dans le repère du chien posé à translate(26 0).
         const hand = rainy ? 'handL' : 'handR';
+        const breed = ghibli ? dogOf(hashString(`${e.key}|dog`)) : null;
+        const collar: readonly [number, number] = breed ? collarOf(breed.breed) : [0, 0];
+        // Chien classique (repli Ghibli, figé, le temps de la cuisson).
+        const dog = (
+          <>
+            <rect x={-8} y={-11} width={14} height={6} rx={3} fill={coat} />
+            <circle cx={7} cy={-11} r={3.5} fill={coat} />
+            <path d="M-8 -10 L-12 -14" stroke={coat} strokeWidth={1.5} />
+            <rect x={-6} y={-5} width={2} height={5} fill={coat}>
+              {smil && <animateTransform attributeName="transform" type="rotate" values="-15 -5 -5;15 -5 -5;-15 -5 -5" dur="0.5s" repeatCount="indefinite" />}
+            </rect>
+            <rect x={3} y={-5} width={2} height={5} fill={coat}>
+              {smil && <animateTransform attributeName="transform" type="rotate" values="15 4 -5;-15 4 -5;15 4 -5" dur="0.5s" repeatCount="indefinite" />}
+            </rect>
+          </>
+        );
         return (
           <g>
             {ghibli ? (
@@ -333,7 +351,7 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
                   rainy={rainy}
                   umbrella={rainy}
                   initial={eventWalkPose(e, walked, still, 'hold')}
-                  held={[{ anchor: hand, node: <path data-leash="" d={leashFrom(walker!, rainy, e.dir, hand)} stroke="#C0463A" fill="none" strokeWidth={0.8} /> }]}
+                  held={[{ anchor: hand, node: <path data-leash="" d={leashFrom(walker!, rainy, e.dir, hand, [26 + collar[0], collar[1]])} stroke="#C0463A" fill="none" strokeWidth={0.8} /> }]}
                 />
               </g>
             ) : (
@@ -342,16 +360,9 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
                 <path d="M4 -20 Q14 -12 22 -9" stroke="#C0463A" fill="none" strokeWidth={0.8} />
               </>
             )}
+            {/* Ghibli : 8 poses de marche sur DOG_CYCLE_S choisies par la boucle (cuites dans le sens de marche), pose 0 en mouvement réduit. */}
             <g data-dog="" transform="translate(26 0)">
-              <rect x={-8} y={-11} width={14} height={6} rx={3} fill={coat} />
-              <circle cx={7} cy={-11} r={3.5} fill={coat} />
-              <path d="M-8 -10 L-12 -14" stroke={coat} strokeWidth={1.5} />
-              <rect x={-6} y={-5} width={2} height={5} fill={coat}>
-                {anim && <animateTransform attributeName="transform" type="rotate" values="-15 -5 -5;15 -5 -5;-15 -5 -5" dur="0.5s" repeatCount="indefinite" />}
-              </rect>
-              <rect x={3} y={-5} width={2} height={5} fill={coat}>
-                {anim && <animateTransform attributeName="transform" type="rotate" values="15 4 -5;-15 4 -5;15 4 -5" dur="0.5s" repeatCount="indefinite" />}
-              </rect>
+              {breed ? art({ id: 'dog', args: breed }, <g>{dog}</g>, DOG_CYCLE_S) : dog}
             </g>
           </g>
         );

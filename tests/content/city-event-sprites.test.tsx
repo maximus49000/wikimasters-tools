@@ -9,6 +9,12 @@ import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-h
 import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
 import type { FestivityId } from '../../src/core/library/city/calendar';
 import { EVENT_DEFS, type CityEvent } from '../../src/core/library/city/events';
+import { outfitFor } from '../../src/core/library/city/people';
+import { anchorsOf } from '../../src/core/library/figure/bake';
+import { shapeOf, signatureOf } from '../../src/core/library/figure/dress';
+import { facingYaw } from '../../src/core/library/figure/gait';
+import { DOG_CYCLE_S, collarOf, dogOf } from '../../src/core/library/paint/props/dog';
+import { hashString, mulberry32 } from '../../src/core/library/scene-world';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -163,6 +169,58 @@ describe('CityEventSprite Ghibli', () => {
     expect(shown()).toEqual(['-1']);
     poseEventArt(svg.querySelector('[data-event-sprite]')!, e, 130, true);
     expect(shown()).toEqual(['1']);
+  });
+  it('promeneur : chien en image `dog` à poses cycliques dans le repère translate(26 0), cuite dans le sens de marche ; pose 0 en mouvement réduit', async () => {
+    for (const dir of [1, -1] as const) {
+      const e = { ...ev('dog-walker'), dir, start: 1_000_000 };
+      const { svg, flush } = mount(e, false);
+      const dog = svg.querySelector('[data-dog]')!;
+      expect(dog.getAttribute('transform')).toBe('translate(26 0)');
+      const c = dog.querySelector('[data-prop-cycle]')!;
+      expect(c, `dir ${dir}`).not.toBeNull();
+      expect(Number(c.getAttribute('data-prop-cycle'))).toBe(DOG_CYCLE_S);
+      const spec = JSON.parse(c.getAttribute('data-cycle-spec')!) as { id: string; args: { breed: number; coat: number }; dir: number };
+      expect(spec.id).toBe('dog');
+      expect(spec.dir).toBe(dir);
+      expect(spec.args).toEqual(dogOf(hashString(`${e.key}|dog`)));
+      // u = t/période + phase ≡ (t − start)/période.
+      const u = 1_000_000 / DOG_CYCLE_S + Number(c.getAttribute('data-cycle-phase'));
+      expect(Math.abs(u - Math.round(u))).toBeLessThan(1e-6);
+      // Repli classique (sans SMIL) puis image ; dir = −1 : miroir de l'hôte annulé autour de l'image, jamais d'image retournée.
+      expect(dog.querySelector('image')).toBeNull();
+      expect(dog.querySelector('rect')).not.toBeNull();
+      expect(svg.querySelectorAll('animate, animateTransform')).toHaveLength(0);
+      await flush();
+      const img = dog.querySelector('image')!;
+      expect(img).not.toBeNull();
+      expect(dog.querySelector('rect')).toBeNull();
+      expect(img.closest('[transform="scale(-1 1)"]') !== null).toBe(dir === -1);
+      const still = mount(e, true).svg.querySelector('[data-dog]')!;
+      expect(still.querySelector('[data-prop-cycle]')).toBeNull();
+    }
+  });
+  it('promeneur : la laisse du pantin finit au collier `collarOf` du chien posé à translate(26 0)', () => {
+    for (const dir of [1, -1] as const) {
+      const e = { ...ev('dog-walker'), dir };
+      const leash = mount(e, false).svg.querySelector('[data-leash]')!;
+      const end = leash.getAttribute('d')!.split(' ').slice(-2).map(Number);
+      // Main (pose debout, bras « hold ») + bout de la laisse = collier, dans le repère du pantin (x multiplié par dir).
+      const walker = outfitFor('stroller', mulberry32(hashString(e.key)));
+      const hand = anchorsOf({ sig: signatureOf(shapeOf(walker, false)), yaw: facingYaw(dir), gait: 'stand', phase: 0, head: 0, arms: 'hold', lean: 0 }).handR;
+      const [cx, cy] = collarOf(dogOf(hashString(`${e.key}|dog`)).breed);
+      expect(end[0]! + hand[0]).toBeCloseTo((26 + cx) * dir, 0);
+      expect(end[1]! + hand[1]).toBeCloseTo(cy, 0);
+    }
+  });
+  it('promeneur classique inchangé : chien vectoriel animé, laisse au collier (22, −9), aucune image', () => {
+    const svg = draw(ev('dog-walker'), false);
+    const dog = svg.querySelector('[data-dog]')!;
+    expect(dog.getAttribute('transform')).toBe('translate(26 0)');
+    expect(dog.querySelectorAll('rect')).toHaveLength(3);
+    expect(dog.querySelectorAll('animateTransform')).toHaveLength(2);
+    expect(svg.querySelector('[data-prop-cycle]')).toBeNull();
+    expect(svg.querySelector('image')).toBeNull();
+    expect(svg.querySelector('path[d="M4 -20 Q14 -12 22 -9"]')).not.toBeNull();
   });
   it('vélo de livraison : livreur en pantin à la selle ; camion-poubelle : ripeur pantin et cône des phares conservés', () => {
     expect(mount(ev('delivery-bike'), false).svg.querySelector('[data-bike-rider] [data-figure]')).not.toBeNull();

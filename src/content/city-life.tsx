@@ -525,7 +525,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
             cycles.push(...collectCycles(node));
           }
-          // Engins du ciel, ballons et cloches à poses cycliques (G5).
+          // Engins du ciel, ballons, cloches et chien du promeneur à poses cycliques (G5).
           for (const e of events.active) {
             const node = nodes.get(e.key);
             if (node) cycles.push(...collectCycles(node));
