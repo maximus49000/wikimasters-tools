@@ -75,3 +75,10 @@ describe('format de boîte et présentation de dos', () => {
     expect(setStoredBox(layout, 'nope', 'ds')).toBe(layout);
   });
 });
+
+describe('setStoredBox : jeu posé sur un présentoir', () => {
+  it('réécrit le format et la couleur du boîtier d’un jeu posé, sans le déplacer', () => {
+    const layout = [{ id: 'p', kind: 'posed', shape: 'game', slug: 'b', hostId: 'h', x: 12, z: 3, caseColor: '#000' }] as never;
+    expect(setStoredBox(layout, 'p', 'snes', '#111')).toEqual([{ id: 'p', kind: 'posed', shape: 'game', slug: 'b', hostId: 'h', x: 12, z: 3, box: 'snes', caseColor: '#111' }]);
+  });
+});
