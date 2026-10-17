@@ -21,6 +21,7 @@ import {
   setWeatherSetting,
   shrinkRoom,
   fitRoomWidth,
+  nextFurnitureId,
   updateLayout,
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, labelOf, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
@@ -64,6 +65,8 @@ import {
   displayOf,
   moveToBoard,
   moveToTop,
+  poseCard,
+  storeCard,
   type Cell,
 } from '../core/library/room-grid';
 import { formatMinutes } from '../core/library/time-setting';
@@ -117,6 +120,7 @@ import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
 import { ArrangeView } from './arrange/ArrangeView';
 import { ArrangeShelf, type ArrangeLevel } from './arrange/ArrangeShelf';
 import { useArrangeView } from './arrange/use-arrange-view';
+import type { AddAt, AddCard } from './arrange/use-pending-card';
 import { moveOnTop } from '../core/library/arrange';
 import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
 import { useOpenedItem } from './opened-item/use-opened-item';
@@ -132,6 +136,7 @@ import { getImageService } from './image-registry';
 
 // Aide affichée pendant un placement valide.
 const PLACE_HINT = 'Glissez ✥ ou touchez l’endroit voulu.';
+const PICK_HOST_HINT = 'Touchez le bureau ou l’étagère où poser la carte.';
 // En plein écran, la bulle de message passe par-dessus la pièce : elle s'efface seule après ce délai (ms).
 export const STAGE_MSG_MS = 2500;
 
@@ -332,8 +337,13 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   arrangeRef.current = arrange;
   // Étagère ouverte et sa partenaire liée, mémorisées : un rendu du panneau (mouvement du doigt dans la vue) ne les recalcule pas.
   const arrangeShelfIds = useMemo(() => (lib && arrangeHostId ? shelfGroupOf(activeRoom(lib).layout, arrangeHostId) : []), [lib, arrangeHostId]);
-  const openArrange = (id: string): void => {
+  // Mode de la vue : null = ✋ (déplacer) ; sinon ＋ (ajouter une carte), avec la carte déjà choisie au tiroir le cas échéant.
+  const [arrangeAdd, setArrangeAdd] = useState<{ initial: AddCard | null } | null>(null);
+  // Carte choisie au tiroir (« Poser sur un meuble ») : le prochain meuble touché ouvre sa vue ＋ avec elle en attente.
+  const [cardToPlace, setCardToPlace] = useState<AddCard | null>(null);
+  const openArrange = (id: string, add: { initial: AddCard | null } | null = null): void => {
     setArrangeLevel('whole');
+    setArrangeAdd(add);
     arrange.open(id);
   };
   const activeRoomId = lib ? activeRoom(lib).id : null;
@@ -698,6 +708,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     setBlink([]);
     setMessage('');
     setPicking(false);
+    setCardToPlace(null);
     setAdopting(null);
     setAdoptName('Minou');
     setAdoptCoat('orange');
@@ -884,7 +895,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const item = layout.find((p) => p.id === id);
     if (!item) return;
     // Pendant un placement, toucher une carte rangée revient à toucher son étagère, et un écran son ordinateur.
-    if (editing && placement) return void onPick(item.kind === 'stored' ? item.shelfId : item.id);
+    // Pendant le choix du meuble d'une carte du tiroir, de même : onPick ouvre la vue ＋ du meuble qui porte l'objet touché.
+    if (editing && (placement || cardToPlace)) return void onPick(item.kind === 'stored' ? item.shelfId : item.id);
     if (!editing) {
       if (zoomRef.current) return;
       // Une carte rangée ou affichée sur un écran ouvre le zoom de son meuble ; la fiche s'ouvre ensuite depuis le zoom.
@@ -980,6 +992,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (press.consumeClick()) return;
     const item = layout.find((p) => p.id === id);
     if (!item) return;
+    // Carte choisie au tiroir : le meuble touché (ou celui qui porte l'objet touché) ouvre sa vue ＋, la carte en attente.
+    if (cardToPlace) {
+      const hostId = item.kind === 'desk' || item.kind === 'shelf' ? item.id
+        : item.kind === 'stored' ? item.shelfId : item.kind === 'small' || item.kind === 'posed' ? item.hostId : item.kind === 'computer' ? item.deskId : null;
+      if (!hostId) return refuse(PICK_HOST_HINT);
+      setMessage('');
+      setSelectedId(null);
+      setCardToPlace(null);
+      openArrange(hostId, { initial: cardToPlace });
+      return;
+    }
     if (placement) {
       if (swallowClick.current) {
         swallowClick.current = false;
@@ -1074,10 +1097,22 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     reset();
     setPicking(true);
   };
+  // « Poser sur un meuble » : on touche ensuite le bureau ou l'étagère, dont la vue ＋ s'ouvre avec la carte en attente (à glisser à sa place).
   const chooseCard = (choice: CardChoice): void => {
     setPicking(false);
+    if (choice.target === 'shelf') {
+      setCardToPlace({ slug: choice.slug, shape: choice.shape });
+      setMessage(PICK_HOST_HINT);
+      return;
+    }
     startPlacementFor({ type: 'card', choice });
   };
+  // ✓ de la vue ＋ : la carte est posée (plateau, trépied) ou rangée (tablette, rang) à l'endroit choisi, sous un id neuf.
+  const addCardAt = (card: AddCard, at: AddAt) => editLayout((l) => {
+    const id = nextFurnitureId(l);
+    return 'hostId' in at ? poseCard(l, at.hostId, card.shape, card.slug, id, at.x, at.z) : storeCard(l, at.shelfId, at.level, at.order, card.shape, card.slug, id);
+  });
+  const arrangeAddProps = (initial: AddCard | null) => ({ cards: roomCards.list, categoryOf: roomCards.categoryOf, initial, onAdd: addCardAt });
 
   // Agrandir à gauche décale les meubles : le défilement suit pour garder la même vue.
   async function extend(side: 'left' | 'right'): Promise<void> {
@@ -1339,7 +1374,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <Icon paths={ICONS.trash} />
             </Btn>
             {selectedItem && (selectedItem.kind === 'desk' || selectedItem.kind === 'shelf') && (
-              <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => openArrange(selectedItem.id)}>✋</Btn>
+              <>
+                <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => openArrange(selectedItem.id)}>✋</Btn>
+                {collection !== undefined && <Btn label="Ajouter une carte ici" data={{ action: 'arrange-add' }} onClick={() => openArrange(selectedItem.id, { initial: null })}>＋</Btn>}
+              </>
             )}
             {selectedItem && isStanding(selectedItem) && (
               <>
@@ -1481,25 +1519,29 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         {editing && !outside && arrangeHostId && layout.some((p) => p.id === arrangeHostId) && (
           layout.find((p) => p.id === arrangeHostId)?.kind === 'shelf' ? (
             <ArrangeShelf
+              key={`${arrangeHostId}:${arrangeAdd ? 'add' : 'move'}`}
               layout={layout}
               room={room}
               shelfIds={arrangeShelfIds}
               level={arrangeLevel}
+              mode={arrangeAdd ? 'add' : 'move'}
+              add={arrangeAdd ? arrangeAddProps(arrangeAdd.initial) : undefined}
               cards={roomCards.cards}
               imageOf={imageOfCard}
               sceneView={sceneView}
               onLevel={setArrangeLevel}
               onBoard={(id, shelfId, level, order) => editLayout((l) => moveToBoard(l, id, shelfId, level, order))}
               onTop={(id, hostId, x, z) => editLayout((l) => moveToTop(l, id, hostId, x, z))}
-              onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
               onClose={arrange.close}
             />
           ) : (
             <ArrangeView
+              key={`${arrangeHostId}:${arrangeAdd ? 'add' : 'move'}`}
               layout={layout}
               room={room}
               hostId={arrangeHostId}
-              mode="move"
+              mode={arrangeAdd ? 'add' : 'move'}
+              add={arrangeAdd ? arrangeAddProps(arrangeAdd.initial) : undefined}
               sceneView={sceneView}
               imageOf={imageOfCard}
               onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}

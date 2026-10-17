@@ -75,7 +75,7 @@ function Host({ layout, spies, initial }: { layout: Layout; spies: Spies; initia
   const [level, setLevel] = useState<ArrangeLevel>(initial);
   return (
     <ArrangeShelf layout={layout} room={{ style: 'scandinave' }} shelfIds={IDS} level={level} cards={CARDS}
-      onLevel={(l) => { spies.onLevel(l); setLevel(l); }} onBoard={spies.onBoard} onTop={spies.onTop} onMove={() => undefined} onClose={spies.onClose} />
+      onLevel={(l) => { spies.onLevel(l); setLevel(l); }} onBoard={spies.onBoard} onTop={spies.onTop} onClose={spies.onClose} />
   );
 }
 const mount = (layout: Layout = SHELVES, initial: ArrangeLevel = 'whole'): Spies => {
@@ -291,7 +291,7 @@ describe('glissé en zoom', () => {
     await pointer('pointerup', window, x0, y0);
   });
 
-  it('bord haut depuis la tablette 0 : le dessus ; lâcher une carte sur le dessus est refusé (rouge), rien n’est appelé', async () => {
+  it('bord haut depuis la tablette 0 : le dessus ; une carte lâchée sur le dessus y est posée (onTop), dessinée là en vert', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const s = mount(SHELVES, 0);
     const [x0, y0] = boardPointPx(f, 0, 7);
@@ -300,11 +300,28 @@ describe('glissé en zoom', () => {
     await act(async () => { vi.advanceTimersByTime(EDGE_MS + 10); });
     expect(s.onLevel).toHaveBeenLastCalledWith('top');
     expect(q('[data-arrange-view]')).not.toBeNull();
-    await pointer('pointermove', window, 400, 200);
-    expect(q('[data-arrange-held]')).not.toBeNull();
-    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('false');
-    await pointer('pointerup', window, 400, 200);
+    const [x1, y1] = topToScreen(frameAt(arrangeFrameFor('shelf', LAYER, 2), 0), 40, 15);
+    await pointer('pointermove', window, x1, y1);
+    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
+    // En vert, la carte est dessinée sur le dessus (sur son trépied), à la place visée.
+    expect(q('[data-arrange-view] [data-arrange-item="c1"]')).not.toBeNull();
+    await pointer('pointerup', window, x1, y1);
     expect(s.onBoard).not.toHaveBeenCalled();
+    expect(s.onTop).toHaveBeenCalledTimes(1);
+    expect(s.onTop).toHaveBeenCalledWith('c1', 's', expect.any(Number), expect.any(Number));
+  });
+
+  it('hors du dessus : rouge, avec le message du dessus, rien n’est appelé', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const s = mount(SHELVES, 0);
+    const [x0, y0] = boardPointPx(f, 0, 7);
+    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await pointer('pointermove', window, x0, EDGE_PX - 4);
+    await act(async () => { vi.advanceTimersByTime(EDGE_MS + 10); });
+    await pointer('pointermove', window, 4, LAYER.h / 2);
+    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('false');
+    expect(q('[data-arrange-message]')?.textContent).toBe('Pas de place ici sur le dessus.');
+    await pointer('pointerup', window, 4, LAYER.h / 2);
     expect(s.onTop).not.toHaveBeenCalled();
   });
 
@@ -412,6 +429,80 @@ describe('deux dessus liés côte à côte', () => {
     expect(q('[data-insert]')?.getAttribute('data-top')).toBe('s');
     await pointer('pointerup', window, x1, y1);
     expect(s.onTop).toHaveBeenCalledWith('l2', 's', expect.any(Number), expect.any(Number));
+  });
+});
+
+describe('objets d’un dessus : vers une tablette ou l’autre dessus', () => {
+  // Une lampe et un CD posé (trépied) sur le dessus de s.
+  const ON_TOP: Layout = [
+    ...SHELVES,
+    { id: 'lt', kind: 'small', item: 'lamp', hostId: 's', x: 40, z: 8 },
+    { id: 'pz', kind: 'posed', shape: 'cd', hostId: 's', x: 4, z: 4, slug: 'Z' },
+  ];
+  const fit = arrangeFrameFor('shelf', LAYER, 2);
+  const topPx = (i: number, x: number, z: number) => topToScreen(frameAt(fit, i), x, z);
+  // Tenir l'objet `id` du dessus au bord bas pendant EDGE_MS : la vue passe à la tablette 0, l'objet reste tenu.
+  const downToBoard = async (s: Spies, id: string, at: [number, number]) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    await pointer('pointerdown', q(`[data-arrange-view] [data-arrange-item="${id}"]`)!, ...at);
+    await pointer('pointermove', window, at[0], LAYER.h - EDGE_PX + 4);
+    await act(async () => { vi.advanceTimersByTime(EDGE_MS + 10); });
+    expect(s.onLevel).toHaveBeenLastCalledWith(0);
+    expect(level()).toBe('0');
+    // L'élément saisi (dans la vue du dessus) a disparu avec le changement de niveau : le glissé continue quand même.
+    expect(q('[data-arrange-view]')).toBeNull();
+    expect(q('[data-arrange-held]')).not.toBeNull();
+  };
+
+  it('la lampe du dessus tenue au bord bas descend à la tablette 0 ; lâchée là : onBoard (le glissé survit au changement de niveau)', async () => {
+    const capture = vi.fn();
+    Object.defineProperty(document.documentElement, 'setPointerCapture', { value: capture, configurable: true });
+    const s = mount(ON_TOP, 'top');
+    await downToBoard(s, 'lt', topPx(0, 47, 12));
+    // Le doigt est capturé par la page dès le glissé : il n'est pas perdu quand l'élément saisi disparaît.
+    expect(capture).toHaveBeenCalledWith(1);
+    const f0 = boardFrameFor(ON_TOP, IDS, 0, LAYER);
+    const [x1, y1] = boardPointPx(f0, 0, 60);
+    await pointer('pointermove', window, x1, y1);
+    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
+    await pointer('pointerup', window, x1, y1);
+    expect(s.onBoard).toHaveBeenCalledTimes(1);
+    expect(s.onBoard).toHaveBeenCalledWith('lt', 's', 0, 3);
+    expect(s.onTop).not.toHaveBeenCalled();
+    Reflect.deleteProperty(document.documentElement, 'setPointerCapture');
+  });
+
+  it('une carte posée sur le dessus descend sur une tablette : onBoard (elle y sera rangée)', async () => {
+    const s = mount(ON_TOP, 'top');
+    await downToBoard(s, 'pz', topPx(0, 11, 8));
+    const f0 = boardFrameFor(ON_TOP, IDS, 0, LAYER);
+    const [x1, y1] = boardPointPx(f0, 1, 30);
+    await pointer('pointermove', window, x1, y1);
+    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
+    await pointer('pointerup', window, x1, y1);
+    expect(s.onBoard).toHaveBeenCalledWith('pz', 't', 0, 1);
+  });
+
+  it('un objet d’un dessus lâché sur l’autre dessus lié : onTop avec cet autre dessus', async () => {
+    const s = mount(ON_TOP, 'top');
+    await pointer('pointerdown', q('[data-arrange-view] [data-arrange-item="lt"]')!, ...topPx(0, 47, 12));
+    const [x1, y1] = topPx(1, 40, 15);
+    await pointer('pointermove', window, x1, y1);
+    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
+    expect(q('[data-insert]')?.getAttribute('data-top')).toBe('t');
+    await pointer('pointerup', window, x1, y1);
+    expect(s.onTop).toHaveBeenCalledTimes(1);
+    const [id, hostId] = s.onTop.mock.calls[0]!;
+    expect([id, hostId]).toEqual(['lt', 't']);
+  });
+
+  it('sur son propre dessus : onTop sur le même dessus (déplacement au cm)', async () => {
+    const s = mount(ON_TOP, 'top');
+    await pointer('pointerdown', q('[data-arrange-view] [data-arrange-item="lt"]')!, ...topPx(0, 47, 12));
+    const [x1, y1] = topPx(0, 67, 15);
+    await pointer('pointermove', window, x1, y1);
+    await pointer('pointerup', window, x1, y1);
+    expect(s.onTop).toHaveBeenCalledWith('lt', 's', expect.any(Number), expect.any(Number));
   });
 });
 

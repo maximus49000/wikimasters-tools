@@ -191,6 +191,7 @@ describe('LibraryPanel : cartes', () => {
     expect(layoutNow().find((p) => p.kind === 'wall')).toMatchObject({ slug: 'Paris', shape: 'poster' });
   });
 
+  // « Poser sur un meuble » : toucher le meuble ouvre sa vue ＋ avec la carte en attente à la première place libre ; ✓ la pose.
   it('range une carte sur la première tablette d’une étagère', async () => {
     await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 7 }]);
     await click('[data-action="edit"]');
@@ -198,18 +199,18 @@ describe('LibraryPanel : cartes', () => {
     await click('[data-target="shelf"]');
     await click('[data-shape="cd"]');
     await click('[data-furniture="shelf"]');
-    await placeOk();
+    await click('[data-action="arrange-done"]');
     expect(layoutNow().find((p) => p.kind === 'stored')).toMatchObject({ slug: 'Paris', level: 0, order: 0, shelfId: 'f1' });
   });
 
-  it('toucher une carte déjà rangée pendant la pose sur une étagère vise son étagère', async () => {
+  it('toucher une carte déjà rangée pendant le choix du meuble vise son étagère', async () => {
     await seed([{ id: 'f1', kind: 'shelf', col: 0, row: 7 }, { id: 'f2', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 0, order: 0, slug: 'Daft_Punk' }]);
     await click('[data-action="edit"]');
     await pickCard('Paris');
     await click('[data-target="shelf"]');
     await click('[data-shape="cd"]');
     await click('[data-card="Daft_Punk"]');
-    await placeOk();
+    await click('[data-action="arrange-done"]');
     expect(layoutNow().find((p) => p.kind === 'stored' && p.slug === 'Paris')).toMatchObject({ shelfId: 'f1', level: 0, order: 1 });
   });
 

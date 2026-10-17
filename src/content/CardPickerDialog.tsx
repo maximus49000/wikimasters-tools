@@ -39,7 +39,8 @@ const GLYPHS: Record<string, readonly string[]> = {
 
 const LABELS: Record<string, string> = {
   wall: 'Accrocher au mur',
-  shelf: 'Ranger sur une étagère',
+  // La carte va sur un bureau ou une étagère : on touche le meuble, puis on la glisse à sa place dans la vue ＋.
+  shelf: 'Poser sur un meuble',
   screen: "Afficher sur l'écran",
   poster: 'Poster',
   vinyl: 'Vinyle',

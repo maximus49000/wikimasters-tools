@@ -15,7 +15,8 @@ import { Item3DArt } from './model3d-art';
 export type BoardMarker = { shelfId: string; xCm: number; wCm: number; hCm: number; ok: boolean };
 // Branchement de la vue Modifier : un doigt sur un objet le saisit (`onGrab`), l'objet tenu est dessiné en transparence, la place
 // d'insertion s'affiche ; le toucher d'une carte n'ouvre rien.
-export type BoardArrange = { held: string | null; marker: BoardMarker | null; onGrab: (id: string, e: ReactPointerEvent) => void };
+// `pending` : id de la carte en attente de la vue ＋ (cerclée d'or).
+export type BoardArrange = { held: string | null; marker: BoardMarker | null; onGrab: (id: string, e: ReactPointerEvent) => void; pending?: string | null };
 
 export type ShelfBoardProps = {
   shelfIds: string[];
@@ -197,11 +198,13 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                 // Jeu sur la tranche à boîte connue : la tranche dessinée comme la vraie.
                 const gameSpine = spine ? box.spine : undefined;
                 const spineFont = Math.min(w * 0.6, TITLE_FONT_CM);
+                const waiting = arrange?.pending === p.id;
                 return (
                   <g
                     key={p.id}
                     data-board-card={p.slug}
                     data-board-display={display}
+                    {...(waiting ? { 'data-pending': p.slug } : {})}
                     onPointerDown={grab(p.id)}
                     onClick={() => {
                       if (swiped.current) { swiped.current = false; return; }
@@ -223,6 +226,8 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                       : titleLines(title, w / (TITLE_FONT_CM * CHAR_W)).map((line, k) => (
                         <text key={k} data-board-title="" x={x + w / 2} y={titleY + TITLE_FONT_CM * (k + 1)} fontSize={TITLE_FONT_CM} textAnchor="middle" fill={TITLE_INK}>{line}</text>
                       ))}
+                    {/* Carte en attente (vue ＋) : halo doré autour du boîtier. */}
+                    {waiting && <rect data-pending-halo="" x={x - 0.6} y={y - 0.6} width={w + 1.2} height={h + 1.2} rx={0.6} fill="none" stroke="#F5C542" strokeWidth={1} pointerEvents="none" style={{ filter: 'drop-shadow(0 0 1.5px #F5C542)' }} />}
                   </g>
                 );
               })}
