@@ -6,6 +6,7 @@ import { createLimiter } from './limiter';
 import type { ProxyResult } from './proxy';
 import { proxyTmdb } from './tmdb';
 import { proxyTgdb } from './tgdb';
+import { proxyTgdbImage } from './tgdb-img';
 import { proxyWeather } from './weather';
 import { proxySchoolCalendar } from './school-calendar';
 import { proxyDepartment } from './department';
@@ -96,7 +97,7 @@ async function oembed(id: string): Promise<Response> {
 }
 
 // Limites par adresse (compteurs en mémoire, voir limiter.ts) : [nombre d'appels, fenêtre en ms].
-const LIMITS = { tmdb: [300, 60_000], tgdb: [60, 60_000], igdb: [240, 60_000], books: [60, 60_000], weather: [60, 60_000], schoolCalendar: [30, 60_000], department: [60, 60_000], geocode: [60, 60_000], deezer: [60, 60_000], shops: [20, 60_000], busLines: [20, 60_000], issues: [5, 3_600_000] } as const;
+const LIMITS = { tmdb: [300, 60_000], tgdb: [60, 60_000], tgdbImg: [600, 60_000], igdb: [240, 60_000], books: [60, 60_000], weather: [60, 60_000], schoolCalendar: [30, 60_000], department: [60, 60_000], geocode: [60, 60_000], deezer: [60, 60_000], shops: [20, 60_000], busLines: [20, 60_000], issues: [5, 3_600_000] } as const;
 const limiter = createLimiter(() => Date.now());
 const igdbToken: TokenState = { current: null };
 
@@ -139,6 +140,8 @@ async function relay(request: Request, url: URL, env: Env): Promise<Response | n
   const post = request.method === 'POST';
   if (get && url.pathname.startsWith('/tmdb/')) return limited(request, 'tmdb') ?? relayed(await proxyTmdb(url, { fetch: net, apiKey: env.TMDB_API_KEY }));
   if (get && url.pathname.startsWith('/tgdb/')) return limited(request, 'tgdb') ?? relayed(await proxyTgdb(url, { fetch: net, apiKey: env.TGDB_API_KEY, kv: env.DOC_CACHE }));
+  // Images TheGamesDB : réponse binaire (pas l'enveloppe JSON des autres routes).
+  if (get && url.pathname.startsWith('/tgdb-img/')) return limited(request, 'tgdbImg') ?? (await proxyTgdbImage(url, { fetch: net }));
   if (get && url.pathname.startsWith('/books/')) return limited(request, 'books') ?? relayed(await proxyBooks(url, { fetch: net, apiKey: env.GOOGLE_BOOKS_API_KEY }));
   if (get && url.pathname === '/weather') return limited(request, 'weather') ?? relayed(await proxyWeather(url, { fetch: net, now: () => Date.now() }));
   if (get && url.pathname === '/school-calendar') return limited(request, 'schoolCalendar') ?? relayed(await proxySchoolCalendar(url, { fetch: net, now: () => Date.now() }));

@@ -2393,4 +2393,25 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'pochettes-locales-2026-10',
+    theme: 'collection',
+    glyph: '💾',
+    title: 'Pochettes gardées sur l’appareil',
+    summary: 'Les jaquettes et pochettes de Ma Pièce ne sont téléchargées qu’une fois, puis s’affichent tout de suite, même hors ligne',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Des pochettes qui s’affichent tout de suite',
+        text: 'Les jaquettes des jeux (devant, dos, captures, logo) et les pochettes des albums, films et livres de Ma Pièce sont gardées sur l’appareil dès leur premier affichage. Aux ouvertures suivantes, elles viennent de l’appareil, sans attendre le réseau.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ouvrir la pièce, l’étagère ou une boîte sans voir les images arriver une à une, à économiser les données mobiles, et à garder les pochettes même sans connexion.' },
+          { label: 'D’où viennent les données', text: 'Des mêmes sources qu’avant : TheGamesDB (par le relais de l’application), Steam, IGDB, Wikimédia, Spotify, TMDB et Open Library. La boîte calculée de chaque jeu (version, jaquette retenue) est aussi gardée 30 jours.' },
+          { label: 'Comment ça marche', text: 'Chaque image est téléchargée une seule fois puis rangée dans le stockage du navigateur ou de l’application. Au-delà de 50 Mo, les pochettes vues il y a le plus longtemps sont effacées ; elles seront retéléchargées si on les revoit. Changer de jeu ou de version recalcule la boîte aussitôt.' },
+          { label: 'Limites', text: 'Les pochettes Tidal ne peuvent pas être gardées (leur serveur ne l’autorise pas) : elles restent chargées depuis Internet. Effacer les données du site ou de l’application vide aussi ces pochettes.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
 ];

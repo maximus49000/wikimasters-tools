@@ -69,7 +69,8 @@ describe('defaultVersion', () => {
 
 describe('boxartUrl', () => {
   it('compose l’URL du CDN', () => {
-    expect(boxartUrl('boxart/front/1-1.jpg', 'medium')).toBe('https://cdn.thegamesdb.net/images/medium/boxart/front/1-1.jpg');
+    // Par le relais : le CDN de TheGamesDB n'envoie pas d'en-têtes CORS (image illisible, donc impossible à garder sur l'appareil).
+    expect(boxartUrl('boxart/front/1-1.jpg', 'medium')).toBe('https://wikimasters-tools.maxime-protais-baumer.workers.dev/tgdb-img/medium/boxart/front/1-1.jpg');
   });
 });
 

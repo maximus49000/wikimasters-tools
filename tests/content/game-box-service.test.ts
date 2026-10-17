@@ -284,3 +284,48 @@ describe('createGameBoxService : versions et titre imprimé', () => {
     expect((await setup({ versions: [] }).service.box('Jeu', 'Hollow Knight (jeu vidéo)'))?.title).toBe('Hollow Knight');
   });
 });
+
+describe('boîte mémorisée sur l’appareil (30 jours)', () => {
+  const make = (store: ReturnType<typeof createMemoryStore>, now: () => number, versions = vi.fn(async () => [pc, switchV]), view = vi.fn(async () => ({ status: 'detail', detail }) as never)) =>
+    ({ versions, view, service: createGameBoxService({ versions, images: async () => ({}), choices: createGameVersionRepo(createMemoryStore()), game: { view }, store, spacingMs: 0, now }) });
+
+  it('au lancement suivant, la boîte revient sans fiche ni TheGamesDB ni mesure', async () => {
+    const store = createMemoryStore();
+    const first = make(store, () => 1_000);
+    const box = await first.service.box('Jeu', 'Hollow Knight');
+    const next = make(store, () => 2_000);
+    expect(await next.service.box('Jeu', 'Hollow Knight')).toEqual(box);
+    expect(next.view).not.toHaveBeenCalled();
+    expect(next.versions).not.toHaveBeenCalled();
+  });
+
+  it('au-delà de 30 jours, la boîte est recalculée', async () => {
+    const store = createMemoryStore();
+    await make(store, () => 0).service.box('Jeu', 'Hollow Knight');
+    const later = make(store, () => 31 * 24 * 3_600_000);
+    await later.service.box('Jeu', 'Hollow Knight');
+    expect(later.view).toHaveBeenCalled();
+  });
+
+  it('une panne n’est jamais mémorisée ; un changement de version remplace la boîte mémorisée', async () => {
+    const store = createMemoryStore();
+    const down = make(store, () => 1, vi.fn(async () => null) as never);
+    expect((await down.service.outcome('Jeu', 'Hollow Knight')).failed).toBe(true);
+    const up = make(store, () => 2);
+    await up.service.box('Jeu', 'Hollow Knight');
+    expect(up.versions).toHaveBeenCalled();
+    await up.service.chooseVersion('Jeu', 20);
+    await vi.waitFor(() => expect(up.service.peek('Jeu')?.tgdbId).toBe(20));
+    const again = make(store, () => 3);
+    expect((await again.service.box('Jeu', 'Hollow Knight'))?.tgdbId).toBe(20);
+  });
+
+  it('forget : le jeu de la carte a changé, la boîte mémorisée est oubliée et recalculée', async () => {
+    const store = createMemoryStore();
+    const first = make(store, () => 1);
+    await first.service.box('Jeu', 'Hollow Knight');
+    expect(first.view).toHaveBeenCalledTimes(1);
+    first.service.forget('Jeu');
+    await vi.waitFor(() => expect(first.view).toHaveBeenCalledTimes(2));
+  });
+});

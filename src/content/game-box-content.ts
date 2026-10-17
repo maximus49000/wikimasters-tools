@@ -5,6 +5,7 @@ import { setStoredBox } from '../core/library/room-grid';
 import { getGameBoxService } from './game-box-registry';
 import type { GameBox } from './game-box-service';
 import type { ItemContent } from './model3d-art';
+import { localImage } from './cover-cache';
 import { usableImage } from './image-probe';
 import { madeBackFace } from './opened-item/game-outside';
 
@@ -19,15 +20,27 @@ export function gameBoxContent(shape: ShelfShape, slug: string, url?: string): P
   const box = getGameBoxService()?.peek(slug);
   if (!box) return {};
   const front = box.frontUrl && usableImage(box.frontUrl) ? box.frontUrl : undefined;
-  const cover = front ?? url;
-  const spine = { style: box.style, format: box.format, title: box.title, ...(box.logoUrl ? { logoUrl: box.logoUrl } : {}), ...(box.studio ? { studio: box.studio } : {}), console: box.platformName };
+  const logoUrl = localImage(box.logoUrl);
+  const spine = { style: box.style, format: box.format, title: box.title, ...(logoUrl ? { logoUrl } : {}), ...(box.studio ? { studio: box.studio } : {}), console: box.platformName };
+  const backUrl = localImage(box.backUrl);
   return {
-    ...(front ? { url: front } : {}),
+    ...(front ? { url: localImage(front) } : {}),
     band: box.style.band,
     spine,
-    ...(box.tgdbId !== undefined && cover !== undefined && cover === box.frontUrl ? { printed: true } : {}),
-    ...(box.backUrl ? { backUrl: box.backUrl } : { back: madeBackFace(box) }),
+    // La jaquette dessinée est le scan TheGamesDB : son bandeau est déjà imprimé.
+    ...(box.tgdbId !== undefined && front !== undefined ? { printed: true } : {}),
+    ...(backUrl ? { backUrl } : { back: madeBackFace(localGameBox(box)) }),
   };
+}
+
+// Boîte dont les images (jaquette, dos, captures, logo) sont lues sur l'appareil quand elles y sont déjà.
+export function localGameBox(box: GameBox): GameBox {
+  const { frontUrl, backUrl, backFullUrl, logoUrl, ...rest } = box;
+  const f = localImage(frontUrl);
+  const b = localImage(backUrl);
+  const bf = localImage(backFullUrl);
+  const l = localImage(logoUrl);
+  return { ...rest, ...(f ? { frontUrl: f } : {}), ...(b ? { backUrl: b } : {}), ...(bf ? { backFullUrl: bf } : {}), ...(l ? { logoUrl: l } : {}), shots: box.shots.map((s) => localImage(s) ?? s) };
 }
 
 // Jaquette d'un jeu : celle de sa boîte connue, sinon l'image de la carte (`own`).

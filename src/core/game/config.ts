@@ -12,4 +12,5 @@ export const IGDB_THUMB_BASE = 'https://images.igdb.com/igdb/image/upload/t_cove
 
 // TheGamesDB (versions par console, scans de boîtes) : même principe, la clé reste dans le relais.
 export const TGDB_RELAY = `${RELAY_BASE}/tgdb`;
-export const TGDB_CDN = 'https://cdn.thegamesdb.net/images';
+// Images de TheGamesDB par le relais : son CDN n'envoie pas d'en-têtes CORS (image illisible, impossible à garder sur l'appareil).
+export const TGDB_IMAGES = `${RELAY_BASE}/tgdb-img`;
