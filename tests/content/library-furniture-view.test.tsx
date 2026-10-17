@@ -19,7 +19,7 @@ const room: Room = {
     { id: 'a', kind: 'sofa', col: 2, row: 12 },
     { id: 'b', kind: 'rug', col: 2, row: 15 },
     { id: 'c', kind: 'desk', col: 12, row: 14 },
-    { id: 'd', kind: 'small', item: 'plant', hostId: 'c', slot: 0 },
+    { id: 'd', kind: 'small', item: 'plant', hostId: 'c', x: 7.5, z: 22.5 },
     { id: 'e', kind: 'computer', deskId: 'c' },
     { id: 'f', kind: 'chair', col: 20, row: 15 },
     { id: 'g', kind: 'armchair', col: 24, row: 14 },
@@ -31,7 +31,7 @@ const room: Room = {
     { id: 'l', kind: 'lamp', col: 38, row: 13 },
     { id: 'm', kind: 'coffee-table', col: 3, row: 15 },
     { id: 'n', kind: 'shelf', col: 42, row: 10 },
-    { id: 'o', kind: 'small', item: 'lamp', hostId: 'n', slot: 2 },
+    { id: 'o', kind: 'small', item: 'lamp', hostId: 'n', x: 59.16666666666667, z: 7.5 },
     { id: 'w', kind: 'wall', shape: 'poster', col: 42, row: 5, slug: 'Paris' },
   ],
 };

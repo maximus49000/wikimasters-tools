@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
+import { updateLayout } from '../../src/core/library/library-book';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -133,14 +134,12 @@ describe('mobilier dans le panneau', () => {
     await click('[data-kind="desk"]');
     await click('[data-cell="2-17"]');
     await confirm();
-    await click('[data-category="deco"]');
-    // Deux petits objets : ils prennent les emplacements 0 et 1, le milieu du bureau est donc occupé.
-    for (let i = 0; i < 2; i += 1) {
-      await click('[data-subcategory="plants"]');
-      await click('[data-kind="small-plant"]');
-      await click('[data-furniture="desk"]');
-      await confirm();
-    }
+    // Une plante posée au milieu du bureau, vers le fond : là où se pose l'écran.
+    await act(async () => {
+      await repo.update((s) => updateLayout(s, s.activeRoomId, (l) => [...l, { id: 'pl', kind: 'small', item: 'plant', hostId: l.find((p) => p.kind === 'desk')!.id, x: 40, z: 35 }]));
+    });
+    await settle();
+    expect(q('[data-furniture="small"]')).not.toBeNull();
     await click('[data-category="storage"]');
     await click('[data-kind="computer"]');
     await click('[data-furniture="desk"]');

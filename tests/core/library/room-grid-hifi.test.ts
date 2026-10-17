@@ -4,20 +4,20 @@ import { ITEM_MODELS } from '../../../src/core/library/item-models';
 import { createInitialState, parseStoredLibraryState } from '../../../src/core/library/library-book';
 import type { Layout } from '../../../src/core/library/library-types';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import { canHostSmall, canPlaceComputer, firstFreeSurfaceSlot, moveComputer, moveSmall, placeComputer, placeSmall, smallSpan, surfaceSlotRectOn } from '../../../src/core/library/room-grid';
+import { canHostSmall, canPlaceComputer, moveComputer, moveSmall, placeComputer, placeSmall } from '../../../src/core/library/room-grid';
+import { firstFreeTopSpot } from '../../../src/core/library/surface';
 
 const desk: Layout = [{ id: 'd', kind: 'desk', col: 4, row: 13 }];
 const shelf: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 8 }];
-const smalls = (l: Layout) => l.filter((p) => p.kind === 'small').map((p) => (p.kind === 'small' ? [p.item, p.slot] : null));
+const smalls = (l: Layout) => l.flatMap((p) => (p.kind === 'small' && 'x' in p ? [[p.item, p.x, p.z]] : []));
 const withLayout = (layout: unknown[]) => {
   const state = createInitialState();
   return { ...state, rooms: state.rooms.map((r, i) => (i === 0 ? { ...r, layout } : r)) };
 };
+const readLayout = (layout: unknown[]) => parseStoredLibraryState(withLayout(layout))!.rooms[0]!.layout;
 
-describe('chaîne hi-fi : deux emplacements consécutifs sur un bureau', () => {
-  it('emprise et porteurs', () => {
-    expect(smallSpan('hifi')).toBe(2);
-    expect(smallSpan('plant')).toBe(1);
+describe('chaîne hi-fi : 56 × 26 cm plus la zone de la pochette, sur un bureau', () => {
+  it('porteurs', () => {
     expect(canHostSmall('desk', 'hifi')).toBe(true);
     expect(canHostSmall('shelf', 'hifi')).toBe(false);
     expect(canHostSmall('shelf', 'plant')).toBe(true);
@@ -30,76 +30,72 @@ describe('chaîne hi-fi : deux emplacements consécutifs sur un bureau', () => {
     expect(keys).toEqual(expect.arrayContaining(['front:face:hifi', 'top:top:hifi']));
   });
 
-  it('sur un bureau vide : slot 0, occupe 0 et 1 ; un autre petit objet prend le slot 2', () => {
+  it('sur un bureau vide : à l’avant gauche ; un autre petit objet se pose à côté', () => {
     const a = placeSmall(desk, 'd', 'hifi', 'h')!;
-    expect(smalls(a)).toEqual([['hifi', 0]]);
-    expect(firstFreeSurfaceSlot(a, 'd')).toBe(2);
-    expect(smalls(placeSmall(a, 'd', 'plant', 'p')!)).toEqual([['hifi', 0], ['plant', 2]]);
+    expect(smalls(a)).toEqual([['hifi', 0, 0]]);
+    expect(smalls(placeSmall(a, 'd', 'plant', 'p')!)).toEqual([['hifi', 0, 0], ['plant', 56, 0]]);
   });
 
   it('sur une étagère : refusé', () => {
     expect(placeSmall(shelf, 's', 'hifi', 'h')).toBeNull();
   });
 
-  it('bureau avec ordinateur (emplacements 0 et 3 libres mais non contigus) : refusé', () => {
+  it('bureau avec ordinateur : la chaîne tient devant l’écran', () => {
     const pc: Layout = [...desk, { id: 'c', kind: 'computer', deskId: 'd' }];
-    expect(placeSmall(pc, 'd', 'hifi', 'h')).toBeNull();
+    expect(smalls(placeSmall(pc, 'd', 'hifi', 'h')!)).toEqual([['hifi', 0, 0]]);
     expect(placeSmall(pc, 'd', 'plant', 'p')).not.toBeNull();
   });
 
-  it('un petit objet en slot 0 repousse la chaîne en 1-2, un en slot 1 en 2-3', () => {
+  it('un petit objet à l’avant gauche décale la chaîne vers la droite ; sans place, refusée', () => {
     const plant0 = placeSmall(desk, 'd', 'plant', 'p')!;
-    expect(smalls(placeSmall(plant0, 'd', 'hifi', 'h')!)).toEqual([['plant', 0], ['hifi', 1]]);
-    const l: Layout = [...desk, { id: 'p', kind: 'small', item: 'plant', hostId: 'd', slot: 1 }];
-    expect(smalls(placeSmall(l, 'd', 'hifi', 'h')!)).toEqual([['plant', 1], ['hifi', 2]]);
-    const full: Layout = [...desk, { id: 'p', kind: 'small', item: 'plant', hostId: 'd', slot: 1 }, { id: 'q', kind: 'small', item: 'plant', hostId: 'd', slot: 3 }];
+    expect(smalls(placeSmall(plant0, 'd', 'hifi', 'h')!)).toEqual([['plant', 0, 0], ['hifi', 16, 0]]);
+    // Deux plantes à mi-profondeur, à 40 et 85 cm : aucune place de 56 × 40,5 cm ne reste libre.
+    const full: Layout = [...desk, { id: 'p', kind: 'small', item: 'plant', hostId: 'd', x: 40, z: 20 }, { id: 'q', kind: 'small', item: 'plant', hostId: 'd', x: 85, z: 20 }];
     expect(placeSmall(full, 'd', 'hifi', 'h')).toBeNull();
   });
 
   it('déplacement vers une étagère refusé, vers un autre bureau accepté', () => {
-    const l: Layout = [...desk, ...shelf, { id: 'd2', kind: 'desk', col: 20, row: 13 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }];
+    const l: Layout = [...desk, ...shelf, { id: 'd2', kind: 'desk', col: 20, row: 13 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 }];
     expect(moveSmall(l, 'h', 's')).toBeNull();
     const moved = moveSmall(l, 'h', 'd2')!;
-    expect(moved.find((p) => p.id === 'h')).toMatchObject({ hostId: 'd2', slot: 0 });
+    expect(moved.find((p) => p.id === 'h')).toMatchObject({ hostId: 'd2', x: 0, z: 0 });
   });
 
-  it('smallPlacement du slot 0 : centré sur la largeur des deux emplacements', () => {
+  it('smallPlacement : le poste derrière la zone de la pochette, à l’ancien centre des emplacements 0-1', () => {
     const w = FURNITURE_MODELS.desk.w;
-    const p = smallPlacement('h', 'hifi', 'desk', 0);
+    const p = smallPlacement('h', 'hifi', 'desk', 2, 2.5);
     expect(p.shape).toBe('small-hifi');
     expect(p.x + 56 / 2).toBeCloseTo(w / 4);
-    expect(smallPlacement('h', 'hifi', 'desk', 2).x + 28).toBeCloseTo((w * 3) / 4);
+    expect(p.z).toBe(17);
   });
 
-  it('rectangle d’emplacement : largeur double', () => {
-    const host = { x: 0, y: 0, w: 120, h: 60 };
-    expect(surfaceSlotRectOn(host, 'desk', 0, 0, 2).w).toBe(2 * surfaceSlotRectOn(host, 'desk', 0, 0).w);
-  });
-
-  it('validation : une chaîne chevauchant un autre petit objet, sur une étagère ou au slot 3 est retirée', () => {
+  it('validation : un objet qui chevauche la chaîne est replacé ; la chaîne sur une étagère est retirée', () => {
     const d = { id: 'd', kind: 'desk', col: 4, row: 13 };
-    const hifi = { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 1 };
-    const overlap = { id: 'p', kind: 'small', item: 'plant', hostId: 'd', slot: 2 };
-    expect(parseStoredLibraryState(withLayout([d, hifi, overlap]))!.rooms[0]!.layout.map((p) => p.id)).toEqual(['d', 'h']);
-    const beside = { id: 'p', kind: 'small', item: 'plant', hostId: 'd', slot: 3 };
-    expect(parseStoredLibraryState(withLayout([d, hifi, beside]))!.rooms[0]!.layout.map((p) => p.id)).toEqual(['d', 'h', 'p']);
-    expect(parseStoredLibraryState(withLayout([d, { ...hifi, slot: 3 }]))!.rooms[0]!.layout.map((p) => p.id)).toEqual(['d']);
+    const hifi = { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 32, z: 2.5 };
+    const overlap = { id: 'p', kind: 'small', item: 'plant', hostId: 'd', x: 67.5, z: 22.5 };
+    const read = readLayout([d, hifi, overlap]);
+    expect(read.map((p) => p.id)).toEqual(['d', 'h', 'p']);
+    expect(read[2]).toMatchObject(firstFreeTopSpot([d, hifi] as Layout, 'd', { item: 'plant' })!);
+    const beside = { id: 'p', kind: 'small', item: 'plant', hostId: 'd', x: 97.5, z: 22.5 };
+    expect(readLayout([d, hifi, beside])[2]).toEqual(beside);
     const sh = { id: 's', kind: 'shelf', col: 0, row: 8 };
-    expect(parseStoredLibraryState(withLayout([sh, { ...hifi, hostId: 's', slot: 0 }]))!.rooms[0]!.layout.map((p) => p.id)).toEqual(['s']);
+    expect(readLayout([sh, { ...hifi, hostId: 's' }]).map((p) => p.id)).toEqual(['s']);
     const pc = { id: 'c', kind: 'computer', deskId: 'd' };
-    expect(parseStoredLibraryState(withLayout([d, pc, { ...hifi, slot: 0 }]))!.rooms[0]!.layout.map((p) => p.id)).toEqual(['d', 'c']);
+    expect(readLayout([d, pc, { ...hifi, x: 2 }])[2]).toMatchObject({ id: 'h', x: 0, z: 0 });
   });
 });
 
 describe('ordinateur et chaîne hi-fi', () => {
-  const withHifi: Layout = [...desk, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }, { id: 'd2', kind: 'desk', col: 20, row: 13 }, { id: 'c', kind: 'computer', deskId: 'd2' }];
-  it('refuse un ordinateur sur un bureau dont la chaîne couvre l’emplacement 1', () => {
+  const withHifi: Layout = [...desk, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 }, { id: 'd2', kind: 'desk', col: 20, row: 13 }, { id: 'c', kind: 'computer', deskId: 'd2' }];
+  it('refuse un ordinateur dont l’écran chevaucherait la chaîne', () => {
     expect(canPlaceComputer(withHifi, 'd')).toBe(false);
     expect(placeComputer(withHifi, 'd', 'n')).toBeNull();
     expect(moveComputer(withHifi, 'c', 'd')).toBeNull();
+    const right: Layout = [...desk, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 62, z: 2.5 }];
+    expect(canPlaceComputer(right, 'd')).toBe(false);
   });
-  it('refuse aussi quand la chaîne est en 2-3 (couvre l’emplacement 2)', () => {
-    const l: Layout = [...desk, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 2 }];
-    expect(canPlaceComputer(l, 'd')).toBe(false);
+  it('accepte l’ordinateur derrière une chaîne posée tout à l’avant', () => {
+    const front: Layout = [...desk, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 0, z: 0 }];
+    expect(canPlaceComputer(front, 'd')).toBe(true);
   });
 });

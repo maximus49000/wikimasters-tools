@@ -2,6 +2,7 @@
 import type { Layout, Placed } from './library-types';
 import { ITEM_MODELS } from './item-models';
 import { openingOf } from './opened-item';
+import { SLEEVE_ZONE_CM } from './surface';
 
 // Vue minimale du lecteur (PlayerView de src/content la satisfait structurellement ; core n'importe pas content).
 export type PlayingView = { card: { slug: string } | null; track: { playing: boolean } | null };
@@ -41,7 +42,7 @@ const SLEEVE_CM: Record<SleeveKind, [number, number, number]> = {
   cd: [14.2, 12.5, 1], dvd: [13.5, 19, 1.4], game: [13.5, 17, 1.4], book: [15, 22, 2.4], vinyl: [31.4, 31.4, 0.5],
 };
 // La pochette tient entre le bord avant du bureau et la façade du poste : au-delà de 14,5 cm de profondeur elle est réduite (proportions gardées).
-const SLEEVE_MAX_D = 14.5;
+const SLEEVE_MAX_D = SLEEVE_ZONE_CM;
 // Un peu de biais (degrés, autour de la verticale) et décalée vers la droite : posée à la main, elle ne cache pas l'afficheur.
 const SLEEVE_TILT = -8;
 const SLEEVE_SHIFT_X = 7;

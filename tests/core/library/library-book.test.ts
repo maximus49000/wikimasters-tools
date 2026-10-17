@@ -17,6 +17,9 @@ import {
   shrinkRoom,
   updateLayout,
 } from '../../../src/core/library/library-book';
+import type { Layout } from '../../../src/core/library/library-types';
+import { moveSmall } from '../../../src/core/library/room-grid';
+import { firstFreeTopSpot } from '../../../src/core/library/surface';
 
 describe('état initial', () => {
   it('a une pièce horizontale vide de 24 colonnes', () => {
@@ -225,5 +228,22 @@ describe('cityEpoch', () => {
     expect(next.rooms.find((r) => r.id === 'r2')!.cityEpoch).toBe(10);
     expect(next.rooms.find((r) => r.id === 'r3')!.cityEpoch).toBeUndefined();
     expect(setCityEpoch(next, ['r1', 'r2'], 30_000)).toBe(next);
+  });
+});
+
+describe('petits objets en cm', () => {
+  const layout: Layout = [
+    { id: 'd1', kind: 'desk', col: 0, row: 10 },
+    { id: 'd2', kind: 'desk', col: 8, row: 10 },
+    { id: 'b', kind: 'small', item: 'alarm', hostId: 'd2', x: 0, z: 0 },
+    { id: 'a', kind: 'small', item: 'alarm', hostId: 'd1', x: 40, z: 12 },
+  ];
+  it('moveSmall vers le même bureau garde x/z', () => {
+    expect(moveSmall(layout, 'a', 'd1')!.find((p) => p.id === 'a')).toMatchObject({ hostId: 'd1', x: 40, z: 12 });
+  });
+  it('moveSmall vers un autre bureau prend sa première place libre', () => {
+    const spot = firstFreeTopSpot(layout, 'd2', { item: 'alarm' }, 'a')!;
+    expect(spot).toEqual({ x: 18, z: 0 });
+    expect(moveSmall(layout, 'a', 'd2')!.find((p) => p.id === 'a')).toMatchObject({ hostId: 'd2', ...spot });
   });
 });

@@ -38,7 +38,7 @@ describe('objets de table (réveil, pendulette, station)', () => {
   it('le réveil se pose sur un bureau et affiche l heure sur sa face', async () => {
     await repo.update((s) => updateLayout(s, s.rooms[0]!.id, () => [
       { id: 'd1', kind: 'desk', col: 4, row: 13 },
-      { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', slot: 0 },
+      { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', x: 6, z: 26.5 },
     ]));
     await settle();
     expect(container.querySelector('[data-id="s1"] [data-table-face="alarm"]')).not.toBeNull();
@@ -48,7 +48,7 @@ describe('objets de table (réveil, pendulette, station)', () => {
   it('le réveil garde sa ville après relecture', async () => {
     await repo.update((s) => updateLayout(s, s.rooms[0]!.id, () => [
       { id: 'd1', kind: 'desk', col: 4, row: 13 },
-      { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', slot: 0, city: { name: 'Tokyo', tz: 'Asia/Tokyo' } },
+      { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', x: 6, z: 26.5, city: { name: 'Tokyo', tz: 'Asia/Tokyo' } },
     ]));
     await settle();
     expect(container.querySelector('[data-id="s1"]')!.textContent).toContain('TOKYO');

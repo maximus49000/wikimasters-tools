@@ -15,7 +15,7 @@ const room: Room = {
     { id: 'tab', kind: 'coffee-table', col: 0, row: 13 },
     // Bas de l'étagère, du fauteuil et de la table basse sur la même ligne (16) : le niveau départage.
     { id: 'sh', kind: 'shelf', col: 0, row: 7 },
-    { id: 'pl', kind: 'small', item: 'plant', hostId: 'sh', slot: 0 },
+    { id: 'pl', kind: 'small', item: 'plant', hostId: 'sh', x: 5.833333333333334, z: 7.5 },
     { id: 'arm', kind: 'armchair', col: 1, row: 11 },
     { id: 'pos', kind: 'wall', shape: 'poster', col: 1, row: 7, slug: 'Paris' },
   ],
@@ -41,6 +41,17 @@ describe('RoomView : niveaux de profondeur', () => {
     expect(ids.indexOf('sh')).toBeLessThan(ids.indexOf('pl'));
     expect(ids.indexOf('pl')).toBeLessThan(ids.indexOf('arm'));
     expect(ids.indexOf('arm')).toBeLessThan(ids.indexOf('tab'));
+  });
+
+  it('sur un même plateau, du fond vers l’avant : le réveil à z = 0 après celui à z = 30', () => {
+    const layout: Layout = [
+      { id: 'd', kind: 'desk', col: 2, row: 10 },
+      { id: 'front', kind: 'small', item: 'alarm', hostId: 'd', x: 10, z: 0 },
+      { id: 'back', kind: 'small', item: 'alarm', hostId: 'd', x: 40, z: 30 },
+    ];
+    const ids = [...mount({ layout }).querySelectorAll('[data-id]')].map((n) => n.getAttribute('data-id'));
+    expect(ids.indexOf('back')).toBeGreaterThan(ids.indexOf('d'));
+    expect(ids.indexOf('front')).toBeGreaterThan(ids.indexOf('back'));
   });
 
   it('dessine devant le meuble le plus bas à l’écran, même s’il est au fond', () => {

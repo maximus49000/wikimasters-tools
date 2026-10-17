@@ -61,6 +61,6 @@ describe('meubles au sol', () => {
   it('isStanding reconnaît les types au sol et pas les autres', () => {
     expect(isStanding({ id: 'a', kind: 'rug', col: 0, row: 15 })).toBe(true);
     expect(isStanding({ id: 'b', kind: 'computer', deskId: 'a' })).toBe(false);
-    expect(isStanding({ id: 'c', kind: 'small', item: 'plant', hostId: 'a', slot: 0 })).toBe(false);
+    expect(isStanding({ id: 'c', kind: 'small', item: 'plant', hostId: 'a', x: 0, z: 0 })).toBe(false);
   });
 });

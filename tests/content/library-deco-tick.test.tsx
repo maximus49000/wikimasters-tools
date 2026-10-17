@@ -76,7 +76,7 @@ describe('seconde des horloges', () => {
       { id: 'c1', kind: 'deco', deco: 'digital-clock', col: 2, row: 1 },
       { id: 'c2', kind: 'deco', deco: 'wall-clock', col: 6, row: 1 },
       { id: 'd1', kind: 'desk', col: 4, row: 13 },
-      { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', slot: 0 },
+      { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', x: 6, z: 26.5 },
     ]);
     expect(secondTimers(start)).toBe(1);
     const id = start.mock.results[start.mock.calls.findIndex(([, ms]) => ms === 1000)]!.value;
@@ -100,8 +100,8 @@ describe('seconde des horloges', () => {
       { id: 'c1', kind: 'deco', deco: 'wall-clock', col: 2, row: 1 },
       { id: 'p1', kind: 'deco', deco: 'panel-chalk', col: 6, row: 1, w: 4, h: 3, text: 'Bonjour à tous' },
       { id: 'd1', kind: 'desk', col: 4, row: 13 },
-      { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', slot: 0 },
-      { id: 's2', kind: 'small', item: 'station', hostId: 'd1', slot: 2 },
+      { id: 's1', kind: 'small', item: 'alarm', hostId: 'd1', x: 6, z: 26.5 },
+      { id: 's2', kind: 'small', item: 'station', hostId: 'd1', x: 67.5, z: 27 },
     ]);
     await tick();
     // Travaux asynchrones de l'ouverture du panneau (lecture du dépôt, polices…) terminés avant de compter.

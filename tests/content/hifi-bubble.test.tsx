@@ -50,7 +50,7 @@ describe('bulle de la chaîne hi-fi', () => {
     expect(setCard).toHaveBeenCalledWith(null);
     expect(toggle.mock.invocationCallOrder[0]).toBeLessThan(setCard.mock.invocationCallOrder[0]!);
     expect(onEject).toHaveBeenCalled();
-    const layout: Layout = [{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }, { id: 'a', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }];
+    const layout: Layout = [{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 }, { id: 'a', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' }];
     expect(hiddenAtHome(hifiState(layout, { card: { slug: 'Daft_Punk' }, track: { playing: true } })).size).toBe(1);
     expect(hiddenAtHome(hifiState(layout, { card: null, track: null })).size).toBe(0);
   });

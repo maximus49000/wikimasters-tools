@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { deskAtCell, dropTargetFor, hostAtCell, pointerToCell } from '../../src/content/furniture-drag';
+import { deskAtCell, dropTargetFor, hostAtCell, hostAtSurface, pointerToCell } from '../../src/content/furniture-drag';
+import { firstFreeTopSpot } from '../../src/core/library/surface';
 import type { Layout } from '../../src/core/library/library-types';
-import { CELL_H, CELL_W, HEIGHT, boardAt, shelfBoardsOf, shelfLayoutOf } from '../../src/core/library/room-grid';
+import { CELL_H, CELL_W, HEIGHT, boardAt, pxRect, rectOf, shelfBoardsOf, shelfLayoutOf, topRectOn } from '../../src/core/library/room-grid';
 
 const COLS = 24;
 const desk = (id: string, col: number, row: number) => ({ id, kind: 'desk' as const, col, row });
@@ -115,13 +116,36 @@ describe('dropTargetFor', () => {
   });
 });
 
+describe('petit objet sur son propre plateau', () => {
+  // Dessus d'étagère (80 × 30) : une rangée de plantes devant ; au fond, la plante tenue (x 50, z 15) dans un creux à z impair que la
+  // grille de 2 cm ne trouve pas (et le dernier essai, au coin du fond à droite, est pris) : aucune autre place libre.
+  const sh: Layout[number] = { id: 'sh', kind: 'shelf', col: 0, row: 6 };
+  const plant = (id: string, x: number, z: number): Layout[number] => ({ id, kind: 'small', item: 'plant', hostId: 'sh', x, z });
+  const layout: Layout = [sh, ...[0, 15, 30, 45, 60].map((x, i) => plant(`a${i}`, x, 0)), ...[0, 15, 30, 65].map((x, i) => plant(`b${i}`, x, 15)), plant('o', 50, 15)];
+  const top = topRectOn(pxRect(rectOf(sh)!), 'shelf', 0, { x: 0, z: 0, w: 80, d: 30 });
+  const [px, py] = [top.x + top.w / 2, top.y + 4];
+
+  it('le plateau de l’objet tenu est toujours accepté, même sans autre place libre', () => {
+    expect(firstFreeTopSpot(layout, 'sh', { item: 'plant' }, 'o')).toBeNull();
+    expect(hostAtSurface(layout, px, py, 'plant', 'o')).toBe('sh');
+    expect(hostAtSurface(layout, px, py, 'plant')).toBeNull();
+    const cell = { col: Math.floor(px / CELL_W), row: Math.floor(py / CELL_H) };
+    expect(dropTargetFor(layout, COLS, 'o', cell.col, cell.row, px, py)).toMatchObject({ ok: true, hostId: 'sh' });
+  });
+
+  it('un autre objet lâché sur ce plateau plein est refusé', () => {
+    const withDesk: Layout = [...layout, { id: 'd', kind: 'desk', col: 15, row: 11 }, { id: 'n', kind: 'small', item: 'plant', hostId: 'd', x: 0, z: 0 }];
+    expect(dropTargetFor(withDesk, COLS, 'n', 1, 8)).toMatchObject({ ok: false, reason: 'host-busy', hostId: 'sh' });
+  });
+});
+
 describe('porteurs superposés : le lâcher vise celui de devant', () => {
   // Étagère au niveau 1 (listée d'abord) et bureau au niveau 2 devant elle, sur les mêmes cases (même bas, ligne 15).
   const layout: Layout = [
     { id: 'sh', kind: 'shelf', col: 0, row: 6 },
     { id: 'dk', kind: 'desk', col: 0, row: 11 },
     { id: 'far', kind: 'desk', col: 15, row: 11 },
-    { id: 'o', kind: 'small', item: 'plant', hostId: 'far', slot: 0 },
+    { id: 'o', kind: 'small', item: 'plant', hostId: 'far', x: 7.5, z: 22.5 },
   ];
   it('un petit objet lâché sur les cases communes va sur le bureau de devant', () => {
     expect(hostAtCell(layout, 1, 12)).toBe('dk');

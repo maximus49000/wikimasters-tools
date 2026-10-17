@@ -37,7 +37,7 @@ const base: Layout = [
   { id: 'a', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' },
   { id: 'd', kind: 'desk', col: 12, row: 10 },
 ];
-const hifi: Layout[number] = { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 };
+const hifi: Layout[number] = { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 };
 
 let root: Root | null = null;
 function render(layout: Layout, c?: HTMLElement, extra: Partial<Parameters<typeof RoomView>[0]> = {}): HTMLElement {
@@ -131,7 +131,7 @@ describe('chaîne hi-fi dans la pièce', () => {
 
   it('l’objet parti au poste n’arrête plus la lumière à sa place', () => {
     install();
-    const lamp: Layout[number] = { id: 'l', kind: 'small', item: 'lamp', hostId: 'd', slot: 3, lit: true };
+    const lamp: Layout[number] = { id: 'l', kind: 'small', item: 'lamp', hostId: 'd', x: 97.5, z: 22.5, lit: true };
     const c = render([...base, hifi, lamp], undefined, { light: true });
     expect(light.boxes.some((b) => b.owner === 's#0')).toBe(true);
     play(true);
@@ -177,7 +177,7 @@ describe('abonnement du poste au lecteur', () => {
       const notes = [...c.querySelectorAll('[data-music-note]')];
       expect(notes.length).toBe(2);
       const desk = base.find((p) => p.id === 'd')!;
-      const station = placementRectPx('desk', 0, pxRect(rectOf(desk)!), smallPlacement('h', 'hifi', 'desk', 0));
+      const station = placementRectPx('desk', 0, pxRect(rectOf(desk)!), smallPlacement('h', 'hifi', 'desk', 2, 2.5));
       const stationTop = station.y;
       expect(c.querySelector('[data-music-notes]')!.getAttribute('pointer-events')).toBe('none');
       for (const n of notes) expect(Number(n.getAttribute('data-y'))).toBeLessThan(stationTop);

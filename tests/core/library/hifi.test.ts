@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { smallPlacement } from '../../../src/core/library/carried-items';
 import { activeHifi, hifiState, hiddenAtHome, sleeveKindOf, sleeveRest } from '../../../src/core/library/hifi';
 import type { Layout } from '../../../src/core/library/library-types';
 
-const hifi = (id: string): Layout[number] => ({ id, kind: 'small', item: 'hifi', hostId: 'desk', slot: 0 });
+const hifi = (id: string): Layout[number] => ({ id, kind: 'small', item: 'hifi', hostId: 'desk', x: 2, z: 2.5 });
 const cd = (id: string, slug: string): Layout[number] => ({ id, kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug } as Layout[number]);
 const view = (slug: string | null, playing: boolean) => ({ card: slug ? { slug } : null, track: { playing } });
 
@@ -42,5 +43,10 @@ describe('poste hi-fi', () => {
     }
     expect(sleeveKindOf({ id: 'w', kind: 'wall', shape: 'vinyl', col: 0, row: 0, slug: 'x' })).toBe('vinyl');
     expect(sleeveKindOf({ id: 'p', kind: 'wall', shape: 'poster', col: 0, row: 0, slug: 'x' })).toBeNull();
+  });
+
+  it('chaîne à x 62, z 2,5 : la pochette a les mêmes coins qu’à l’ancien emplacement 2', () => {
+    const now = smallPlacement('h', 'hifi', 'desk', 62, 2.5);
+    for (const kind of ['cd', 'vinyl'] as const) expect(sleeveRest(now, kind)).toEqual(sleeveRest({ x: 62, y: 75, z: 17 }, kind));
   });
 });

@@ -2,7 +2,8 @@ import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf,
 import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
 import { MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN, decoDefaultSize, isPanel, type CityTime, type DecoKind, type NeonColor } from './deco';
 import { STANDING_KINDS } from './library-types';
-import type { DecoPlaced, Depth, Layout, Orientation, Placed, ShelfLevel, ShelfShape, SmallItem, StandDepth, StandingKind, StoredDisplay, VinylColor, WallShape } from './library-types';
+import { isOnBoard, type DecoPlaced, type Depth, type Layout, type Orientation, type Placed, type ShelfLevel, type ShelfShape, type SmallItem, type SmallOnBoard, type SmallOnTop, type StandDepth, type StandingKind, type StoredDisplay, type VinylColor, type WallShape } from './library-types';
+import { HOST_TOP, computerTopRect, firstFreeTopSpot, topRectsOf, topsApart, type TopRect } from './surface';
 import type { BoxFormat } from '../game/platform-boxes';
 import { itemFootprintCm, storedModel } from './item-models';
 import { FURNITURE_MODELS } from './furniture-models';
@@ -81,7 +82,7 @@ const layerOfPlaced = (p: Placed): 'floor' | 'rug' => (isStanding(p) ? layerOf(p
 export function depthOf(layout: Layout, p: Placed): Depth {
   if (p.kind === 'window' || p.kind === 'wall' || p.kind === 'deco') return 0;
   if (isStanding(p)) return p.depth ?? depthDefault(p.kind);
-  const hostId = p.kind === 'computer' ? p.deskId : p.kind === 'small' ? p.hostId : p.shelfId;
+  const hostId = p.kind === 'computer' ? p.deskId : p.kind === 'small' || p.kind === 'posed' ? p.hostId : p.shelfId;
   const host = layout.find((q) => q.id === hostId);
   return host && isStanding(host) ? depthOf(layout, host) : 1;
 }
@@ -385,7 +386,9 @@ export const canShiftRow = (layout: Layout, cols: number, id: string, delta: 1 |
 export function canPlaceComputer(layout: Layout, deskId: string, ignoreId?: string): boolean {
   const desk = layout.find((p) => p.id === deskId);
   if (!desk || desk.kind !== 'desk') return false;
-  if ([...usedSlots(layout, deskId)].some((s) => COMPUTER_SLOTS.has(s))) return false;
+  // L'écran ne se pose pas sur un petit objet ou une carte du plateau (empreintes en cm ; un autre écran est refusé juste après).
+  const screen = computerTopRect();
+  if (!topRectsOf(layout.filter((p) => p.kind !== 'computer'), deskId, ignoreId).every((r) => topsApart(r, screen))) return false;
   return !layout.some((p) => p.kind === 'computer' && p.deskId === deskId && p.id !== ignoreId);
 }
 
@@ -400,77 +403,40 @@ export function moveComputer(layout: Layout, id: string, deskId: string): Layout
   return layout.map((p) => (p.id === id ? { ...item, deskId } : p));
 }
 
-// Retirer un bureau retire aussi l'ordinateur et les petits objets qui y sont posés ; retirer une étagère, les objets rangés et posés dessus.
+// Retirer un bureau retire aussi l'ordinateur, les petits objets et les cartes qui y sont posés ; retirer une étagère, les objets rangés et posés dessus.
 export function removeFurniture(layout: Layout, id: string): Layout {
   return layout.filter(
-    (p) => p.id !== id && !(p.kind === 'computer' && p.deskId === id) && !(p.kind === 'stored' && p.shelfId === id) && !(p.kind === 'small' && p.hostId === id),
+    (p) => p.id !== id && !(p.kind === 'computer' && p.deskId === id) && !(p.kind === 'stored' && p.shelfId === id) && !((p.kind === 'small' || p.kind === 'posed') && p.hostId === id),
   );
 }
 
-type SmallPlaced = Extract<Placed, { kind: 'small' }>;
-
-// Un bureau porte 4 petits objets, une étagère 3 (sur son dessus).
-export const SURFACE_SLOTS = { desk: 4, shelf: 3 } as const;
-export type HostKind = keyof typeof SURFACE_SLOTS;
+// Porteurs de petits objets : le plateau d'un bureau, le dessus d'une étagère (positions en cm, surface.ts).
+export type HostKind = 'desk' | 'shelf';
 const isHost = (p: Placed): p is Placed & { kind: HostKind } => p.kind === 'desk' || p.kind === 'shelf';
-
-// L'ordinateur d'un bureau couvre les deux emplacements du milieu.
-const COMPUTER_SLOTS: ReadonlySet<number> = new Set([1, 2]);
+// Hauteur (px) au-dessus du plateau projeté où viser un petit objet : son corps dépasse du dessus.
 const SMALL_H = 44;
-
-function blockedSlots(layout: Layout, hostId: string): ReadonlySet<number> {
-  return layout.some((p) => p.kind === 'computer' && p.deskId === hostId) ? COMPUTER_SLOTS : new Set<number>();
-}
-
-// Nombre d'emplacements consécutifs qu'occupe un petit objet : la chaîne hi-fi en prend deux (60 cm), les autres un.
-export const smallSpan = (item: SmallItem): 1 | 2 => (item === 'hifi' ? 2 : 1);
 
 // La chaîne hi-fi ne se pose que sur un bureau ; les autres petits objets sur un bureau ou une étagère.
 export const canHostSmall = (hostKind: HostKind, item: SmallItem): boolean => item !== 'hifi' || hostKind === 'desk';
 
-// Emplacements occupés par les petits objets d'un porteur (chacun sur toute son étendue).
-function usedSlots(layout: Layout, hostId: string, ignoreId?: string): Set<number> {
-  const used = new Set<number>();
-  for (const p of layout) {
-    if (p.kind !== 'small' || p.hostId !== hostId || p.id === ignoreId) continue;
-    for (let i = 0; i < smallSpan(p.item); i++) used.add(p.slot + i);
-  }
-  return used;
-}
-
-// Premier emplacement de départ libre pour `item` (sans objet : un emplacement, sans condition de porteur) : tous ses emplacements
-// consécutifs doivent exister, être libres et ne pas être pris par l'ordinateur ; null si le porteur ne convient pas ou si la place manque.
-export function firstFreeSurfaceSlot(layout: Layout, hostId: string, ignoreId?: string, item?: SmallItem): number | null {
-  const host = layout.find((p) => p.id === hostId);
-  if (!host || !isHost(host)) return null;
-  if (item && !canHostSmall(host.kind, item)) return null;
-  const span = item ? smallSpan(item) : 1;
-  const used = usedSlots(layout, hostId, ignoreId);
-  const blocked = blockedSlots(layout, hostId);
-  for (let i = 0; i + span <= SURFACE_SLOTS[host.kind]; i++) {
-    let free = true;
-    for (let j = 0; j < span; j++) if (used.has(i + j) || blocked.has(i + j)) free = false;
-    if (free) return i;
-  }
-  return null;
-}
-
-// Reste-t-il une place pour un petit objet sur un bureau ou une étagère quelconque ?
-export const hasFreeHost = (layout: Layout): boolean => layout.some((p) => isHost(p) && firstFreeSurfaceSlot(layout, p.id) !== null);
+// Reste-t-il une place pour un petit objet sur un bureau ou une étagère quelconque ? (place d'un réveil, le plus petit objet d'un emplacement)
+export const hasFreeHost = (layout: Layout): boolean => layout.some((p) => isHost(p) && firstFreeTopSpot(layout, p.id, { item: 'alarm' }) !== null);
 
 export function placeSmall(layout: Layout, hostId: string, item: SmallItem, id: string): Layout | null {
-  const slot = firstFreeSurfaceSlot(layout, hostId, undefined, item);
-  if (slot === null) return null;
-  return [...layout, { id, kind: 'small', item, hostId, slot }];
+  const spot = firstFreeTopSpot(layout, hostId, { item });
+  if (!spot) return null;
+  return [...layout, { id, kind: 'small', item, hostId, ...spot }];
 }
 
-// Sur le même porteur, l'objet garde son emplacement ; sur un autre, il prend le premier libre.
+// Sur le même plateau, l'objet garde sa place (x/z) ; sur un autre (ou depuis une tablette), il prend la première place libre du plateau.
 export function moveSmall(layout: Layout, id: string, hostId: string): Layout | null {
   const small = layout.find((p) => p.id === id);
   if (!small || small.kind !== 'small') return null;
-  const slot = small.hostId === hostId ? small.slot : firstFreeSurfaceSlot(layout, hostId, id, small.item);
-  if (slot === null) return null;
-  return layout.map((p) => (p.id === id ? { ...small, hostId, slot } : p));
+  const spot = !isOnBoard(small) && small.hostId === hostId ? { x: small.x, z: small.z } : firstFreeTopSpot(layout, hostId, { item: small.item }, id);
+  if (!spot) return null;
+  const moved: SmallOnTop = { id, kind: 'small', item: small.item, hostId, ...(small.lit !== undefined && { lit: small.lit }), ...(small.city && { city: small.city }), ...spot };
+  const next = layout.map((p) => (p.id === id ? moved : p));
+  return isOnBoard(small) ? compactShelves(next) : next;
 }
 
 // Lampe : tout meuble debout dont le modèle a un point de lumière (lampadaire, lanterne, lampadaire arc), ou une petite lampe posée.
@@ -484,13 +450,15 @@ export function toggleLamp(layout: Layout, id: string): Layout {
   return layout.map((p) => (p.id === id ? ({ ...p, lit: !isLit(p) } as Placed) : p));
 }
 
-// Emplacement d'un petit objet posé sur le dessus projeté de son porteur tourné : les emplacements se suivent le long de la largeur
-// du meuble (de dos, ils s'inversent à l'écran), à mi-profondeur ; le pied de l'objet touche le dessus.
-export function surfaceSlotRectOn(host: PxRect, kind: HostKind, angle: Angle, slot: number, span = 1): PxRect {
-  const n = SURFACE_SLOTS[kind];
-  const [x, y] = topPoint(kind, angle, host, (slot + span / 2) / n, 0.5);
-  const w = (host.w * span) / n;
-  return { x: x - w / 2, y: y - SMALL_H + 2, w, h: SMALL_H };
+// Rectangle (px de la pièce) d'une empreinte `r` du plateau (cm) projetée sur le dessus de son porteur tourné, prolongé vers le haut de la
+// hauteur d'un petit objet (son corps dépasse du dessus) : visée du glissé d'un petit objet (r = tout le plateau).
+export function topRectOn(host: PxRect, kind: HostKind, angle: Angle, r: TopRect): PxRect {
+  const top = HOST_TOP[kind];
+  const pts = [r.x, r.x + r.w].flatMap((x) => [r.z, r.z + r.d].map((z) => topPoint(kind, angle, host, x / top.w, z / top.d)));
+  const xs = pts.map((q) => q[0]);
+  const ys = pts.map((q) => q[1]);
+  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
+  return { x: x0, y: y0 - SMALL_H + 2, w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 + SMALL_H - 2 };
 }
 
 // Ajouter une zone à gauche décale les colonnes de tous les meubles ; l'ordinateur suit son bureau.
@@ -529,7 +497,7 @@ export function pxRect(rect: Rect): PxRect {
 export function placedSlugs(layout: Layout): Set<string> {
   const slugs = new Set<string>();
   for (const p of layout) {
-    if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer') && p.slug) slugs.add(p.slug);
+    if ((p.kind === 'wall' || p.kind === 'stored' || p.kind === 'computer' || p.kind === 'posed') && p.slug) slugs.add(p.slug);
   }
   return slugs;
 }
@@ -681,17 +649,23 @@ export function firstFreeBoard(layout: Layout, shelfId: string, item: StoredLike
   return null;
 }
 
-// Rangs recompactés 0..n−1 sur chaque tablette (rang actuel, puis ordre du plan), sans rien retirer.
+// Rangs recompactés 0..n−1 sur chaque tablette (rang actuel, puis ordre du plan), sans rien retirer : objets rangés et petits objets de
+// tablette partagent les rangs.
+const onBoard = (p: Placed): Stored | SmallOnBoard | null => (p.kind === 'stored' || (p.kind === 'small' && isOnBoard(p)) ? p : null);
 export function compactShelves(layout: Layout): Layout {
-  const boards = new Map<string, Stored[]>();
+  const boards = new Map<string, (Stored | SmallOnBoard)[]>();
   for (const p of layout) {
-    if (p.kind !== 'stored') continue;
-    const key = `${p.shelfId}:${p.level}`;
-    boards.set(key, [...(boards.get(key) ?? []), p]);
+    const item = onBoard(p);
+    if (!item) continue;
+    const key = `${item.kind === 'stored' ? item.shelfId : item.hostId}:${item.level}`;
+    boards.set(key, [...(boards.get(key) ?? []), item]);
   }
   const orders = new Map<string, number>();
   for (const items of boards.values()) [...items].sort((a, b) => a.order - b.order).forEach((p, i) => orders.set(p.id, i));
-  return layout.map((p) => (p.kind === 'stored' && orders.get(p.id) !== p.order ? { ...p, order: orders.get(p.id)! } : p));
+  return layout.map((p) => {
+    const item = onBoard(p);
+    return item && orders.get(item.id) !== item.order ? { ...item, order: orders.get(item.id)! } : p;
+  });
 }
 
 // Insère `item` au rang `order` (borné à la fin) de sa tablette : les suivants se décalent d'un rang ; l'ancienne tablette se recompacte.
@@ -756,6 +730,6 @@ export function unplaceCard(layout: Layout, id: string): Layout {
   const item = layout.find((p) => p.id === id);
   if (item?.kind === 'computer') return setScreenCard(layout, id, null) ?? layout;
   if (item?.kind === 'stored') return compactShelves(layout.filter((p) => p.id !== id));
-  if (item?.kind === 'wall') return layout.filter((p) => p.id !== id);
+  if (item?.kind === 'wall' || item?.kind === 'posed') return layout.filter((p) => p.id !== id);
   return layout;
 }

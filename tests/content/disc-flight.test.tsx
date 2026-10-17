@@ -83,7 +83,7 @@ const LAYOUT: Layout = [
   { id: 'c', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 0, slug: 'Daft_Punk' },
   { id: 'c2', kind: 'stored', shape: 'cd', shelfId: 's', level: 0, order: 1, slug: 'Abbey_Road' },
   { id: 'd', kind: 'desk', col: 12, row: 10 },
-  { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 },
+  { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 },
 ];
 
 describe('le disque vole jusqu’au poste', () => {
@@ -286,7 +286,7 @@ describe('BO d’un jeu Switch : la cartouche va au poste', () => {
     { id: 's', kind: 'shelf', col: 0, row: 6 },
     { id: 'g', kind: 'stored', shape: 'game', shelfId: 's', level: 0, order: 0, box: 'switch', caseColor: '#E60012', slug: 'Zelda' },
     { id: 'd', kind: 'desk', col: 12, row: 10 },
-    { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 },
+    { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 },
   ];
   let view: PlayerView;
   const listeners = new Set<() => void>();

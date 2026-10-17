@@ -79,7 +79,7 @@ describe('objets portés en 3D', () => {
     for (const angle of [0, 1, 4] as const) {
       const desk = { id: 'd', kind: 'desk', col: 2, row: 11, angle } as const;
       const rect = pxRect(rectOf(desk)!);
-      const pl = smallPlacement('o', 'plant', 'desk', 3);
+      const pl = smallPlacement('o', 'plant', 'desk', 97.5, 22.5);
       const [x, y] = hostPointPx('desk', angle, rect, [pl.x + 7.5, pl.y, pl.z + 7.5]);
       const [tx, ty] = topPoint('desk', angle, rect, 3.5 / 4, 0.5);
       expect(x).toBeCloseTo(tx, 6);
@@ -89,7 +89,7 @@ describe('objets portés en 3D', () => {
 
   it('de dos, l’écran passe devant les petits objets ; de face, derrière', () => {
     const pc = computerPlacement('pc');
-    const lamp = smallPlacement('o', 'lamp', 'desk', 0);
+    const lamp = smallPlacement('o', 'lamp', 'desk', 7.5, 22.5);
     expect(placementDepth('desk', 0, pc)).toBeGreaterThan(placementDepth('desk', 0, lamp));
     expect(placementDepth('desk', 4, pc)).toBeLessThan(placementDepth('desk', 4, lamp));
   });
@@ -111,5 +111,16 @@ describe('présentoir', () => {
     // Bas posé sur le socle (au-dessus de la tablette), haut au-dessus du bas.
     expect(q[3]![1]).toBeLessThan(flat[3]![1]);
     expect(q[0]![1]).toBeLessThan(q[3]![1]);
+  });
+
+  it('chaîne en cm : le corps du poste est derrière la zone de la pochette', () => {
+    expect(smallPlacement('a', 'hifi', 'desk', 2, 2.5).z).toBe(17);
+    expect(smallPlacement('a', 'alarm', 'desk', 6, 26.5)).toMatchObject({ x: 6, y: 75, z: 26.5 });
+  });
+
+  it('carte posée : de face sur le plateau de son porteur', () => {
+    const layout: Layout = [{ id: 'd', kind: 'desk', col: 0, row: 10 }, { id: 'c', kind: 'posed', shape: 'cd', hostId: 'd', x: 20, z: 4, slug: 'Paris' }];
+    const at = carriedPlacementOf(layout, layout[1]!);
+    expect(at).toMatchObject({ hostId: 'd', hostKind: 'desk', placement: { key: 'c', shape: 'cd', display: 'cover', x: 20, y: 75, z: 4 } });
   });
 });

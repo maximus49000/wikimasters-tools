@@ -484,7 +484,7 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
   it('ouvrir un objet ferme la bulle du poste', async () => {
     const view: PlayerView = { linked: true, hidden: false, enabled: true, card: null, track: null };
     setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
-    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }, { id: 'w2', kind: 'wall', shape: 'vinyl', col: 4, row: 4, slug: 'Abbey_Road' }]);
+    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 }, { id: 'w2', kind: 'wall', shape: 'vinyl', col: 4, row: 4, slug: 'Abbey_Road' }]);
     await click('[data-id="h"]');
     expect(q('[data-hifi-bubble]')).not.toBeNull();
     await click('[data-card="Abbey_Road"]');
@@ -495,7 +495,7 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
   it('toucher le poste en mode Visiter ouvre la bulle En lecture, ✕ la ferme', async () => {
     const view: PlayerView = { linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Daft Punk' }, track: { uri: 'u', title: 'Aerodynamic', artist: 'Daft Punk', imageUrl: null, playing: true } };
     setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
-    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', slot: 0 }]);
+    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 }]);
     await click('[data-id="h"]');
     expect(q('[data-hifi-bubble]')?.textContent).toContain('Aerodynamic');
     await click('[data-hifi-bubble] [data-action="close"]');
