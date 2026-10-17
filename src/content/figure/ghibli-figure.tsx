@@ -16,7 +16,8 @@ const shadeOf = (c: string): string => mixHex(mixHex(c, '#4a3a6a', 0.3), '#00000
 // Teinte de nuit au huitième de jour près : `daylight` change chaque minute pendant ≈ 2 h autour du lever et du coucher ;
 // sans palier, toutes les figures changeaient de palette (sprites refaits) à chaque minute.
 const PALETTE_STEPS = 8;
-export function figurePalette(o: Outfit, sky: Sky, rainy: boolean): Palette {
+// `santa` : tenue du père Noël (bottes noires ; les cases de la tenue sont toujours présentes, la clé de palette est complète).
+export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, santa = false): Palette {
   const lit: Sky = { ...sky, daylight: Math.round(sky.daylight * PALETTE_STEPS) / PALETTE_STEPS };
   const t = (c: string): string => tone(c, lit);
   // Sous la pluie, les hauts légers deviennent un imperméable (comme PersonSprite).
@@ -28,12 +29,20 @@ export function figurePalette(o: Outfit, sky: Sky, rainy: boolean): Palette {
     hair: o.hairColor,
     hat: o.hatColor,
     acc: o.accessoryColor,
-    shoe: '#3a2a24',
+    shoe: santa ? '#1E1A18' : '#3a2a24',
     umb: '#C0392B',
     // Tenues de travail : gilet orange, bande claire (rétroréfléchissante), tablier écru.
     vest: '#F28C28',
     band: '#E8E8E0',
     apron: '#F4F1EA',
+    // Père Noël (G5) : barbe, fourrure et gants écrus, ceinture noire, boucle dorée, nez et joues rosés.
+    beard: '#F6F3EC',
+    fur: '#F6F3EC',
+    glove: '#F6F3EC',
+    belt: '#231A16',
+    buckle: '#E8B93A',
+    nose: '#E8A090',
+    cheek: '#F0A8A0',
   };
   const p: Palette = { 'f-ink': t('#33241f'), 'f-ground': '#3a2f5a' };
   for (const [k, c] of Object.entries(slots)) {
@@ -82,8 +91,9 @@ export function figureHeadTop(node: Element): readonly [number, number] | null {
 // détenue) reste et la nouvelle clé est mise en file ; la boucle (poseFigure, data-palette déjà à jour) la pose dès qu'elle
 // est peinte. Seule une première apparition peint tout de suite (ensure). La clé affichée est détenue dès la mise en page,
 // libérée au démontage ; les sprites de l'ancienne palette, libérés, partent avec le plafond.
-// `work` : tenue de travail (dans la signature) ; `held` : objets tenus, posés aux accroches de la pose affichée dès le rendu
-// (les foules immobiles n'appellent jamais poseFigure), déplacés ensuite par poseFigure, cachés avec la figure.
+// `work` : tenue de travail (dans la signature) ; `santa` : tenue du père Noël (dans la signature et la palette) ; `held` :
+// objets tenus, posés aux accroches de la pose affichée dès le rendu (les foules immobiles n'appellent jamais poseFigure),
+// déplacés ensuite par poseFigure, cachés avec la figure.
 export function GhibliFigure({
   outfit,
   sky,
@@ -92,6 +102,7 @@ export function GhibliFigure({
   initial,
   hidden = false,
   work = 'none',
+  santa = false,
   held,
 }: {
   outfit: Outfit;
@@ -101,12 +112,13 @@ export function GhibliFigure({
   initial: PoseIn;
   hidden?: boolean;
   work?: Work;
+  santa?: boolean;
   held?: readonly Held[];
 }): ReactElement {
   const reg = useFigureRegistry();
   const ref = useRef<SVGGElement | null>(null);
-  const sig = signatureOf(shapeOf(outfit, umbrella, work));
-  const pk = reg.addPalette(figurePalette(outfit, sky, rainy));
+  const sig = signatureOf(shapeOf(outfit, umbrella, work, santa));
+  const pk = reg.addPalette(figurePalette(outfit, sky, rainy, santa));
   const key = keyOf(sig, initial);
   const sk = spriteKey(pk, key);
   let shownKey: string | undefined;

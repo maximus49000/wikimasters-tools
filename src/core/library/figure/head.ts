@@ -16,6 +16,25 @@ export function hairField(hair: Hair): HairField | null {
   return (el, az) => Math.max(el - (0.5 - 0.32 * Math.max(0, -Math.cos(az)) - 0.12 * Math.abs(Math.sin(az))), Math.min(-Math.cos(az) - 0.25, el + low));
 }
 
+// Père Noël (G5, maquette g5-fetes) : champs sur la même sphère. Bonnet jusqu'aux sourcils (`el − 0,5`) posé sur une calotte
+// de fourrure (`el − 0,36`) : le bord de fourrure est la bande [0,36 ; 0,5] qui dépasse (un anneau ouvert des deux côtés se
+// fermait mal). Barbe : part des pommettes (plus haute sur les côtés), contourne la bouche au centre, s'arrête sous le menton
+// (la masse qui pend est une enveloppe à part, bake.ts). Moustache en deux mèches de part et d'autre du nez ; sourcils :
+// deux taches au-dessus des yeux (élévation 0,26, azimuts ±0,4).
+export const SANTA_FIELDS = {
+  fur: (el: number): number => el - 0.36,
+  hat: (el: number): number => el - 0.5,
+  beard: (el: number, az: number): number => {
+    const a = Math.abs(az);
+    return Math.min(-0.55 - el + 0.35 * Math.min(1, a / 1.2) - 0.15 * Math.max(0, 1 - a / 0.45), 1.45 - a, el + 1.5);
+  },
+  mustL: (el: number, az: number): number => Math.min(el + 0.56 - 0.1 * Math.abs(az), -0.34 - el, 0.75 - Math.abs(az), -az - 0.05),
+  mustR: (el: number, az: number): number => Math.min(el + 0.56 - 0.1 * Math.abs(az), -0.34 - el, 0.75 - Math.abs(az), az - 0.05),
+  browL: (el: number, az: number): number => Math.min(0.06 - Math.abs(el - 0.26), 0.2 - Math.abs(az + 0.4)),
+  browR: (el: number, az: number): number => Math.min(0.06 - Math.abs(el - 0.26), 0.2 - Math.abs(az - 0.4)),
+} as const satisfies Record<string, HairField>;
+export type SantaField = keyof typeof SANTA_FIELDS;
+
 const N = 22;
 const U = [0, CAM_CA, -CAM_SA] as const;
 const V = [0, CAM_SA, CAM_CA] as const;
