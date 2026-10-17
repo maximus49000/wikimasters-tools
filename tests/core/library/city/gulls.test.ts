@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flocksAt } from '../../../../src/core/library/city/gulls';
+import { flocksAt, gullDepartures, type GullPose } from '../../../../src/core/library/city/gulls';
 
 const day = { minutes: 8 * 60, daylight: 1, rain: 0 };
 describe('mouettes', () => {
@@ -95,5 +95,86 @@ describe('mouettes', () => {
   });
   it('sans cheminée : jamais posé', () => {
     for (let t = 0; t < 3600; t += 1) for (const g of flocksAt(t, 1, 1000, 400, day)) expect(g.wing).not.toBe('perched');
+  });
+
+  // Tour de corrections 1 : rien n'apparaît ni ne disparaît sur place. Entre deux images (0,5 s), le nombre d'oiseaux ne change
+  // que d'oiseaux au bord de la scène (à moins de 13 px de la limite d'entrée/sortie, ±40 px hors cadre : 24 px/s au plus).
+  const W = 1000;
+  const nearEdge = (g: GullPose): boolean => g.x < -40 + 13 || g.x > W + 40 - 13;
+  const edgeOnly = (frames: GullPose[][]): void => {
+    for (let i = 1; i < frames.length; i++) {
+      const a = frames[i - 1]!;
+      const b = frames[i]!;
+      if (b.length < a.length) expect(a.length - b.length).toBeLessThanOrEqual(a.filter(nearEdge).length);
+      if (b.length > a.length) expect(b.length - a.length).toBeLessThanOrEqual(b.filter(nearEdge).length);
+    }
+  };
+  const perch = { x: 520, y: 140, s: 0.76, haze: 0.14 };
+  it('la nuit ou la forte pluie arrive : les volées en vol finissent leur traversée, aucune ne part ensuite', () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      // Instant de bascule où des oiseaux sont en vol (au milieu de la scène).
+      let t0 = -1;
+      for (let t = 100.25; t < 7200; t += 5) if (flocksAt(t, seed, W, 400, day, [perch]).some((g) => g.x > 200 && g.x < 800)) { t0 = t; break; }
+      if (t0 < 0) continue;
+      checked++;
+      for (const closed of [{ ...day, daylight: 0.1, since: t0 }, { ...day, rain: 0.8, since: t0 }]) {
+        const frames: GullPose[][] = [flocksAt(t0 - 0.5, seed, W, 400, day, [perch])];
+        for (let t = t0; t < t0 + 600; t += 0.5) frames.push(flocksAt(t, seed, W, 400, closed, [perch]));
+        // À la bascule, les mêmes oiseaux qu'avec le beau temps.
+        expect(frames[1]).toEqual(flocksAt(t0, seed, W, 400, day, [perch]));
+        expect(frames[1]!.length).toBeGreaterThan(0);
+        edgeOnly(frames);
+        // Plus rien quand la dernière volée partie est sortie.
+        expect(flocksAt(t0 + 1500, seed, W, 400, closed, [perch])).toEqual([]);
+      }
+    }
+    expect(checked).toBeGreaterThan(4);
+  });
+  it('le jour revient ou la pluie cesse : rien ne surgit en plein ciel, les volées entrent par un bord', () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      // Instant d'ouverture où des volées parties pendant la fermeture seraient en plein ciel.
+      let t1 = -1;
+      for (let t = 100.25; t < 7200; t += 5) if (flocksAt(t, seed, W, 400, day, [perch]).some((g) => g.x > 200 && g.x < 800)) { t1 = t; break; }
+      if (t1 < 0) continue;
+      checked++;
+      const frames: GullPose[][] = [flocksAt(t1 - 0.5, seed, W, 400, { ...day, daylight: 0.1 }, [perch])];
+      let seen = 0;
+      for (let t = t1; t < t1 + 3600; t += 0.5) {
+        const f = flocksAt(t, seed, W, 400, { ...day, since: t1 }, [perch]);
+        seen += f.length;
+        frames.push(f);
+      }
+      expect(frames[0]).toEqual([]);
+      expect(frames[1]).toEqual([]);
+      edgeOnly(frames);
+      expect(seen).toBeGreaterThan(0);
+    }
+    expect(checked).toBeGreaterThan(4);
+  });
+  it('sans bascule, oiseaux entrant et sortant par les bords seulement', () => {
+    const frames: GullPose[][] = [];
+    for (let t = 0; t < 7200; t += 0.5) frames.push(flocksAt(t, 2, W, 400, day, [perch]));
+    edgeOnly(frames);
+  });
+  // Heure de la scène en minutes ENTIÈRES (alignées sur la minute murale, comme `city.minutes`) : la fenêtre du matin est
+  // 7 h - 10 h, et les départs d'une heure ne changent pas d'une image à l'autre.
+  it('fenêtre du matin 7 h - 10 h avec des minutes entières, départs stables dans l\'heure', () => {
+    const H = 500_000;
+    const departuresFor = (startMin: number, seed: number): number[][] => {
+      const out: number[][] = [];
+      for (let k = 0; k < 3600; k += 7.3) out.push(gullDepartures(H, seed, H * 3600 + k, startMin + Math.floor(k / 60)));
+      return out;
+    };
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const [startMin, morning] of [[6 * 60, false], [7 * 60, true], [9 * 60, true], [10 * 60, false]] as const) {
+        const all = departuresFor(startMin, seed);
+        for (const d of all) expect(d).toEqual(all[0]);
+        const n = all[0]!.length;
+        if (morning) expect(n).toBeGreaterThanOrEqual(5);
+        else expect(n).toBeLessThanOrEqual(5);
+      }
+    }
   });
 });

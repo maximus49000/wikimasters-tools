@@ -30,7 +30,8 @@ afterEach(() => {
     host.remove();
   }
 });
-const mount = (ghibli: boolean): { svg: SVGSVGElement; reg: PropRegistry; flush: () => Promise<void> } => {
+const night = skyAt(23 * 60, sunTimes({ y: 2026, m: 6, d: 10 }, { lat: 48.85, lon: 2.35 }, 120));
+const mount = (ghibli: boolean, opts: { still?: boolean; s?: typeof sky } = {}): { svg: SVGSVGElement; reg: PropRegistry; flush: () => Promise<void>; render: (s: typeof sky) => void } => {
   vi.spyOn(Date, 'now').mockReturnValue(T * 1000);
   const jobs: (() => void)[] = [];
   const reg = new PropRegistry('t14gl', { schedule: (cb) => jobs.push(cb) });
@@ -38,19 +39,21 @@ const mount = (ghibli: boolean): { svg: SVGSVGElement; reg: PropRegistry; flush:
   document.body.append(host);
   const root = createRoot(host);
   mounted.push({ root, host });
-  act(() =>
-    root.render(
-      <PropContext.Provider value={reg}>
-        <svg>
-          <GullsLayer width={W} height={H} seed={SEED} sky={sky} facades={[]} ground={H * 0.7} minutes={8 * 60} rain={0} still frozenT={T} ghibli={ghibli} />
-        </svg>
-      </PropContext.Provider>,
-    ),
-  );
+  const render = (s: typeof sky): void =>
+    act(() =>
+      root.render(
+        <PropContext.Provider value={reg}>
+          <svg>
+            <GullsLayer width={W} height={H} seed={SEED} sky={s} facades={[]} ground={H * 0.7} minutes={8 * 60} rain={0} still={opts.still ?? true} frozenT={T} ghibli={ghibli} />
+          </svg>
+        </PropContext.Provider>,
+      ),
+    );
+  render(opts.s ?? sky);
   const flush = async (): Promise<void> => {
     for (let n = 0; jobs.length && n < 50; n++) await act(async () => jobs.shift()!());
   };
-  return { svg: host.querySelector('svg')!, reg, flush };
+  return { svg: host.querySelector('svg')!, reg, flush, render };
 };
 
 describe('calque des mouettes', () => {
@@ -74,6 +77,20 @@ describe('calque des mouettes', () => {
       expect(img.getAttribute('href')).toBe(reg.get(propKey({ id: 'gull', args: { wing: p.wing }, day: sky.daylight, dir: p.dir, frame: 0 })));
       expect([img.getAttribute('x'), img.getAttribute('y'), img.getAttribute('width'), img.getAttribute('height')]).toEqual(['-8', '-6', '16', '11']);
     });
+  });
+  it('la nuit tombe pendant que des volées sont en vol : elles ne disparaissent pas sur place', async () => {
+    const shown = (svg: SVGSVGElement): number => [...svg.querySelectorAll('[data-gull]')].filter((g) => g.getAttribute('display') === 'inline').length;
+    const { svg, flush, render } = mount(true, { still: false });
+    await flush();
+    const before = shown(svg);
+    expect(before).toBeGreaterThan(0);
+    render(night);
+    await flush();
+    expect(shown(svg)).toBe(before);
+    // Calque monté de nuit (« depuis toujours ») : aucune mouette.
+    const late = mount(true, { still: false, s: night });
+    await late.flush();
+    expect(shown(late.svg)).toBe(0);
   });
   it('cheminées : maisons visibles des rangs 1 et 2, au haut de la brique peinte', () => {
     const plan = cityPaintPlan(W, H, SEED);

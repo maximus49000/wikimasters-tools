@@ -7,8 +7,8 @@ import { cellRng } from './brush';
 import { hexRgb, type Rgb } from './color';
 
 // Plan de la ville peinte (vague Ghibli, décor cellulo) : tout ce que le peintre doit savoir, dérivé des MÊMES données que
-// la ville classique (façades, entrées, locaux, mesures de la rue), plus le fond (colline de maisons empilées, repères,
-// mouettes) et le mobilier peint. Pur et déterministe ; aucun tirage ne change ceux de la ville.
+// la ville classique (façades, entrées, locaux, mesures de la rue), plus le fond (colline de maisons empilées, repères ;
+// les mouettes volent dans leur calque animé) et le mobilier peint. Pur et déterministe ; aucun tirage ne change ceux de la ville.
 
 export type RoofKind = 'gable' | 'mansard' | 'zinc';
 export type Win = { x: number; y: number; w: number; h: number; dormer: boolean; curtain: boolean };
@@ -35,7 +35,7 @@ export type Span = { x0: number; x1: number };
 // Maison du fond : `row` 0 (le plus loin) à 2 ; `base` = sol du rang ; `s` échelle ; `haze` brume ; `top` = haut du toit.
 export type HillHouse = { row: 0 | 1 | 2; x: number; w: number; h: number; base: number; top: number; s: number; haze: number; wall: Rgb; roof: Rgb; kind: 'gable' | 'hip' | 'mansard'; dormers: boolean; chimney: number | null; trees: { x: number; r: number } | null };
 export type Landmark = { kind: 'tower' | 'dome'; x: number; s: number; base: number; top: number; w: number };
-// Mouette figée du décor : vide depuis G5 (volées animées du calque gulls-layer.tsx) ; le champ reste pour `paintGull`.
+// Mouette figée du décor : toujours vide depuis G5 (volées animées du calque gulls-layer.tsx), plus dessinée.
 export type Gull = { x: number; y: number; s: number };
 export type Hill = { houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; phase: [number, number] };
 export type FurnitureKind = 'bench' | 'mailbox' | 'bike' | 'poster' | 'pigeon';
@@ -131,7 +131,7 @@ export const HILL_ROWS = [
 export const FAR_HAZE = 0.16;
 // Crête de la colline : entre 0,163 et 0,237 de la hauteur.
 const CREST = { mid: 0.2, a1: 0.025, a2: 0.012, l1: 230, l2: 97 } as const;
-// Une bande de repères (tour-horloge + dôme) et de mouettes par BAND px.
+// Une bande de repères (tour-horloge + dôme) par BAND px.
 const BAND = 1080;
 const TOWER = { w: 14, h: 70, spire: 22 } as const;
 const DOME = { w: 26, h: 44 } as const;

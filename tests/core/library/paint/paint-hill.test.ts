@@ -70,15 +70,14 @@ describe('fond : colline de maisons empilées', () => {
   });
 
   for (const seed of [1, 7]) {
-    it(`graine ${seed} : rien au-dessus du haut du fond, sauf les mouettes`, () => {
+    it(`graine ${seed} : rien au-dessus du haut du fond`, () => {
       const plan = cityPaintPlan(1080, 340, seed);
-      const gull = (x: number, y: number): boolean => plan.hill.gulls.some((g) => Math.abs(x - g.x) <= 8 * g.s + 1 && Math.abs(y - g.y) <= 6 * g.s + 1);
       // Les immeubles (mur du fond compris) peuvent dépasser la colline : seuls leurs points sont permis au-dessus.
       const building = (x: number, y: number): boolean => plan.buildings.some((b) => x >= b.x - 2 && x <= b.x + b.w + 2 && y >= b.top - 9 - 1e-6);
       for (let t = 0; t < tileCount(1080); t++) {
         const ctx = recordingCtx();
         paintCityTile(ctx, plan, t);
-        const bad = ctx.points.filter(([x, y]) => x >= -8 && x <= 1088 && y < hillTopY(plan, x) - 1e-6 && !gull(x, y) && !building(x, y));
+        const bad = ctx.points.filter(([x, y]) => x >= -8 && x <= 1088 && y < hillTopY(plan, x) - 1e-6 && !building(x, y));
         expect(bad.slice(0, 3)).toEqual([]);
       }
     });

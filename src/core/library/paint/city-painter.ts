@@ -2,10 +2,10 @@ import { hashString, mulberry32 } from '../scene-world';
 import { cellRng, type Box } from './brush';
 import { INK, SHADOW_K, TAU, disc, fillRect, groundShadow, ink, inkRect, light, pick, poly, shade } from './cel';
 import { GROUND_FLOOR } from '../city/facades';
-import { HILL_ROWS, type CityPaintPlan, type Furniture, type Gull, type HillHouse, type Landmark, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree, type Win } from './city-plan';
+import { HILL_ROWS, type CityPaintPlan, type Furniture, type HillHouse, type Landmark, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree, type Win } from './city-plan';
 import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
-import { paintFarWall, paintGull, paintHillGround, paintHillHouse, paintLandmark } from './hill-painter';
+import { paintFarWall, paintHillGround, paintHillHouse, paintLandmark } from './hill-painter';
 import type { PaintCtx } from './paint-ctx';
 
 // Peintre de la ville (vague Ghibli, décor cellulo) : une tranche de TILE px du monde, en coordonnées du monde (l'appelant
@@ -32,7 +32,7 @@ export const tileCount = (width: number): number => Math.max(1, Math.ceil(width 
 // Corniche du socle des jumeaux : débord de chaque côté, hauteur au-dessus de `p.top`, hauteur totale, ombre dessous.
 export const CORNICE = { over: 1.5, up: 0.8, h: 3, drop: 2.5 } as const;
 
-export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; furniture: Furniture[]; doors: PlanDoor[] };
+export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; furniture: Furniture[]; doors: PlanDoor[] };
 
 export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
   const x0 = tile * TILE - 2;
@@ -44,7 +44,6 @@ export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
     trees: plan.trees.filter((t) => t.x - t.r < x1 && t.x + t.r > x0),
     houses: plan.hill.houses.filter((h) => h.x - 2 < x1 && h.x + h.w + (h.trees ? h.trees.r * 2 : 0) + 2 > x0),
     landmarks: plan.hill.landmarks.filter((l) => l.x - 3 < x1 && l.x + l.w + 3 > x0),
-    gulls: plan.hill.gulls.filter((g) => g.x - 8 * g.s < x1 && g.x + 8 * g.s > x0),
     furniture: plan.furniture.filter((f) => f.x - 10 < x1 && f.x + f.w + 10 > x0),
     doors: plan.doors.filter((d) => d.cx - 13 * d.s < x1 && d.cx + 13 * d.s > x0),
   };
@@ -64,7 +63,6 @@ export function tileKey(plan: CityPaintPlan, tile: number): string {
     it.trees.map((t) => `${t.x.toFixed(1)}:${t.r.toFixed(1)}`).join(','),
     it.houses.map((h) => `${h.row}${h.x.toFixed(1)}`).join(','),
     it.landmarks.map((l) => `${l.kind}${l.x.toFixed(1)}`).join(','),
-    it.gulls.map((g) => g.x.toFixed(1)).join(','),
     it.furniture.map((f) => `${f.kind}${f.x.toFixed(1)}`).join(','),
     it.doors.map((d) => `${d.variant}${d.x.toFixed(1)}`).join(','),
   ].join('|');
@@ -617,7 +615,6 @@ export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number):
     for (const h of it.houses) if (h.row === row) paintHillHouse(ctx, h);
     for (const l of it.landmarks) if (Math.abs(l.base - plan.height * HILL_ROWS[row]!.y) < 1e-6) paintLandmark(ctx, l, HILL_ROWS[row]!.haze);
   }
-  for (const g of it.gulls) paintGull(ctx, g);
   for (const b of it.buildings) if (b.far) paintBuilding(ctx, plan, b);
   for (const b of it.buildings) if (!b.far) paintBuilding(ctx, plan, b);
   for (const p of it.podiums) paintPodium(ctx, plan, p);

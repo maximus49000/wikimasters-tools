@@ -353,13 +353,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
 
   // Terrasses : météo de la minute et des 10 précédentes (hystérésis du moteur).
   const terraceSky = useTerraceWeather(weather, rainy, city.minutes);
-  // Mouettes (G5) : intensité de la pluie relue à la minute (sans horloge météo, `rainy` compte pour une pluie franche).
+  // Mouettes (G5) : intensité de la pluie relue à la minute, à l'instant figé en mouvement réduit (sans horloge météo, `rainy`
+  // compte pour une pluie franche).
   const gullRain = useMemo(() => {
     if (!weather) return rainy ? 0.65 : 0;
-    const w = weather.read(Date.now());
+    const w = weather.read(still ? (frozen.current ?? 0) * 1000 : Date.now());
     return w.kind === 'rain' ? w.precip : 0;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weather, rainy, city.minutes]);
+  }, [weather, rainy, city.minutes, still]);
 
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
   // Fêtes actives à la minute de la scène (père Noël : 24 décembre de nuit).

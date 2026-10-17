@@ -1,10 +1,10 @@
 import { INK, TAU, disc, fillRect, ink, light, poly, shade } from './cel';
-import { FAR_HAZE, hillCrestY, type CityPaintPlan, type Gull, type HillHouse, type Landmark, type PaintBuilding } from './city-plan';
+import { FAR_HAZE, hillCrestY, type CityPaintPlan, type HillHouse, type Landmark, type PaintBuilding } from './city-plan';
 import { hexRgb, mixRgb, rgba, type Rgb } from './color';
 import type { PaintCtx } from './paint-ctx';
 
 // Fond de la ville peinte (vague Ghibli, décor cellulo) : colline verte, rangs de maisons empilées (toits terracotta,
-// lucarnes, cheminées, bouquets d'arbres), tour-horloge et dômes, mouettes, puis le mur du fond existant redessiné en
+// lucarnes, cheminées, bouquets d'arbres), tour-horloge et dômes, puis le mur du fond existant redessiné en
 // quatrième rang. Tout est en aplats cernés ; la brume (`haze`) éclaircit et bleuit avec la distance. Aucun tirage ici :
 // le plan a tout décidé, le dessin est donc identique d'une tranche à l'autre.
 const HAZE = hexRgb('#9CC0E4');
@@ -165,25 +165,6 @@ export function paintLandmark(ctx: PaintCtx, l: Landmark, hz: number): void {
   ctx.arc(x + 13 * s, base - 26 * s, 13 * s, Math.PI, 0);
   ctx.stroke();
   ctx.strokeRect(x, base - 26 * s, 26 * s, 26 * s);
-}
-
-export function paintGull(ctx: PaintCtx, g: Gull): void {
-  const { x, y, s } = g;
-  const wing = (): void => {
-    ctx.beginPath();
-    ctx.moveTo(x - 6 * s, y);
-    ctx.quadraticCurveTo(x - 3 * s, y - 4 * s, x, y - 0.5 * s);
-    ctx.quadraticCurveTo(x + 3 * s, y - 4 * s, x + 6 * s, y);
-  };
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 0.9 * s;
-  wing();
-  ctx.stroke();
-  ctx.fillStyle = '#FFFFFF';
-  wing();
-  ctx.quadraticCurveTo(x, y + 1.5 * s, x - 6 * s, y);
-  ctx.closePath();
-  ctx.fill();
 }
 
 // Mur du fond existant (immeubles `far`, contigus) : quatrième rang de la colline, à peine brumeux. Fenêtres aux positions

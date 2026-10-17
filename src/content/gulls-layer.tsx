@@ -1,5 +1,5 @@
 import { useContext, useId, useMemo, useRef, type ReactElement } from 'react';
-import { flocksAt, type GullPerch } from '../core/library/city/gulls';
+import { flocksAt, gullsOpen, type GullPerch } from '../core/library/city/gulls';
 import { hillChimneyTop, visibleHillHouses } from '../core/library/city/santa';
 import { cityPaintPlan, type HillHouse } from '../core/library/paint/city-plan';
 import { PROPS } from '../core/library/paint/props/index';
@@ -17,7 +17,6 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // des maisons visibles de la colline (rangs 1 et 2, même cheminée que `paintHillHouse`). Mouvement réduit : les oiseaux de
 // l'instant `frozenT`, pose 0 du battement, immobiles.
 export const GULL_POOL = 16;
-const noop = (): void => undefined;
 
 // Cheminées où se poser : maisons des rangs 1 et 2 (le rang 0 est trop loin) dont le toit se voit, entières dans la scène.
 export function gullPerches(houses: readonly HillHouse[], facades: readonly { x: number; w: number; h: number }[], ground: number, width: number): GullPerch[] {
@@ -38,14 +37,23 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
   const maskId = `gm${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const perches = useMemo(() => (ghibli ? gullPerches(cityPaintPlan(width, height, seed).hill.houses, facades, ground, width) : []), [ghibli, width, height, seed, facades, ground]);
   const day = sky.daylight;
+  // Sens de l'image montrée par nœud (gardé d'un rendu à l'autre : au changement de palier de lumière, l'image précédente
+  // reste pendant la cuisson) ; une image de l'autre sens n'est jamais gardée en attendant.
+  const shownDir = useRef<(1 | -1 | 0)[]>(new Array<1 | -1 | 0>(GULL_POOL).fill(0));
+  // Dernière bascule du temps (nuit, forte pluie) vue par ce calque : instant mural passé à `flocksAt` (`since`), pour que les
+  // volées en vol finissent leur traversée et que rien ne surgisse au retour du beau temps. État au montage : « depuis toujours ».
+  const gate = useRef<{ open: boolean | null; since: number | undefined }>({ open: null, since: undefined });
   const place = useMemo(() => {
-    // Sens de l'image montrée par nœud : une image de l'autre sens n'est jamais gardée en attendant.
-    const shownDir: (1 | -1 | 0)[] = new Array<1 | -1 | 0>(GULL_POOL).fill(0);
     const run = (now: number): void => {
       const el = root.current;
       if (!el || !ghibli) return;
       const t = still ? frozenT : now;
-      const poses = flocksAt(t, seed, width, height, { minutes, daylight: day, rain }, perches);
+      const open = gullsOpen({ daylight: day, rain });
+      if (gate.current.open === null) gate.current = { open, since: undefined };
+      else if (gate.current.open !== open) gate.current = { open, since: t };
+      // Mouvement réduit : rien ne bouge, le temps s'applique tel quel (pas de traversée à finir).
+      const poses = flocksAt(t, seed, width, height, { minutes, daylight: day, rain, since: still ? undefined : gate.current.since }, perches);
+      const dirs = shownDir.current;
       const nodes = el.querySelectorAll<SVGGElement>('[data-gull]');
       nodes.forEach((g, i) => {
         const p = poses[i];
@@ -57,7 +65,7 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
         const spec: PropSpec = { id: 'gull', args: { wing: p.wing }, day, dir: p.dir, frame: still ? 0 : p.flap };
         const key = propKey(spec);
         const url = props.get(key);
-        if (url === null) props.want(key, () => paintProp(spec), still ? () => run(now) : noop);
+        if (url === null) props.want(key, () => paintProp(spec), again);
         if (url !== null) {
           const [bx, by, bw, bh] = PROPS.gull!.box(spec.args!);
           img.setAttribute('href', url);
@@ -65,9 +73,9 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
           img.setAttribute('y', String(by));
           img.setAttribute('width', String(bw));
           img.setAttribute('height', String(bh));
-          shownDir[i] = p.dir;
+          dirs[i] = p.dir;
         }
-        if (shownDir[i] !== p.dir) {
+        if (dirs[i] !== p.dir) {
           g.setAttribute('display', 'none');
           return;
         }
@@ -76,6 +84,9 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
         g.setAttribute('opacity', (1 - p.far).toFixed(2));
       });
     };
+    // Pose cuite : re-pose tout de suite (sans attendre l'image suivante ; seule pose en mouvement réduit). Fonction stable :
+    // le registre ne la garde qu'une fois par clé.
+    const again = (): void => run(Date.now() / 1000);
     return run;
   }, [ghibli, still, frozenT, seed, width, height, minutes, day, rain, perches, props]);
   useWallClockLoop(place, [place]);
