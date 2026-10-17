@@ -21,9 +21,9 @@ describe('manifeste des modèles allégés', () => {
   });
 
   it('marque l\'enfant et les personnes âgées', () => {
-    expect(manifeste.bases.enfant.child).toBe(true);
-    expect(manifeste.bases.papy.aged && manifeste.bases.mamie.aged).toBe(true);
-    expect(manifeste.bases['homme-fort'].aged).toBeUndefined();
+    expect(manifeste.bases.enfant?.child).toBe(true);
+    expect(manifeste.bases.papy?.aged && manifeste.bases.mamie?.aged).toBe(true);
+    expect(manifeste.bases['homme-fort']?.aged).toBeUndefined();
   });
 
   it('référence un GLB et un PNG par base', () => {
