@@ -330,6 +330,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const arrangeHostId = arrange.hostId;
   const arrangeRef = useRef(arrange);
   arrangeRef.current = arrange;
+  // Étagère ouverte et sa partenaire liée, mémorisées : un rendu du panneau (mouvement du doigt dans la vue) ne les recalcule pas.
+  const arrangeShelfIds = useMemo(() => (lib && arrangeHostId ? shelfGroupOf(activeRoom(lib).layout, arrangeHostId) : []), [lib, arrangeHostId]);
   const openArrange = (id: string): void => {
     setArrangeLevel('whole');
     arrange.open(id);
@@ -1481,7 +1483,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             <ArrangeShelf
               layout={layout}
               room={room}
-              shelfIds={shelfGroupOf(layout, arrangeHostId)}
+              shelfIds={arrangeShelfIds}
               level={arrangeLevel}
               cards={roomCards.cards}
               imageOf={imageOfCard}

@@ -7,7 +7,8 @@ import { CELL_H, CELL_W, SHELF_INNER_CM, isShelfLevel, shelfBoardsIn, type PxRec
 import { screenToTop } from '../../core/library/arrange';
 import { boardGeometry, POST_CM, type BoardGeometry } from '../shelf-board-zoom';
 import { onShelfBoard } from '../furniture-zoom';
-import { arrangeFrameFor } from './ArrangeView';
+import { FURNITURE_MODELS } from '../../core/library/furniture-models';
+import { arrangeFrameFor, frameAt } from './ArrangeView';
 import type { BoardAim } from './use-board-drag';
 
 export const PAD = 16;
@@ -98,11 +99,18 @@ export function boardBoxPx(f: BoardFrame, i: number, id: string): PxRect | null 
   return { x: f.ox + (x0 + b.local.x) * f.scale, y: f.oy + (y0 + b.local.y - f.geo.cut) * f.scale, w: b.local.w * f.scale, h: b.local.h * f.scale };
 }
 
-// Dessus en plongée (ArrangeView) : le doigt vise le centre de l'empreinte (cm) ; `size` : empreinte de l'objet tenu.
-export function topAim(hostId: string, layer: { w: number; h: number }, lx: number, ly: number, size: { w: number; d: number }): BoardAim {
-  const f = arrangeFrameFor('shelf', layer);
-  const { x, z } = screenToTop(f, lx, ly);
-  return { kind: 'top', hostId, x: Math.round(x - size.w / 2), z: Math.round(z - size.d / 2) };
+// Dessus en plongée (ArrangeView, les dessus liés côte à côte) : le dessus sous le doigt (celui dont la largeur contient le point, sinon le
+// plus proche), le doigt au centre de l'empreinte (cm) ; `size` : empreinte de l'objet tenu.
+export function topAim(ids: string[], layer: { w: number; h: number }, lx: number, ly: number, size: { w: number; d: number }): BoardAim {
+  const fit = arrangeFrameFor('shelf', layer, ids.length);
+  const w = FURNITURE_MODELS.shelf.w;
+  let best = { i: 0, x: 0, z: 0, off: Infinity };
+  for (let i = 0; i < ids.length; i++) {
+    const { x, z } = screenToTop(frameAt(fit, i), lx, ly);
+    const off = x < 0 ? -x : x >= w ? x - w : 0;
+    if (off < best.off) best = { i, x, z, off };
+  }
+  return { kind: 'top', hostId: ids[best.i]!, x: Math.round(best.x - size.w / 2), z: Math.round(best.z - size.d / 2) };
 }
 
 export const isBoardLevel = (level: unknown): level is ShelfLevel => isShelfLevel(level);

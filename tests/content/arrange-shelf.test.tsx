@@ -11,6 +11,8 @@ import type { Layout, Room } from '../../src/core/library/library-types';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 import { ArrangeShelf, boardFrameFor, boardPointPx, wholeBoardPx, wholeFrameFor, type ArrangeLevel } from '../../src/content/arrange/ArrangeShelf';
 import { EDGE_MS, EDGE_PX } from '../../src/content/arrange/use-board-drag';
+import { arrangeFrameFor, frameAt } from '../../src/content/arrange/ArrangeView';
+import { topToScreen } from '../../src/core/library/arrange';
 import { ShelfBoardZoom, SWIPE_PX } from '../../src/content/shelf-board-zoom';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -289,6 +291,125 @@ describe('glissé en zoom', () => {
     await pointer('pointercancel', window, x1, y1);
     expect(s.onBoard).not.toHaveBeenCalled();
     expect(q('[data-arrange-held]')).toBeNull();
+  });
+});
+
+describe('rien ne bouge tant que la place n’est pas verte', () => {
+  const f = boardFrameFor(SHELVES, IDS, 0, LAYER);
+  const xOf = (slug: string) => q(`[data-board-card="${slug}"] rect`)?.getAttribute('x');
+
+  it('visée rouge (tablette pleine) ou dans le vide : les autres objets gardent leur place, l’objet tenu reste estompé à la sienne', async () => {
+    mount(FULL, 0);
+    const ff = boardFrameFor(FULL, IDS, 0, LAYER);
+    const before = { B: xOf('B'), C: xOf('C'), T1: xOf('T1') };
+    const [x0, y0] = boardPointPx(ff, 0, 7);
+    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await pointer('pointermove', window, ...boardPointPx(ff, 1, 40));
+    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('false');
+    expect({ B: xOf('B'), C: xOf('C'), T1: xOf('T1') }).toEqual(before);
+    expect(q('[data-board-card="A"]')).not.toBeNull();
+    // Dans le vide (hors des deux bibliothèques) : pas de visée, rien ne bouge non plus.
+    await pointer('pointermove', window, 2, y0);
+    expect(q('[data-insert]')).toBeNull();
+    expect({ B: xOf('B'), C: xOf('C'), T1: xOf('T1') }).toEqual(before);
+    await pointer('pointerup', window, 2, y0);
+  });
+
+  it('visée verte : la place s’ouvre, les voisins se resserrent', async () => {
+    mount(SHELVES, 0);
+    const bBefore = xOf('B');
+    await pointer('pointerdown', q('[data-board-card="A"]')!, ...boardPointPx(f, 0, 7));
+    await pointer('pointermove', window, ...boardPointPx(f, 0, 30));
+    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
+    expect(xOf('B')).not.toBe(bBefore);
+    await pointer('pointerup', window, ...boardPointPx(f, 0, 30));
+  });
+
+  it('deux lâchers en attente sur la même tablette : le premier ne retombe pas quand le second réordonne', async () => {
+    mount(SHELVES, 0);
+    await pointer('pointerdown', q('[data-board-card="A"]')!, ...boardPointPx(f, 0, 7));
+    await pointer('pointermove', window, ...boardPointPx(f, 0, 30));
+    await pointer('pointerup', window, ...boardPointPx(f, 0, 30));
+    // B A C. Puis C en tête : C B A, A toujours à sa place d'attente.
+    await pointer('pointerdown', q('[data-board-card="C"]')!, ...boardPointPx(f, 0, 37));
+    await pointer('pointermove', window, ...boardPointPx(f, 0, 1));
+    await pointer('pointerup', window, ...boardPointPx(f, 0, 1));
+    expect(all('[data-board-shelf="s"] [data-board-card]').map((e) => e.getAttribute('data-board-card'))).toEqual(['C', 'B', 'A']);
+  });
+
+  it('le fond de la pièce (sol) n’est dessiné qu’au niveau entier', async () => {
+    mount(SHELVES, 0);
+    expect(q('[data-backdrop="floor"]')).toBeNull();
+    await click('[data-action="board-up"]');
+    await click('[data-action="board-down"]');
+    expect(level()).toBe('0');
+  });
+});
+
+describe('deux dessus liés côte à côte', () => {
+  const TOPS: Layout = [...SHELVES, { id: 'l2', kind: 'small', item: 'lamp', hostId: 't', level: 0, order: 1 }];
+  const fit = arrangeFrameFor('shelf', LAYER, 2);
+  const topPx = (i: number, x: number, z: number) => topToScreen(frameAt(fit, i), x, z);
+  const liftToTop = async (s: Spies) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const f = boardFrameFor(TOPS, IDS, 0, LAYER);
+    const [x0, y0] = boardPointPx(f, 1, 22);
+    await pointer('pointerdown', q('[data-board-small="l2"]')!, x0, y0);
+    await pointer('pointermove', window, x0, EDGE_PX - 4);
+    await act(async () => { vi.advanceTimersByTime(EDGE_MS + 10); });
+    expect(s.onLevel).toHaveBeenLastCalledWith('top');
+    expect(q('[data-arrange-view="s+t"]')).not.toBeNull();
+  };
+
+  it('la lampe montée depuis une tablette de la seconde bibliothèque se pose sur le second dessus', async () => {
+    const s = mount(TOPS, 0);
+    await liftToTop(s);
+    const [x1, y1] = topPx(1, 40, 15);
+    await pointer('pointermove', window, x1, y1);
+    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
+    expect(q('[data-insert]')?.getAttribute('data-top')).toBe('t');
+    await pointer('pointerup', window, x1, y1);
+    expect(s.onTop).toHaveBeenCalledTimes(1);
+    const [id, hostId, x, z] = s.onTop.mock.calls[0]!;
+    expect([id, hostId]).toEqual(['l2', 't']);
+    expect(x).toBeGreaterThanOrEqual(0);
+    expect(x).toBeLessThan(80);
+    expect(z).toBeGreaterThanOrEqual(0);
+    expect(z).toBeLessThan(30);
+  });
+
+  it('lâchée sur le premier dessus : le premier', async () => {
+    const s = mount(TOPS, 0);
+    await liftToTop(s);
+    const [x1, y1] = topPx(0, 40, 15);
+    await pointer('pointermove', window, x1, y1);
+    expect(q('[data-insert]')?.getAttribute('data-top')).toBe('s');
+    await pointer('pointerup', window, x1, y1);
+    expect(s.onTop).toHaveBeenCalledWith('l2', 's', expect.any(Number), expect.any(Number));
+  });
+});
+
+describe('gestes du meuble entier et Échap', () => {
+  it('toucher un petit objet au niveau entier zoome sur sa tablette', async () => {
+    const s = mount();
+    await click('[data-zoom-small="l"]');
+    expect(s.onLevel).toHaveBeenLastCalledWith(1);
+  });
+
+  it('Échap : en zoom, retour au meuble entier ; au meuble entier, fermeture', async () => {
+    const s = mount(SHELVES, 1);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(level()).toBe('whole');
+    expect(s.onClose).not.toHaveBeenCalled();
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(s.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('Échap au niveau du dessus : retour au meuble entier', async () => {
+    const s = mount(SHELVES, 'top');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    expect(level()).toBe('whole');
+    expect(s.onClose).not.toHaveBeenCalled();
   });
 });
 

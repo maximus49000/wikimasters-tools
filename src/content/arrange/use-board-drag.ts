@@ -78,8 +78,8 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
   const held = useRef<Held | null>(null);
   const dragRef = useRef<BoardDrag | null>(null);
   const moved = useRef(false);
-  const live = useRef({ applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel });
-  live.current = { applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel };
+  const live = useRef({ layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel });
+  live.current = { layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel };
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
   const forget = useCallback((w: BoardPending): void => setPending((list) => (list.includes(w) ? list.filter((q) => q !== w) : list)), []);
@@ -159,7 +159,9 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
       const { id: did, order } = r.d;
       const aim: BoardAim = r.d.aim;
       const apply = aim.kind === 'board' ? (l: Layout) => moveToBoard(l, did, aim.shelfId, aim.level, order ?? 0) : (l: Layout) => moveToTop(l, did, aim.hostId, aim.x, aim.z);
-      const w: BoardPending = { id: did, from: placeKey(live.current.applied, did), apply };
+      // `from` lu dans la disposition reçue (pas dans celle aux attentes appliquées, où une autre attente a pu décaler son rang) :
+      // l'attente tombe seulement quand la disposition reçue change pour cet objet.
+      const w: BoardPending = { id: did, from: placeKey(live.current.layout, did), apply };
       setPending((list) => [...list, w]);
       let done: Promise<unknown> | void;
       try {
@@ -181,14 +183,15 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
     };
   }, [forget, aimNow]);
 
-  // Disposition dessinée : les attentes appliquées ; pendant un glissé, l'objet tenu à la place visée (vert) ou soulevé (absent).
+  // Disposition dessinée : les attentes appliquées ; pendant un glissé en vert, l'objet tenu à la place visée (la place s'ouvre, ses
+  // voisins se resserrent) ; en rouge ou dans le vide, rien ne bouge (l'objet tenu reste, estompé, à sa place). Recalculée seulement
+  // quand la place visée change, pas à chaque mouvement du doigt.
+  const a = drag?.ok ? drag.aim : null;
+  const aimKey = a ? (a.kind === 'board' ? `b:${drag!.id}:${a.shelfId}:${a.level}:${drag!.order ?? 0}` : `t:${drag!.id}:${a.hostId}:${a.x}:${a.z}`) : '';
   const preview = useMemo(() => {
-    if (!drag) return applied;
-    const without = applied.filter((p) => p.id !== drag.id);
-    if (!drag.ok || !drag.aim) return without;
-    const a = drag.aim;
-    return (a.kind === 'board' ? moveToBoard(applied, drag.id, a.shelfId, a.level, drag.order ?? 0) : moveToTop(applied, drag.id, a.hostId, a.x, a.z)) ?? without;
-  }, [applied, drag]);
+    if (!a || !drag) return applied;
+    return (a.kind === 'board' ? moveToBoard(applied, drag.id, a.shelfId, a.level, drag.order ?? 0) : moveToTop(applied, drag.id, a.hostId, a.x, a.z)) ?? applied;
+  }, [applied, aimKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const wasDrag = useCallback(() => moved.current, []);
   return { drag, pending, applied, preview, grab, wasDrag };
 }
