@@ -160,7 +160,7 @@ export const FAMILLES: Famille[] = [
       ...lib(
         'city-calendar.*', 'city-school-calendar.*', 'city-event*', 'city-install.*', 'city-music-crowd.*', 'city-parade.*', 'city-santa.*',
         'city/concert.*', 'paint/props/flags.*', 'paint/props/install.*', 'paint/props/kit.*', 'paint/props/music.*', 'paint/props/parade.*',
-        'paint/props/santa.*', 'paint/props/street.*', 'paint/props/moving.*', 'paint/props/sky.*', 'paint/props/dog.*',
+        'paint/props/santa.*', 'paint/props/street.*', 'paint/props/moving.*', 'paint/props/sky.*', 'paint/props/dog.*', 'paint/props/gull.*',
       ),
     ],
   },
