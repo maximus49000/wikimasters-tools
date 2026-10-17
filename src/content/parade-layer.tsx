@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactElement } from 'react';
+import { useContext, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { FestivityId } from '../core/library/city/calendar';
 import { FAR_SHRINK, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { PARADE_SPEED, paradeOn, paradeUnits, paradeX, type ParadeLane, type ParadeUnit } from '../core/library/city/parade';
@@ -7,6 +7,7 @@ import type { Sky } from '../core/library/sky';
 import { useFigureRegistry } from './figure/figure-host';
 import { poseFigure } from './figure/ghibli-figure';
 import { FIG, PARADE_YAW, ParadeUnitSprite, paradeArms, type MarchArms } from './parade-sprites';
+import { collectCycles, placeCycles, PropContext, type CycledNode } from './prop/prop-host';
 import { useWallClockLoop } from './use-wallclock-loop';
 import { useCarRegistry } from './vehicle/car-host';
 import { placeScripted } from './vehicle/scripted-car';
@@ -39,13 +40,16 @@ type Props = { width: number; seed: number; sky: Sky; still: boolean; dayFests: 
 const visibleAt = (units: readonly ParadeUnit[], width: number, t: number): ParadeUnit[] => units.filter((u) => paradeX(u, width, t) !== null);
 const keyOf = (list: readonly ParadeUnit[]): string => list.map((u) => u.id).join(',');
 
-// Marcheurs et véhicules peints d'une unité (nœuds lus une fois par nœud d'unité).
+// Marcheurs, véhicules peints et accessoires cycliques (G5 : cheval, drapeaux, mailloche) d'une unité (nœuds lus une fois par
+// nœud d'unité).
 const marchersOf = new WeakMap<Element, Element[]>();
 const carsOf = new WeakMap<Element, Element[]>();
+const cyclesOf = new WeakMap<Element, CycledNode[]>();
 
 export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metrics, lane, ghibli = false }: Props): ReactElement | null {
   const figures = useFigureRegistry();
   const carReg = useCarRegistry();
+  const props = useContext(PropContext);
   const on = !still && paradeOn(dayFests, minutes);
   const now = Date.now() / 1000;
   const dayStart = useSceneDayStart(minutes, now);
@@ -80,10 +84,14 @@ export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metric
         let cars = carsOf.get(node);
         if (!cars || (cars.length > 0 && !cars[0]!.isConnected)) carsOf.set(node, (cars = [...node.querySelectorAll('[data-scripted-car]')]));
         for (const c of cars) placeScripted(figures, carReg, c, (PARADE_SPEED * (t - u.start)) / k, PARADE_SPEED / k, 1, t);
+        // Accessoires à poses cycliques (G5) : pose de l'instant sur l'horloge murale (toutes les unités au même pas).
+        let cycles = cyclesOf.get(node);
+        if (!cycles || (cycles.length > 0 && !cycles[0]!.node.isConnected)) cyclesOf.set(node, (cycles = collectCycles(node)));
+        placeCycles(cycles, t, props);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [units, width, shown, k, y, ghibli, figures, carReg, dayStart],
+    [units, width, shown, k, y, ghibli, figures, carReg, dayStart, props],
   );
   useWallClockLoop(place, [place]);
 

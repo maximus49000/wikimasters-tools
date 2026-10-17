@@ -5,9 +5,12 @@ import { shapeOf, signatureOf } from '../core/library/figure/dress';
 import type { ArmPose, Gait } from '../core/library/figure/skeleton';
 import type { ParadeKind, ParadeUnit } from '../core/library/city/parade';
 import { hashString, mulberry32 } from '../core/library/scene-world';
+import { FLAG_CYCLE_S } from '../core/library/paint/props/install';
+import { HORSE_CYCLE_S, INSTRUMENT_CYCLE_S } from '../core/library/paint/props/parade';
 import type { Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
 import { GhibliFigure, type Held, type PoseIn } from './figure/ghibli-figure';
+import { CycledProp, PropImage, type PropSpec } from './prop/prop-host';
 import { ScriptedCar } from './vehicle/scripted-car';
 
 // Cortège du 14 juillet (spec §7.4, tâche 13). Repère de chaque unité : sol à y = 0, centre de l'unité à x = 0, regard vers
@@ -22,6 +25,10 @@ import { ScriptedCar } from './vehicle/scripted-car';
 // instruments, fusils et hampes gardent leur dessin, accrochés à la tête ou à la main du pantin (même repère : centre de la
 // tête à (0, −33)). Cavaliers et motards : pantin en selle (`mount`, accroche `seat` posée sur la selle) ; chefs de bord,
 // chefs de char et pompiers : pantin debout derrière la caisse, la tourelle ou la vitre (rognée).
+// Ghibli (G5) : cheval, tissu des drapeaux, coiffes, instruments et fusils sont des images cellulo du registre d'accessoires
+// (paint/props/parade.ts), posées au même repère que leur dessin SVG, qui reste le repli tant que l'image n'est pas cuite.
+// Les poses cycliques (cheval au pas 1,2 s, tissu qui ondule, mailloche 1 s, baguette 0,5 s) sont choisies par la boucle du
+// calque (placeCycles) : 8 images par accessoire et par lumière, partagées par toutes les unités ; aucun SMIL nouveau.
 
 type Props = { unit: ParadeUnit; sky: Sky; still: boolean; ghibli?: boolean };
 type Tint = (c: string) => string;
@@ -248,15 +255,29 @@ function Rifle({ d, t }: { d: Dress; t: Tint }): ReactElement {
   );
 }
 
+// Image cellulo (G5) d'un objet du cortège, repli SVG tant qu'elle n'est pas cuite ; `cycle` : période (s) et phase (cycles)
+// d'une pose cyclique, choisie par la boucle du calque (placeCycles).
+function paradeProp(spec: Omit<PropSpec, 'frame'>, fallback: ReactNode, cycle?: { period: number; phase?: number }): ReactElement {
+  return cycle ? <CycledProp spec={spec} period={cycle.period} phase={cycle.phase} fallback={fallback} /> : <PropImage spec={spec} fallback={fallback} />;
+}
+
 // Drapeau tricolore : hampe à x = 0, tissu vers l'arrière (−x, bleu à la hampe), haut à y = top.
-function Tricolore({ t, top, w, h, anim }: { t: Tint; top: number; w: number; h: number; anim: boolean }): ReactElement {
+// Ghibli (G5) : tissu en image `parade-flag` (vague à 8 poses, période FLAG_CYCLE_S ; plat en mouvement réduit), posé à `top`.
+function Tricolore({ t, top, w, h, anim, ghibli }: { t: Tint; top: number; w: number; h: number; anim: boolean; ghibli?: { day: number; phase?: number } }): ReactElement {
   const b = w / 3;
-  return (
-    <g data-tricolore="">
+  const cloth = (y: number): ReactElement => (
+    <>
       {anim && <animateTransform attributeName="transform" type="skewY" values="0;-6;0;5;0" dur="1.7s" repeatCount="indefinite" />}
-      <rect x={-b} y={top} width={b} height={h} fill={t(BLUE)} />
-      <rect x={-2 * b} y={top} width={b} height={h} fill={t(WHITE)} />
-      <rect x={-3 * b} y={top} width={b} height={h} fill={t(RED)} />
+      <rect x={-b} y={y} width={b} height={h} fill={t(BLUE)} />
+      <rect x={-2 * b} y={y} width={b} height={h} fill={t(WHITE)} />
+      <rect x={-3 * b} y={y} width={b} height={h} fill={t(RED)} />
+    </>
+  );
+  if (!ghibli) return <g data-tricolore="">{cloth(top)}</g>;
+  const spec: Omit<PropSpec, 'frame'> = { id: 'parade-flag', args: anim ? { w, h } : { w, h, still: true }, day: ghibli.day };
+  return (
+    <g data-tricolore="" transform={`translate(0 ${top})`}>
+      {paradeProp(spec, <g>{cloth(0)}</g>, anim ? { period: FLAG_CYCLE_S, phase: ghibli.phase } : undefined)}
     </g>
   );
 }
@@ -273,7 +294,15 @@ export const PARADE_YAW = 1;
 // Tenue du pantin tirée d'un uniforme : tunique → haut, pantalon → bas, cheveux courts sous le couvre-chef.
 const uniform = (d: Dress): Outfit => ({ skin: d.skin, hair: 'short', hairColor: '#2A1D16', hatColor: d.cap, top: 'jacket', topColor: d.tunic, bottom: 'pants', bottomColor: d.trousers, accessory: 'none', accessoryColor: d.belt });
 const crew = (skin: string, top: string, bottom: string, hair: Outfit['hair'], hat: string): Outfit => ({ skin, hair, hairColor: '#2A1D16', hatColor: hat, top: 'jacket', topColor: top, bottom: 'pants', bottomColor: bottom, accessory: 'none', accessoryColor: top });
-const headgear = (d: Dress, t: Tint): Held => ({ anchor: 'head', node: <g transform="translate(0 33)"><Headgear d={d} t={t} /></g> });
+// Coiffe à la tête du pantin : image `headgear` (G5) au repère du marcheur, repli = dessin SVG.
+const headgear = (d: Dress, t: Tint, sky: Sky): Held => ({
+  anchor: 'head',
+  node: (
+    <g transform="translate(0 33)">
+      {paradeProp({ id: 'headgear', args: { kind: d.head, cap: d.cap, ...(d.capTop !== undefined ? { capTop: d.capTop } : {}) }, day: sky.daylight }, <Headgear d={d} t={t} />)}
+    </g>
+  ),
+});
 // `arms` du marcheur : geste fixe, ou 'baton' (tambour-major : bras levé puis haut, en alternance, voir paradeArms).
 export type MarchArms = ArmPose | 'baton';
 const marchPose = (arms: MarchArms): PoseIn => ({ yaw: PARADE_YAW, gait: 'walk', phase: 0, head: 0, arms: arms === 'baton' ? 'raise' : arms });
@@ -282,7 +311,7 @@ function GMarcher({ d, sky, arms, held }: { d: Dress; sky: Sky; arms: MarchArms;
   const t: Tint = (c) => tone(c, sky);
   return (
     <g data-worker="" data-parade-figure="" data-arms={arms}>
-      <GhibliFigure outfit={uniform(d)} sky={sky} rainy={false} umbrella={false} initial={marchPose(arms)} held={[...(held ?? []), headgear(d, t)]} />
+      <GhibliFigure outfit={uniform(d)} sky={sky} rainy={false} umbrella={false} initial={marchPose(arms)} held={[...(held ?? []), headgear(d, t, sky)]} />
     </g>
   );
 }
@@ -305,9 +334,15 @@ function GRider({ outfit, sky, gait, arms, at: [x, y], scale, held }: { outfit: 
   );
 }
 
-// Objets de la fanfare en Ghibli : dessin actuel sans les bras, accroché à la main (ou au milieu des mains) du pantin.
-function bandHeld(kind: Instrument, t: Tint): { arms: MarchArms; held: Held } {
+// Objets de la fanfare en Ghibli : image `instrument` (G5) au repère du marcheur, accrochée à la main (ou au milieu des mains)
+// du pantin par le décalage du dessin SVG, qui reste le repli. Grosse caisse et caisse claire : mailloche et baguette battues
+// sur 8 poses (1 s et 0,5 s) ; cuivres immobiles ; canne : pose 0 seule (le bras du pantin alterne levé/haut, paradeArms).
+// Mouvement réduit (`anim` faux) : pose 0.
+function bandHeld(kind: Instrument, t: Tint, sky: Sky, anim: boolean): { arms: MarchArms; held: Held } {
   const brass = t(BRASS);
+  const period = INSTRUMENT_CYCLE_S[kind];
+  const image = (fallback: ReactElement): ReactElement =>
+    paradeProp({ id: 'instrument', args: { kind }, day: sky.daylight }, fallback, anim && period && kind !== 'baton' ? { period } : undefined);
   switch (kind) {
     case 'tuba':
       return {
@@ -316,9 +351,13 @@ function bandHeld(kind: Instrument, t: Tint): { arms: MarchArms; held: Held } {
           anchor: 'hands',
           node: (
             <g data-instrument="tuba" transform="translate(-4 22)">
-              <ellipse cx={4} cy={-22} rx={3.4} ry={6.5} fill="none" stroke={brass} strokeWidth={1.8} />
-              <path d="M3 -28 L-2 -44 H8 L5 -28Z" fill={brass} />
-              <ellipse cx={3} cy={-44} rx={5} ry={1.3} fill={t('#8A6A1E')} />
+              {image(
+                <g>
+                  <ellipse cx={4} cy={-22} rx={3.4} ry={6.5} fill="none" stroke={brass} strokeWidth={1.8} />
+                  <path d="M3 -28 L-2 -44 H8 L5 -28Z" fill={brass} />
+                  <ellipse cx={3} cy={-44} rx={5} ry={1.3} fill={t('#8A6A1E')} />
+                </g>,
+              )}
             </g>
           ),
         },
@@ -330,9 +369,13 @@ function bandHeld(kind: Instrument, t: Tint): { arms: MarchArms; held: Held } {
           anchor: 'handR',
           node: (
             <g data-instrument="trumpet" transform="translate(-6 32)">
-              <line x1={3} y1={-32} x2={13} y2={-31} stroke={brass} strokeWidth={1.2} />
-              <path d="M12 -31 L17 -34 V-28Z" fill={brass} />
-              <rect x={6} y={-33.4} width={3} height={2} fill={brass} />
+              {image(
+                <g>
+                  <line x1={3} y1={-32} x2={13} y2={-31} stroke={brass} strokeWidth={1.2} />
+                  <path d="M12 -31 L17 -34 V-28Z" fill={brass} />
+                  <rect x={6} y={-33.4} width={3} height={2} fill={brass} />
+                </g>,
+              )}
             </g>
           ),
         },
@@ -344,10 +387,14 @@ function bandHeld(kind: Instrument, t: Tint): { arms: MarchArms; held: Held } {
           anchor: 'handR',
           node: (
             <g data-instrument="bugle" transform="translate(-6 31)">
-              <ellipse cx={7} cy={-29} rx={3} ry={2} fill="none" stroke={brass} strokeWidth={1} />
-              <line x1={3} y1={-32} x2={8} y2={-31} stroke={brass} strokeWidth={1} />
-              <path d="M9 -30 L14 -33 V-26Z" fill={brass} />
-              <path d="M8 -28 H13 V-24 L10.5 -25.4 L8 -24Z" fill={t(RED)} />
+              {image(
+                <g>
+                  <ellipse cx={7} cy={-29} rx={3} ry={2} fill="none" stroke={brass} strokeWidth={1} />
+                  <line x1={3} y1={-32} x2={8} y2={-31} stroke={brass} strokeWidth={1} />
+                  <path d="M9 -30 L14 -33 V-26Z" fill={brass} />
+                  <path d="M8 -28 H13 V-24 L10.5 -25.4 L8 -24Z" fill={t(RED)} />
+                </g>,
+              )}
             </g>
           ),
         },
@@ -359,8 +406,12 @@ function bandHeld(kind: Instrument, t: Tint): { arms: MarchArms; held: Held } {
           anchor: 'hands',
           node: (
             <g data-instrument="bass-drum" transform="translate(-4 19)">
-              <circle cx={6} cy={-21} r={8} fill={t(WHITE)} stroke={t(RED)} strokeWidth={1.6} />
-              <circle cx={6} cy={-21} r={2} fill={t(BLUE)} />
+              {image(
+                <g>
+                  <circle cx={6} cy={-21} r={8} fill={t(WHITE)} stroke={t(RED)} strokeWidth={1.6} />
+                  <circle cx={6} cy={-21} r={2} fill={t(BLUE)} />
+                </g>,
+              )}
             </g>
           ),
         },
@@ -372,44 +423,68 @@ function bandHeld(kind: Instrument, t: Tint): { arms: MarchArms; held: Held } {
           anchor: 'hands',
           node: (
             <g data-instrument="snare" transform="translate(-6.5 18.5)">
-              <rect x={2} y={-19} width={9} height={5} fill={t(WHITE)} stroke={t(RED)} strokeWidth={0.8} />
-              <path d="M2 -19 L4.2 -14 L6.4 -19 L8.6 -14 L11 -19" stroke={t(BLUE)} strokeWidth={0.6} fill="none" />
+              {image(
+                <g>
+                  <rect x={2} y={-19} width={9} height={5} fill={t(WHITE)} stroke={t(RED)} strokeWidth={0.8} />
+                  <path d="M2 -19 L4.2 -14 L6.4 -19 L8.6 -14 L11 -19" stroke={t(BLUE)} strokeWidth={0.6} fill="none" />
+                </g>,
+              )}
             </g>
           ),
         },
       };
     case 'baton':
+      // Poignée de la canne (repère du marcheur, pose 0 : (4, −36) tournée de −10° autour de l'épaule) à la main.
       return {
         arms: 'baton',
         held: {
           anchor: 'handR',
           node: (
-            <g data-instrument="baton">
-              <line x1={0} y1={0} x2={3} y2={-15} stroke={t(BLACK)} strokeWidth={1} />
-              <circle cx={3.2} cy={-16} r={1.8} fill={brass} />
+            <g data-instrument="baton" transform="translate(-2.2 36.54)">
+              {image(
+                <g transform="translate(2.2 -36.54)">
+                  <line x1={0} y1={0} x2={3} y2={-15} stroke={t(BLACK)} strokeWidth={1} />
+                  <circle cx={3.2} cy={-16} r={1.8} fill={brass} />
+                </g>,
+              )}
             </g>
           ),
         },
       };
   }
 }
-const rifleHeld = (t: Tint): Held => ({
+const rifleHeld = (t: Tint, sky: Sky): Held => ({
   anchor: 'handR',
   node: (
     <g data-rifle="" transform="translate(-3.6 20)">
-      <line x1={4} y1={-19} x2={-5} y2={-46} stroke={t('#2E2A24')} strokeWidth={1.4} />
-      <path d="M2.6 -21 L5.4 -17 L7 -19 L4.4 -22Z" fill={t('#5A3E26')} />
+      {paradeProp(
+        { id: 'rifle', day: sky.daylight },
+        <g>
+          <line x1={4} y1={-19} x2={-5} y2={-46} stroke={t('#2E2A24')} strokeWidth={1.4} />
+          <path d="M2.6 -21 L5.4 -17 L7 -19 L4.4 -22Z" fill={t('#5A3E26')} />
+        </g>,
+      )}
     </g>
   ),
 });
-const flagHeld = (t: Tint, anim: boolean): Held => ({
+// Porte-drapeau : hampe (51 sous le haut du tissu, pointe laiton) et tissu 27 × 18 en une image `parade-flag` posée au haut du
+// tissu (−65) ; `phase` décale la vague d'un porteur à l'autre.
+const flagHeld = (t: Tint, anim: boolean, sky: Sky, phase: number): Held => ({
   anchor: 'handR',
   node: (
     <g data-flag-bearer="" transform="translate(-5 24)">
-      <line x1={5} y1={-14} x2={5} y2={-66} stroke={t('#6B5B4A')} strokeWidth={1.2} />
-      <circle cx={5} cy={-67} r={1.4} fill={t(BRASS)} />
-      <g transform="translate(5 0)">
-        <Tricolore t={t} top={-65} w={27} h={18} anim={anim} />
+      <g transform="translate(5 -65)">
+        {paradeProp(
+          { id: 'parade-flag', args: anim ? { w: 27, h: 18, pole: 51 } : { w: 27, h: 18, pole: 51, still: true }, day: sky.daylight },
+          <g transform="translate(-5 65)">
+            <line x1={5} y1={-14} x2={5} y2={-66} stroke={t('#6B5B4A')} strokeWidth={1.2} />
+            <circle cx={5} cy={-67} r={1.4} fill={t(BRASS)} />
+            <g transform="translate(5 0)">
+              <Tricolore t={t} top={-65} w={27} h={18} anim={anim} />
+            </g>
+          </g>,
+          anim ? { period: FLAG_CYCLE_S, phase } : undefined,
+        )}
       </g>
     </g>
   ),
@@ -454,7 +529,7 @@ function Band({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
       {row.map((inst, i) => {
         const d: Dress = { ...base, skin: skins[i]!, head: inst === 'baton' ? 'plume' : 'kepi' };
         if (sky) {
-          const h = bandHeld(inst, t);
+          const h = bandHeld(inst, t, sky, anim);
           return at(-75 + i * 30, <GMarcher d={d} sky={sky} arms={h.arms} held={[h.held]} />, inst);
         }
         return at(-75 + i * 30, <Marcher d={d} t={t} anim={anim} begin={begin}><InstrumentArt kind={inst} d={d} t={t} anim={anim} begin={begin} /></Marcher>, inst);
@@ -470,7 +545,7 @@ function Infantry({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
     <g>
       {skins.map((skin, i) => {
         const d: Dress = { ...base, skin };
-        if (sky) return at(-70 + i * 20, <GMarcher d={d} sky={sky} arms="rifle" held={[rifleHeld(t)]} />, i);
+        if (sky) return at(-70 + i * 20, <GMarcher d={d} sky={sky} arms="rifle" held={[rifleHeld(t, sky)]} />, i);
         return at(-70 + i * 20, <Marcher d={d} t={t} anim={anim} begin={begin}><Rifle d={d} t={t} /></Marcher>, i);
       })}
     </g>
@@ -484,7 +559,7 @@ function Flags({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
     <g>
       {skins.map((skin, i) => {
         const d: Dress = { ...base, skin, head: base.head === 'shako' ? 'kepi' : base.head, cap: base.head === 'shako' ? '#1F2A4A' : base.cap };
-        if (sky) return at(-32 + i * 32, <GMarcher d={d} sky={sky} arms="flag" held={[flagHeld(t, anim)]} />, i);
+        if (sky) return at(-32 + i * 32, <GMarcher d={d} sky={sky} arms="flag" held={[flagHeld(t, anim, sky, i / 3)]} />, i);
         return at(
           -32 + i * 32,
           <Marcher d={d} t={t} anim={anim} begin={begin}>
@@ -548,7 +623,9 @@ function Motorbikes({ unit, t, anim, sky }: UnitArt): ReactElement {
 
 // Cavalier de la Garde : cheval au pas (quatre jambes d'aplomb, chacune à son temps), cuirasse, casque à crinière et plumet
 // rouge. Le cavalier est assis sur la selle, la jambe tombant le long du flanc, la botte contre le flanc du cheval.
-function Horseman({ t, anim, begin, coat, skin, sky }: { t: Tint; anim: boolean; begin: string; coat: string; skin: string; sky?: Sky }): ReactElement {
+// Ghibli (G5) : cheval en image `horse` (8 poses du pas de 1,2 s, `phase` par cheval, pose 0 en mouvement réduit), le cavalier
+// pantin `mount` posé à (−1, −24,5) par-dessus ; le dessin SVG reste le repli.
+function Horseman({ t, anim, begin, coat, skin, sky, phase = 0 }: { t: Tint; anim: boolean; begin: string; coat: string; skin: string; sky?: Sky; phase?: number }): ReactElement {
   const c = t(coat);
   // Jambe (pivot à l'épaule ou à la hanche) ; `phase` décale le balancement (pas à quatre temps).
   const leg = (x: number, phase: number, far: boolean): ReactElement => {
@@ -561,8 +638,8 @@ function Horseman({ t, anim, begin, coat, skin, sky }: { t: Tint; anim: boolean;
       </g>
     );
   };
-  return (
-    <g>
+  const art = (
+    <>
       {/* Jambes du fond (côté opposé, plus sombres) puis du premier plan : postérieures à l'arrière, antérieures à l'avant. */}
       {leg(-7, 0.5, true)}
       {leg(8, 0.75, true)}
@@ -576,6 +653,11 @@ function Horseman({ t, anim, begin, coat, skin, sky }: { t: Tint; anim: boolean;
       {/* Tapis de selle bleu à galon blanc, selle */}
       <rect x={-6} y={-24} width={10} height={6} fill={t('#1F2A4A')} stroke={t(WHITE)} strokeWidth={0.5} />
       <path d="M-5 -24 Q-1 -22 3.5 -24.5 L3 -25.5 Q-1 -24 -4.6 -25.5Z" fill={t('#3A2416')} />
+    </>
+  );
+  return (
+    <g>
+      {sky ? <g data-horse="">{paradeProp({ id: 'horse', args: { coat }, day: sky.daylight }, <g>{art}</g>, anim ? { period: HORSE_CYCLE_S, phase } : undefined)}</g> : art}
       {sky ? (
         <GRider
           outfit={crew(skin, '#1F2A4A', WHITE, 'short', STEEL)}
@@ -584,7 +666,7 @@ function Horseman({ t, anim, begin, coat, skin, sky }: { t: Tint; anim: boolean;
           arms="handlebar"
           at={[-1, -24.5]}
           scale={FIG}
-          held={[headgear({ tunic: '#1F2A4A', trousers: WHITE, head: 'crested', cap: STEEL, capTop: RED, belt: WHITE, skin }, t)]}
+          held={[headgear({ tunic: '#1F2A4A', trousers: WHITE, head: 'crested', cap: STEEL, capTop: RED, belt: WHITE, skin }, t, sky)]}
         />
       ) : (
       <g data-worker="" data-parade-figure="">
@@ -611,7 +693,7 @@ function Cavalry({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
     <g>
       {skins.map((skin, i) => (
         <g key={i} transform={`translate(${-50 + i * 50} 0)`}>
-          <Horseman t={t} anim={anim} begin={begin} coat={pickOf(coats, (unit.variant + rng()) % 1)} skin={skin} sky={sky} />
+          <Horseman t={t} anim={anim} begin={begin} coat={pickOf(coats, (unit.variant + rng()) % 1)} skin={skin} sky={sky} phase={i * 0.25} />
         </g>
       ))}
     </g>
@@ -629,7 +711,7 @@ function Jeep({ t, anim, paint, skin, sky, seed }: { t: Tint; anim: boolean; pai
     <g key={x}>
       <line x1={x} y1={-17} x2={x - 1} y2={-34 + i * 2} stroke={t('#333333')} strokeWidth={0.6} />
       <g transform={`translate(${x - 1} 0)`}>
-        <Tricolore t={t} top={-34 + i * 2} w={7} h={4.6} anim={anim} />
+        <Tricolore t={t} top={-34 + i * 2} w={7} h={4.6} anim={anim} ghibli={sky ? { day: sky.daylight, phase: i * 0.4 } : undefined} />
       </g>
     </g>
   ));
@@ -714,7 +796,7 @@ function Tank({ t, anim, paint, skin, sky, seed }: { t: Tint; anim: boolean; pai
     <>
       <line x1={-20} y1={-16} x2={-24} y2={-30} stroke={t('#333333')} strokeWidth={0.5} />
       <g transform="translate(-24 0)">
-        <Tricolore t={t} top={-30} w={6} h={4} anim={anim} />
+        <Tricolore t={t} top={-30} w={6} h={4} anim={anim} ghibli={sky ? { day: sky.daylight } : undefined} />
       </g>
     </>
   );

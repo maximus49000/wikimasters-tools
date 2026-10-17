@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, type ReactElement } from 'react';
+import { memo, useContext, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { FestivityId } from '../core/library/city/calendar';
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
 import { DOOR_WIDTH, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
@@ -12,7 +12,10 @@ import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry, type FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { FLAG_CYCLE_S } from '../core/library/paint/props/install';
+import '../core/library/paint/props/parade';
 import { useSceneDayStart } from './parade-layer';
+import { collectCycles, CycledProp, placeCycles, PropContext, PropImage, type CycledNode } from './prop/prop-host';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Foule de spectateurs du 14 juillet (spec §7.4) : massée sur le trottoir, derrière les barrières (dessinées plus tard, sur la
@@ -27,6 +30,9 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // avec l'objet à la main droite (drapeau agité par SMIL autour de la main, téléphone, main ouverte), sinon `down` / `swing`
 // immobile ; enfant sur les épaules : pantin enfant assis à la nuque de l'adulte. En marche : pas réglé sur la distance,
 // drapeau porté haut sans l'agiter.
+// Ghibli (G5) : drapeau et téléphone sont des images cellulo `crowd-prop` (paint/props/parade.ts) à la main du pantin ; le tissu
+// du drapeau ondule sur 8 poses choisies par la boucle (placeCycles, période de la vague décalée de la phase du spectateur),
+// plat en marche et en mouvement réduit ; le balancement autour de la main reste celui du groupe. Repli : le dessin SVG.
 // Mouvement réduit : seulement les spectateurs en place au niveau courant (u < crowdLevel), immobiles.
 // Hors du plafond des figurants (shopSpriteBudget) : la foule remplace les marcheurs (×0,3 pendant la fermeture) et a sa
 // propre densité bornée ; comptée dans le plafond, elle ferait disparaître clients et équipes.
@@ -139,25 +145,33 @@ const childPose = (yaw: number): PoseIn => ({ yaw, gait: 'seated', phase: 0, hea
 function HandProp({ s, sky, wave }: { s: Spectator; sky: Sky; wave: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const dur = 1.1 + s.phase * 0.8;
+  const flag = (
+    <g>
+      <line x1={0} y1={0.5} x2={0} y2={-12} stroke="#6B5B4A" strokeWidth={0.8} />
+      <rect x={0} y={-12} width={2.4} height={5} fill={t('#2B4FA0')} />
+      <rect x={2.4} y={-12} width={2.4} height={5} fill={t('#F2F2F2')} />
+      <rect x={4.8} y={-12} width={2.4} height={5} fill={t('#C0302B')} />
+    </g>
+  );
+  const phone = (
+    <g>
+      <rect x={-1.8} y={-5.2} width={3.6} height={5.4} rx={0.6} fill="#1E1E24" />
+      <rect x={-1.3} y={-4.7} width={2.6} height={4.2} fill="#9FD3FF" opacity={0.85} />
+    </g>
+  );
+  const day = sky.daylight;
   return (
     <g data-prop={s.prop}>
       {wave && s.prop !== 'phone' && (
         <animateTransform attributeName="transform" type="rotate" values="-14 0 0;14 0 0;-14 0 0" dur={`${dur.toFixed(2)}s`} begin={`-${(s.phase * dur).toFixed(2)}s`} repeatCount="indefinite" />
       )}
-      {s.prop === 'flag' && (
-        <>
-          <line x1={0} y1={0.5} x2={0} y2={-12} stroke="#6B5B4A" strokeWidth={0.8} />
-          <rect x={0} y={-12} width={2.4} height={5} fill={t('#2B4FA0')} />
-          <rect x={2.4} y={-12} width={2.4} height={5} fill={t('#F2F2F2')} />
-          <rect x={4.8} y={-12} width={2.4} height={5} fill={t('#C0302B')} />
-        </>
-      )}
-      {s.prop === 'phone' && (
-        <>
-          <rect x={-1.8} y={-5.2} width={3.6} height={5.4} rx={0.6} fill="#1E1E24" />
-          <rect x={-1.3} y={-4.7} width={2.6} height={4.2} fill="#9FD3FF" opacity={0.85} />
-        </>
-      )}
+      {s.prop === 'flag' &&
+        (wave ? (
+          <CycledProp spec={{ id: 'crowd-prop', args: { kind: 'flag' }, day }} period={FLAG_CYCLE_S} phase={s.phase} fallback={flag} />
+        ) : (
+          <PropImage spec={{ id: 'crowd-prop', args: { kind: 'flag', still: true }, day }} fallback={flag} />
+        ))}
+      {s.prop === 'phone' && <PropImage spec={{ id: 'crowd-prop', args: { kind: 'phone' }, day }} fallback={phone} />}
       {s.prop === 'wave' && (
         <>
           <ellipse cx={0} cy={-1.4} rx={1.5} ry={1.8} fill={t(s.outfit.skin)} />
@@ -198,6 +212,7 @@ function poseWalker(reg: FigureRegistry, body: Element | null, s: Spectator, pos
 
 export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes, metrics, doorXs, ghibli = false }: Props): ReactElement | null {
   const figures = useFigureRegistry();
+  const props = useContext(PropContext);
   const bastille = dayFests.includes('bastille');
   const doorKey = doorXs.join(',');
   // Devant une entrée, le rang du fond s'écarte : on voit encore la porte entre les têtes.
@@ -224,6 +239,9 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
   };
   const [sig, setSig] = useState('');
   const root = useRef<SVGGElement | null>(null);
+  // Drapeaux des spectateurs debout (G5) : nœuds cycliques relus quand l'ensemble des spectateurs en place change.
+  const cycles = useRef<{ key: string; list: CycledNode[] }>({ key: '', list: [] });
+  const standKeyRef = useRef('');
 
   const place = useMemo(
     () => (t: number): void => {
@@ -233,6 +251,10 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
       if (key !== sig) setSig(key);
       const el = root.current;
       if (!el) return;
+      if (ghibli) {
+        if (cycles.current.key !== standKeyRef.current) cycles.current = { key: standKeyRef.current, list: collectCycles(el) };
+        placeCycles(cycles.current.list, t, props);
+      }
       states.forEach((p, i) => {
         if (p.mode !== 'walking') return;
         const s = all[i]!;
@@ -247,7 +269,7 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [all, dayStart, sig, still, on, metrics, ghibli, figures],
+    [all, dayStart, sig, still, on, metrics, ghibli, figures, props],
   );
   useWallClockLoop(place, [place]);
 
@@ -257,6 +279,7 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
   const standing = on ? (still ? all.filter((s) => s.u < level) : all.filter((_, i) => states[i]!.mode === 'standing')) : [];
   const walkers = on && !still ? all.map((s, i) => [s, states[i]!] as const).filter(([, p]) => p.mode === 'walking') : [];
   const standKey = standing.map((s) => s.id).join(',');
+  standKeyRef.current = standKey;
   const standNodes = useMemo(
     () =>
       [...standing].sort((a, b) => b.row - a.row).map((s) => (

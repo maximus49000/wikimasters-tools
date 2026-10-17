@@ -117,6 +117,71 @@ export function PropImage({ spec, fallback = null }: { spec: PropSpec; fallback?
   return <image href={shown.url} x={x} y={y} width={w} height={h} preserveAspectRatio="none" />;
 }
 
+// ---------- Accessoires à poses cycliques (G5 : cheval au pas, tissu des drapeaux, mailloche de la fanfare) ----------
+// L'image est rendue à la pose 0 ; la boucle de la couche hôte (placeCycles, à chaque image) choisit la pose de l'instant
+// t : floor(frac(t / période + phase) × frames), la demande au registre si elle n'est pas cuite, et la pose sur l'<image>
+// dès qu'elle l'est : au plus `frames` images par accessoire et par lumière, quel que soit le nombre de copies. `phase` (en
+// cycles) décale les copies entre elles. Un re-rendu (lumière, arguments) remet la pose 0 et change `data-cycle-spec` : la
+// boucle repart de là. Pas d'<image> encore (première cuisson) : le repli reste affiché.
+export function CycledProp({ spec, period, phase = 0, fallback = null }: { spec: Omit<PropSpec, 'frame'>; period: number; phase?: number; fallback?: ReactNode }): ReactElement {
+  return (
+    <g data-prop-cycle={period} data-cycle-phase={phase} data-cycle-spec={JSON.stringify(spec)}>
+      <PropImage spec={{ ...spec, frame: 0 }} fallback={fallback} />
+    </g>
+  );
+}
+// `img` : l'<image> de l'accessoire, gardée d'une image à l'autre (recherchée tant qu'elle n'existe pas, ou si le rendu l'a
+// remplacée) ; `json` : dernier `data-cycle-spec` lu (relu à chaque pose : le rendu le change avec la lumière).
+export type CycledNode = { node: Element; period: number; phase: number; img: Element | null; json: string; spec: PropSpec | null; frame: number };
+export function collectCycles(root: Element): CycledNode[] {
+  const out: CycledNode[] = [];
+  for (const node of root.querySelectorAll('[data-prop-cycle]')) {
+    const period = Number(node.getAttribute('data-prop-cycle'));
+    if (!(period > 0)) continue;
+    out.push({ node, period, phase: Number(node.getAttribute('data-cycle-phase')) || 0, img: null, json: '', spec: null, frame: -1 });
+  }
+  return out;
+}
+const noop = (): void => undefined;
+const parseSpec = (json: string): PropSpec | null => {
+  try {
+    const s = JSON.parse(json) as PropSpec;
+    return s && typeof s.id === 'string' && PROPS[s.id] ? s : null;
+  } catch {
+    return null;
+  }
+};
+export function placeCycles(list: readonly CycledNode[], t: number, reg: PropRegistry | null): void {
+  if (!reg) return;
+  for (const c of list) {
+    if (!c.img?.isConnected) {
+      c.img = c.node.querySelector(':scope > image');
+      c.frame = -1;
+    }
+    if (!c.img) continue;
+    const json = c.node.getAttribute('data-cycle-spec') ?? '';
+    if (json !== c.json) {
+      c.json = json;
+      c.spec = parseSpec(json);
+      c.frame = -1;
+    }
+    if (!c.spec) continue;
+    const n = framesOf(PROPS[c.spec.id]);
+    const u = t / c.period + c.phase;
+    const frame = Math.floor((u - Math.floor(u)) * n) % n;
+    if (frame === c.frame) continue;
+    const spec: PropSpec = { ...c.spec, frame };
+    const key = propKey(spec);
+    const url = reg.get(key);
+    if (url === null) {
+      reg.want(key, () => paintProp(spec), noop);
+      continue;
+    }
+    c.img.setAttribute('href', url);
+    c.frame = frame;
+  }
+}
+
 // Même image dans un groupe que l'hôte retourne pour `spec.dir` = −1 (`scale(dir·k, k)` des éléments dynamiques des véhicules
 // peints, de l'échelle portée) : ce miroir est annulé autour de l'image, cuite dans le sens `dir` (jamais une image
 // retournée) ; le repli classique garde le miroir de l'hôte.
