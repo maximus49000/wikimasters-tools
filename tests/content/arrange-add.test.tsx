@@ -7,10 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../../src/core/cache/store';
 import type { CollectionRepo } from '../../src/core/collection/collection-repo';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
-import { activeRoom, updateLayout } from '../../src/core/library/library-book';
+import { activeRoom, addRoom, setActive, updateLayout } from '../../src/core/library/library-book';
 import { topToScreen } from '../../src/core/library/arrange';
 import type { Layout } from '../../src/core/library/library-types';
 import { firstFreeTopSpot } from '../../src/core/library/surface';
+import { boardItems, moveToBoard, poseCard, storeCard } from '../../src/core/library/room-grid';
+import { PENDING_ID, usePendingCard } from '../../src/content/arrange/use-pending-card';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 import { ArrangeView, arrangeFrameFor } from '../../src/content/arrange/ArrangeView';
 import { ArrangeShelf, wholeBoardPx, wholeFrameFor } from '../../src/content/arrange/ArrangeShelf';
@@ -340,5 +342,146 @@ describe('LibraryPanel : ＋ et tiroir « Ajouter une carte »', () => {
     expect(q('[data-pick-host]')).toBeNull();
     await click('[data-furniture="desk"]');
     expect(q('[data-arrange-view]')).toBeNull();
+  });
+
+  it('choix du meuble puis changement de pièce : la carte du tiroir est oubliée (retour à la pièce : rien ne s’ouvre)', async () => {
+    await seed(DESK);
+    await click('[data-action="edit"]');
+    await click('[data-action="add-card"]');
+    await click('[data-card-option="Paris"]');
+    await click('[data-target="shelf"]');
+    await click('[data-shape="cd"]');
+    expect(q('[data-pick-host]')).not.toBeNull();
+    await act(async () => { await repo.update(addRoom); });
+    await settle();
+    expect(q('[data-pick-host]')).toBeNull();
+    await act(async () => { await repo.update((st) => setActive(st, 'r1')); });
+    await settle();
+    await click('[data-furniture="desk"]');
+    expect(q('[data-arrange-view]')).toBeNull();
+  });
+});
+
+describe('carte du tiroir qui ne tient pas : la vue ＋ le dit', () => {
+  const open = (layout: Layout, initial: { slug: string; shape: 'cd' }) =>
+    act(() => root.render(<ArrangeView layout={layout} room={{ style: 'scandinave' }} hostId="d" mode="add" onMove={vi.fn()} onClose={vi.fn()}
+      add={{ cards: KNOWN, categoryOf: () => 'music', initial, onAdd: vi.fn() }} />));
+
+  it('bureau plein : aucune carte en attente, « Plus de place sur ce meuble. »', () => {
+    let full: Layout = DESK;
+    for (let i = 0; ; i++) {
+      const spot = firstFreeTopSpot(full, 'd', { shape: 'cd' });
+      if (!spot) break;
+      full = poseCard(full, 'd', 'cd', `F${i}`, `f${i}`, spot.x, spot.z)!;
+    }
+    open(full, { slug: 'Paris', shape: 'cd' });
+    expect(q('[data-pending]')).toBeNull();
+    expect(q('[data-arrange-note]')?.textContent).toBe('Plus de place sur ce meuble.');
+  });
+
+  it('carte déjà dans la pièce : aucune carte en attente, « Cette carte est déjà dans la pièce. »', () => {
+    open(DESK, { slug: 'Kiki', shape: 'cd' });
+    expect(q('[data-pending]')).toBeNull();
+    expect(q('[data-arrange-note]')?.textContent).toBe('Cette carte est déjà dans la pièce.');
+  });
+});
+
+describe('carte en attente sur une tablette : les autres objets bougent, elle garde sa place', () => {
+  type Hook = ReturnType<typeof usePendingCard>;
+  type Wrapped = ReturnType<Hook['wrap']>;
+  // L'appelant applique l'intention à la disposition reçue (sans la carte en attente), puis la vue est redessinée avec elle.
+  const mountHook = () => {
+    const got: { pend: Hook | null; moves: Wrapped | null } = { pend: null, moves: null };
+    let real: Layout = SHELVES;
+    const onBoard = vi.fn((id: string, shelfId: string, level: 0 | 1 | 2, order: number) => {
+      real = moveToBoard(real, id, shelfId, level, order)!;
+      draw();
+    });
+    function Harness({ layout }: { layout: Layout }) {
+      const pend = usePendingCard({ layout, ids: ['s'], add: { cards: KNOWN, categoryOf: () => 'music', onAdd: vi.fn() }, enabled: true });
+      got.pend = pend;
+      got.moves = pend.wrap({ onBoard, onTop: vi.fn() });
+      return null;
+    }
+    const draw = () => root.render(<Harness layout={real} />);
+    act(draw);
+    // Rangs dessinés de la tablette 0.
+    const board0 = (l: Layout = got.pend!.view) => boardItems(l, 's', 0).map((p) => p.id);
+    return { got, onBoard, board0 };
+  };
+
+  it('A P B C, C lâchée entre A et P : A C P B, avant comme après l’écriture', async () => {
+    const { got, onBoard, board0 } = mountHook();
+    act(() => got.pend!.pick('Paris'));
+    await act(async () => { await got.moves!.onBoard(PENDING_ID, 's', 0, 1); });
+    expect(board0()).toEqual(['c1', PENDING_ID, 'c2', 'c3']);
+    // Rang lu sur la disposition dessinée (sans C) : 1 = entre A et P. Avant l'écriture, l'objet lâché est dessiné à sa place visée.
+    const view = got.pend!.view;
+    act(() => { void got.moves!.onBoard('c3', 's', 0, 1); });
+    expect(onBoard).toHaveBeenCalledWith('c3', 's', 0, 1);
+    expect(board0()).toEqual(['c1', 'c3', PENDING_ID, 'c2']);
+    expect(board0(moveToBoard(view, 'c3', 's', 0, 1)!)).toEqual(['c1', 'c3', PENDING_ID, 'c2']);
+  });
+
+  it('A P B C, B lâchée avant A : l’appelant reçoit le rang sans la carte en attente', async () => {
+    const { got, onBoard, board0 } = mountHook();
+    act(() => got.pend!.pick('Paris'));
+    await act(async () => { await got.moves!.onBoard(PENDING_ID, 's', 0, 1); });
+    // Rang dessiné de B après le déplacement : 0 → B A P C.
+    act(() => { void got.moves!.onBoard('c2', 's', 0, 0); });
+    expect(onBoard).toHaveBeenCalledWith('c2', 's', 0, 0);
+    expect(board0()).toEqual(['c2', 'c1', PENDING_ID, 'c3']);
+  });
+
+  it('A P B C, C lâchée après B (P avant la cible) : rang envoyé diminué de un, A P B C inchangé autour de P', async () => {
+    const { got, onBoard, board0 } = mountHook();
+    act(() => got.pend!.pick('Paris'));
+    await act(async () => { await got.moves!.onBoard(PENDING_ID, 's', 0, 1); });
+    // A P B C, C reprise et lâchée juste avant B : dessiné A P C B (rang 2 en comptant P), demandé au rang 1 (A C B).
+    act(() => { void got.moves!.onBoard('c3', 's', 0, 2); });
+    expect(onBoard).toHaveBeenCalledWith('c3', 's', 0, 1);
+    expect(board0()).toEqual(['c1', PENDING_ID, 'c3', 'c2']);
+  });
+
+  it('A B P C, A part sur une autre tablette : B P C, avant comme après l’écriture', async () => {
+    const { got, onBoard, board0 } = mountHook();
+    act(() => got.pend!.pick('Paris'));
+    await act(async () => { await got.moves!.onBoard(PENDING_ID, 's', 0, 2); });
+    expect(board0()).toEqual(['c1', 'c2', PENDING_ID, 'c3']);
+    const view = got.pend!.view;
+    act(() => { void got.moves!.onBoard('c1', 's', 1, 0); });
+    expect(onBoard).toHaveBeenCalledWith('c1', 's', 1, 0);
+    expect(board0()).toEqual(['c2', PENDING_ID, 'c3']);
+    expect(board0(moveToBoard(view, 'c1', 's', 1, 0)!)).toEqual(['c2', PENDING_ID, 'c3']);
+  });
+});
+
+describe('tablette : la disposition reçue remplit la place de la carte en attente', () => {
+  it('elle ne bouge pas : rouge + message, ✓ refusé', async () => {
+    const h = { onAdd: vi.fn(), onBoard: vi.fn(), onTop: vi.fn(), onLevel: vi.fn(), onClose: vi.fn() };
+    const draw = (layout: Layout) => act(() => root.render(
+      <ArrangeShelf layout={layout} room={{ style: 'scandinave' }} shelfIds={['s', 't']} level="whole" mode="add"
+        add={{ cards: KNOWN, categoryOf: () => 'music', onAdd: h.onAdd }}
+        onLevel={h.onLevel} onBoard={h.onBoard} onTop={h.onTop} onClose={h.onClose} />,
+    ));
+    draw(SHELVES);
+    await click('[data-strip-card="Paris"]');
+    expect(q('[data-pending]')?.getAttribute('data-at')).toBe('s:0:3');
+    expect(q('[data-pending]')?.getAttribute('data-ok')).toBe('true');
+    // D'autres CD arrivent sur la tablette 0 jusqu'à la remplir.
+    let full: Layout = SHELVES;
+    for (let i = 0; ; i++) {
+      const next = storeCard(full, 's', 0, 99, 'cd', `F${i}`, `f${i}`);
+      if (!next) break;
+      full = next;
+    }
+    draw(full);
+    expect(q('[data-pending]')?.getAttribute('data-at')).toBe('s:0:3');
+    expect(q('[data-pending]')?.getAttribute('data-ok')).toBe('false');
+    expect(q('[data-pending-halo]')?.getAttribute('stroke')).toBe('#C8443A');
+    expect(q('[data-arrange-note]')?.textContent).toBe('Plus de place ici : glissez la carte à une place libre.');
+    await click('[data-action="arrange-done"]');
+    expect(h.onAdd).not.toHaveBeenCalled();
+    expect(h.onClose).not.toHaveBeenCalled();
   });
 });

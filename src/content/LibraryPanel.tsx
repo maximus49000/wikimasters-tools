@@ -348,7 +348,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const activeRoomId = lib ? activeRoom(lib).id : null;
   useEffect(() => { if (mode !== 'edit') arrangeRef.current.reset(); }, [mode]);
-  useEffect(() => { arrangeRef.current.reset(); }, [activeRoomId]);
+  // Autre pièce : la vue Modifier se ferme et la carte du tiroir qui attendait son meuble est oubliée (avec sa consigne).
+  useEffect(() => {
+    arrangeRef.current.reset();
+    setCardToPlace(null);
+    setMessage((m) => (m === PICK_HOST_HINT ? '' : m));
+  }, [activeRoomId]);
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
   // Bulle du plein écran : chaque nouveau message s'y montre un instant ; l'aide du placement une seule fois par placement,

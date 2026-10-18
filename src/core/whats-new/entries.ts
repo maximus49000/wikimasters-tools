@@ -2254,12 +2254,12 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library-entry]',
         title: 'Des cartes sur les plateaux',
-        text: 'Une carte (CD, DVD, jeu, livre) peut maintenant être posée sur le plateau d’un bureau ou sur le dessus d’une étagère, de face sur un petit trépied, et plus seulement rangée sur une tablette. Elle peut aussi être couchée à plat, pochette vers le haut, comme la pochette devant la chaîne hi-fi.',
+        text: 'Une carte (CD, DVD, jeu, livre) peut maintenant être posée sur le plateau d’un bureau ou sur le dessus d’une étagère, de face sur un petit trépied, et plus seulement rangée sur une tablette. Elle pourra aussi être couchée à plat, pochette vers le haut, comme la pochette devant la chaîne hi-fi.',
         details: [
           { label: 'À quoi ça sert', text: 'À mettre en valeur une carte qu’on aime : un album debout à côté de la lampe, un film couché sur le bureau comme un disque qu’on vient de sortir.' },
           { label: 'D’où viennent les données', text: 'La place et la pose de chaque carte sont enregistrées dans votre pièce, sur l’appareil ; la pochette est celle de la carte (la même que sur l’étagère et dans les zooms).' },
           { label: 'Comment ça marche', text: 'Sur un trépied, la carte occupe sa largeur sur la profondeur du trépied ; à plat, toute sa couverture couchée. Le vert et le rouge du glissé en tiennent compte : deux objets ne se chevauchent jamais.' },
-          { label: 'Limites', text: 'Une carte arrive toujours sur un trépied. Le choix entre trépied et à plat se fera depuis la bulle de la carte dans la vue Modifier, avec la prochaine mise à jour.' },
+          { label: 'Limites', text: 'Une carte arrive toujours sur un trépied. Le choix entre trépied et à plat se fera depuis la bulle de la carte dans la vue Modifier, avec la prochaine mise à jour. En visite, toucher une carte posée ne l’ouvre pas encore : cela viendra plus tard.' },
         ],
         scene: { page: '/collection', closeWindows: true },
       },
@@ -2271,7 +2271,7 @@ export const ENTRIES: Entry[] = [
           { label: 'À quoi ça sert', text: 'À choisir soi-même où va une nouvelle carte, au centimètre près sur un plateau, à la tablette et au rang près sur une étagère, au lieu de la première place libre.' },
           { label: 'D’où viennent les données', text: 'La réglette montre les cartes de votre Collection (les mêmes que le choix de carte du tiroir), triées par titre ; rien n’est envoyé ailleurs. Le format conseillé vient de la catégorie de la carte (musique → CD, film → DVD, jeu → jeu vidéo, livre → livre).' },
           { label: 'Comment ça marche', text: 'La carte en attente n’est pas encore enregistrée : on la glisse comme n’importe quel objet (vert ou rouge), et seul ✓ l’ajoute à la pièce. Sur une étagère, elle arrive sur la première tablette où elle tient. Le tiroir garde « Ajouter une carte » : choisissez « Poser sur un meuble » et le format, puis touchez le meuble : sa vue ＋ s’ouvre avec la carte déjà en attente.' },
-          { label: 'Limites', text: 'La réglette montre 60 cartes à la fois : la recherche par titre trouve les autres. Le format conseillé ne se change pas encore depuis la vue (il viendra avec la bulle de la carte) : pour un autre format, passez par le tiroir.' },
+          { label: 'Limites', text: 'La réglette montre 60 cartes à la fois : la recherche par titre trouve les autres. Le format conseillé ne se change pas encore depuis la vue (il viendra avec la bulle de la carte) : pour un autre format, passez par le tiroir. Depuis le tiroir, « Poser sur un meuble » ne propose pas encore le choix entre couverture et tranche : il viendra plus tard.' },
         ],
         scene: { page: '/collection', closeWindows: true },
       },

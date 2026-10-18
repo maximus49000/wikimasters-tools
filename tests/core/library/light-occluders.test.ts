@@ -98,6 +98,20 @@ describe('boxesOf', () => {
     expect(src[0]!.z).toBeGreaterThan(deskTop + 17.5 * PX_PER_CM_Y);
     expect(src[0]!.z).toBeLessThan(z1);
   });
+  it('une carte posée (trépied, à plat) arrête la lumière comme un petit objet : boîtes sur le plateau, plus basses couchée', () => {
+    const desk: Layout[number] = { id: 'd', kind: 'desk', col: 2, row: 11 };
+    const stand: Layout = [desk, { id: 'p', kind: 'posed', shape: 'cd', hostId: 'd', x: 10, z: 10, slug: 'Kiki' }];
+    const flat: Layout = [desk, { id: 'p', kind: 'posed', shape: 'cd', hostId: 'd', x: 10, z: 10, pose: 'flat', slug: 'Kiki' }];
+    const up = boxesOf(stand, geom).filter((x) => x.owner === 'p');
+    const down = boxesOf(flat, geom).filter((x) => x.owner === 'p');
+    expect(up.length).toBeGreaterThan(0);
+    expect(down.length).toBeGreaterThan(0);
+    expect(Math.min(...up.map((x) => x.z0))).toBeGreaterThanOrEqual(deskTop - 1e-6);
+    const top = (b: typeof up) => Math.max(...b.map((x) => x.z1));
+    expect(top(down)).toBeLessThan(top(up));
+    // La signature change quand une carte arrive sur le bureau : l'ombre se recalcule.
+    expect(signatureOf(boxesOf(stand, geom), [])).not.toBe(signatureOf(boxesOf([desk], geom), []));
+  });
   it('un ordinateur pose les boîtes de son écran 3D sur le plateau (bureau tourné compris), aussi large que son dessin', () => {
     const l: Layout = [{ id: 'd', kind: 'desk', col: 2, row: 11, angle: 1 }, { id: 'c', kind: 'computer', deskId: 'd' }];
     const b = boxesOf(l, geom).filter((x) => x.owner === 'c');
