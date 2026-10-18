@@ -9,7 +9,7 @@
 // est W_parent⁻¹ · W. Seules les directions sont copiées : le modèle garde ses longueurs. Doigts et orteils intacts.
 // Rien n'est alloué par appel (vecteurs de travail du module) : la fonction tourne pour beaucoup d'habitants par image.
 import * as THREE from 'three';
-import { LIMB, type Pose } from '../library/figure/skeleton';
+import { PERCH, type Gait, type Pose } from '../library/figure/skeleton';
 import type { V3 } from '../library/figure/geometry';
 import { boneName } from './wardrobe/body';
 
@@ -40,37 +40,45 @@ const ARMS = {
 type Rec<T> = Record<BoneKey, T>;
 const rec = <T>(f: (k: BoneKey) => T): Rec<T> => Object.fromEntries(KEYS.map((k) => [k, f(k)])) as Rec<T>;
 
-// Grandeurs de repos exprimées dans l'espace du rig (l'objet passé à applyPose) : elles dépendent des nœuds entre le rig
-// et Hips (« Armature » tournée, mise à l'échelle des modèles glTF), calculées une fois par rig.
-type RigSpace = {
-  rig: THREE.Object3D;
-  baseQ: THREE.Quaternion; // rotation du parent de Hips dans le rig
-  baseInv: THREE.Matrix4; // rig → espace du parent de Hips
-  restW: Rec<THREE.Quaternion>;
-  restPos: Rec<THREE.Vector3>;
+// Pose de liaison, relevée dans les matrices de liaison du squelette (`boneInverses`) : espace de liaison = espace local
+// du rig (le SkinnedMesh, ou un ancêtre qui coïncide avec lui), pieds à y = 0. Elle ne dépend donc pas de la pose
+// courante des os : boneMap peut être appelé après un applyPose.
+type Rest = {
+  W: Rec<THREE.Quaternion>; // rotations du monde de liaison
+  pos: Rec<THREE.Vector3>;
   // Direction de repos du segment qui part de l'os (vers son enfant) et charnière de repos (segment × sens de flexion,
   // ce sens étant le devant du genou, +z, pour les jambes et l'arrière du coude, −z, pour les bras).
   dir: Rec<THREE.Vector3>;
   hinge: Rec<THREE.Vector3>;
-  hipOff: Record<Side, THREE.Vector3>; // Hips → hanche, au repos
-  hipMid: THREE.Vector3; // Hips → milieu des hanches, au repos
+  hipOff: Record<Side, THREE.Vector3>; // Hips → hanche
+  hipMid: THREE.Vector3; // Hips → milieu des hanches
   thigh: Record<Side, number>;
   shin: Record<Side, number>;
-  cur: Rec<THREE.Quaternion>; // rotations du monde de la pose en cours (travail)
+  ankleY: number; // hauteur de cheville du modèle debout (la plus basse des deux)
 };
+
+// Passage du rig à l'espace du parent de Hips (nœuds « Armature » tournés, mis à l'échelle des glTF), calculé une fois
+// par rig : ces nœuds ne bougent pas.
+type RigSpace = { rig: THREE.Object3D; baseQ: THREE.Quaternion; baseInv: THREE.Matrix4 };
 
 export type BoneMap = {
   bones: Rec<THREE.Bone>;
-  /** Rotations locales et position de Hips au repos (pose de liaison, relevées par boneMap). */
-  restQ: Rec<THREE.Quaternion>;
-  restHips: THREE.Vector3;
+  rest: Rest;
   space: RigSpace | null;
+  cur: Rec<THREE.Quaternion>; // rotations du monde de la pose en cours (travail)
 };
 
-// À appeler sur un squelette au repos (pose de liaison en T, juste après le chargement ou le clonage).
+const X = new THREE.Vector3(1, 0, 0);
+const Y = new THREE.Vector3(0, 1, 0);
+const Z = new THREE.Vector3(0, 0, 1);
+
 export function boneMap(skeleton: THREE.Skeleton): BoneMap {
   const found = new Map<string, THREE.Bone>();
-  for (const b of skeleton.bones) found.set(boneName(b.name), b);
+  const bind = new Map<string, THREE.Matrix4>();
+  skeleton.bones.forEach((b, i) => {
+    found.set(boneName(b.name), b);
+    bind.set(boneName(b.name), skeleton.boneInverses[i]!.clone().invert());
+  });
   const missing = KEYS.filter((k) => !found.has(k));
   if (missing.length) throw new Error(`Squelette incomplet : ${missing.join(', ')}`);
   const bones = rec((k) => found.get(k)!);
@@ -78,39 +86,14 @@ export function boneMap(skeleton: THREE.Skeleton): BoneMap {
     const p = PARENTS[k];
     if (p && bones[k].parent !== bones[p]) throw new Error(`Hiérarchie inattendue : ${k} n'est pas sous ${p}`);
   }
-  return { bones, restQ: rec((k) => bones[k].quaternion.clone()), restHips: bones.Hips.position.clone(), space: null };
-}
-
-const X = new THREE.Vector3(1, 0, 0);
-const Y = new THREE.Vector3(0, 1, 0);
-const Z = new THREE.Vector3(0, 0, 1);
-
-function rigSpace(m: BoneMap, rig: THREE.Object3D): RigSpace {
-  if (m.space && m.space.rig === rig) return m.space;
-  const hips = m.bones.Hips;
-  const base = new THREE.Matrix4();
-  const l = new THREE.Matrix4();
-  for (let o = hips.parent; o !== rig; o = o.parent) {
-    if (!o) throw new Error('Le squelette n’est pas sous le rig');
-    base.premultiply(l.compose(o.position, o.quaternion, o.scale));
-  }
-  const baseQ = new THREE.Quaternion();
-  base.decompose(new THREE.Vector3(), baseQ, new THREE.Vector3());
-  const restW = rec(() => new THREE.Quaternion());
-  const world = rec(() => new THREE.Matrix4());
-  const restPos = rec(() => new THREE.Vector3());
-  for (const k of KEYS) {
-    const p = PARENTS[k];
-    const b = m.bones[k];
-    l.compose(k === 'Hips' ? m.restHips : b.position, m.restQ[k], b.scale);
-    world[k].multiplyMatrices(p ? world[p] : base, l);
-    restW[k].multiplyQuaternions(p ? restW[p] : baseQ, m.restQ[k]);
-    restPos[k].setFromMatrixPosition(world[k]);
-  }
+  const sc = new THREE.Vector3();
+  const W = rec(() => new THREE.Quaternion());
+  const pos = rec(() => new THREE.Vector3());
+  for (const k of KEYS) bind.get(k)!.decompose(pos[k], W[k], sc);
   const dir = rec(() => new THREE.Vector3());
   const hinge = rec(() => new THREE.Vector3());
   const seg = (k: BoneKey, child: BoneKey, ref: THREE.Vector3 | null): void => {
-    dir[k].subVectors(restPos[child], restPos[k]).normalize();
+    dir[k].subVectors(pos[child], pos[k]).normalize();
     if (ref) hinge[k].copy(ref).addScaledVector(dir[k], -ref.dot(dir[k])).normalize().crossVectors(dir[k], hinge[k]);
   };
   const back = Z.clone().negate();
@@ -122,15 +105,29 @@ function rigSpace(m: BoneMap, rig: THREE.Object3D): RigSpace {
     seg(`${s}ForeArm`, `${s}Hand`, back);
   }
   seg('Neck', 'Head', null);
-  const hipOff = { Left: restPos.LeftUpLeg.clone().sub(restPos.Hips), Right: restPos.RightUpLeg.clone().sub(restPos.Hips) };
-  const len = (a: BoneKey, b: BoneKey): number => restPos[a].distanceTo(restPos[b]);
-  m.space = {
-    rig, baseQ, baseInv: base.clone().invert(), restW, restPos, dir, hinge, hipOff,
+  const hipOff = { Left: pos.LeftUpLeg.clone().sub(pos.Hips), Right: pos.RightUpLeg.clone().sub(pos.Hips) };
+  const len = (a: BoneKey, b: BoneKey): number => pos[a].distanceTo(pos[b]);
+  const rest: Rest = {
+    W, pos, dir, hinge, hipOff,
     hipMid: hipOff.Left.clone().add(hipOff.Right).multiplyScalar(0.5),
     thigh: { Left: len('LeftUpLeg', 'LeftLeg'), Right: len('RightUpLeg', 'RightLeg') },
     shin: { Left: len('LeftLeg', 'LeftFoot'), Right: len('RightLeg', 'RightFoot') },
-    cur: rec(() => new THREE.Quaternion()),
+    ankleY: Math.min(pos.LeftFoot.y, pos.RightFoot.y),
   };
+  return { bones, rest, space: null, cur: rec(() => new THREE.Quaternion()) };
+}
+
+function rigSpace(m: BoneMap, rig: THREE.Object3D): RigSpace {
+  if (m.space && m.space.rig === rig) return m.space;
+  const base = new THREE.Matrix4();
+  const l = new THREE.Matrix4();
+  for (let o = m.bones.Hips.parent; o !== rig; o = o.parent) {
+    if (!o) throw new Error('Le squelette n’est pas sous le rig');
+    base.premultiply(l.compose(o.position, o.quaternion, o.scale));
+  }
+  const baseQ = new THREE.Quaternion();
+  base.decompose(new THREE.Vector3(), baseQ, new THREE.Vector3());
+  m.space = { rig, baseQ, baseInv: base.invert() };
   return m.space;
 }
 
@@ -174,19 +171,27 @@ function hingeOf(t: THREE.Vector3, s: THREE.Vector3, fb: THREE.Vector3, out: THR
 
 // Membre à deux segments (a → b → c du pantin) : les deux os partagent la charnière du pantin. Laisse dans vT, vS les
 // directions des segments et dans qT la rotation du second os (le pied s'en sert).
-function limb(S: RigSpace, up: BoneKey, low: BoneKey, a: V3, b: V3, c: V3): void {
+function limb(R: Rest, cur: Rec<THREE.Quaternion>, up: BoneKey, low: BoneKey, a: V3, b: V3, c: V3): void {
   diff(vT, a, b);
   diff(vS, b, c);
   hingeOf(vT, vS, vFb, vC);
-  align(S.dir[up], S.hinge[up], vT, vC, qT);
-  S.cur[up].multiplyQuaternions(qT, S.restW[up]);
-  align(S.dir[low], S.hinge[low], vS, vC, qT);
-  S.cur[low].multiplyQuaternions(qT, S.restW[low]);
+  align(R.dir[up], R.hinge[up], vT, vC, qT);
+  cur[up].multiplyQuaternions(qT, R.W[up]);
+  align(R.dir[low], R.hinge[low], vS, vC, qT);
+  cur[low].multiplyQuaternions(qT, R.W[low]);
 }
 
-export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRig: number): void {
+// Sol de chaque allure dans le repère du pantin (null : pas d'appui au sol, le bassin fait foi). Vélo arrêté : le pied
+// côté spectateur est posé sur le sol sous les roues, plus bas que les pieds du pantin.
+const FLOOR: Readonly<Record<Gait, number | null>> = {
+  stand: 0, step: 0, walk: 0, crouch: 0, perch: PERCH.groundY, seated: null, climb: null, pedal: null, mount: null,
+};
+
+// `gait` : allure qui a produit la pose ; sans elle, le bassin est posé tel quel (pas de reprise d'appui au sol).
+export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRig: number, gait?: Gait): void {
+  const R = m.rest;
   const S = rigSpace(m, rig);
-  const W = S.cur;
+  const W = m.cur;
   const legL = pose.legs[0].l < 0 ? pose.legs[0] : pose.legs[1];
   const legR = legL === pose.legs[0] ? pose.legs[1] : pose.legs[0];
   const armL = pose.arms[0].l < 0 ? pose.arms[0] : pose.arms[1];
@@ -196,17 +201,17 @@ export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRi
   // (porte le lean), travers = épaule droite → épaule gauche (porte le shoulderTurn). La colonne se tord entre les deux.
   align(Y, X, vUp.set(0, 1, 0), diff(vLat, legR.hip, legL.hip), qP);
   align(Y, X, diff(vUp, pose.pelvis, pose.neck), diff(vLat, armR.sh, armL.sh), qC);
-  W.Hips.multiplyQuaternions(qP, S.restW.Hips);
-  W.Spine.slerpQuaternions(qP, qC, 1 / 3).multiply(S.restW.Spine);
-  W.Spine1.slerpQuaternions(qP, qC, 2 / 3).multiply(S.restW.Spine1);
-  W.Spine2.multiplyQuaternions(qC, S.restW.Spine2);
-  W.LeftShoulder.multiplyQuaternions(qC, S.restW.LeftShoulder);
-  W.RightShoulder.multiplyQuaternions(qC, S.restW.RightShoulder);
+  W.Hips.multiplyQuaternions(qP, R.W.Hips);
+  W.Spine.slerpQuaternions(qP, qC, 1 / 3).multiply(R.W.Spine);
+  W.Spine1.slerpQuaternions(qP, qC, 2 / 3).multiply(R.W.Spine1);
+  W.Spine2.multiplyQuaternions(qC, R.W.Spine2);
+  W.LeftShoulder.multiplyQuaternions(qC, R.W.LeftShoulder);
+  W.RightShoulder.multiplyQuaternions(qC, R.W.RightShoulder);
   // Cou : segment cou → tête, travers du buste. Tête : repère de tête complet (devant, haut), qui tourne avec headYaw.
-  align(S.dir.Neck, X, diff(vA, pose.neck, pose.head), vLat, qT);
-  W.Neck.multiplyQuaternions(qT, S.restW.Neck);
+  align(R.dir.Neck, X, diff(vA, pose.neck, pose.head), vLat, qT);
+  W.Neck.multiplyQuaternions(qT, R.W.Neck);
   align(Y, Z, set(vA, pose.headFrame.U), set(vB, pose.headFrame.F), qT);
-  W.Head.multiplyQuaternions(qT, S.restW.Head);
+  W.Head.multiplyQuaternions(qT, R.W.Head);
 
   // Jambes : cuisse et tibia dans le plan de flexion du pantin (genou devant), pied sur la cheville → pointe, sans
   // vrille par rapport au tibia. Hauteur relative de chaque cheville (pour poser les pieds au sol).
@@ -214,17 +219,17 @@ export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRi
   for (const s of SIDES) {
     const leg = s === 'Left' ? legL : legR;
     const k = LEGS[s];
-    limb(S, k.up, k.leg, leg.hip, leg.knee, leg.ankle);
+    limb(R, W, k.up, k.leg, leg.hip, leg.knee, leg.ankle);
     vA.copy(X).applyQuaternion(qT);
-    align(S.dir[k.foot], X, diff(vB, leg.ankle, leg.toe), vA, qT);
-    W[k.foot].multiplyQuaternions(qT, S.restW[k.foot]);
-    lowRel[s] = vA.copy(S.hipOff[s]).applyQuaternion(qP).y + vT.y * S.thigh[s] + vS.y * S.shin[s];
+    align(R.dir[k.foot], X, diff(vB, leg.ankle, leg.toe), vA, qT);
+    W[k.foot].multiplyQuaternions(qT, R.W[k.foot]);
+    lowRel[s] = vA.copy(R.hipOff[s]).applyQuaternion(qP).y + vT.y * R.thigh[s] + vS.y * R.shin[s];
   }
   // Bras : épaule → coude → main dans le plan du pantin (coude derrière) ; repli pour un bras tendu : derrière et en bas.
   vFb.set(0, -0.5, -1).applyQuaternion(qC);
   for (const s of SIDES) {
     const arm = s === 'Left' ? armL : armR;
-    limb(S, ARMS[s].up, ARMS[s].low, arm.sh, arm.elb, arm.hand);
+    limb(R, W, ARMS[s].up, ARMS[s].low, arm.sh, arm.elb, arm.hand);
   }
 
   // Rotations locales, de la racine vers les extrémités (DRIVEN suit l'ordre parent avant enfant).
@@ -234,12 +239,12 @@ export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRi
     m.bones[k].quaternion.multiplyQuaternions(qI, W[k]);
   }
 
-  // Bassin : milieu des hanches du rig au `pelvis` du pantin × échelle. Pantin debout, en marche ou accroupi (cheville
-  // d'appui exactement à LIMB.ankle, pieds à y = 0) : la hauteur est reprise pour poser la cheville d'appui du rig au
-  // même niveau, le modèle n'ayant pas les proportions du pantin. Assis, en selle, sur l'échelle : le bassin fait foi.
-  vA.copy(S.hipMid).applyQuaternion(qP);
+  // Bassin : milieu des hanches du rig au `pelvis` du pantin × échelle. Allures au sol (et pied posé du vélo arrêté) :
+  // la hauteur est reprise pour que la cheville la plus basse du rig soit au sol du pantin + la hauteur de cheville du
+  // modèle, celui-ci n'ayant pas les proportions du pantin. Autres allures, ou allure non donnée : le bassin fait foi.
+  vA.copy(R.hipMid).applyQuaternion(qP);
   set(vB, pose.pelvis).multiplyScalar(unitsToRig).sub(vA);
-  const low = Math.min(legL.ankle[1], legR.ankle[1]);
-  if (Math.abs(low - LIMB.ankle) < 1e-6) vB.y = low * unitsToRig - Math.min(lowRel.Left, lowRel.Right);
+  const floor = gait === undefined ? null : FLOOR[gait];
+  if (floor !== null) vB.y = floor * unitsToRig + R.ankleY - Math.min(lowRel.Left, lowRel.Right);
   m.bones.Hips.position.copy(vB).applyMatrix4(S.baseInv);
 }

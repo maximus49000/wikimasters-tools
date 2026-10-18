@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { applyPose, boneMap } from '../../../src/core/citizens/retarget';
-import { poseOf, type ArmPose, type Gait, type Pose } from '../../../src/core/library/figure/skeleton';
+import { PERCH, poseOf, type ArmPose, type Gait, type Pose } from '../../../src/core/library/figure/skeleton';
 import type { V3 } from '../../../src/core/library/figure/geometry';
 import { makeHumanoid } from './fixtures/humanoid';
 
@@ -14,6 +14,8 @@ const yawOf = (i: number): number => (i * Math.PI) / 8;
 const phaseOf = (i: number): number => (i * 2 * Math.PI) / 12;
 // Hauteur du corps synthétique au bassin / hauteur du bassin du pantin debout (jambe tendue + cheville).
 const U = 0.9 / 16.4;
+// Hauteur de cheville du corps synthétique au repos (os Foot).
+const ANKLE = 0.08;
 
 const v = (p: V3): THREE.Vector3 => new THREE.Vector3(p[0], p[1], p[2]);
 const deg = (a: THREE.Vector3, b: THREE.Vector3): number => (a.angleTo(b) * 180) / Math.PI;
@@ -56,7 +58,7 @@ describe('applyPose', () => {
         for (const y of [0, 4, 8, 12])
           for (const ph of [0, 3, 6, 9]) {
             const p = poseOf(yawOf(y), phaseOf(ph), g, { arms: a });
-            applyPose(mesh, map, p, U);
+            applyPose(mesh, map, p, U, g);
             mesh.updateMatrixWorld(true);
             for (const [b0, b1, p0, p1] of segments(p)) {
               const d = deg(at(b1).sub(at(b0)), p1.clone().sub(p0));
@@ -76,6 +78,8 @@ describe('applyPose', () => {
       // Devant de la tête au repos = +z.
       const f = new THREE.Vector3(0, 0, 1).applyQuaternion(head.getWorldQuaternion(new THREE.Quaternion()));
       expect(deg(f, v(p.headFrame.F))).toBeLessThan(1);
+      const u = new THREE.Vector3(0, 1, 0).applyQuaternion(head.getWorldQuaternion(new THREE.Quaternion()));
+      expect(deg(u, v(p.headFrame.U))).toBeLessThan(1);
     }
   });
 
@@ -146,22 +150,59 @@ describe('applyPose', () => {
     expect(at('LeftUpLeg').x).toBeGreaterThan(0);
   });
 
-  it('pieds au sol debout et en marche, bassin au pelvis × échelle assis', () => {
+  it('pieds au sol selon l allure : cheville d appui du rig à sa hauteur de repos', () => {
     const { mesh, map, at } = rig();
-    for (const g of ['stand', 'walk', 'crouch'] as Gait[])
-      for (let ph = 0; ph < 12; ph += 3) {
-        const p = poseOf(yawOf(4), phaseOf(ph), g);
-        applyPose(mesh, map, p, U);
+    for (const g of ['stand', 'step', 'walk', 'crouch'] as Gait[])
+      for (let ph = 0; ph < 12; ph++) {
+        applyPose(mesh, map, poseOf(yawOf(4), phaseOf(ph), g), U, g);
         mesh.updateMatrixWorld(true);
         const low = Math.min(at('LeftFoot').y, at('RightFoot').y);
-        const want = Math.min(...p.legs.map((l) => l.ankle[1])) * U;
-        expect(Math.abs(low - want), `${g} ${ph}`).toBeLessThan(1e-6);
+        expect(Math.abs(low - ANKLE), `${g} ${ph}`).toBeLessThan(1e-6);
       }
-    const p = poseOf(yawOf(4), 0, 'seated');
-    applyPose(mesh, map, p, U);
+    // Vélo arrêté : le pied posé (cheville la plus basse) sur le sol sous les roues.
+    for (const y of [0, 4, 8, 12]) {
+      applyPose(mesh, map, poseOf(yawOf(y), 0, 'perch', { arms: 'handlebar' }), U, 'perch');
+      mesh.updateMatrixWorld(true);
+      const low = Math.min(at('LeftFoot').y, at('RightFoot').y);
+      expect(Math.abs(low - (PERCH.groundY * U + ANKLE)), `perch ${y}`).toBeLessThan(1e-6);
+    }
+  });
+
+  it('assis, en selle, sur l échelle ou sans allure : le bassin fait foi', () => {
+    const { mesh, map, at } = rig();
+    for (const g of ['seated', 'climb', 'pedal', 'mount', 'walk'] as Gait[]) {
+      const p = poseOf(yawOf(4), phaseOf(3), g);
+      applyPose(mesh, map, p, U, g === 'walk' ? undefined : g);
+      mesh.updateMatrixWorld(true);
+      const mid = at('LeftUpLeg').add(at('RightUpLeg')).multiplyScalar(0.5);
+      expect(mid.distanceTo(v(p.pelvis).multiplyScalar(U)), g).toBeLessThan(1e-6);
+    }
+  });
+
+  it('sur l échelle, la hauteur du bassin suit le pantin sans à-coup', () => {
+    const { mesh, map, at } = rig();
+    const gaps: number[] = [];
+    for (let ph = 0; ph < 12; ph++) {
+      const p = poseOf(yawOf(12), phaseOf(ph), 'climb');
+      applyPose(mesh, map, p, U, 'climb');
+      mesh.updateMatrixWorld(true);
+      gaps.push(at('Hips').y - p.pelvis[1] * U);
+    }
+    for (const g of gaps) expect(Math.abs(g - gaps[0]!)).toBeLessThan(1e-6);
+  });
+
+  it('boneMap lit la pose de liaison : même résultat après un applyPose', () => {
+    const { mesh, map, at } = rig();
+    const names = ['Hips', 'Head', 'LeftHand', 'RightHand', 'LeftFoot', 'RightToeBase'];
+    const p = poseOf(yawOf(5), phaseOf(7), 'walk', { arms: 'pour', headYaw: 0.4 });
+    applyPose(mesh, map, p, U, 'walk');
     mesh.updateMatrixWorld(true);
-    const mid = at('LeftUpLeg').add(at('RightUpLeg')).multiplyScalar(0.5);
-    expect(mid.distanceTo(v(p.pelvis).multiplyScalar(U))).toBeLessThan(1e-6);
+    const before = names.map((n) => at(n));
+    applyPose(mesh, map, poseOf(yawOf(9), phaseOf(2), 'crouch', { arms: 'overhead' }), U, 'crouch');
+    const later = boneMap(mesh.skeleton);
+    applyPose(mesh, later, p, U, 'walk');
+    mesh.updateMatrixWorld(true);
+    names.forEach((n, i) => expect(at(n).distanceTo(before[i]!), n).toBeLessThan(1e-9));
   });
 
   it('marche aussi sous un nœud « Armature » tourné et mis à l échelle', () => {
@@ -181,11 +222,11 @@ describe('applyPose', () => {
     const map2 = boneMap(mesh.skeleton);
     expect(map2).not.toBe(map);
     const p = poseOf(yawOf(3), phaseOf(2), 'walk', { arms: 'pour' });
-    applyPose(mesh, map2, p, U);
+    applyPose(mesh, map2, p, U, 'walk');
     mesh.updateMatrixWorld(true);
     for (const [b0, b1, p0, p1] of segments(p)) expect(deg(at(b1).sub(at(b0)), p1.clone().sub(p0)), b0).toBeLessThan(3);
     const low = Math.min(at('LeftFoot').y, at('RightFoot').y);
-    expect(low).toBeCloseTo(Math.min(...p.legs.map((l) => l.ankle[1])) * U, 6);
+    expect(low).toBeCloseTo(ANKLE, 6);
   });
 
   it('accepte les noms « mixamorig:Hips » et sans préfixe', () => {

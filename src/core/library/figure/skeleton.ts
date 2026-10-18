@@ -24,7 +24,7 @@ export const PEDAL = { f: 3.2, d: PEDAL_D, r: 2.4 } as const;
 const RIDE_LEAN: Readonly<Record<'pedal' | 'mount' | 'perch', number>> = { pedal: 22, mount: 4, perch: 14 };
 // Vélo arrêté : bassin descendu (glissé vers le cadre), sol sous les roues dans le repère du pantin (vélo de ghibli-cyclist :
 // pédalier 5,6 unités du vélo au-dessus du sol, pantin à l'échelle 0,7), pied au sol un peu en avant de la hanche.
-const PERCH = { drop: 2.5, groundY: RIDE_HIP - PEDAL_D - 5.6 / 0.7, footF: 1.6 } as const;
+export const PERCH = { drop: 2.5, groundY: RIDE_HIP - PEDAL_D - 5.6 / 0.7, footF: 1.6 } as const;
 // En selle (cheval, moto) : cuisse vers l'avant et le bas, tibia qui retombe d'aplomb, genoux écartés de part et d'autre.
 const MOUNT_THIGH = 50;
 const MOUNT_SPREAD = 1.6;
