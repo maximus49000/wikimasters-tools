@@ -2,7 +2,7 @@ import { INK, TAU } from '../cel';
 import { L, lightOf, shadeOf, type CelOpts } from '../shop/cel';
 import type { TintedCtx } from '../shop/ctx';
 import { FLAG_CYCLE_S, FLAG_FRAMES } from './install';
-import { ball, celD, disc, ED, flagArt, groundShadow, PD, RD, RRD, tube } from './kit';
+import { ball, celD, disc, ED, FLAG_AMP, flagArt, groundShadow, PD, RD, RRD, tube } from './kit';
 import { registerProps, type PropArgs, type PropPaint } from './index';
 
 // Cortège du 14 juillet cellulo (G5, tâche 8), porté de la maquette validée (docs/superpowers/maquettes/g5-fetes/index.html :
@@ -19,6 +19,7 @@ const RED = '#C0302B';
 const BRASS = '#D8B04A';
 const POLE = '#6B5B4A';
 const BLACK = '#1E1A18';
+const WOOD = '#D9B37A';
 const MANE = '#2A1A10';
 const LEATHER = '#3A2416';
 const op = (lw: number, s: number, sx = 0.68, l = 0.22, lx = 0.18): CelOpts => ({ lw, s, sx, l, lx });
@@ -193,7 +194,7 @@ function paradeFlag(x: TintedCtx, a: PropArgs, p: PropPaint): void {
 }
 function paradeFlagBox(a: PropArgs): Box {
   const { w, h, pole, still } = flagArgs(a);
-  const amp = still ? 0 : h * 0.14;
+  const amp = still ? 0 : h * (FLAG_AMP + 0.01);
   const x0 = -w - 0.6;
   const x1 = pole > 0 ? 1.4 : 0.6;
   const y0 = Math.min(-amp - 0.6, pole > 0 ? -3.6 : 0);
@@ -287,7 +288,9 @@ function headgear(x: TintedCtx, a: PropArgs): void {
 // ---------- Instruments de fanfare (InstrumentArt : repère du marcheur, épaule à (0, −26) ; l'hôte pose l'image à la main du
 // pantin avec le décalage de l'objet SVG). Cuivres BRASS cernés + rehaut ; mêmes pivots et amplitudes que le classique :
 // mailloche de la grosse caisse −15° + 15°·cos(2πt) sur 1 s, baguette de la caisse claire −11° + 11°·cos(4πt) sur 0,5 s, canne
-// 7,5° − 17,5°·cos(πt) sur 2 s, toutes autour de l'épaule ; cuivres immobiles (une seule image). ----------
+// 7,5° − 17,5°·cos(πt) sur 2 s, toutes autour de l'épaule ; cuivres immobiles (une seule image). Retouches après comparaison
+// avec la maquette (tâche 15) : baguette et mailloche en bois clair cerné, plus longues que la main ; canne tenue à mi-hauteur
+// et penchée vers l'avant (le haut de la tige reste devant le shako à −10°, au lieu de passer derrière). ----------
 type Instrument = 'tuba' | 'trumpet' | 'bass-drum' | 'snare' | 'bugle' | 'baton';
 const INSTRUMENTS: readonly Instrument[] = ['tuba', 'trumpet', 'bass-drum', 'snare', 'bugle', 'baton'];
 export const INSTRUMENT_CYCLE_S: Readonly<Partial<Record<Instrument, number>>> = { 'bass-drum': 1, snare: 0.5, baton: 2 };
@@ -296,10 +299,10 @@ const instrumentKind = (a: PropArgs): Instrument => (INSTRUMENTS as readonly str
 const INSTRUMENT_BOX: Record<Instrument, Box> = {
   tuba: [-2.5, -46, 11.6, 31],
   trumpet: [-0.5, -35.5, 18, 10],
-  'bass-drum': [-3, -34.6, 18, 22.3],
-  snare: [-0.5, -27, 12.5, 13.5],
+  'bass-drum': [-3, -36.2, 18.5, 23.9],
+  snare: [-0.5, -27, 15, 13.5],
   bugle: [-0.5, -33.6, 15.2, 10.2],
-  baton: [-0.5, -57, 23.5, 32],
+  baton: [-0.5, -57, 27, 32],
 };
 function instrument(x: TintedCtx, a: PropArgs, p: PropPaint): void {
   const kind = instrumentKind(a);
@@ -364,8 +367,9 @@ function instrument(x: TintedCtx, a: PropArgs, p: PropPaint): void {
       ball(x, 6, -21, 2, BLUE, 0.3);
       swing(-15 + 15 * Math.cos(TAU * t), () => {
         arm(9, -30);
-        tube(x, 9, -30, 12, -26, 1, '#6B4A2A', { lw: 0.3 });
-        ball(x, 12.4, -25.6, 1.6, WHITE, 0.3);
+        // Mailloche : manche de bois clair dégagé de la tunique, tête de feutre blanche cernée.
+        tube(x, 8.2, -31.5, 12.6, -25.4, 1.1, WOOD, { lw: 0.35 });
+        ball(x, 13, -24.9, 1.9, WHITE, 0.4);
       });
       break;
     case 'snare':
@@ -384,7 +388,9 @@ function instrument(x: TintedCtx, a: PropArgs, p: PropPaint): void {
       x.stroke();
       swing(-11 + 11 * Math.cos(TAU * t * 2), () => {
         arm(5, -21);
-        tube(x, 5, -21, 9, -20, 0.8, '#6B4A2A', { lw: 0.3 });
+        // Baguette : bois clair cerné qui dépasse la main des deux côtés, olive au bout.
+        tube(x, 4.4, -21.6, 11.6, -19.6, 0.9, WOOD, { lw: 0.35 });
+        ball(x, 11.9, -19.5, 0.7, lightOf(WOOD, 0.2), 0.3);
       });
       break;
     case 'bugle':
@@ -398,12 +404,19 @@ function instrument(x: TintedCtx, a: PropArgs, p: PropPaint): void {
       x.fillRect(9.5, -27.2, 2, 0.8);
       break;
     case 'baton':
-      // Canne du tambour-major, levée et battue au pas.
+      // Canne du tambour-major, levée et battue au pas : tenue à mi-hauteur (embout laiton sous la main), tige noire penchée
+      // vers l'avant jusqu'au pommeau doré, bagues laiton perpendiculaires à la tige.
       swing(7.5 - 17.5 * Math.cos((TAU * t) / 2), () => {
         arm(4, -36);
-        tube(x, 4, -36, 9, -52, 1, BLACK, { lw: 0.3 });
-        ball(x, 9.3, -53, 1.8, BRASS, 0.35);
-        for (let k = 0; k < 4; k++) L(x, 4.8 + k * 1.2, -38.6 - k * 3.8, 5.6 + k * 1.2, -38.8 - k * 3.8, BRASS, 0.5);
+        tube(x, 3.2, -33.2, 13, -50.5, 1.2, BLACK, { lw: 0.35 });
+        ball(x, 3, -32.9, 0.8, BRASS, 0.3);
+        for (let k = 1; k <= 4; k++) {
+          const f = k / 5;
+          const px = 3.2 + 9.8 * f;
+          const py = -33.2 - 17.3 * f;
+          L(x, px - 0.8, py - 0.45, px + 0.8, py + 0.45, BRASS, 0.6);
+        }
+        ball(x, 13.5, -51.6, 2.1, BRASS, 0.35);
       });
       break;
   }

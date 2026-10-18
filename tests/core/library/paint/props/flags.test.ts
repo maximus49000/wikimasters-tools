@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { propKey } from '../../../../../src/content/prop/prop-host';
 import { PROPS } from '../../../../../src/core/library/paint/props/index';
 import { FLAG_CYCLE_S, FLAG_FRAMES } from '../../../../../src/core/library/paint/props/install';
-import { flagArt } from '../../../../../src/core/library/paint/props/kit';
+import { FLAG_AMP, flagArt } from '../../../../../src/core/library/paint/props/kit';
 import { recordingCtx } from '../recording-ctx';
 import { tintedCtx } from '../../../../../src/core/library/paint/shop/ctx';
 import { touched } from './replay';
@@ -83,6 +83,18 @@ describe('drapeaux animés', () => {
     const k3 = touched(paint('lamp-flag', 3).ops).filter(([x, y]) => x <= -11 && y < -66);
     const c3 = cloth((3 / FLAG_FRAMES) * FLAG_CYCLE_S).filter(([, y]) => y < 5).map(([x, y]) => [-11 - x, -71 + y] as [number, number]);
     for (const [x, y] of c3) expect(k3.some(([px, py]) => Math.abs(px - x) < 1e-6 && Math.abs(py - y) < 1e-6), `(${x}, ${y})`).toBe(true);
+  });
+  it('la vague se lit (tâche 15) : le bord libre du tissu s’écarte d’au moins 0,15 h au cours du cycle ; `FLAG_AMP` la borne', () => {
+    let worst = 0;
+    for (let k = 0; k < FLAG_FRAMES; k++) {
+      const c = recordingCtx();
+      flagArt(c, { w: 10, h: 7, t: (k / FLAG_FRAMES) * FLAG_CYCLE_S, wave: true, phase: 0 });
+      for (const [x, y] of c.points) {
+        if (x > 9.9 && y < 3.5) worst = Math.max(worst, Math.abs(y));
+        if (y < 3.5) expect(Math.abs(y)).toBeLessThanOrEqual(7 * FLAG_AMP + 1e-9);
+      }
+    }
+    expect(worst).toBeGreaterThanOrEqual(7 * 0.15);
   });
   it('rien de lumineux : glowing jamais appelé, même allumé', () => {
     for (const id of ['lamp-flag', 'door-flag']) {

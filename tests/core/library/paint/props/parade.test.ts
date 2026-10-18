@@ -121,4 +121,11 @@ describe('14 juillet cellulo (cheval, drapeau de parade, instruments, fusil, coi
   it('rien de lumineux : glowing jamais appelé, même allumé', () => {
     for (const [id, list] of Object.entries(ARGS)) expect(glows(id, list[0]!), id).toBe(0);
   });
+  it('retouches de la tâche 15 : à la pose 0 (−10°, la seule dans l’app) le haut de la canne reste devant le shako (x > 4,5) ; la baguette dépasse la main (x > 11) ; la mailloche monte au-dessus de la caisse', () => {
+    const cane = pts('instrument', { kind: 'baton' }, 0);
+    const topY = Math.min(...cane.map(([, y]) => y));
+    expect(cane.filter(([, y]) => y < topY + 4).every(([x]) => x > 4.5)).toBe(true);
+    expect(Math.max(...pts('instrument', { kind: 'snare' }, 0).map(([x]) => x))).toBeGreaterThan(11);
+    expect(Math.min(...pts('instrument', { kind: 'bass-drum' }, 0).map(([, y]) => y))).toBeLessThan(-31);
+  });
 });

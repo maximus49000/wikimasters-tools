@@ -66,11 +66,21 @@ export function paintHillHouse(ctx: PaintCtx, h: HillHouse): void {
   fillRect(ctx, light(rc, 0.35), x - o, top, w * 0.5 + o, rh);
   fillRect(ctx, shade(rc, 0.35), x + w * 0.72, top, w * 0.28 + o, rh);
   ctx.restore();
-  ctx.strokeStyle = ink(0.85 - hz);
-  ctx.lineWidth = 0.6;
+  // Trait du toit un peu plus ferme que celui du mur (tâche 15 : la maison visitée par le père Noël se lisait mal la nuit).
+  ctx.strokeStyle = ink(0.95 - hz);
+  ctx.lineWidth = 0.8;
   ctx.beginPath();
   pts.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
   ctx.closePath();
+  ctx.stroke();
+  // Rehaut net du faîte (le soleil vient du haut à gauche) : sur le faîte plat des croupes et mansardes, sur le versant
+  // gauche des pignons.
+  ctx.strokeStyle = rgba(light(rc, 0.55), 0.9);
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(pts[0]![0] + 0.4, pts[0]![1] - 0.4);
+  ctx.lineTo(pts[1]![0], pts[1]![1] + 0.5);
+  if (pts.length === 4) ctx.lineTo(pts[2]![0], pts[2]![1] + 0.5);
   ctx.stroke();
   fillRect(ctx, shade(wall, 0.42), x, top + rh, w, 2 * s);
   // Lucarnes et cheminée.
@@ -81,9 +91,17 @@ export function paintHillHouse(ctx: PaintCtx, h: HillHouse): void {
     }
   }
   if (h.chimney !== null) {
+    // Mêmes coordonnées que `chimneyHole` / `hillChimneyTop` (city/santa.ts : le père Noël y descend, les mouettes s'y
+    // posent) : seul l'aspect change — brique un ton plus sombre, face droite à l'ombre, trait encré, couronnement.
     const cx = x + w * h.chimney;
-    fillRect(ctx, haze(BRICK, hz), cx, top - 4 * s + rh * 0.4, 3 * s, 6 * s);
-    fillRect(ctx, ink(0.7 - hz), cx - 0.4, top - 4 * s + rh * 0.4, 3.8 * s, 0.8);
+    const cy = top - 4 * s + rh * 0.4;
+    const brick = haze(shade(BRICK, 0.12), hz);
+    fillRect(ctx, brick, cx, cy, 3 * s, 6 * s);
+    fillRect(ctx, shade(brick, 0.38), cx + 2 * s, cy, s, 6 * s);
+    ctx.strokeStyle = ink(0.9 - hz);
+    ctx.lineWidth = 0.6;
+    ctx.strokeRect(cx, cy, 3 * s, 6 * s);
+    fillRect(ctx, ink(0.7 - hz), cx - 0.4, cy, 3.8 * s, 0.8);
   }
   // Fenêtres (bleutées ; le fond n'a pas de fenêtres allumées).
   ctx.fillStyle = rgba(haze(GLASS_FAR, hz + 0.2), 1);
