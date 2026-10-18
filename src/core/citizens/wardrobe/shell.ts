@@ -80,7 +80,7 @@ export function shell(A: BodyInfo, field: Field, off: number | Field, color: str
     else { const ab = cut(b, a), ac = cut(c, a); ind.push(ab, vert(b), vert(c), ab, vert(c), ac); }
   }
   if (opts.reshape) for (let i = 0; i < pos.length; i += 3) opts.reshape(pos, i, bind);
-  if (opts.soft) softenWeights(pos, si, sw, ind, opts.soft);
+  if (opts.soft) softenWeights(pos, si, sw, ind, opts.soft, g);
   smooth(nor, ind, 6);
   if (opts.lining) addLining(pos, nor, si, sw, bind, ind, fo, opts.lining * A.H, LINING_INSET * A.H);
   const mesh = skinned(A, pos, nor, si, sw, ind, color, THREE.FrontSide, opts.pattern);
@@ -92,40 +92,120 @@ export function shell(A: BodyInfo, field: Field, off: number | Field, color: str
 // douceur. Avec les poids secs du corps, quand les bras retombent de la pose en T, la coque se repliait sur elle-même
 // derrière les épaules et sous les omoplates : les triangles retournés, peints en noir par le contour encré, faisaient
 // des « V » sombres dans le dos des chemises et des pulls.
-export function softenWeights(pos: number[], si: number[], sw: number[], ind: number[], iters: number): void {
-  const n = pos.length / 3, key = new Map<string, number>(), grp = new Int32Array(n);
+// Calcul dense (synchrone dans l'habillage, il coûtait 70 à 160 ms par tenue avec des Map par sommet) : groupes de sommets
+// soudés × os réellement utilisés dans un Float32Array, deux tampons échangés à chaque passe, voisins en tableau compact.
+// `owner` (géométrie du corps de base) : résultat gardé pour les mêmes entrées (positions, poids, triangles, passes) — il ne
+// dépend ni de la couleur ni du motif : la même coupe sur la même base n'est lissée qu'une fois.
+export function softenWeights(pos: number[], si: number[], sw: number[], ind: number[], iters: number, owner?: object): void {
+  const n = pos.length / 3;
+  let bucket: Map<string, { si: Uint16Array; sw: Float32Array }> | undefined;
+  let ck = '';
+  if (owner) {
+    ck = softKey(pos, si, sw, ind, iters);
+    bucket = softCache.get(owner);
+    const hit = bucket?.get(ck);
+    if (hit) {
+      for (let i = 0; i < n * 4; i++) { si[i] = hit.si[i]!; sw[i] = hit.sw[i]!; }
+      return;
+    }
+  }
+  // Sommets confondus (coutures de texture) : un groupe par position arrondie au 1/10 000.
+  const key = new Map<string, number>(), grp = new Int32Array(n);
   for (let i = 0; i < n; i++) {
     const k = `${Math.round(pos[i * 3]! * 1e4)},${Math.round(pos[i * 3 + 1]! * 1e4)},${Math.round(pos[i * 3 + 2]! * 1e4)}`;
     let g = key.get(k);
     if (g === undefined) { g = key.size; key.set(k, g); }
     grp[i] = g;
   }
-  const G = key.size, nb = Array.from({ length: G }, () => new Set<number>()), rep = new Int32Array(G).fill(-1);
+  const G = key.size, rep = new Int32Array(G).fill(-1);
   for (let i = 0; i < n; i++) if (rep[grp[i]!]! < 0) rep[grp[i]!] = i;
+  // Os utilisés (poids > 0 d'un sommet représentant) : colonnes compactes.
+  let maxBone = 0;
+  for (let i = 0; i < si.length; i++) if (si[i]! > maxBone) maxBone = si[i]!;
+  const col = new Int32Array(maxBone + 1).fill(-1), bones: number[] = [];
+  for (let g = 0; g < G; g++) {
+    const i = rep[g]!;
+    for (let k = 0; k < 4; k++) if (sw[i * 4 + k]! > 0 && col[si[i * 4 + k]!]! < 0) { col[si[i * 4 + k]!] = bones.length; bones.push(si[i * 4 + k]!); }
+  }
+  const B = bones.length;
+  // Voisins de chaque groupe (lui-même compris s'il est sur un triangle dégénéré), sans doublon : tableau compact (CSR).
+  const deg = new Int32Array(G + 1);
+  for (let k = 0; k < ind.length; k += 3) { deg[grp[ind[k]!]!]! += 2; deg[grp[ind[k + 1]!]!]! += 2; deg[grp[ind[k + 2]!]!]! += 2; }
+  const at = new Int32Array(G + 1);
+  for (let g = 0; g < G; g++) at[g + 1] = at[g]! + deg[g]!;
+  const raw = new Int32Array(at[G]!), fill = at.slice(0, G);
   for (let k = 0; k < ind.length; k += 3) {
     const a = grp[ind[k]!]!, b = grp[ind[k + 1]!]!, c = grp[ind[k + 2]!]!;
-    nb[a]!.add(b).add(c); nb[b]!.add(a).add(c); nb[c]!.add(a).add(b);
+    raw[fill[a]!++] = b; raw[fill[a]!++] = c;
+    raw[fill[b]!++] = a; raw[fill[b]!++] = c;
+    raw[fill[c]!++] = a; raw[fill[c]!++] = b;
   }
-  let W: Map<number, number>[] = Array.from({ length: G }, (_, g) => {
-    const m = new Map<number, number>(), i = rep[g]!;
-    for (let k = 0; k < 4; k++) { const w = sw[i * 4 + k]!; if (w > 0) m.set(si[i * 4 + k]!, (m.get(si[i * 4 + k]!) ?? 0) + w); }
-    return m;
-  });
+  const off = new Int32Array(G + 1), nbr = new Int32Array(at[G]!), mark = new Int32Array(G).fill(-1);
+  let m = 0;
+  for (let g = 0; g < G; g++) {
+    off[g] = m;
+    for (let e = at[g]!; e < at[g + 1]!; e++) { const j = raw[e]!; if (mark[j] !== g) { mark[j] = g; nbr[m++] = j; } }
+  }
+  off[G] = m;
+  // Poids par groupe (ceux de son sommet représentant, os en double additionnés), puis passes : moitié de soi, moitié de la
+  // moyenne des voisins.
+  let W = new Float32Array(G * B), O = new Float32Array(G * B);
+  for (let g = 0; g < G; g++) {
+    const i = rep[g]!;
+    for (let k = 0; k < 4; k++) { const w = sw[i * 4 + k]!; if (w > 0) W[g * B + col[si[i * 4 + k]!]!]! += w; }
+  }
   for (let it = 0; it < iters; it++) {
-    W = W.map((m, g) => {
-      const L = nb[g]!;
-      if (!L.size) return m;
-      const o = new Map<number, number>();
-      for (const [b, w] of m) o.set(b, w * 0.5);
-      for (const j of L) for (const [b, w] of W[j]!) o.set(b, (o.get(b) ?? 0) + (w * 0.5) / L.size);
-      return o;
-    });
+    for (let g = 0; g < G; g++) {
+      const o = g * B, L = off[g + 1]! - off[g]!;
+      if (L === 0) { for (let b = 0; b < B; b++) O[o + b] = W[o + b]!; continue; }
+      for (let b = 0; b < B; b++) O[o + b] = W[o + b]! * 0.5;
+      const f = 0.5 / L;
+      for (let e = off[g]!; e < off[g + 1]!; e++) {
+        const r = nbr[e]! * B;
+        for (let b = 0; b < B; b++) { const w = W[r + b]!; if (w > 0) O[o + b] = O[o + b]! + w * f; }
+      }
+    }
+    const t = W; W = O; O = t;
+  }
+  // Quatre os les plus lourds par groupe (à égalité : le premier rencontré), normalisés ; copiés sur chaque sommet du groupe.
+  const outI = new Uint16Array(G * 4), outW = new Float32Array(G * 4), bi = [0, 0, 0, 0], bw = [0, 0, 0, 0];
+  for (let g = 0; g < G; g++) {
+    bi[0] = bi[1] = bi[2] = bi[3] = -1; bw[0] = bw[1] = bw[2] = bw[3] = 0;
+    for (let b = 0; b < B; b++) {
+      const w = W[g * B + b]!;
+      if (!(w > 0) || (bi[3]! >= 0 && w <= bw[3]!)) continue;
+      let p = 3;
+      while (p > 0 && (bi[p - 1]! < 0 || w > bw[p - 1]!)) { bi[p] = bi[p - 1]!; bw[p] = bw[p - 1]!; p--; }
+      bi[p] = b; bw[p] = w;
+    }
+    const sum = bw[0]! + bw[1]! + bw[2]! + bw[3]! || 1;
+    for (let k = 0; k < 4; k++) { outI[g * 4 + k] = bi[k]! >= 0 ? bones[bi[k]!]! : 0; outW[g * 4 + k] = bw[k]! / sum; }
   }
   for (let i = 0; i < n; i++) {
-    const best = [...W[grp[i]!]!].sort((a, b) => b[1] - a[1]).slice(0, 4);
-    const sum = best.reduce((t, [, w]) => t + w, 0) || 1;
-    for (let k = 0; k < 4; k++) { si[i * 4 + k] = best[k]?.[0] ?? 0; sw[i * 4 + k] = (best[k]?.[1] ?? 0) / sum; }
+    const g = grp[i]!;
+    for (let k = 0; k < 4; k++) { si[i * 4 + k] = outI[g * 4 + k]!; sw[i * 4 + k] = outW[g * 4 + k]!; }
   }
+  if (owner) {
+    if (!bucket) softCache.set(owner, (bucket = new Map()));
+    if (bucket.size >= SOFT_CACHE_MAX) bucket.delete(bucket.keys().next().value as string);
+    bucket.set(ck, { si: Uint16Array.from(si.slice(0, n * 4)), sw: Float32Array.from(sw.slice(0, n * 4)) });
+  }
+}
+// Résultats de softenWeights par corps de base (libérés avec lui), au plus SOFT_CACHE_MAX coupes par base.
+const softCache = new WeakMap<object, Map<string, { si: Uint16Array; sw: Float32Array }>>();
+const SOFT_CACHE_MAX = 64;
+// Empreinte des entrées (deux hachages 32 bits indépendants, tailles) : positions au millionième, poids au dix-millionième.
+function softKey(pos: number[], si: number[], sw: number[], ind: number[], iters: number): string {
+  let h1 = 0x811c9dc5, h2 = 0x9747b28c;
+  const mix = (x: number): void => {
+    h1 = Math.imul(h1 ^ x, 0x01000193);
+    h2 = Math.imul(h2 ^ x, 0x5bd1e995);
+    h2 ^= h2 >>> 15;
+  };
+  for (let i = 0; i < pos.length; i++) mix(Math.round(pos[i]! * 1e6) | 0);
+  for (let i = 0; i < si.length; i++) { mix(si[i]! | 0); mix(Math.round(sw[i]! * 1e7) | 0); }
+  for (let i = 0; i < ind.length; i++) mix(ind[i]! | 0);
+  return `${iters}|${pos.length}|${ind.length}|${(h1 >>> 0).toString(36)}|${(h2 >>> 0).toString(36)}`;
 }
 // Passes de lissage des poids des hauts et du gilet (pas des pantalons : le genou plie sec, la jambe ressortirait).
 export const SOFT = 6;
