@@ -1,11 +1,12 @@
-import { PODIUM_H, SKYLINE_GROUND, citySkyline, hashString, mulberry32, type Building, type Lamp, type Podium } from '../scene-world';
-import { BUILDING_STRETCH, GROUND_FLOOR, cityMetrics } from './metrics';
+import { PODIUM_H, citySkyline, hashString, mulberry32, type Building } from '../scene-world';
+import { BUILDING_STRETCH, cityMetrics } from './metrics';
+import { facadeInputs, facadeLayout, podiumLayout, type FacadeLayout, type FacadeWindow, type Home, type PodiumLayout } from './facade-layout';
 
-// Façades de la scène Ville, dérivées de `citySkyline` SANS en changer le tirage (mêmes largeurs, hauteurs et fenêtres) :
+// Façades de la scène Ville, dérivées de `citySkyline` SANS en changer le tirage (mêmes largeurs, hauteurs, socles) :
 // - les immeubles sont plus hauts d'un facteur BUILDING_STRETCH (proportions avec les passants et les entrées) ;
-//   les fenêtres tirées par `citySkyline` restent en haut, à leur espacement, et les étages ajoutés en bas reçoivent
-//   des fenêtres tirées à part (générateur propre à l'immeuble), en laissant un rez-de-chaussée sans fenêtre pour l'entrée ;
-// - les immeubles du fond reçoivent quelques fenêtres « dissipées » (petites, peu nombreuses), elles aussi tirées à part.
+// - les fenêtres du premier plan sont celles de la mise en page en travées (facade-layout.ts : étages, logements, cage
+//   d'escalier, lucarnes) ; les lampes tirées par `citySkyline` ne sont plus dessinées (elles restent tirées) ;
+// - les immeubles du fond reçoivent quelques fenêtres « dissipées » (petites, peu nombreuses), tirées à part.
 // Constantes déplacées dans metrics.ts (cassent un cycle d'import avec facade-layout.ts), réexportées ici.
 export { BUILDING_STRETCH, GROUND_FLOOR } from './metrics';
 // Plafond de fenêtres dessinées par immeuble du fond (coût mobile : quelques dizaines de nœuds par zone de 360 px).
@@ -13,32 +14,9 @@ export const FAR_WINDOWS_MAX = 8;
 export const FAR_WINDOW = { w: 3.5, h: 5 } as const;
 
 export type FarWindow = { x: number; y: number; u: number; blue: boolean };
-export type Facade = Building & { farWindows: FarWindow[] };
-
-// Bas des étages d'un immeuble : haut du socle pour une tour de jumeaux, haut du rez-de-chaussée sinon.
-const floorsBottom = (b: Building, ground: number): number => ground - (b.podium ? PODIUM_H : GROUND_FLOOR);
-
-// Fenêtres des étages ajoutés sous la grille d'origine (même grille : colonnes de 10 px, rangées de 14 px, fenêtres 5 × 7).
-export function extraFloorWindows(b: Building, ground: number, seed: number): Lamp[] {
-  const top = ground - b.h * BUILDING_STRETCH;
-  const rows = Math.floor(b.h / 14);
-  const cols = Math.floor(b.w / 10);
-  const rng = mulberry32(seed ^ hashString('extra-floors') ^ Math.round(b.x * 8));
-  const out: Lamp[] = [];
-  for (let r = rows; top + 4 + r * 14 + 7 <= floorsBottom(b, ground); r++) {
-    for (let c = 0; c < cols; c++) out.push({ x: b.x + 4 + c * 10, y: top + 4 + r * 14, u: rng(), blue: rng() < 0.15 });
-  }
-  return out;
-}
-
-// Étage du socle des jumeaux : une rangée de fenêtres 5 × 7 au pas de 10, centrée sur la largeur du socle.
-export function podiumWindows(p: Podium, ground: number, seed: number): Lamp[] {
-  const n = Math.floor((p.w - 6) / 10);
-  const x0 = p.x + (p.w - (n * 10 - 5)) / 2;
-  const rng = mulberry32(seed ^ hashString('podium-floor') ^ Math.round(p.x * 8));
-  const y = ground - PODIUM_H + (PODIUM_H - GROUND_FLOOR - 7) / 2;
-  return Array.from({ length: n }, (_, i) => ({ x: x0 + i * 10, y, u: rng(), blue: rng() < 0.15 }));
-}
+// lamps : fenêtres de la mise en page puis, sur la 1re tour d'un jumeau, celles du socle ; `home` indexe `homes` (logements
+// de la façade puis du socle). Immeubles du fond : layout null, lamps vides, farWindows non cachées par le premier plan.
+export type Facade = Omit<Building, 'lamps'> & { lamps: FacadeWindow[]; homes: Home[]; farWindows: FarWindow[]; layout: FacadeLayout | null; podiumLayout: PodiumLayout | null };
 
 // Quelques fenêtres d'un immeuble du fond, réparties dans sa moitié haute (le bas est caché par le premier plan).
 export function farWindows(b: Building, ground: number, seed: number): FarWindow[] {
@@ -59,21 +37,66 @@ export function farWindows(b: Building, ground: number, seed: number): FarWindow
   return out;
 }
 
-// Immeubles de la ville tels que dessinés : hauteur étirée, fenêtres d'origine remontées en haut + étages ajoutés.
-// `citySkyline` pose ses fenêtres sur son propre sol (SKYLINE_GROUND) : elles sont recalées sur le sol de la rue.
+// Une fenêtre du fond est cachée si son rectangle recoupe celui d'un immeuble (ou d'un socle) du premier plan,
+// de son haut jusqu'au sol (le calque des fenêtres allumées est au-dessus du décor : elle se verrait devant la façade).
+export function farWindowHidden(win: FarWindow, near: readonly { x: number; w: number; top: number }[]): boolean {
+  return near.some((b) => win.x < b.x + b.w && win.x + FAR_WINDOW.w > b.x && win.y + FAR_WINDOW.h > b.top);
+}
+
+// Immeubles de la ville tels que dessinés : hauteur étirée ; au premier plan, fenêtres de la mise en page en travées
+// (facade-layout.ts), suivies sur la 1re tour d'un jumeau de celles de son socle ; au fond, quelques fenêtres « dissipées »
+// privées de celles que cache le premier plan. Un immeuble du premier plan sans mise en page (partie visible de moins de
+// 12 px, au-delà du bord du monde) n'a pas de fenêtres de tour.
 export function cityFacades(width: number, height: number, seed: number): Facade[] {
   const { ground } = cityMetrics(height);
-  const shift = height * SKYLINE_GROUND - ground;
-  return citySkyline(width, height, seed).map((b) => {
-    const lift = b.h * (BUILDING_STRETCH - 1);
-    const h = b.h * BUILDING_STRETCH;
-    if (b.far) return { ...b, h, farWindows: farWindows(b, ground, seed) };
-    const bottom = floorsBottom(b, ground);
-    const lamps = [
-      ...b.lamps.map((l) => ({ ...l, y: l.y - lift - shift })).filter((l) => l.y + 7 <= bottom),
-      ...extraFloorWindows(b, ground, seed),
-      ...(b.podium && b.x === b.podium.x ? podiumWindows(b.podium, ground, seed) : []),
-    ];
-    return { ...b, h, lamps, farWindows: [] };
+  const raw = citySkyline(width, height, seed);
+  const inputs = new Map(facadeInputs(width, height, seed).map((input) => [input.index, input]));
+  const layouts = raw.map((_, i) => {
+    const input = inputs.get(i);
+    return input ? facadeLayout(input, ground, seed) : null;
   });
+  // Porte d'un socle : celle du lot, portée par la tour de son côté (à son aplomb), quelle que soit la tour.
+  const podiumDoor = new Map<number, number>();
+  raw.forEach((b, i) => {
+    const door = layouts[i]?.doorCx ?? null;
+    if (b.podium && door !== null) podiumDoor.set(b.podium.id, door);
+  });
+  const front = raw.filter((b) => !b.far);
+  const near = [
+    ...front.map((b) => ({ x: b.x, w: b.w, top: ground - b.h * BUILDING_STRETCH })),
+    ...front.filter((b) => b.podium && b.x === b.podium.x).map((b) => ({ x: b.podium!.x, w: b.podium!.w, top: ground - PODIUM_H })),
+  ];
+  return raw.map((b, i): Facade => {
+    const h = b.h * BUILDING_STRETCH;
+    if (b.far) {
+      const far = farWindows(b, ground, seed).filter((win) => !farWindowHidden(win, near));
+      return { ...b, h, lamps: [], homes: [], farWindows: far, layout: null, podiumLayout: null };
+    }
+    const layout = layouts[i]!;
+    const p = b.podium && b.x === b.podium.x ? podiumLayout(b.podium, ground, seed, podiumDoor.get(b.podium.id) ?? null) : null;
+    const shift = layout?.homes.length ?? 0;
+    // Socle coupé au bord du monde : seules ses fenêtres visibles (ses logements restent, pour garder les index).
+    const podiumLamps = (p?.windows ?? []).filter((w) => w.x >= 0 && w.x + w.w <= width).map((w) => ({ ...w, home: w.home + shift }));
+    return {
+      ...b,
+      h,
+      lamps: [...(layout?.windows ?? []), ...podiumLamps],
+      homes: [...(layout?.homes ?? []), ...(p?.homes ?? [])],
+      farWindows: [],
+      layout,
+      podiumLayout: p,
+    };
+  });
+}
+
+// Fenêtres de cage d'escalier par porte (clé = centre x de la porte, le même que `data-hall-light`), du bas vers le haut.
+// Seuls les immeubles dont la porte est à l'aplomb d'une cage en ont une.
+export function stairsFor(facades: readonly Facade[]): Map<number, FacadeWindow[]> {
+  const out = new Map<number, FacadeWindow[]>();
+  for (const f of facades) {
+    const l = f.layout;
+    if (!l || l.stairBay === null || l.doorCx === null) continue;
+    out.set(l.doorCx, l.windows.filter((w) => w.kind === 'stair').sort((a, b) => b.y - a.y));
+  }
+  return out;
 }

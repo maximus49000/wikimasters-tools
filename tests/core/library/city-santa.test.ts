@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { DARK } from '../../../src/core/library/city/events';
 import { SANTA_DARK, SANTA_PERIOD_S, SANTA_WINDOW_S, chimneyHole, landDx, roofSlope, roofSurface, santaHillPoseAt, santaHillRoof, santaHillScale, santaHillStepAt, santaHillWindow, santaOn, santaPassFor, santaPoseAt, santaRoof, santaWindowsIn, santaHillSackGround, visibleHillHouses } from '../../../src/core/library/city/santa';
 import { WORLD_MARGIN } from '../../../src/core/library/scene-world';
+import { cityFacades } from '../../../src/core/library/city/facades';
+import { cityMetrics } from '../../../src/core/library/city/metrics';
 
 const SEED = 4242;
 const facades = [
-  { x: 100, w: 40, h: 120, far: false, lamps: [{ x: 104, y: 60 }, { x: 114, y: 60 }, { x: 104, y: 74 }] },
+  // La plus haute est une fenêtre de cage (home −1) : jamais celle du père Noël.
+  { x: 100, w: 40, h: 120, far: false, lamps: [{ x: 120, y: 50, w: 3, h: 5, home: -1 }, { x: 104, y: 60, w: 6, h: 9, home: 0 }, { x: 114, y: 60, w: 6, h: 9, home: 0 }, { x: 104, y: 74, w: 6, h: 10, home: 1 }] },
   { x: 300, w: 20, h: 90, far: false, lamps: [] },
   { x: 500, w: 50, h: 100, far: true, lamps: [] },
 ];
@@ -48,7 +51,22 @@ describe('père Noël', () => {
   });
   it('la fenêtre allumée est l’une des trois plus hautes de l’immeuble', () => {
     const roof = santaRoof(santaPassFor(1, SEED), facades, 200, 800)!;
-    expect(facades[0]!.lamps).toContainEqual(roof.lamp);
+    expect(facades[0]!.lamps.filter((l) => l.home >= 0).map(({ x, y, w, h }) => ({ x, y, w, h }))).toContainEqual(roof.lamp);
+  });
+  it('la fenêtre du père Noël est une fenêtre de logement, à sa taille', () => {
+    const city = cityFacades(1440, 340, SEED);
+    const ground = cityMetrics(340).ground;
+    let found = 0;
+    for (let n = 0; n < 40; n++) {
+      const roof = santaRoof(santaPassFor(n, SEED), city, ground, 1440);
+      if (!roof?.lamp) continue;
+      found++;
+      const { x, y, w, h } = roof.lamp;
+      const hit = city.flatMap((f) => f.lamps).find((l) => l.x === x && l.y === y && l.w === w && l.h === h);
+      expect(hit).toBeDefined();
+      expect(hit!.home).toBeGreaterThanOrEqual(0);
+    }
+    expect(found).toBeGreaterThan(0);
   });
   const deliverPass = (() => { for (let n = 0; ; n++) { const p = santaPassFor(n, SEED); if (p.deliver) return p; } })();
   const roof = santaRoof(deliverPass, facades, 200, 800)!;

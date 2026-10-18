@@ -13,9 +13,9 @@ const ROOF_EDGE = 40;
 const ROOF_MIN_WIDTH = 30;
 
 export type SantaPass = { tranche: number; start: number; end: number; deliver: boolean; dir: 1 | -1; skyY: number; roofRoll: number };
-export type SantaRoof = { cx: number; y: number; w: number; lamp: { x: number; y: number } | null };
+export type SantaRoof = { cx: number; y: number; w: number; lamp: { x: number; y: number; w: number; h: number } | null };
 export type SantaPose = { x: number; y: number; dir: 1 | -1; landed: boolean; santa: 'aboard' | 'walking' | 'hidden'; windowLit: boolean };
-type SantaFacade = { x: number; w: number; h: number; far: boolean; lamps: readonly { x: number; y: number }[] };
+type SantaFacade = { x: number; w: number; h: number; far: boolean; lamps: readonly { x: number; y: number; w: number; h: number; home: number }[] };
 
 // Actif la nuit de la fête seulement (rien le 24 de jour, ni par un ciel clair de l'aube).
 export const santaOn = (fests: readonly string[], daylight: number): boolean => fests.includes('christmas-eve') && daylight < SANTA_DARK;
@@ -43,16 +43,17 @@ export function santaWindowsIn(t0: number, t1: number, seed: number): { start: n
 }
 
 // Toit d'atterrissage : un immeuble de la rangée proche, assez large et visible en entier. La fenêtre qui s'allume est l'une
-// des trois plus hautes de l'immeuble (tirage recomposé depuis `roofRoll`, sans nouveau tirage).
+// des trois plus hautes fenêtres de logement de l'immeuble (ni cage ni entresol ; tirage recomposé depuis `roofRoll`, sans
+// nouveau tirage), à sa taille.
 export function santaRoof(pass: SantaPass, facades: readonly SantaFacade[], ground: number, width: number): SantaRoof | null {
   const candidates = facades.filter((b) => !b.far && b.w >= ROOF_MIN_WIDTH && b.x + b.w / 2 >= ROOF_EDGE && b.x + b.w / 2 <= width - ROOF_EDGE);
   if (candidates.length === 0) return null;
   const scaled = pass.roofRoll * candidates.length;
   const index = Math.min(candidates.length - 1, Math.floor(scaled));
   const b = candidates[index]!;
-  const highest = [...b.lamps].sort((p, q) => p.y - q.y).slice(0, 3);
+  const highest = b.lamps.filter((l) => l.home >= 0).sort((p, q) => p.y - q.y).slice(0, 3);
   const lamp = highest.length === 0 ? null : highest[Math.min(highest.length - 1, Math.floor((scaled - index) * highest.length))]!;
-  return { cx: b.x + b.w / 2, y: ground - b.h, w: b.w, lamp: lamp ? { x: lamp.x, y: lamp.y } : null };
+  return { cx: b.x + b.w / 2, y: ground - b.h, w: b.w, lamp: lamp ? { x: lamp.x, y: lamp.y, w: lamp.w, h: lamp.h } : null };
 }
 
 const ease = (u: number): number => u * u * (3 - 2 * u);

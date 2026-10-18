@@ -227,8 +227,8 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
         {/* Fenêtre allumée : plus claire que les autres et entourée d'un halo, pour se distinguer des fenêtres déjà allumées. */}
         {view.lit && roof?.lamp && (
           <g data-santa-window="" data-x={roof.lamp.x} data-y={roof.lamp.y}>
-            <rect x={roof.lamp.x - 2} y={roof.lamp.y - 2} width={9} height={11} rx={2} fill="#FFE08A" opacity={0.4} />
-            <rect x={roof.lamp.x} y={roof.lamp.y} width={5} height={7} fill="#FFF6C8" />
+            <rect x={roof.lamp.x - 2} y={roof.lamp.y - 2} width={roof.lamp.w + 4} height={roof.lamp.h + 4} rx={2} fill="#FFE08A" opacity={0.4} />
+            <rect x={roof.lamp.x} y={roof.lamp.y} width={roof.lamp.w} height={roof.lamp.h} fill="#FFF6C8" />
           </g>
         )}
         <g ref={g} display="none">

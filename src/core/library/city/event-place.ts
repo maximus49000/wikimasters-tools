@@ -40,13 +40,19 @@ export function fixedFade(e: CityEvent, t: number): number {
 
 export const nearFacades = (f: EventFrame): Facade[] => f.facades.filter((b) => !b.far && b.x + b.w > 0 && b.x < f.width);
 
-// Fenêtre qui s'allume : un immeuble du premier plan (tirage `pick`), puis une de ses fenêtres (tirage `variant`).
-export function apartmentLamp(e: CityEvent, f: EventFrame): { x: number; y: number } {
+// Taille de la fenêtre pour laquelle le dessin de l'appartement est fait (ancienne grille 5 × 7).
+const APT_W = 5;
+const APT_H = 7;
+
+// Fenêtre qui s'allume : un immeuble du premier plan (tirage `pick`), puis une de ses fenêtres de logement (tirage
+// `variant` ; ni cage ni entresol), avec sa taille. Sans fenêtre : repli à la taille du dessin.
+export function apartmentLamp(e: CityEvent, f: EventFrame): { x: number; y: number; w: number; h: number } {
   const near = nearFacades(f);
   const b = near[Math.min(near.length - 1, Math.floor(e.pick * near.length))];
-  if (!b || b.lamps.length === 0) return { x: e.x0, y: f.metrics.ground - 60 * f.metrics.unit };
-  const lamp = b.lamps[Math.min(b.lamps.length - 1, Math.floor(e.variant * b.lamps.length))]!;
-  return { x: lamp.x, y: lamp.y };
+  const lamps = b ? b.lamps.filter((l) => l.home >= 0) : [];
+  if (lamps.length === 0) return { x: e.x0, y: f.metrics.ground - 60 * f.metrics.unit, w: APT_W, h: APT_H };
+  const lamp = lamps[Math.min(lamps.length - 1, Math.floor(e.variant * lamps.length))]!;
+  return { x: lamp.x, y: lamp.y, w: lamp.w, h: lamp.h };
 }
 
 export function placeEvent(e: CityEvent, t: number, f: EventFrame): EventPlacement {
@@ -70,7 +76,11 @@ export function placeEvent(e: CityEvent, t: number, f: EventFrame): EventPlaceme
       return { x, y: m.walkY, sx: e.dir * k, sy: k };
     }
     case 'fixed':
-      if (e.id === 'apartment') return { ...apartmentLamp(e, f), sx: 1, sy: 1 };
+      if (e.id === 'apartment') {
+        // Le dessin (fait pour 5 × 7) est mis à l'échelle de la fenêtre.
+        const lamp = apartmentLamp(e, f);
+        return { x: lamp.x, y: lamp.y, sx: lamp.w / APT_W, sy: lamp.h / APT_H };
+      }
       if (e.id === 'fireworks') return { x, y: 0, sx: m.unit, sy: m.unit };
       if (e.id === 'crane') return { x, y: m.ground, sx: m.unit, sy: m.unit };
       return { x, y: e.y * f.height, sx: m.unit, sy: m.unit };

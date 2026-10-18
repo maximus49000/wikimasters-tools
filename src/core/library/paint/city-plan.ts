@@ -1,5 +1,5 @@
 import { doorsFor, DOOR_MARGIN, DOOR_WIDTH } from '../city/doors';
-import { cityFacades, FAR_WINDOW, GROUND_FLOOR, podiumWindows } from '../city/facades';
+import { cityFacades, FAR_WINDOW, GROUND_FLOOR } from '../city/facades';
 import { cityMetrics } from '../city/metrics';
 import { shopSlotsFor } from '../city/shops/slots';
 import { hashString, mulberry32 } from '../scene-world';
@@ -28,7 +28,7 @@ export type Look = {
 };
 // `podiumTop` : haut du socle commun sous la tour (jumeaux), sinon null.
 export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; look: Look; podiumTop: number | null };
-// Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumWindows`.
+// Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumLayout`.
 export type PaintPodium = { id: number; x: number; w: number; top: number; stone: Rgb; wins: Win[] };
 export type Tree = { id: number; x: number; base: number; cy: number; r: number };
 export type Span = { x0: number; x1: number };
@@ -281,7 +281,8 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     if (!f.podium || f.x !== f.podium.x) continue;
     const p = f.podium;
     const prng = mulberry32(seed ^ hashString('ghibli-podium') ^ Math.round(p.x * 8));
-    const wins = podiumWindows(p, m.ground, seed).map((l) => ({ x: l.x, y: l.y, w: LAMP.w, h: LAMP.h, dormer: false, curtain: prng() < 0.4 }));
+    // Passerelle jusqu'à la tâche 5 (plan peint réécrit) : fenêtres de la mise en page du socle, à l'ancienne taille.
+    const wins = (f.podiumLayout?.windows ?? []).map((l) => ({ x: l.x, y: l.y, w: LAMP.w, h: LAMP.h, dormer: false, curtain: prng() < 0.4 }));
     podiums.push({ id: p.id, x: p.x, w: p.w, top: m.ground - p.h, stone: STONES[Math.floor(prng() * STONES.length)]!, wins });
   }
   const blocked: Span[] = [

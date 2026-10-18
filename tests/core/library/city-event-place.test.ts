@@ -42,7 +42,21 @@ describe('placeEvent', () => {
     const apt = ev({ id: 'apartment', layer: 'fixed', speed: 0 });
     const lamp = apartmentLamp(apt, frame);
     expect(nearFacades(frame).some((b) => b.lamps.some((l) => l.x === lamp.x && l.y === lamp.y))).toBe(true);
-    expect(placeEvent(apt, 1001, frame)).toEqual({ x: lamp.x, y: lamp.y, sx: 1, sy: 1 });
+    expect(placeEvent(apt, 1001, frame)).toEqual({ x: lamp.x, y: lamp.y, sx: lamp.w / 5, sy: lamp.h / 7 });
+  });
+  it('appartement : fenêtre de logement, échelle = taille / 5 × 7', () => {
+    for (const pick of [0, 0.2, 0.45, 0.7, 0.99]) {
+      for (const variant of [0, 0.3, 0.6, 0.99]) {
+        const apt = ev({ id: 'apartment', layer: 'fixed', speed: 0, pick, variant });
+        const lamp = apartmentLamp(apt, frame);
+        const hit = nearFacades(frame).flatMap((b) => b.lamps).find((l) => l.x === lamp.x && l.y === lamp.y && l.w === lamp.w && l.h === lamp.h);
+        expect(hit).toBeDefined();
+        expect(hit!.home).toBeGreaterThanOrEqual(0);
+        const p = placeEvent(apt, 1001, frame);
+        expect(p.sx).toBeCloseTo(lamp.w / 5, 9);
+        expect(p.sy).toBeCloseTo(lamp.h / 7, 9);
+      }
+    }
   });
 });
 
