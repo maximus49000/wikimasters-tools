@@ -2356,6 +2356,27 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'bibliotheque-v38',
+    theme: 'collection',
+    glyph: '🎶',
+    title: 'Zoom de la chaîne hi-fi',
+    summary: 'Touchez la chaîne hi-fi de votre pièce : vue rapprochée du poste, pochette de l’album debout, disque qui tourne, et les commandes du lecteur',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: '🎶 Voir la chaîne de près',
+        text: 'Dans votre pièce, en mode Visiter, touchez la chaîne hi-fi : elle s’ouvre en grand, vue d’un peu au-dessus. La pochette de l’album en cours se dresse devant le poste, grande et lisible (un vinyle, à côté) ; le disque tourne dans le puits (un vinyle sur la platine) et l’afficheur fait défiler le titre du morceau. En haut à gauche, le morceau, l’artiste et l’album ; à droite : ⏸/▶ lecture ou pause, ⏏ éjecter le disque, ⓘ la fiche de la carte, ✕ fermer.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À regarder l’album qui joue et à piloter la lecture sans quitter la pièce : c’est la suite de la petite bulle « En lecture », qu’il remplace.' },
+          { label: 'D’où viennent les données', text: 'Le morceau, l’artiste et l’état lecture / pause viennent du lecteur (Spotify, ou la carte posée au lecteur pour Tidal) ; la pochette est celle choisie pour l’objet (🖼️), sinon l’image de la carte. Rien n’est enregistré : le zoom montre l’état du lecteur.' },
+          { label: 'Comment ça marche', text: 'Le bureau et le poste sont les mêmes modèles 3D que dans la pièce, vus sous une caméra plongeante. Pour un CD, un DVD, un jeu ou un livre, la vue se resserre sur l’afficheur, le puits et la pochette posée devant le côté droit du poste (les enceintes et la platine peuvent sortir du cadre) ; pour un vinyle, tout le poste reste visible, la pochette à côté. Le disque s’arrête dès que la lecture est en pause. ⏏ met en pause, retire le disque : l’objet revient à sa place d’origine et le zoom se ferme. ⓘ ouvre la fiche de la carte par-dessus. Le bouton retour d’Android ferme la fiche d’abord, puis le zoom ; Échap aussi.' },
+          { label: 'Limites', text: 'Dans la pièce, la pochette reste couchée devant le poste : elle n’est debout que dans le zoom. En Aménager, toucher la chaîne la sélectionne (bulle d’actions) au lieu d’ouvrir le zoom. Sans disque au poste, le zoom montre le poste vide et « Rien en lecture ». Seul le premier poste posé dans la pièce sert.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'horloges-meteo-panneaux-2026-10',
     theme: 'collection',
     glyph: '🕰️',
