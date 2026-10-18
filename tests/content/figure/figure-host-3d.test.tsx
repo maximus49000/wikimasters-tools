@@ -4,8 +4,8 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import { BLANK_SPRITE, CLOSE_UP_SPRITES_MAX, FIGURE_SPRITES_MAX, FigureContext, FigureRegistry, HOLD_3D_FRAMES, figureAnchors, paletteKey, phaseSet, sharedCitizen3D, spriteKey, viewFigureOptions, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
-import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, hideFigure, poseFigure, rainOutfit, setShown3DFitter, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
+import { BLANK_SPRITE, CLOSE_UP_SPRITES_MAX, FIGURE_SPRITES_MAX, PIN_FRAMES, PREWARM_PER_S, FigureContext, FigureRegistry, HOLD_3D_FRAMES, figureAnchors, paletteKey, phaseSet, sharedCitizen3D, spriteKey, spriteKey3D, viewFigureOptions, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
+import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, hideFigure, poseFigure, prewarmCitizen, prewarmFigure, rainOutfit, setShown3DFitter, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
 import { CitizenRenderer } from '../../../src/content/citizens/citizen-renderer';
 import { RENDER_BUDGET_MS, WAIT3D_FALLBACK_MS } from '../../../src/content/figure/citizen-config';
 import { keyString, type FigureKey } from '../../../src/core/library/figure/bake';
@@ -13,7 +13,7 @@ import { PHASES } from '../../../src/core/library/figure/skeleton';
 import { shapeOf, signatureOf } from '../../../src/core/library/figure/dress';
 import { skyAt, sunTimes, type Sky } from '../../../src/core/library/sky';
 import { hashString } from '../../../src/core/library/scene-world';
-import { citizen, type CitizenDesc } from '../../../src/core/citizens/catalogue';
+import { citizen, citizenKey, type CitizenDesc } from '../../../src/core/citizens/catalogue';
 import type { Outfit, Top } from '../../../src/core/library/city/people';
 import { tone } from '../../../src/content/city-sprites';
 
@@ -341,10 +341,13 @@ describe('habitant en échec', () => {
     fake.isReady = true;
     const real = fake.render.bind(fake);
     let failure: 'citizen' | null = null;
+    // Essais de l'habitant en échec (les rendus d'avance des autres, orientations voisines, ne comptent pas).
+    let badCalls = 0;
     const bad = OUTFITS[1]!;
     fake.render = (d: CitizenDesc, ...rest: [FigureKey, number, string]) => {
       if (d.items.some((i) => i.color === bad.topColor)) {
         fake.renders++;
+        badCalls++;
         failure = 'citizen';
         return null as unknown as ReturnType<Fake['render']>;
       }
@@ -364,8 +367,7 @@ describe('habitant en échec', () => {
     expect(r.is3D(good.node.getAttribute('data-palette')!)).toBe(true);
     expect(r.is3D(broken.node.getAttribute('data-palette')!)).toBe(false);
     // Un seul essai pour l'habitant en échec (pas de nouvel essai avant 30 s) ; un nouveau passant attendu se montre en 3D.
-    const failed = fake.renders - PHASES;
-    expect(failed).toBe(1);
+    expect(badCalls).toBe(1);
     const other = mount(r, fig({ out: OUTFITS[2], waitFor3D: true }));
     r.flush();
     expect(other.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
@@ -373,7 +375,7 @@ describe('habitant en échec', () => {
     clock.t += 30_000;
     poseFigure(r, broken.node, { ...POSE, phase: 3 });
     r.flush();
-    expect(fake.renders - 2 * PHASES).toBe(2);
+    expect(badCalls).toBe(2);
     good.unmount();
     broken.unmount();
     other.unmount();
@@ -581,34 +583,6 @@ describe('priorités et attente', () => {
     expect(changedAt).toBeLessThanOrEqual(HOLD_3D_FRAMES + 1);
     unmount();
   });
-  it('figure visible passée à un autre registre (bascule de la vue Dehors) : toujours dessinée, jamais figée', () => {
-    const clock = { t: 0 };
-    const f1 = new Fake(clock);
-    f1.isReady = true;
-    const r1 = new FigureRegistry('a', { citizens: () => f1, now: () => clock.t });
-    const f2 = new Fake(clock);
-    const r2 = new FigureRegistry('b', { citizens: () => f2, now: () => clock.t, pxPerUnit: 6 });
-    const host = document.createElement('div');
-    const root = createRoot(host);
-    const draw = (r: FigureRegistry): void => act(() => root.render(<FigureContext.Provider value={r}><svg>{fig({ waitFor3D: true })}</svg></FigureContext.Provider>));
-    draw(r1);
-    r1.flush();
-    const node = host.querySelector('[data-figure]')!;
-    expect(href(node)!.startsWith('data:image/png;base64,3D')).toBe(true);
-    draw(r2);
-    expect(href(node)).not.toBeNull();
-    // Nouveau registre, 3D pas prête, la figure marche : le pantin du nouveau registre suit la marche, sans attendre
-    // WAIT3D_FALLBACK_MS.
-    for (let i = 1; i <= 3; i++) {
-      clock.t += 16;
-      poseFigure(r2, node, { ...POSE, phase: i });
-      expect(href(node)).not.toBeNull();
-      r2.flush();
-    }
-    poseFigure(r2, node, { ...POSE, phase: 3 });
-    expect(node.getAttribute('data-key')).toBe(spriteKey(node.getAttribute('data-palette')!, keyOf(o, { ...POSE, phase: 3 })));
-    act(() => root.unmount());
-  });
 });
 
 describe('rendu partagé et vue rapprochée', () => {
@@ -784,5 +758,362 @@ describe('palette 3D', () => {
       expect(colors.includes('#2E5E8A')).toBe(yes);
       unmount();
     }
+  });
+});
+
+// Retours du téléphone (pré-prod 1729) : « sautes ancien / nouveau modèle » et « personne ne sort des portes ».
+const is3DKey = (n: Element): boolean => n.getAttribute('data-key')?.includes('@3d') ?? false;
+describe('retours S26 : une figure montrée en 3D ne revient jamais au pantin', () => {
+  // Marcheur en 3D (cycle yaw 0 complet), puis nouvelle orientation jamais rendue, au milieu d'autres marcheurs.
+  it('nouvelle orientation (cycle incomplet) : image 3D du même habitant à chaque image, jamais le pantin, cycle prioritaire', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const { node, unmount } = mount(r, fig());
+    for (let i = 0; i < PHASES / 2; i++) {
+      poseFigure(r, node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+    expect(is3DKey(node)).toBe(true);
+    const others = OUTFITS.map((out) => mount(r, fig({ out: { ...out, topColor: '#654321' } })));
+    let to2D = 0;
+    let turned = -1;
+    for (let i = 0; i < 40; i++) {
+      for (const w of others) poseFigure(r, w.node, { ...POSE, phase: i % PHASES });
+      poseFigure(r, node, { ...POSE, yaw: 3, phase: i % PHASES });
+      if (!is3DKey(node)) to2D++;
+      if (turned < 0 && node.getAttribute('data-key') === r.keyFor(node.getAttribute('data-palette')!, keyOf(o, { ...POSE, yaw: 3, phase: i % PHASES }))) turned = i;
+      r.flush();
+    }
+    expect(to2D).toBe(0);
+    // Cycle de la nouvelle orientation avant ceux des autres (2 rendus par image : 6 images), image exacte ensuite.
+    expect(turned).toBeGreaterThanOrEqual(0);
+    expect(turned).toBeLessThanOrEqual(PHASES / 2 + 1);
+    for (const w of others) w.unmount();
+    unmount();
+  });
+  it('autre nœud du même habitant (porte puis rue, changement de calque) : apparaît en 3D, même en waitFor3D', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const door = mount(r, <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={{ ...POSE, yaw: 4, gait: 'stand' }} />);
+    r.flush();
+    expect(is3DKey(door.node)).toBe(true);
+    // Nœud de rue (nouvelle orientation, en marche : cycle pas rendu) : visible tout de suite, en 3D.
+    const street = mount(r, <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={POSE} />);
+    expect(is3DKey(street.node)).toBe(true);
+    const moved = mount(r, <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={{ ...POSE, yaw: 8 }} waitFor3D />);
+    expect(href(moved.node)).not.toBeNull();
+    expect(is3DKey(moved.node)).toBe(true);
+    for (const w of [door, street, moved]) w.unmount();
+  });
+  it('image d’une phase retirée par le plafond : la figure reste en 3D (image la plus proche)', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    // Plafond juste au-dessus d'un cycle : les autres figures font partir des phases du marcheur.
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: PHASES + 2 });
+    const { node, unmount } = mount(r, fig());
+    r.flush();
+    expect(is3DKey(node)).toBe(true);
+    const others = OUTFITS.map((out) => mount(r, fig({ out: { ...out, topColor: '#0a0b0c' } })));
+    let to2D = 0;
+    for (let i = 0; i < 48; i++) {
+      for (const w of others) poseFigure(r, w.node, { ...POSE, phase: i % PHASES });
+      poseFigure(r, node, { ...POSE, phase: i % PHASES });
+      if (!is3DKey(node)) to2D++;
+      r.flush();
+    }
+    expect(to2D).toBe(0);
+    for (const w of others) w.unmount();
+    unmount();
+  });
+  it('sans aucune image 3D de l’habitant dans le registre : dernière image gardée HOLD_3D_FRAMES images, puis pantin', () => {
+    const clock = { t: 0 };
+    const f1 = new Fake(clock);
+    f1.isReady = true;
+    const r1 = new FigureRegistry('a', { citizens: () => f1, now: () => clock.t });
+    const r2 = new FigureRegistry('b', { citizens: () => new Fake(clock), now: () => clock.t, pxPerUnit: 6 });
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    const draw = (r: FigureRegistry): void => act(() => root.render(<FigureContext.Provider value={r}><svg>{fig({ waitFor3D: true })}</svg></FigureContext.Provider>));
+    draw(r1);
+    r1.flush();
+    const node = host.querySelector('[data-figure]')!;
+    const first = node.getAttribute('data-key');
+    draw(r2);
+    let i = 0;
+    for (; i < HOLD_3D_FRAMES + 8 && node.getAttribute('data-key') === first; i++) {
+      poseFigure(r2, node, { ...POSE, phase: 1 + (i % 3) });
+      expect(href(node)).not.toBeNull();
+      r2.flush();
+    }
+    expect(i).toBeGreaterThanOrEqual(HOLD_3D_FRAMES - 1);
+    // + 3 images : les pantins des trois phases de la marche sont peints au flush (pas d'image tant qu'ils manquent).
+    expect(i).toBeLessThanOrEqual(HOLD_3D_FRAMES + 4);
+    expect(href(node)).not.toBeNull();
+    expect(is3DKey(node)).toBe(false);
+    act(() => root.unmount());
+  });
+  it('bascule de la vue Dehors (inherit) : la figure suit sa marche avec les images reprises, puis celles du nouveau registre', () => {
+    const clock = { t: 0 };
+    const f1 = new Fake(clock);
+    f1.isReady = true;
+    const r1 = new FigureRegistry('a', { citizens: () => f1, now: () => clock.t });
+    const f2 = new Fake(clock);
+    const r2 = new FigureRegistry('b', { citizens: () => f2, now: () => clock.t, pxPerUnit: 6 });
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    const draw = (r: FigureRegistry): void => act(() => root.render(<FigureContext.Provider value={r}><svg>{fig({ waitFor3D: true })}</svg></FigureContext.Provider>));
+    draw(r1);
+    r1.flush();
+    const node = host.querySelector('[data-figure]')!;
+    r2.inherit(r1);
+    draw(r2);
+    expect(is3DKey(node)).toBe(true);
+    const pk = node.getAttribute('data-palette')!;
+    for (let i = 1; i <= 3; i++) {
+      poseFigure(r2, node, { ...POSE, phase: i });
+      // Image reprise, exactement à la phase de la marche.
+      expect(node.getAttribute('data-key')).toBe(`${spriteKey(pk, keyOf(o, { ...POSE, phase: i }))}@3d`);
+      r2.flush();
+    }
+    f2.isReady = true;
+    r2.flush();
+    // Le cycle est refait à la résolution du nouveau registre (les images reprises ne comptent pas comme rendues).
+    expect(f2.renders).toBe(PHASES);
+    poseFigure(r2, node, { ...POSE, phase: 5 });
+    expect(is3DKey(node)).toBe(true);
+    act(() => root.unmount());
+  });
+  it('marcheur montré en 3D : orientations voisines préparées quand il ne reste rien d’autre à rendre', () => {
+    const { r, fake } = setup();
+    fake.isReady = true;
+    const { node, unmount } = mount(r, fig());
+    for (let i = 0; i < 30; i++) {
+      poseFigure(r, node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+    // Son cycle (12) puis yaw 15 et yaw 1 (12 chacun).
+    expect(fake.renders).toBe(3 * PHASES);
+    poseFigure(r, node, { ...POSE, yaw: 1, phase: 2 });
+    expect(node.getAttribute('data-key')).toBe(r.keyFor(node.getAttribute('data-palette')!, keyOf(o, { ...POSE, yaw: 1, phase: 2 })));
+    unmount();
+  });
+});
+
+describe('retours S26 : demandes d’avance (habitants qui sortent de leur porte)', () => {
+  it('prewarmCitizen : le cycle passe avant les nouveaux cycles des autres, reste en file sans renouvellement, la figure apparaît en 3D', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const others = OUTFITS.map((out) => mount(r, fig({ out: { ...out, topColor: '#abcdef' } })));
+    const resident: Outfit = { ...o, topColor: '#3D9970' };
+    // Il paraît dans 1 s (sous PREWARM_SOON_S) : avant les nouveaux cycles des figures montrées.
+    prewarmCitizen(r, { outfit: resident, sky, rainy: false, umbrella: false, id: { citizen: 77 } }, [POSE], 1);
+    // 30 images sans renouveler la demande (les autres figures redemandent les leurs à chaque image).
+    for (let i = 0; i < 30; i++) {
+      for (const w of others) poseFigure(r, w.node, { ...POSE, phase: i % PHASES });
+      r.flush();
+      if (i === PHASES / 2 - 1) for (const w of others) expect(is3DKey(w.node)).toBe(false);
+    }
+    const w = mount(r, <GhibliFigure outfit={resident} sky={sky} rainy={false} umbrella={false} initial={POSE} citizen={77} />);
+    expect(is3DKey(w.node)).toBe(true);
+    for (const x of [...others, w]) x.unmount();
+  });
+  it('habitant qui paraît dans plus de 3 s : après les premiers cycles des figures montrées en pantin', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const who: string[] = [];
+    const render = fake.render.bind(fake);
+    fake.render = (d, k, l, f) => {
+      who.push(citizenKey(d));
+      return render(d, k, l, f);
+    };
+    const others = OUTFITS.map((out) => mount(r, fig({ out: { ...out, topColor: '#abcdef' } })));
+    prewarmCitizen(r, { outfit: { ...o, topColor: '#3D9970' }, sky, rainy: false, umbrella: false, id: { citizen: 77 } }, [POSE], 10);
+    let i = 0;
+    for (; i < 200 && !others.every((w) => is3DKey(w.node)); i++) {
+      for (const w of others) poseFigure(r, w.node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+    expect(others.every((w) => is3DKey(w.node))).toBe(true);
+    // Rien de l'habitant à venir tant que les figures montrées n'avaient pas leur cycle.
+    expect(new Set(who).size).toBe(OUTFITS.length);
+    // Ensuite, son tour vient (demande gardée PREWARM_TTL images).
+    for (let j = 0; j < 60; j++, i++) {
+      for (const w of others) poseFigure(r, w.node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+    expect(new Set(who).size).toBe(OUTFITS.length + 1);
+    for (const w of others) w.unmount();
+  });
+  it('au plus PREWARM_PER_S habitants distincts admis par seconde ; ceux qui paraissent bientôt passent toujours', () => {
+    const { r, fake, clock } = setup();
+    fake.isReady = true;
+    const who = new Set<string>();
+    const render = fake.render.bind(fake);
+    fake.render = (d, k, l, f) => {
+      who.add(citizenKey(d));
+      return render(d, k, l, f);
+    };
+    const look = (i: number) => ({ outfit: { ...o, topColor: `#${(0x102030 + i * 0x010101).toString(16)}` }, sky, rainy: false, umbrella: false, id: { citizen: 1000 + i } });
+    const N = PREWARM_PER_S + 4;
+    for (let i = 0; i < N; i++) prewarmCitizen(r, look(i), [POSE], 10);
+    for (let f = 0; f < 5; f++) r.flush();
+    expect(who.size).toBe(PREWARM_PER_S);
+    // Seconde suivante : les autres sont admis.
+    clock.t += 1000;
+    for (let i = 0; i < N; i++) prewarmCitizen(r, look(i), [POSE], 10);
+    for (let f = 0; f < 5; f++) r.flush();
+    expect(who.size).toBe(N);
+    // Dans la même seconde, N autres habitants qui paraissent dans 1 s : tous admis.
+    clock.t += 1000;
+    for (let i = N; i < 2 * N; i++) prewarmCitizen(r, look(i), [POSE], 10);
+    for (let i = N; i < 2 * N; i++) prewarmCitizen(r, look(i), [POSE], 1);
+    for (let f = 0; f < 5; f++) r.flush();
+    expect(who.size).toBe(2 * N);
+  });
+  it('demande d’avance : le rig n’est tenu en réserve (touch) qu’au moment de son rendu', () => {
+    const { r, fake } = setup();
+    fake.isReady = true;
+    const touch = vi.fn();
+    (fake as unknown as { touch: typeof touch }).touch = touch;
+    prewarmCitizen(r, { outfit: { ...o, topColor: '#3D9970' }, sky, rainy: false, umbrella: false, id: { citizen: 77 } }, [POSE], 10);
+    expect(touch).not.toHaveBeenCalled();
+    r.flush();
+    expect(fake.renders).toBeGreaterThan(0);
+    expect(touch).toHaveBeenCalled();
+  });
+  it('prewarmFigure : même chose depuis le nœud caché de la figure (palette et signature lues sur le nœud)', () => {
+    const { r, fake } = setup();
+    fake.isReady = true;
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    act(() => root.render(<FigureContext.Provider value={r}><svg><GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={POSE} hidden citizen={5} /></svg></FigureContext.Provider>));
+    const node = host.querySelector('[data-figure]')!;
+    expect(href(node)).toBeNull();
+    prewarmFigure(r, node, [{ ...POSE, yaw: 4, gait: 'step' }, POSE]);
+    r.flush();
+    expect(fake.renders).toBeGreaterThan(0);
+    poseFigure(r, node, POSE);
+    expect(is3DKey(node)).toBe(true);
+    act(() => root.unmount());
+  });
+});
+
+describe('retours S26 : plafond de sprites plein (cache des images 3D)', () => {
+  const walk = (r: FigureRegistry, node: Element, n: number): void => {
+    for (let i = 0; i < n; i++) {
+      poseFigure(r, node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+  };
+  it('habitant montré en 3D, caché puis remontré (nœud de réserve) après un flot d’autres habitants : de nouveau en 3D, jamais le pantin', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: 3 * PHASES });
+    const a = mount(r, fig());
+    walk(r, a.node, PHASES);
+    expect(is3DKey(a.node)).toBe(true);
+    hideFigure(r, a.node);
+    // Huit autres habitants qui marchent et tournent : bien plus d'images que le plafond.
+    const others = Array.from({ length: 8 }, (_, j) => mount(r, fig({ out: { ...o, topColor: `#10${j}0${j}0` } })));
+    for (let i = 0; i < 200; i++) {
+      others.forEach((w, j) => poseFigure(r, w.node, { ...POSE, yaw: (j + Math.floor(i / 20)) % 4, phase: i % PHASES }));
+      r.flush();
+    }
+    poseFigure(r, a.node, { ...POSE, yaw: 2, phase: 3 });
+    expect(href(a.node)).not.toBeNull();
+    expect(is3DKey(a.node)).toBe(true);
+    for (const w of [a, ...others]) w.unmount();
+  });
+  it('demandes d’avance en flot : le cycle montré d’un marcheur reste entier (les images d’avance partent avant)', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: 2 * PHASES });
+    const a = mount(r, fig());
+    walk(r, a.node, PHASES);
+    const pk = a.node.getAttribute('data-palette')!;
+    let lost = 0;
+    let to2D = 0;
+    for (let i = 0; i < 60; i++) {
+      poseFigure(r, a.node, { ...POSE, phase: i % PHASES });
+      if (!is3DKey(a.node)) to2D++;
+      prewarmCitizen(r, { outfit: { ...o, topColor: `#20${i % 6}0${i % 6}0` }, sky, rainy: false, umbrella: false }, [POSE, { ...POSE, yaw: 4 }]);
+      r.flush();
+      for (let p = 0; p < PHASES; p++) if (!r.has(spriteKey3D(pk, keyOf(o, { ...POSE, phase: p }), ''))) lost++;
+    }
+    expect(to2D).toBe(0);
+    expect(lost).toBe(0);
+    a.unmount();
+  });
+  it('éviction sans effet (tout est détenu ou épinglé) : pas de nouveau parcours avant que le cache grossisse ou PIN_FRAMES images', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: PHASES + 2 });
+    const a = mount(r, fig());
+    walk(r, a.node, PHASES);
+    expect(is3DKey(a.node)).toBe(true);
+    // Six pantins détenus (palette 2D) : le cache dépasse le plafond, rien ne peut partir (cycle montré épinglé).
+    const pk2 = r.addPalette(figurePalette({ ...o, topColor: '#405060' }, sky, false));
+    for (let p = 0; p < 6; p++) {
+      const k = keyOf(o, { ...POSE, phase: p });
+      r.ensure(pk2, k);
+      r.hold(document.createElementNS('http://www.w3.org/2000/svg', 'g'), spriteKey(pk2, k));
+    }
+    const pinned = vi.spyOn(r as unknown as { pinned: (sk: string) => boolean }, 'pinned');
+    let i = PHASES;
+    const step = (): void => {
+      poseFigure(r, a.node, { ...POSE, phase: i++ % PHASES });
+      r.flush();
+    };
+    step();
+    expect(r.size()).toBeGreaterThan(PHASES + 2);
+    expect(pinned).toHaveBeenCalled();
+    pinned.mockClear();
+    for (let f = 0; f < PIN_FRAMES - 2; f++) step();
+    expect(pinned).not.toHaveBeenCalled();
+    for (let f = 0; f < 3; f++) step();
+    expect(pinned).toHaveBeenCalled();
+    a.unmount();
+  });
+  it('flot d’habitants montrés (épinglés) : jamais plus de 1,5 × plafond + images détenues', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const max = 2 * PHASES;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max });
+    const walkers = Array.from({ length: 10 }, (_, j) => mount(r, fig({ out: { ...o, topColor: `#30${j}0${j}0` } })));
+    let worst = 0, shown = 0;
+    for (let i = 0; i < 300; i++) {
+      walkers.forEach((w, j) => poseFigure(r, w.node, { ...POSE, yaw: (j + Math.floor(i / 40)) % 4, phase: i % PHASES }));
+      r.flush();
+      const held = new Set(walkers.map((w) => w.node.getAttribute('data-key'))).size;
+      worst = Math.max(worst, r.size() - held);
+      shown = Math.max(shown, walkers.filter((w) => is3DKey(w.node)).length);
+    }
+    // Bien des habitants montrés en même temps (leurs cycles épinglés dépassent le plafond)…
+    expect(shown).toBeGreaterThan(2);
+    // … mais la mémoire reste bornée.
+    expect(worst).toBeLessThanOrEqual(Math.floor(1.5 * max));
+    for (const w of walkers) w.unmount();
+  });
+  it('cache occupé par les habitants montrés : plus de rendus d’avance (mémoire bornée)', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: PHASES + 2 });
+    const a = mount(r, fig());
+    walk(r, a.node, PHASES);
+    const before = fake.renders;
+    for (let i = 0; i < 20; i++) {
+      poseFigure(r, a.node, { ...POSE, phase: i % PHASES });
+      prewarmCitizen(r, { outfit: { ...o, topColor: '#305050' }, sky, rainy: false, umbrella: false }, [POSE]);
+      r.flush();
+    }
+    // Ni le voyageur d'avance, ni les orientations voisines du marcheur.
+    expect(fake.renders).toBe(before);
+    a.unmount();
   });
 });

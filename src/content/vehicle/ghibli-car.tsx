@@ -11,7 +11,7 @@ import { mulberry32 } from '../../core/library/scene-world';
 import type { Sky } from '../../core/library/sky';
 import { tone } from '../city-sprites';
 import type { FigureRegistry } from '../figure/figure-host';
-import { GhibliFigure, poseFigure } from '../figure/ghibli-figure';
+import { GhibliFigure, poseFigure, prewarmCitizen } from '../figure/ghibli-figure';
 import { layerBox, layerKey, litOf, paintLayer, paintWheel, useCarRegistry, wheelBox, wheelKey, type CarLayer, type CarRegistry, type Lit } from './car-host';
 
 // Véhicule Ghibli (spec véhicules §3-4 : voiture générée ou véhicule à part, voir look.ts) dans le repère du véhicule (roues au sol y = 0), tournée vers `dir` SANS miroir : la
@@ -232,5 +232,17 @@ export function placeCar(fig: FigureRegistry, cars: CarRegistry, node: Element, 
         if (st.getAttribute('transform') !== rot) st.setAttribute('transform', rot);
       }
     }
+  }
+}
+
+// Habitants 3D : occupants d'un véhicule pas encore entré (arrivée planifiée : bus, tram…, sièges connus d'avance par
+// scheduledCrew) rendus d'avance, mêmes palettes que leurs GhibliFigure (graine du siège, enfant) et poses du début du trajet
+// (regard devant ; conducteur : coup d'œil, passagers : tête tournée de part et d'autre).
+const PREWARM_HEADS: Readonly<Record<Seat['role'], readonly number[]>> = { driver: [0, 1], front: [0, 2, -2], rear: [0, 2, -2] };
+// `lead` : secondes avant l'entrée du véhicule.
+export function prewarmSeats(fig: FigureRegistry, seats: readonly Seat[], dir: 1 | -1, sky: Sky, rainy: boolean, lead = Infinity): void {
+  for (const s of seats) {
+    const poses = PREWARM_HEADS[s.role].map((h) => ({ yaw: yawOf(dir), gait: gaitOf(s), phase: 0, head: h * dir, arms: armsOf(s) }));
+    prewarmCitizen(fig, { outfit: outfitOf(s), sky, rainy, umbrella: false, id: { citizen: s.outfitSeed, ...(s.child ? { kind: 'child' as const } : {}) } }, poses, lead);
   }
 }

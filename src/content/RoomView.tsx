@@ -189,7 +189,16 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   // du rendu 3D (celui à 6 px est détruit avec le dernier registre qui s'en sert). Interrupteur coupé : un seul registre par
   // monde, au plafond d'avant, quelle que soit la vue.
   const closeUp = CITIZENS_3D && outside;
-  const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`, viewFigureOptions(closeUp)), [worldId, closeUp]);
+  // Bascule de la vue dehors : le nouveau registre reprend les images 3D de l'ancien en attendant les siennes (autre
+  // résolution) ; les figures montrées en 3D le restent, jamais de retour au pantin sous les yeux.
+  // Seulement dans le même monde : un autre monde n'a pas les mêmes habitants.
+  const lastFigures = useRef<{ worldId: string; reg: FigureRegistry } | null>(null);
+  const figures = useMemo(() => {
+    const reg = new FigureRegistry(`${worldId}-fig`, viewFigureOptions(closeUp));
+    if (lastFigures.current && lastFigures.current.worldId === worldId) reg.inherit(lastFigures.current.reg);
+    lastFigures.current = { worldId, reg };
+    return reg;
+  }, [worldId, closeUp]);
   useEffect(() => () => figures.dispose(), [figures]);
   // Sprites peints des voitures Ghibli : même cycle de vie.
   const cars = useMemo(() => new CarRegistry(`${worldId}-car`), [worldId]);

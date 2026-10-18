@@ -226,6 +226,9 @@ describe('CitizenRenderer', () => {
     expect(r.hasRig(d)).toBe(false);
     expect(r.buildRig(d)).toBe(true);
     expect(r.hasRig(d)).toBe(true);
+    // Enveloppe du tronc habillé mesurée à l'habillage, pas au premier rendu.
+    const rig = [...(r as unknown as { rigs: Map<string, { map: { hull?: unknown } }> }).rigs.values()][0]!;
+    expect(rig.map.hull).not.toBeUndefined();
     expect(fake.calls).toHaveLength(0);
     expect(r.stats()).toMatchObject({ builds: 1, renders: 0, avgBuildMs: 5, maxBuildMs: 5 });
     expect(r.render(d, KEY, 1, '')).not.toBeNull();

@@ -2,7 +2,7 @@
 // réfléchissante par motif `bindPos`) et tablier (devant seulement : bavette tirée du corps, pan tombant comme une jupe).
 import * as THREE from 'three';
 import { skinned, type BodyInfo, type VertexInfo } from './body';
-import { aT, bodyRadius, clamp01, shell } from './shell';
+import { aT, bodyRadius, clamp01, LINING, shell, SOFT } from './shell';
 
 // Bande réfléchissante du gilet (la couleur du gilet et celle du tablier viennent de la pièce).
 export const GILET_BANDE = '#E8E8E0';
@@ -12,15 +12,17 @@ export const GILET_BANDE = '#E8E8E0';
 // Gilet : comme un haut sans manches (emmanchure au ras de l'épaule, encolure large), un peu plus gonflé que le plus
 // épais des hauts (manteau 0,018 + aisance 0,008) pour passer par-dessus ; une bande claire à mi-hauteur.
 export function gilet(A: BodyInfo, color: string): THREE.SkinnedMesh {
-  const hemY = A.waistY - 0.05 * A.H, colY = A.J.Neck.y;
+  // Un peu plus long que les hauts (ourlet 0,065) et emmanchure au-delà d'une bretelle de débardeur (0,04) : le haut du
+  // dessous ne dépasse pas en lambeaux blancs sous le gilet ni aux épaules.
+  const hemY = A.waistY - 0.075 * A.H, colY = A.J.Neck.y;
   const nx = A.J.Neck.x, nz = A.J.Neck.z, r0 = 0.075 * A.H;
   const col = (v: VertexInfo) => Math.max(colY - v.y, Math.hypot(v.x - nx, v.z - nz) - r0);
   const chest = A.J.Spine2.y;
   const e = A.ease ?? 1;
   const off = (v: VertexInfo) => e * (0.022 + 0.008 * clamp01((chest - v.y) / (chest - hemY)));
   const mid = hemY + 0.45 * (chest - hemY), half = 0.013 * A.H;
-  return shell(A, (v) => Math.min(v.y - hemY, col(v), (-0.02 - aT(v)) * 0.2, v.part === 'hand' || v.part === 'head' ? -1 : 1), off, color, {
-    pattern: { kind: 'bande', color: GILET_BANDE, lo: mid - half, hi: mid + half }, drape: true,
+  return shell(A, (v) => Math.min(v.y - hemY, col(v), (0.05 - aT(v)) * 0.2, v.part === 'head' ? -1 : 1), off, color, {
+    pattern: { kind: 'bande', color: GILET_BANDE, lo: mid - half, hi: mid + half }, drape: true, lining: LINING, soft: SOFT,
   });
 }
 

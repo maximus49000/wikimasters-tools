@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BusStopRiders, Crosswalk, TrafficFixtures, TrafficLane, type TrafficHandle } from '../../src/content/traffic-layer';
 import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
 import { cityMetrics } from '../../src/core/library/city/metrics';
-import { advance, warmTraffic, type TrafficEnv } from '../../src/core/library/city/traffic/engine';
+import { HOLD_MAX_S, MARGIN, advance, agentView, warmTraffic, type Agent, type TrafficEnv } from '../../src/core/library/city/traffic/engine';
+import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content/figure/figure-host';
+import { EnterWait3D, GhibliFigure, gateEntering } from '../../src/content/figure/ghibli-figure';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -194,5 +196,172 @@ describe('mobilier de rue peint (G5)', () => {
     const flipped = [...c.host.querySelectorAll('[data-traffic-fixtures="near"] g[transform]')].find((n) => scaleX(n) < 0);
     expect(flipped).toBeDefined();
     expect(c.host.querySelector('circle[data-light-lamp]')!.getAttribute('opacity')).toBe('0.18');
+  });
+});
+
+// Retour du téléphone (pré-prod 1729) : un voyageur qui descend du bus apparaît en place, à la porte ; avec waitFor3D il restait
+// caché jusqu'à 4 s (pendant sa descente) et surgissait sur le trottoir.
+describe('voyageurs du bus et habitants 3D', () => {
+  it('Ghibli : seul celui qui arrive par un bord attend sa 3D ; celui qui descend du bus est visible tout de suite', async () => {
+    const line = { ref: '30', from: 'Hôtel de Ville', to: 'Louise Michel', colour: '#e6007e', stops: ['Hôtel de Ville', 'Lutin', 'Brisepotière', 'Louise Michel'] };
+    const busEnv: TrafficEnv = { ...env, busLines: [line], arrivals: [{ key: 'b1', kind: 'bus', track: 'near', start: T0 - 3 }] };
+    const world = warmTraffic({ width: 1080, seed: 4, unit: m.unit, startS: T0 }, busEnv);
+    let t = T0;
+    while (t < T0 + 600 && !world.stopCrowd.riders.some((p) => p.stage === 'alight')) advance(world, (t += 0.1), busEnv);
+    const alight = world.stopCrowd.riders.find((p) => p.stage === 'alight');
+    expect(alight).toBeDefined();
+    const part = alight!.side === 'far' ? 'far' : 'near-step';
+    const host = document.createElement('div');
+    await act(async () => createRoot(host).render(<svg><BusStopRiders handle={{ world, env: busEnv }} metrics={m} sky={sky} rainy={false} still={false} ghibli frozenT={t} part={part} /></svg>));
+    const fig = host.querySelector(`[data-rider="${alight!.id}"] [data-figure]`)!;
+    expect(fig).not.toBeNull();
+    expect(fig.hasAttribute('data-wait3d')).toBe(false);
+    expect(fig.firstElementChild!.getAttribute('href')).not.toBeNull();
+  });
+});
+
+// Retours S26 : les cyclistes (et pilotes, occupants) apparaissaient en pantin puis passaient en 3D sous les yeux. Le véhicule
+// entre par un bord (MARGIN hors champ) : son personnage y attend sa 3D, véhicule caché ; entré dans le champ sans 3D, il prend
+// le pantin de repli (jamais un vélo sans cycliste, jamais un cycliste qui surgit en place).
+describe('cyclistes et habitants 3D', () => {
+  it('vélo encore hors champ : caché, cycliste en attente de sa 3D (pas de pantin) ; dans le champ : toujours un cycliste', async () => {
+    const bikeEnv: TrafficEnv = { ...env, demand: { near: 0.2, far: 0.2, bike: 3 } };
+    const world = warmTraffic({ width: 1080, seed: 9, unit: m.unit, startS: T0 }, bikeEnv);
+    const off = (a: Agent): boolean => { const x = agentView(world, a, world.t).x; return x < -12 * m.unit || x > 1080 + 12 * m.unit; };
+    // Retenu au ras du bord (habitants 3D) : entre les deux, ni l'un ni l'autre n'est exigé (un pas de moteur près).
+    const near = (a: Agent): boolean => { const x = agentView(world, a, world.t).x; return x < -4 * m.unit && x > -12 * m.unit; };
+    let t = T0;
+    while (t < T0 + 600 && !world.agents.some((a) => a.kind === 'bike' && off(a))) advance(world, (t += 0.1), bikeEnv);
+    expect(world.agents.some((a) => a.kind === 'bike' && off(a))).toBe(true);
+    const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+    // Rendu 3D dont la base n'est jamais prête : rien ne passe en 3D pendant le test.
+    const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
+    const figures = new FigureRegistry('tbike', { citizens: () => fake, now: () => 0 });
+    const host = document.createElement('div');
+    await act(async () =>
+      createRoot(host).render(
+        <FigureContext.Provider value={figures}>
+          <svg>
+            <TrafficLane handle={{ world, env: bikeEnv }} lane="near" metrics={m} sky={sky} lights={false} rainy={false} still={false} ghibli fests={[]} eventsByKey={new Map()} frozenT={world.t} />
+          </svg>
+        </FigureContext.Provider>,
+      ),
+    );
+    let offSeen = 0;
+    for (const node of host.querySelectorAll('[data-kind="bike"]')) {
+      const a = world.agents.find((x) => x.id === node.getAttribute('data-life-id'))!;
+      const rider = node.querySelector('[data-bike-rider] [data-figure]')!;
+      const drawn = rider.firstElementChild!.getAttribute('href') !== null;
+      if (off(a)) {
+        offSeen++;
+        expect(drawn).toBe(false);
+        expect(node.getAttribute('visibility')).toBe('hidden');
+      } else if (!near(a)) expect(drawn).toBe(true);
+    }
+    expect(offSeen).toBeGreaterThan(0);
+  });
+  it('véhicule hors champ en attente : relevé pour le moteur, retenu avant le bord (HOLD_MAX_S au plus), puis entre', async () => {
+    const bikeEnv: TrafficEnv = { ...env, demand: { near: 0.2, far: 0.2, bike: 3 } };
+    const world = warmTraffic({ width: 1080, seed: 9, unit: m.unit, startS: T0 }, bikeEnv);
+    let t = T0;
+    while (t < T0 + 600 && !world.agents.some((a) => a.kind === 'bike' && a.s + a.half < 40 * m.unit)) advance(world, (t += 0.1), bikeEnv);
+    const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+    const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
+    const figures = new FigureRegistry('thold', { citizens: () => fake, now: () => 0 });
+    const handle: TrafficHandle = { world, env: bikeEnv };
+    const host = document.createElement('div');
+    await act(async () =>
+      createRoot(host).render(
+        <FigureContext.Provider value={figures}>
+          <svg>
+            <TrafficLane handle={handle} lane="near" metrics={m} sky={sky} lights={false} rainy={false} still={false} ghibli fests={[]} eventsByKey={new Map()} frozenT={world.t} />
+          </svg>
+        </FigureContext.Provider>,
+      ),
+    );
+    const waiting = world.agents.filter((a) => a.kind === 'bike' && a.s + a.half <= MARGIN * m.unit && handle.wait3D?.has(a.id));
+    expect(waiting.length).toBeGreaterThan(0);
+    const bike = waiting[0]!;
+    const t0 = world.t;
+    let entered = 0;
+    for (let k = 1; k <= 60 && !entered; k++) {
+      advance(world, t0 + k * 0.1, bikeEnv, handle.wait3D);
+      if (bike.s + bike.half > MARGIN * m.unit) entered = world.t;
+    }
+    expect(entered - t0).toBeGreaterThanOrEqual(HOLD_MAX_S - 0.2);
+    expect(entered).toBeGreaterThan(0); // puis entre (au ralenti hors champ, il passe le bord après la retenue)
+  });
+  it('retenue hors champ seulement quand la 3D a déjà rendu dans ce registre (une 3D qui ne vient jamais ne retient rien)', async () => {
+    const bikeEnv: TrafficEnv = { ...env, demand: { near: 0.2, far: 0.2, bike: 3 } };
+    const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+    for (const live of [false, true]) {
+      const world = warmTraffic({ width: 1080, seed: 9, unit: m.unit, startS: T0 }, bikeEnv);
+      let now = world.t * 1000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const queue: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queue.push(cb));
+      vi.stubGlobal('cancelAnimationFrame', () => {});
+      // Base jamais prête : les cyclistes attendent leur 3D hors champ.
+      const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
+      const figures = new FigureRegistry('tlive', { citizens: () => fake, now: () => 0 });
+      // Témoin : registre qui a déjà rendu de la 3D.
+      if (live) (figures as unknown as { everRendered: boolean }).everRendered = true;
+      const host = document.createElement('div');
+      const root = createRoot(host);
+      await act(async () =>
+        root.render(
+          <FigureContext.Provider value={figures}>
+            <svg>
+              <TrafficLane handle={{ world, env: bikeEnv }} lane="near" metrics={m} sky={sky} lights={false} rainy={false} still={false} ghibli fests={[]} eventsByKey={new Map()} frozenT={world.t} />
+            </svg>
+          </FigureContext.Provider>,
+        ),
+      );
+      for (let f = 1, perf = 0; f <= 40; f++) {
+        now += 100;
+        perf += 100;
+        const cbs = queue.splice(0);
+        act(() => {
+          for (const cb of cbs) cb(perf);
+        });
+      }
+      expect(world.agents.some((a) => a.heldSince !== undefined), live ? 'témoin' : 'jamais rendu').toBe(live);
+      act(() => root.unmount());
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
+  });
+  it('gateEntering : hors champ, attend la 3D ; la 3D arrive : figure en 3D, groupe montrable ; dans le champ sans 3D : pantin', async () => {
+    const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+    let ready = false;
+    const fake: Citizen3D = { ready: () => ready, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
+    const figures = new FigureRegistry('tgate', { citizens: () => fake, now: () => 0 });
+    const host = document.createElement('div');
+    const o = { skin: '#F2C9A5', hair: 'short', hairColor: '#4a2e1e', hatColor: '#000000', top: 'sweater', topColor: '#C0463A', bottom: 'jeans', bottomColor: '#243044', accessory: 'none', accessoryColor: '#5A6B7A' } as const;
+    await act(async () =>
+      createRoot(host).render(
+        <FigureContext.Provider value={figures}>
+          <svg>
+            <EnterWait3D.Provider value>
+              <g data-a=""><GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={{ yaw: 1, gait: 'pedal', phase: 0, head: 0 }} citizen={1} /></g>
+              <g data-b=""><GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={{ yaw: 1, gait: 'pedal', phase: 0, head: 0 }} citizen={2} /></g>
+            </EnterWait3D.Provider>
+          </svg>
+        </FigureContext.Provider>,
+      ),
+    );
+    const a = host.querySelector('[data-a]')!;
+    const b = host.querySelector('[data-b]')!;
+    expect(gateEntering(figures, a, false)).toBe(false);
+    expect(a.querySelector('[data-figure]')!.hasAttribute('data-key')).toBe(false);
+    ready = true;
+    for (let i = 0; i < 4; i++) figures.flush();
+    expect(gateEntering(figures, a, false)).toBe(true);
+    expect(a.querySelector('[data-figure]')!.getAttribute('data-key')).toMatch(/@3d$/);
+    ready = false;
+    const fb = b.querySelector('[data-figure]')!;
+    // Figure b : son habitant pas encore rendu, dans le champ → pantin de repli tout de suite.
+    expect(gateEntering(figures, b, true)).toBe(true);
+    expect(fb.getAttribute('data-key')).not.toBeNull();
   });
 });

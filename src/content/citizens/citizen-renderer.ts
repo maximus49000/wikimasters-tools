@@ -16,7 +16,7 @@ import { BASES } from '../../core/citizens/catalogue-data';
 import { citizenKey, expand, type CitizenDesc, type Piece } from '../../core/citizens/catalogue';
 import { accessory, analyse, disposeRig, dressRig, PARAPLUIE_DEFAUT, parapluieOuvert, skull, TOON_RAMP, type BodyInfo } from '../../core/citizens/wardrobe';
 import { faceLayer, parseFaceState } from '../../core/citizens/face';
-import { applyPose, boneMap, type BoneMap } from '../../core/citizens/retarget';
+import { applyPose, boneMap, prepareHull, type BoneMap } from '../../core/citizens/retarget';
 import { poseOf } from '../../core/library/figure/skeleton';
 import { CAM_CA, CAM_SA } from '../../core/library/figure/geometry';
 import type { Anchor, FigureKey } from '../../core/library/figure/bake';
@@ -575,8 +575,11 @@ export class CitizenRenderer {
     const scale = rigHeight(desc.height, model.child) / info.H;
     wrap.scale.setScalar(scale);
     const own = desc.items.find((i) => i.what === 'parapluie');
+    // Enveloppe du tronc habillé (bras hors du corps) mesurée ici, avec l'habillage : pas au premier rendu.
+    const map = boneMap(B.skeleton);
+    prepareHull(map, root);
     return {
-      wrap, root, body: B, map: boneMap(B.skeleton), worn: [...worn, face], face, bodyMat, unitsToRig: 1 / scale, base,
+      wrap, root, body: B, map, worn: [...worn, face], face, bodyMat, unitsToRig: 1 / scale, base,
       umbrellaColor: own ? own.color : null, closed: null, open: null, used: this.tickNo,
     };
   }

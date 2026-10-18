@@ -12,8 +12,10 @@ export type JointName = (typeof JOINTS)[number];
 
 export type Part = 'hand' | 'arm' | 'shoulder' | 'leg' | 'foot' | 'head' | 'neck' | 'torso';
 // Relevé d'un sommet du corps : position au repos, membre de l'os dominant, avancement le long du bras (0 = épaule,
-// 1 = poignet) et de la jambe (0 = hanche, 1 = cheville), prolongés hors du membre.
-export type VertexInfo = { x: number; y: number; z: number; part: Part; armT: number; legT: number };
+// 1 = poignet ; fondu vers 0 sur le tronc selon le poids des os du bras) et de la jambe (0 = hanche, 1 = cheville),
+// prolongés hors du membre.
+// `cloth` : sommet d'un vêtement ajouté à l'enveloppe habillée (accessoires), absent du relevé du corps.
+export type VertexInfo = { x: number; y: number; z: number; part: Part; armT: number; legT: number; cloth?: true };
 
 // Champ du crâne (rayon max par direction depuis le centre mesuré de la tête).
 export type Skull = { c: THREE.Vector3; R: (az: number, el: number) => number; top: number; low: number; size: number };
@@ -61,16 +63,27 @@ export function analyse(body: THREE.SkinnedMesh): BodyInfo {
   const waistY = JJ.Hips.y + 0.3 * (JJ.Spine2.y - JJ.Hips.y);
   const collarY = JJ.Neck.y + 0.15 * (JJ.Head.y - JJ.Neck.y);
   const info = new Array<VertexInfo>(P.count);
+  // Os du bras (clavicule comprise) de chaque côté : leur poids total fond l'avancement le long du bras vers 0 sur le
+  // tronc (aisselle, flanc, poitrine). Sans ce fondu, sur les corps larges, les flancs dépassant le plan de coupe d'une
+  // manche courte étaient tranchés avec elle (trous sur le côté, tee-shirt gris du modèle visible) et la coupe suivait
+  // la frontière irrégulière des os (ourlets en dents de scie).
+  const armBone = names.map((n) => (/^Left(Shoulder|Arm|ForeArm|Hand)/.test(n) ? 1 : /^Right(Shoulder|Arm|ForeArm|Hand)/.test(n) ? -1 : 0));
   for (let i = 0; i < P.count; i++) {
-    let best = -1, bw = 0;
-    for (let k = 0; k < 4; k++) { const w = comp(SW, i, k); if (w > bw) { bw = w; best = comp(SI, i, k); } }
+    let best = -1, bw = 0, armW = 0;
+    const sgn = P.getX(i) >= 0 ? 1 : -1;
+    for (let k = 0; k < 4; k++) {
+      const w = comp(SW, i, k), b = comp(SI, i, k);
+      if (w > bw) { bw = w; best = b; }
+      if (armBone[b] === sgn) armW += w;
+    }
     const name = names[best] ?? '';
     const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
     const side = x >= 0 ? 'Left' : 'Right';
     const part: Part = /Hand/.test(name) ? 'hand' : /ForeArm|Arm$/.test(name) ? 'arm' : /Shoulder/.test(name) ? 'shoulder' : /UpLeg|Leg$/.test(name) ? 'leg' : /Foot|Toe/.test(name) ? 'foot' : /Head/.test(name) ? 'head' : /Neck/.test(name) ? 'neck' : 'torso';
     // Position le long du bras (0 = épaule, 1 = poignet) et de la jambe (0 = hanche, 1 = cheville).
     const a0 = JJ[`${side}Arm`], a1 = JJ[`${side}Hand`];
-    const armT = (Math.abs(x) - Math.abs(a0.x)) / (Math.abs(a1.x) - Math.abs(a0.x));
+    const armX = (Math.abs(x) - Math.abs(a0.x)) / (Math.abs(a1.x) - Math.abs(a0.x));
+    const armT = armX > 0 ? armX * Math.min(1, armW) : armX;
     const l0 = JJ[`${side}UpLeg`], l1 = JJ[`${side}Foot`];
     const legT = (l0.y - y) / (l0.y - l1.y);
     info[i] = { x, y, z, part, armT, legT };

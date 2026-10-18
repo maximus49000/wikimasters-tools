@@ -90,7 +90,40 @@ function section(title: string): HTMLElement {
   return row;
 }
 
+// `?jupes` : robe longue, jupe genou, manteau long (et hommes en manteau long) sous plusieurs angles et phases de marche.
+const JUPES = q.has('jupes');
+const jupeDesc = (base: string, k: string): CitizenDesc => ({
+  base, skin: '#8D5524', height: base === 'enfant' ? 1.25 : base === 'mamie' ? 1.54 : 1.65, hair: ['chignon', '#3B2416'], beard: null, cap: null, mood: 'neutre',
+  items: [...(k === 'manteauLong' ? [{ k: 'pantalon', color: '#555' }] : []), { k: base === 'enfant' && k === 'robeLongue' ? 'robe' : k, color: '#8E44AD' }, { k: 'chaussures', color: '#333' }],
+});
+async function jupes(): Promise<void> {
+  // Recadrage sur le personnage (la boîte du sprite a beaucoup de vide autour).
+  const st = document.createElement('style');
+  st.textContent = `figure{width:${SPRITE_BOX.w * PX * ZOOM * 0.56}px;height:${SPRITE_BOX.h * PX * ZOOM * 0.58}px;overflow:hidden;justify-content:flex-end}
+    figure img{position:absolute;left:-22%;top:-46%}figcaption{position:absolute;top:0;left:0}`;
+  document.head.append(st);
+  const bases = (q.get('bases') ?? 'femme-frele,femme-forte,femme-grande,mamie,enfant,homme-fort,homme-maigre,papy').split(',');
+  const kinds = (q.get('kinds') ?? 'robeLongue,jupeGenou,manteauLong').split(',');
+  const list: [string, string, CitizenDesc][] = [];
+  for (const b of bases) for (const k of kinds) {
+    if (b.startsWith('homme') || b === 'papy') { if (k !== 'manteauLong') continue; }
+    if (b === 'enfant' && k === 'manteauLong') continue;
+    list.push([b, k, jupeDesc(b, k)]);
+  }
+  for (const [, , d] of list) R.prepare(d);
+  while (!list.every(([, , d]) => R.ready(d))) await new Promise((ok) => setTimeout(ok, 100));
+  for (const [b, k, d] of list) {
+    const row = section(`${b} — ${k}`);
+    for (const yaw of [0, 2, 4, 6, 8, 12]) tile(row, d, key({ yaw, gait: 'stand' }), '', `y${yaw} debout`);
+    for (const phase of [0, 3, 6, 9]) tile(row, d, key({ yaw: 0, phase }), '', `y0 p${phase}`);
+    for (const phase of [0, 3, 6, 9]) tile(row, d, key({ yaw: 10, phase }), '', `y10 p${phase}`);
+  }
+  document.getElementById('etat')!.textContent = 'jupes ok';
+  (window as unknown as { benchDone: boolean }).benchDone = true;
+}
+
 async function main(): Promise<void> {
+  if (JUPES) return jupes();
   const all = [...[...byBase.values()].flat(), ...work];
   for (const d of all) R.prepare(d);
   const t0 = performance.now();

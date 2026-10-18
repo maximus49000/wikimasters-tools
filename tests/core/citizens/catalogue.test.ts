@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { citizen, citizenFromOutfit, citizenKey, expand, PAL, PEAUX, type CitizenDesc } from '../../../src/core/citizens/catalogue';
 import type { Outfit } from '../../../src/core/library/city/people';
+import { BASES } from '../../../src/core/citizens/catalogue-data';
 
 const SEEDS = Array.from({ length: 2000 }, (_, i) => i + 1);
 const noms = (d: CitizenDesc): string[] => d.items.map((i) => i.k);
@@ -167,9 +168,19 @@ describe("à partir d'une tenue", () => {
     }
   });
 
-  it('crâne rasé : pas de cheveux', () => {
-    const d = citizenFromOutfit(4, tenue({ hair: 'bald' }), { kind: 'adult' });
-    expect(d.hair === null || d.hair[0] === 'rase').toBe(true);
+  it('crâne rasé : pas de cheveux pour un homme, des cheveux pour une femme ou un enfant', () => {
+    let hommes = 0, autres = 0;
+    for (const s of SEEDS.slice(0, 80)) {
+      for (const kind of ['adult', 'child', 'aged'] as const) {
+        const d = citizenFromOutfit(s, tenue({ hair: 'bald' }), { kind });
+        if (BASES[d.base]!.sex === 'm') { hommes++; expect(d.hair === null || d.hair[0] === 'rase').toBe(true); }
+        else { autres++; expect(d.hair).not.toBeNull(); expect(d.hair![0]).not.toBe('rase'); }
+      }
+      const robe = citizenFromOutfit(s, tenue({ hair: 'bald', bottom: 'dress' }), { kind: 'adult' });
+      expect(robe.hair).not.toBeNull();
+    }
+    expect(hommes).toBeGreaterThan(0);
+    expect(autres).toBeGreaterThan(0);
   });
 
   it('accessoires et parapluie', () => {
