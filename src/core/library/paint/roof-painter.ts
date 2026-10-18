@@ -102,7 +102,22 @@ export function paintParisRoof(ctx: PaintCtx, _plan: CityPaintPlan, b: PaintBuil
   }
   // Corniche sous le toit : rehaut, ombre nette dessous ; peinte après l'aplat du toit pour rester entière.
   fillRect(ctx, light(wall, 0.5), x - 1.5, eave - 0.8, w + 3, 3);
-  fillRect(ctx, shade(wall, 0.42), x, eave + 2.2, w, 2.6);
+  // Ombre de la corniche : interrompue au droit des vitres du dernier étage qu'elle mordrait (étage court : la vitre
+  // commence dès eave + 2,3 ; le calque de nuit la redessine entière, le jour doit montrer la même fenêtre). Les tableaux
+  // (0,9 px de part et d'autre) restent tels que peints.
+  const bandY = eave + 2.2;
+  const bandH = 2.6;
+  const bandC = shade(wall, 0.42);
+  const cuts = (layout?.windows ?? [])
+    .filter((v) => v.kind !== 'dormer' && v.y < bandY + bandH && v.y + v.h > bandY)
+    .map((v) => [v.x - 0.9, v.x + v.w + 0.9] as const)
+    .sort((a, b) => a[0] - b[0]);
+  let bx = x;
+  for (const [c0, c1] of cuts) {
+    if (c0 > bx) fillRect(ctx, bandC, bx, bandY, c0 - bx, bandH);
+    bx = Math.max(bx, c1);
+  }
+  if (bx < x + w) fillRect(ctx, bandC, bx, bandY, x + w - bx, bandH);
   inkRect(ctx, x - 1.5, eave - 0.8, w + 3, 3, 0.7);
   if (layout) {
     for (const c of layout.chimneys) paintChimney(ctx, c);

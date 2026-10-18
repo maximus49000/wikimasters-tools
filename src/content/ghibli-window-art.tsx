@@ -252,9 +252,16 @@ export function LitWindow({ win, home, level, tone, glow }: { win: FacadeWindow;
   let voile = '';
   if (curtain?.style === 'voile') for (let k = 1; k < w; k += 1.6) voile += `M${x + k} ${y}L${x + k - 0.6} ${y + h}`;
   const cw = curtainWidth(w);
+  // Lueur bornée au plancher de l'étage le plus bas (index 0 : juste au-dessus du rez-de-chaussée, ou de l'entresol jamais
+  // allumé) : elle ne retombe pas sur le bandeau d'enseigne des boutiques. Découpe CSS du <use> (aucun nœud de plus, pas
+  // de filtre) : polygone en px de scène depuis le haut de la boîte de la définition (y − 1,2, le liseré) jusqu'au plancher ;
+  // les étages intermédiaires gardent la lueur entière, qui passe le bandeau (maquette). Socle des jumeaux : `level` est
+  // null, lueur entière.
+  const floor = win.level === 0 && level ? level.y + level.h - (y - 1.2) : null;
+  const clip = floor !== null ? `polygon(-20px -20px, ${w + 40}px -20px, ${w + 40}px ${floor}px, -20px ${floor}px)` : undefined;
   return (
     <>
-      <use href={`#${glow}`} x={x} y={y} />
+      <use href={`#${glow}`} x={x} y={y} style={clip ? { clipPath: clip } : undefined} />
       <rect x={x} y={y} width={w} height={h} fill={toneColor(tone)} />
       <rect x={x} y={y} width={w} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0 : tone === 'cream' ? 0.3 : 0.2} />
       <rect x={x + 0.6} y={y + h * 0.35} width={Math.max(0, w - 1.2)} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0.35 : 0} />
