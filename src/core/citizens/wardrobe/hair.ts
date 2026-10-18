@@ -155,7 +155,8 @@ export function hair(A: BodyInfo, style: string, color: string, under?: (az: num
       const out = [m];
       for (const s of [1, -1]) {
         const root = new THREE.Vector3(S.c.x + s * 0.68 * S.size, S.c.y + 0.0 * S.size, S.c.z - 0.15 * S.size);
-        const tip = new THREE.Vector3(S.c.x + s * 0.88 * S.size, S.c.y - 0.6 * S.size, S.c.z - 0.2 * S.size);
+        // Couette qui tombe presque droit (plus écartée, elle pointait en corne de chaque côté de la tête).
+        const tip = new THREE.Vector3(S.c.x + s * 0.76 * S.size, S.c.y - 0.78 * S.size, S.c.z - 0.24 * S.size);
         out.push(blob(A, root, 0.1 * S.size, color), tube(A, root, tip, 0.09 * S.size, 0.035 * S.size, color));
       }
       return out;
@@ -192,7 +193,9 @@ export function cap(A: BodyInfo, color: string, visor = color): THREE.SkinnedMes
   // Visière : demi-disque aplati, centré devant le front, inclinée de ~12° vers le bas.
   const r = 0.58 * S.size, front = S.R(0, 0.26) + 0.012 * A.H;
   const g = new THREE.CircleGeometry(r, 24, 0, Math.PI);
-  g.rotateX(-Math.PI / 2 + 0.2);
+  // Demi-disque (y ≥ 0) couché vers l'avant (+z), bord avant un peu plus bas. L'ancienne rotation (−π/2 + 0,2) le
+  // couchait vers l'ARRIÈRE, dans la tête : seules deux « ailes » blanches dépassaient aux tempes.
+  g.rotateX(Math.PI / 2 + 0.2);
   g.scale(1.05, 1, 0.75);
   const yv = S.c.y + Math.sin(0.26) * front;
   g.translate(S.c.x, yv, S.c.z + Math.cos(0.26) * front - 0.06 * S.size);

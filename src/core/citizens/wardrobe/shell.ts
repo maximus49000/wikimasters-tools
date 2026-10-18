@@ -183,6 +183,8 @@ export type SkirtOpts = { top?: number; len?: number; flare?: number; off?: numb
 // la marche, pas plus : plus bas, la torsion du buste contre le bassin le fait ressortir), et la jupe passe à TUCK_GAP
 // au-dessus de lui (fractions de la hauteur du corps).
 export const TUCK_DEPTH = 0.05, TUCK_GAP = 0.008;
+// Part des cuisses dans les poids du dos d'une jupe (devant : 1).
+export const SKIRT_BACK = 0.5;
 export const skirtTop = (A: BodyInfo): number => A.waistY + 0.02 * A.H;
 
 // Rayon horizontal (autour de `c`) des vêtements `over` dans la tranche de hauteur [y0, y1], par secteur d'angle (NA
@@ -296,8 +298,10 @@ export function skirt(A: BodyInfo, { top = skirtTop(A), len = 0.6, flare = 0.35,
       const lip = u && u[ia % NA]! > 0 ? u[ia % NA]! + gap : 0;
       const r = Math.max(lip, hang[iy * (NA + 1) + ia]! + off * e * A.H) + flare * (top - hem) * t * t + fold;
       pos.push(c.x + Math.sin(az) * r, y, c.z + Math.cos(az) * r);
-      const s = Math.sin(az);
-      const wl = t * 0.8 * (0.5 + 0.5 * s), wr = t * 0.8 * (0.5 - 0.5 * s);
+      // Le devant suit les cuisses, le dos un peu moins : assis ou accroupi, le pan avant se pose sur les genoux et le
+      // pan arrière reste pendu derrière (avec les mêmes poids partout, il remontait aussi en ballon autour du bassin).
+      const s = Math.sin(az), k = SKIRT_BACK + (1 - SKIRT_BACK) * Math.max(0, Math.cos(az));
+      const wl = t * 0.8 * k * (0.5 + 0.5 * s), wr = t * 0.8 * k * (0.5 - 0.5 * s);
       si.push(H, L, Rr, 0); sw.push(1 - wl - wr, wl, wr, 0);
     }
   }

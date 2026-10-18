@@ -84,7 +84,7 @@ export type Hull = {
   up: Record<Side, number>; fore: Record<Side, number>;
 };
 const ARM_BINS = 8;
-const ARM_PRESS = 0.5;
+const ARM_PRESS = 0.65;
 // Écart total au plus (radians) : au-delà, le bras traverserait plutôt un peu que de partir en croix.
 const ARM_MAX = 0.4;
 
@@ -355,7 +355,7 @@ function buildHull(m: BoneMap, rig: THREE.Object3D): Hull | null {
   // Sac : le bras ne s'y appuie pas comme sur le flanc, il passe devant (toute son épaisseur hors du sac).
   let thick = 0;
   for (let b = 0; b < ARM_BINS; b++) thick = Math.max(thick, arm[b]!);
-  for (let j = 0; j < r.length; j++) if (ra[j]) r[j] = Math.max(r[j]!, ra[j]! + (1 - ARM_PRESS) * thick);
+  for (let j = 0; j < r.length; j++) if (ra[j]) r[j] = Math.max(r[j]!, ra[j]! + ARM_PRESS * thick);
   return { y0, dy, NY, NA, cx, cz, r, arm, hand, handLen, up, fore };
 }
 
@@ -389,9 +389,9 @@ function probe(h: Hull, R: Rest, qP: THREE.Quaternion, qC: THREE.Quaternion, pt:
   const dx = lP.x - h.cx, dz = lP.z - h.cz, dist = Math.hypot(dx, dz);
   const need = hullRadius(h, lP.y, Math.atan2(dx, dz));
   if (!need || dist < 1e-6) return;
-  // Le bras s'appuie sur le flanc (chairs qui se touchent) : il peut y entrer de la moitié de son épaisseur, pas plus ;
+  // Le bras s'appuie sur le flanc (chairs qui se touchent) : il peut y entrer des deux tiers de son épaisseur, pas plus ;
   // l'écarter davantage le mettait en pingouin sur les corps ronds.
-  const depth = need + ARM_PRESS * rad - dist;
+  const depth = need + (1 - ARM_PRESS) * rad - dist;
   if (depth <= hit.depth) return;
   hit.depth = depth;
   hit.lever.copy(pt);

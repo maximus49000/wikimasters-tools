@@ -189,15 +189,24 @@ function sacADos(A: BodyInfo, color: string): THREE.SkinnedMesh[] {
   const pd = d * 0.32, py = cy - h * 0.2;
   const face = cz - (d / 2) * pouchAt((py - cy) / h, 0, opts.taper, opts.sag).fx;
   out.push(rigid(A, place(pouch(pd, h * 0.36, w * 0.66, { taper: 0.7, sag: 0.04 }).rotateY(Math.PI / 2), V(sp.x, py, face - pd * 0.4)), bone, darker(color, 0.85)));
+  // Bretelles : du haut du sac par-dessus l'épaule, descendent devant l'épaule puis passent sous l'aisselle, sur le flanc,
+  // et reviennent au coin bas du sac. Elles s'arrêtaient au milieu de la poitrine en deux barres verticales (des
+  // bretelles de pantalon vues de face).
+  const armY = A.J.LeftArm.y - 0.075 * H;
   for (const s of [1, -1]) {
-    const x = sp.x + s * 0.05 * H, top = shoulderTop(A, x), y1 = sp.y - 0.04 * H, g = 0.012 * H;
+    const x = sp.x + s * 0.05 * H, top = shoulderTop(A, x), g = 0.012 * H;
+    const fl = slab(A, armY - 0.02 * H, armY + 0.02 * H, (v) => trunk(v) && (v.x - sp.x) * s > 0);
+    const side = fl.n ? (s > 0 ? fl.maxX : fl.minX) + s * g : x + s * 0.06 * H;
+    const xs = x + s * 0.035 * H, zMid = (frontAt(A, side - s * 0.02 * H, armY) + backAt(A, side - s * 0.02 * H, armY)) / 2;
     const pts = [
       V(x, cy + h * 0.42, back - gap),
       V(x, top - 0.01 * H, backAt(A, x, top - 0.01 * H) - g),
       V(x, top + g, (backAt(A, x, top - 0.01 * H) + frontAt(A, x, top - 0.01 * H)) / 2),
       V(x, top - 0.02 * H, frontAt(A, x, top - 0.02 * H) + g),
-      V(x, (top + y1) / 2, frontAt(A, x, (top + y1) / 2) + g),
-      V(x, y1, frontAt(A, x, y1) + g),
+      V(xs, armY + 0.025 * H, frontAt(A, xs, armY + 0.025 * H) + g),
+      V(side - s * 0.01 * H, armY - 0.01 * H, zMid + 0.03 * H),
+      V(side - s * 0.015 * H, armY - 0.035 * H, zMid - 0.02 * H),
+      V(sp.x + s * w * 0.42, cy - h * 0.38, back - gap - d * 0.3),
     ];
     out.push(strap(A, pts, 0.007 * H, darker(color), bone));
   }
