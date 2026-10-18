@@ -2245,6 +2245,51 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'bibliotheque-v35',
+    theme: 'collection',
+    glyph: '🃏',
+    title: 'Poser une carte à l’endroit exact',
+    summary: 'Une carte se pose désormais sur un bureau ou le dessus d’une étagère, sur un trépied ; ＋ l’ajoute exactement où vous voulez, et tout passe d’une tablette à un dessus',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Des cartes sur les plateaux',
+        text: 'Une carte (CD, DVD, jeu, livre) peut maintenant être posée sur le plateau d’un bureau ou sur le dessus d’une étagère, de face sur un petit trépied, et plus seulement rangée sur une tablette. Elle pourra aussi être couchée à plat, pochette vers le haut, comme la pochette devant la chaîne hi-fi.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À mettre en valeur une carte qu’on aime : un album debout à côté de la lampe, un film couché sur le bureau comme un disque qu’on vient de sortir.' },
+          { label: 'D’où viennent les données', text: 'La place et la pose de chaque carte sont enregistrées dans votre pièce, sur l’appareil ; la pochette est celle de la carte (la même que sur l’étagère et dans les zooms).' },
+          { label: 'Comment ça marche', text: 'Sur un trépied, la carte occupe sa largeur sur la profondeur du trépied ; à plat, toute sa couverture couchée. Le vert et le rouge du glissé en tiennent compte : deux objets ne se chevauchent jamais.' },
+          { label: 'Limites', text: 'Une carte arrive toujours sur un trépied. Le choix entre trépied et à plat se fera depuis la bulle de la carte dans la vue Modifier, avec la prochaine mise à jour. En visite, toucher une carte posée ne l’ouvre pas encore : cela viendra plus tard.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: '＋ Ajouter une carte ici',
+        text: 'En Aménager, touchez un bureau ou une étagère puis ＋ « Ajouter une carte ici ». La vue Modifier s’ouvre avec, en haut, la réglette 🃏 des cartes de votre Collection pas encore dans la pièce. Touchez une carte : elle apparaît sur le meuble, cerclée d’or, à la première place libre. Glissez-la à l’endroit exact, puis ✓ la pose ; ✕ annule l’ajout. Touchez une autre carte de la réglette pour la remplacer.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À choisir soi-même où va une nouvelle carte, au centimètre près sur un plateau, à la tablette et au rang près sur une étagère, au lieu de la première place libre.' },
+          { label: 'D’où viennent les données', text: 'La réglette montre les cartes de votre Collection (les mêmes que le choix de carte du tiroir), triées par titre ; rien n’est envoyé ailleurs. Le format conseillé vient de la catégorie de la carte (musique → CD, film → DVD, jeu → jeu vidéo, livre → livre).' },
+          { label: 'Comment ça marche', text: 'La carte en attente n’est pas encore enregistrée : on la glisse comme n’importe quel objet (vert ou rouge), et seul ✓ l’ajoute à la pièce. Sur une étagère, elle arrive sur la première tablette où elle tient. Le tiroir garde « Ajouter une carte » : choisissez « Poser sur un meuble » et le format, puis touchez le meuble : sa vue ＋ s’ouvre avec la carte déjà en attente.' },
+          { label: 'Limites', text: 'La réglette montre 60 cartes à la fois : la recherche par titre trouve les autres. Le format conseillé ne se change pas encore depuis la vue (il viendra avec la bulle de la carte) : pour un autre format, passez par le tiroir. Depuis le tiroir, « Poser sur un meuble » ne propose pas encore le choix entre couverture et tranche : il viendra plus tard.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'D’une tablette à un dessus, et retour',
+        text: 'Dans la vue Modifier d’une étagère, une carte tenue au bord haut de la tablette du haut monte sur le dessus et s’y pose sur un trépied. Un objet du dessus tenu au bord bas descend sur la tablette du haut ; une carte posée y redevient rangée. Avec deux bibliothèques liées, un objet passe d’un dessus à l’autre.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À réorganiser tout le meuble sans quitter la vue : sortir une carte de la tablette pour la montrer, ou ranger ce qui encombre le dessus.' },
+          { label: 'D’où viennent les données', text: 'Les places sont celles de votre pièce, enregistrées sur l’appareil, dès que l’objet est lâché en vert.' },
+          { label: 'Comment ça marche', text: 'Tenez l’objet un court instant au bord haut ou bas de l’écran : la vue change de niveau et l’objet reste sous le doigt. Sur le dessus, en vert, l’objet se montre déjà à la place visée ; en rouge, le message dit pourquoi et il revient à sa place.' },
+          { label: 'Limites', text: 'La chaîne hi-fi reste réservée au bureau. Toucher une carte sans la glisser ne fait toujours rien : sa bulle vient avec la prochaine mise à jour.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'horloges-meteo-panneaux-2026-10',
     theme: 'collection',
     glyph: '🕰️',

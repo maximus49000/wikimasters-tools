@@ -1,9 +1,11 @@
-// Glissé d'un objet de tablette (vue Modifier d'une étagère) : le doigt saisit une carte ou un petit objet tout de suite, la place
-// d'insertion dit vert/rouge (dropOnShelf / moveToTop sur la disposition avec les déplacements en attente appliqués), le relâcher
-// demande le déplacement (`onBoard` / `onTop`, des intentions : l'appelant les applique à la disposition du moment) ou rend l'objet
-// à sa place. En zoom, une carte tenue au bord haut ou bas de l'écran pendant EDGE_MS fait passer la vue à la tablette voisine
-// (tablette 0 → le dessus), la carte reste tenue. Un objet lâché en vert reste dessiné à sa nouvelle place (`pending`, un par objet)
-// jusqu'à ce que la disposition reçue change pour lui ou que l'écriture se termine.
+// Glissé d'un objet de la vue Modifier d'une étagère (tablettes et dessus) : le doigt saisit une carte ou un petit objet tout de suite,
+// la place d'insertion dit vert/rouge (dropOnShelf / moveToTop sur la disposition avec les déplacements en attente appliqués), le
+// relâcher demande le déplacement (`onBoard` / `onTop`, des intentions : l'appelant les applique à la disposition du moment) ou rend
+// l'objet à sa place. Un objet d'un dessus peut descendre sur une tablette ou passer sur l'autre dessus lié ; une carte rangée lâchée
+// sur un dessus y devient posée (trépied). En zoom (et sur le dessus), un objet tenu au bord haut ou bas de l'écran pendant EDGE_MS fait
+// passer la vue au niveau voisin (tablette 0 ↔ le dessus), l'objet reste tenu : les écouteurs sont sur la fenêtre et le doigt est capturé
+// par la page dès le glissé, l'élément saisi peut disparaître avec le niveau quitté. Un objet lâché en vert reste dessiné à sa nouvelle
+// place (`pending`, un par objet) jusqu'à ce que la disposition reçue change pour lui ou que l'écriture se termine.
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { isOnBoard, type Layout, type ShelfLevel } from '../../core/library/library-types';
 import { dropOnShelf, isShelfLevel, moveToBoard, moveToTop, type BoardLike, type PxRect } from '../../core/library/room-grid';
@@ -15,7 +17,6 @@ export const EDGE_PX = 48;
 export const EDGE_MS = 600;
 // Un toucher qui bouge de moins de 4 px n'est pas un glissé.
 const SLOP_PX = 4;
-export const TOP_CARD_MESSAGE = 'Les cartes se poseront sur le dessus avec la prochaine mise à jour.';
 export const TOP_FULL_MESSAGE = 'Pas de place ici sur le dessus.';
 
 // Ce que vise le doigt : une tablette (point en cm sur sa face) ou le dessus (coin avant gauche visé, cm).
@@ -49,6 +50,7 @@ export function placeKey(layout: Layout, id: string): string {
   if (!p) return '';
   if (p.kind === 'stored') return `s:${p.shelfId}:${p.level}:${p.order}`;
   if (p.kind === 'small') return isOnBoard(p) ? `b:${p.hostId}:${p.level}:${p.order}` : `t:${p.hostId}:${p.x}:${p.z}`;
+  if (p.kind === 'posed') return `p:${p.hostId}:${p.x}:${p.z}`;
   return p.kind;
 }
 const boardLikeOf = (layout: Layout, id: string): BoardLike | null => {
@@ -96,8 +98,7 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
       const d = dropOnShelf(l, aim.shelfId, aim.level, aim.xCm, like);
       return d.ok ? { ...base, ok: true, order: d.order } : { ...base, message: d.message };
     }
-    const ok = moveToTop(l, h.id, aim.hostId, aim.x, aim.z) !== null;
-    return ok ? { ...base, ok } : { ...base, message: l.find((q) => q.id === h.id)?.kind === 'stored' ? TOP_CARD_MESSAGE : TOP_FULL_MESSAGE };
+    return moveToTop(l, h.id, aim.hostId, aim.x, aim.z) !== null ? { ...base, ok: true } : { ...base, message: TOP_FULL_MESSAGE };
   }, []);
   const aimNow = useCallback((h: Held): void => {
     dragRef.current = judge(h);
@@ -112,7 +113,7 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
   const grab = useCallback((id: string, e: ReactPointerEvent): void => {
     const p = live.current.applied.find((q) => q.id === id);
     // Objet en attente d'écriture : pas de nouvelle prise avant que sa place soit enregistrée.
-    if (held.current || live.current.pending.some((w) => w.id === id) || !p || !(p.kind === 'stored' || (p.kind === 'small' && isOnBoard(p)))) return;
+    if (held.current || live.current.pending.some((w) => w.id === id) || !p || !(p.kind === 'stored' || p.kind === 'small' || p.kind === 'posed')) return;
     e.preventDefault();
     moved.current = false;
     const toLayer = (ev: { clientX: number; clientY: number }): [number, number] => (live.current.rotated ? [ev.clientY, window.innerWidth - ev.clientX] : [ev.clientX, ev.clientY]);
@@ -127,6 +128,12 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
       if (!h || !mine(ev)) return;
       [h.lx, h.ly] = toLayer(ev);
       if (!h.moving && Math.hypot(h.lx - h.sx, h.ly - h.sy) < SLOP_PX) return;
+      // Premier mouvement : le doigt est capturé par la page (pas au simple toucher : le clic qui zoome resterait sinon à la page), pour
+      // qu'il ne soit pas perdu quand l'élément saisi disparaît avec le niveau quitté (bord d'écran).
+      if (!h.moving) {
+        const page = document.documentElement as Element & { setPointerCapture?: (pointerId: number) => void };
+        try { if (typeof page.setPointerCapture === 'function') page.setPointerCapture(h.pointerId); } catch { /* pointeur déjà relâché */ }
+      }
       h.moving = true;
       moved.current = true;
       // Bord haut ou bas : la tablette voisine après EDGE_MS, une fois par entrée dans la bande (il faut en sortir pour recommencer).

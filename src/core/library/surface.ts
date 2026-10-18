@@ -3,7 +3,7 @@ import { computerPlacement, placementBounds } from './carried-items';
 import { FURNITURE_MODELS } from './furniture-models';
 import { ITEM_MODELS, storedModel } from './item-models';
 import type { BoxFormat } from '../game/platform-boxes';
-import type { Layout, ShelfShape, SmallItem } from './library-types';
+import type { Layout, Pose, Posed, ShelfShape, SmallItem, SmallOnTop } from './library-types';
 import { canHostSmall, type HostKind } from './room-grid';
 
 export type TopRect = { x: number; z: number; w: number; d: number };
@@ -13,17 +13,25 @@ export const HOST_TOP: Record<HostKind, { w: number; d: number }> = {
 };
 // Profondeur réservée devant le poste hi-fi pour la pochette couchée (hifi.ts la réutilise).
 export const SLEEVE_ZONE_CM = 14.5;
-// Profondeur du chevalet d'une carte posée.
+// Profondeur du trépied d'une carte posée.
 export const POSED_DEPTH_CM = 8;
 export const TOP_STEP_CM = 2;
 
-export type TopThing = { item: SmallItem } | { shape: ShelfShape; box?: BoxFormat };
+// `pose` absente = trépied.
+export type TopThing = { item: SmallItem } | { shape: ShelfShape; box?: BoxFormat; pose?: Pose };
 
+// Empreinte au sol : trépied = largeur de la couverture × profondeur du trépied ; à plat = la couverture couchée (largeur × hauteur du boîtier).
 export function topSize(t: TopThing): { w: number; d: number } {
-  if ('shape' in t) return { w: storedModel(t.shape, t.box).w, d: POSED_DEPTH_CM };
+  if ('shape' in t) {
+    const m = storedModel(t.shape, t.box);
+    return { w: m.w, d: t.pose === 'flat' ? m.h : POSED_DEPTH_CM };
+  }
   const m = ITEM_MODELS[`small-${t.item}`];
   return t.item === 'hifi' ? { w: m.w, d: m.d + SLEEVE_ZONE_CM } : { w: m.w, d: m.d };
 }
+
+// Ce qu'un objet du plateau occupe (petit objet ou carte posée, avec sa pose).
+export const topThingOf = (p: SmallOnTop | Posed): TopThing => (p.kind === 'small' ? { item: p.item } : { shape: p.shape, box: p.box, ...(p.pose && { pose: p.pose }) });
 
 const hostKindOf = (layout: Layout, hostId: string): HostKind | null => {
   const h = layout.find((p) => p.id === hostId);
@@ -37,7 +45,7 @@ export function topRectsOf(layout: Layout, hostId: string, ignoreId?: string): T
     if (p.id === ignoreId) continue;
     if (p.kind === 'computer' && p.deskId === hostId) out.push(computerTopRect());
     else if ((p.kind === 'small' || p.kind === 'posed') && p.hostId === hostId && 'x' in p) {
-      out.push({ x: p.x, z: p.z, ...topSize(p.kind === 'small' ? { item: p.item } : { shape: p.shape, box: p.box }) });
+      out.push({ x: p.x, z: p.z, ...topSize(topThingOf(p)) });
     }
   }
   return out;

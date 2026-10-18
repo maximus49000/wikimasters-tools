@@ -2,7 +2,7 @@ import { drawSize, localPointAt, occludersAt, perchAt, type Angle } from '../foo
 import { FURNITURE_MODELS } from '../furniture-models';
 import { CELL_H, CELL_W, DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, occluderBoxesOf, openingOf, pieceBounds, type Piece } from '../furniture-render3d';
 import { SHELF_GAP_CM, angleOf, boardItems, boardWidthCm, isLamp, isLit, isStanding, pxRect, rectOf } from '../room-grid';
-import { boardPlacement, computerPlacement, placementBounds, smallPlacement, storedPlacement } from '../carried-items';
+import { boardPlacement, computerPlacement, placementBounds, posedPlacement, smallPlacement, storedPlacement } from '../carried-items';
 import { itemPieces, type ItemPlacement } from '../item-models';
 import type { PxRect } from '../room-grid';
 import { isOnBoard, type Layout, type Placed, type StandingKind } from '../library-types';
@@ -55,11 +55,16 @@ function carriedBoxes(owner: string, host: HostFrame, pieces: Piece[], out: Box[
   }
 }
 
-// Pose 3D d'un écran ou d'un petit objet sur le dessus de son porteur, ou d'un petit objet sur sa tablette (à la suite de ses voisins).
+// Pose 3D d'un écran, d'une carte posée (trépied, à plat) ou d'un petit objet sur le dessus de son porteur, ou d'un petit objet sur sa
+// tablette (à la suite de ses voisins).
 function topPlacementOf(p: Placed, layout: Layout, g: Geom): { host: HostFrame; pl: ItemPlacement } | null {
   if (p.kind === 'computer') {
     const host = hostFrame(layout, p.deskId, g);
     return host && host.kind === 'desk' ? { host, pl: computerPlacement(p.id) } : null;
+  }
+  if (p.kind === 'posed') {
+    const host = hostFrame(layout, p.hostId, g);
+    return host ? { host, pl: posedPlacement(p, host.kind) } : null;
   }
   if (p.kind !== 'small') return null;
   const host = hostFrame(layout, p.hostId, g);
@@ -116,8 +121,8 @@ export function boxesOf(layout: Layout, geom: Geom): Box[] {
           flush();
         }
       }
-    } else if (p.kind === 'computer' || p.kind === 'small') {
-      // Écran et petits objets : les boîtes de leurs pièces (modèle 3D posé sur le dessus, comme leur dessin).
+    } else if (p.kind === 'computer' || p.kind === 'small' || p.kind === 'posed') {
+      // Écran, cartes posées et petits objets : les boîtes de leurs pièces (modèle 3D posé sur le dessus, comme leur dessin).
       const at = topPlacementOf(p, layout, geom);
       if (at) carriedBoxes(p.id, at.host, itemPieces(at.pl), out);
     }

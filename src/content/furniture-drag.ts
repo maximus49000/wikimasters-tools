@@ -67,7 +67,7 @@ function ghostOf(layout: Layout, id: string, shelfId: string, level: ShelfLevel,
 // Fantôme d'un objet rangé à l'écran : rectangle englobant, et les 4 coins de sa face (parallélogramme en ¾).
 export type GhostPx = PxRect & { quad?: [number, number][] };
 
-export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'not-slot' | 'shelf-full' | 'too-high' | 'host-busy' | 'not-host' | 'not-screen';
+export type DropReason = 'bounds' | 'floor' | 'taken' | 'wall' | 'not-desk' | 'desk-busy' | 'desk-middle' | 'not-slot' | 'shelf-full' | 'too-high' | 'host-busy' | 'not-host' | 'not-screen' | 'posed-locked';
 
 export type DropTarget = {
   ok: boolean;
@@ -147,7 +147,7 @@ export function dropTargetFor(layout: Layout, cols: number, id: string, col: num
     return { ok: true, cells: [], ghost, deskId };
   }
   // Carte posée sur un plateau : pas encore déplaçable dans la pièce (vue Modifier du meuble).
-  if (item.kind === 'posed') return { ok: false, cells: [], ghost: null };
+  if (item.kind === 'posed') return { ok: false, reason: 'posed-locked', cells: [], ghost: null };
   if (item.kind === 'small') {
     const cellHost = hostAtCell(layout, col, row);
     const hostId = cellHost ?? hostAtSurface(layout, x, y, item.item, id);

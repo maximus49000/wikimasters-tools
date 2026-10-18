@@ -9,7 +9,7 @@ const st = (id: string, slot: number, shape = 'cd', shelfId = 'sh') => ({ id, ki
 describe('migration v7 (rangement adaptatif)', () => {
   it('emplacement → tablette + ordre, sans perte (même tablette, même ordre)', () => {
     const s = parseLibraryState(v6([{ id: 'sh', kind: 'shelf', col: 0, row: 6 }, st('a', 0), st('b', 3, 'dvd'), st('c', 7, 'book'), st('d', 14, 'game')]));
-    expect(s.version).toBe(9);
+    expect(s.version).toBe(10);
     const by = (id: string) => s.rooms[0]!.layout.find((p) => p.id === id);
     expect(by('a')).toEqual({ id: 'a', kind: 'stored', shape: 'cd', shelfId: 'sh', level: 0, order: 0, slug: 'S_a' });
     // Ordres compactés à la lecture : 0 puis 3 → 0, 1 (même ordre relatif).
@@ -71,7 +71,7 @@ describe('migration v7 (rangement adaptatif)', () => {
   });
 
   it('état initial en v7 ; doublon tablette + ordre écarté', () => {
-    expect(createInitialState().version).toBe(9);
+    expect(createInitialState().version).toBe(10);
     const s = parseLibraryState({ ...v6([]), version: 7, rooms: [{ ...v6([]).rooms[0], layout: [
       { id: 'sh', kind: 'shelf', col: 0, row: 6 },
       { id: 'a', kind: 'stored', shape: 'cd', shelfId: 'sh', level: 0, order: 0, slug: 'A' },

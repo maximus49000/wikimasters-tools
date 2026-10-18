@@ -9,7 +9,7 @@ const v5 = (layout: unknown[], cols = 24) => ({ version: 5, activeRoomId: 'r1', 
 describe('migration v6', () => {
   it('garde la colonne et la dernière rangée au sol, prend la nouvelle taille', () => {
     const s = parseLibraryState(v5([{ id: 'a', kind: 'shelf', col: 0, row: 6 }]));
-    expect(s.version).toBe(9);
+    expect(s.version).toBe(10);
     const shelf = s.rooms[0]!.layout[0]!;
     const r = rectOf(shelf)!;
     expect(r.col).toBe(0);

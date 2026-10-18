@@ -341,3 +341,20 @@ describe('ArrangeView : glissé sur le plateau', () => {
     expect(h.onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ArrangeView : cartes posées', () => {
+  it('un CD sur trépied et un DVD à plat sont dessinés avec leur pochette', () => {
+    const layout: Layout = [
+      { id: 'd', kind: 'desk', col: 12, row: 10 },
+      { id: 'cd', kind: 'posed', shape: 'cd', hostId: 'd', x: 4, z: 4, slug: 'Daft_Punk' },
+      { id: 'dv', kind: 'posed', shape: 'dvd', hostId: 'd', x: 60, z: 4, pose: 'flat', slug: 'Film' },
+    ];
+    act(() => root.render(<ArrangeView layout={layout} room={{ style: 'scandinave' }} hostId="d" mode="move" imageOf={(s) => `data:image/png;base64,${s}`} onMove={vi.fn()} onClose={vi.fn()} />));
+    expect(q('[data-arrange-item="cd"] [data-item3d="cd"] image')?.getAttribute('href')).toBe('data:image/png;base64,Daft_Punk');
+    expect(q('[data-arrange-item="dv"] [data-item3d="dvd"] image')?.getAttribute('href')).toBe('data:image/png;base64,Film');
+    // À plat : pas de trépied (moins de formes que le même DVD sur trépied).
+    const flatCount = q('[data-arrange-item="dv"] [data-item3d="dvd"]')!.querySelectorAll('polygon').length;
+    act(() => root.render(<ArrangeView layout={layout.map((p) => (p.id === 'dv' && p.kind === 'posed' ? { ...p, pose: undefined } : p))} room={{ style: 'scandinave' }} hostId="d" mode="move" imageOf={(s) => `data:image/png;base64,${s}`} onMove={vi.fn()} onClose={vi.fn()} />));
+    expect(flatCount).toBeLessThan(q('[data-arrange-item="dv"] [data-item3d="dvd"]')!.querySelectorAll('polygon').length);
+  });
+});
