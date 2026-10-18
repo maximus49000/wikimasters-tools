@@ -115,6 +115,9 @@ export type Citizen3D = {
   /** État du visage (face.ts : émotion du geste, clignement à l'instant t) ; absent : neutre, yeux ouverts. Fourni par le
    * module chargé à la demande : face.ts embarque three.js, figure-host ne l'importe pas. */
   faceOf?(arms: ArmPose, mood: Emotion, t: number, seed: number): string;
+  /** Cause du dernier rendu nul : seul 'engine' compte pour la mise hors service ; 'citizen' met cet habitant seul en pantin.
+   * Absent : 'engine'. */
+  lastFailure?(): 'engine' | 'citizen' | 'notReady' | null;
 };
 // Fabrique du rendu 3D : null = pas de 3D possible ici (su tout de suite : figures en pantin, palettes 2D d'avant), sinon le
 // rendu ou sa promesse (module chargé à la demande).
@@ -137,6 +140,7 @@ const defaultCitizen3D: Citizen3DFactory = (px) => {
           render: (d, k, light, face) => r.render(d, k, light, face),
           dispose: () => r.dispose(),
           faceOf: (arms, mood, t, seed) => f.faceState(f.emotionFor(arms, mood), f.blinkLevel(f.blinkAt(t, seed))),
+          lastFailure: () => r.lastFailure(),
         };
       })
       .catch(() => null);
@@ -145,14 +149,19 @@ const defaultCitizen3D: Citizen3DFactory = (px) => {
   return p;
 };
 // Habitant 3D connu du registre (clé `c3d` d'une palette) : clé, description, graine (clignements), attente 3D (waitFor3D).
-type Citizen = { ck: string; desc: CitizenDesc; seed: number; waitSince?: number; waitOver?: boolean };
+type Citizen = { ck: string; desc: CitizenDesc; seed: number; waitSince?: number; waitOver?: boolean; failedAt?: number };
 const MAX_CITIZENS = 2048;
-// Toutes les 30 images, les figures qui attendent une image 3D sont réexaminées même sans rendu (modèle arrivé entre-temps).
-const WATCH_EVERY = 30;
-// Demandes 3D non renouvelées : jetées après 3 images (image seule : visage) ou 60 images (cycle : les figures fixes ne le
-// redemandent que toutes les WATCH_EVERY images).
+// Toutes les 15 images, les figures qui attendent une image 3D sont réexaminées même sans rendu (modèle arrivé entre-temps).
+const WATCH_EVERY = 15;
+// Demandes 3D non renouvelées : jetées après 3 images (image seule : visage) ou 15 images (cycle : les figures fixes le
+// redemandent toutes les WATCH_EVERY images, et à chaque image où un rendu 3D a été fait).
 const STALE_ONE = 3;
-const STALE_CYCLE = 2 * WATCH_EVERY;
+const STALE_CYCLE = 15;
+// Demande non renouvelée depuis plus de 2 images : elle garde sa place, mais plus sa priorité « figure en 3D » ou « cycle
+// commencé » (passe au rang des nouveaux cycles).
+const PRIO_FRESH = 2;
+// Habitant dont le rendu échoue (habillage, pose) : lui seul en pantin, nouvel essai après ce délai (comme CitizenRenderer).
+const CITIZEN_RETRY_MS = 30_000;
 // Une figure qui montre de la 3D ne passe au pantin d'une pose dont le cycle 3D manque qu'après ce nombre d'images.
 export const HOLD_3D_FRAMES = 2;
 // 3D hors service (aucun rendu réussi à l'expiration d'une attente, ou DEAD_STREAK rendus nuls de suite avec une base prête) :
@@ -328,9 +337,22 @@ export class FigureRegistry {
     this.kick = true;
     return false;
   }
-  // Une palette porte-t-elle un habitant 3D (et le rendu 3D peut-il venir) ?
+  // Habitant utilisable en 3D : pas en échec de rendu depuis moins de CITIZEN_RETRY_MS.
+  private usable(c: Citizen): boolean {
+    if (c.failedAt === undefined) return true;
+    if (this.now() - c.failedAt < CITIZEN_RETRY_MS) return false;
+    c.failedAt = undefined;
+    return true;
+  }
+  // Une palette porte-t-elle un habitant 3D (et le rendu 3D peut-il venir maintenant) ?
   is3D(pk: string): boolean {
-    return this.c3d !== null && !this.dead() && this.citizenOf(pk) !== null;
+    const c = this.citizenOf(pk);
+    return this.c3d !== null && !this.dead() && c !== null && this.usable(c);
+  }
+  // Une palette porte-t-elle un habitant 3D, même si la 3D est hors service pour l'instant (figure à garder en suivi) ?
+  wants3D(pk: string): boolean {
+    const c = this.citizenOf(pk);
+    return this.c3d !== null && c !== null && this.usable(c);
   }
   // Visages animés : les figures 3D restent suivies pour cligner.
   animatedFaces(): boolean {
@@ -390,8 +412,10 @@ export class FigureRegistry {
   private enqueue3D(id: string, job: Omit<Job, 'at'>): void {
     const q = this.queue3d.get(id);
     if (q) {
+      // Priorité de la demande la plus récente (la plus forte des demandes d'une même image) : une ancienne priorité
+      // « figure en 3D » ne reste pas collée à une pose qu'on ne montre plus.
+      q.prio = q.at === this.frame ? Math.min(q.prio, job.prio) : job.prio;
       q.at = this.frame;
-      q.prio = Math.min(q.prio, job.prio);
     } else this.queue3d.set(id, { ...job, at: this.frame });
   }
   // Image à montrer pour (palette, pose) et sa clé. Palette 3D : sprite 3D seulement quand le cycle de la pose est complet
@@ -400,7 +424,7 @@ export class FigureRegistry {
   // (première apparition), sinon mis en file. Palette 2D : exactement ensure / request d'avant.
   pick(pk: string, key2D: FigureKey, now: boolean, wait = false, from3D = false): { sk: string; url: string } | null {
     const c = this.citizenOf(pk);
-    if (c && this.c3d !== null && !this.dead()) {
+    if (c && this.c3d !== null && !this.dead() && this.usable(c)) {
       const key = repKey(key2D);
       const face = this.faceOf(c, key);
       const cid = this.cycleId(c, key);
@@ -427,7 +451,9 @@ export class FigureRegistry {
   // utiles (rendu 3D fait, attente écoulée, 3D hors service, visages animés, ou toutes les WATCH_EVERY images) jusqu'à rendre
   // true ; `unwatch` au masquage.
   watch(node: Element, refresh: () => boolean): void {
-    this.watchers.set(node, refresh);
+    // 3D hors service : mise de côté (reprise au nouvel essai), même si React re-rend la figure entre-temps.
+    if (this.dead()) this.parked.set(node, refresh);
+    else this.watchers.set(node, refresh);
   }
   unwatch(node: Element): void {
     this.watchers.delete(node);
@@ -562,7 +588,8 @@ export class FigureRegistry {
     let made = 0;
     let deadNow = false;
     if (R && !this.dead() && this.queue3d.size > 0) {
-      const jobs = [...this.queue3d].sort((a, b) => a[1].prio - b[1].prio);
+      const prio = (q: Job): number => (this.frame - q.at > PRIO_FRESH ? Math.max(q.prio, 2) : q.prio);
+      const jobs = [...this.queue3d].sort((a, b) => prio(a[1]) - prio(b[1]));
       jobs: for (const [id, job] of jobs) {
         const c = this.citizenOf(job.pk);
         if (!c) {
@@ -583,13 +610,22 @@ export class FigureRegistry {
           if (this.sprites.has(sk)) continue;
           if (this.now() - t0 >= RENDER_BUDGET_MS) break jobs;
           let out: CitizenSprite | null;
+          let why: 'engine' | 'citizen' | 'notReady' | null;
           try {
             out = R.render(c.desc, k, Number.isFinite(light) ? light : 1, job.face);
+            why = out ? null : (R.lastFailure?.() ?? 'engine');
           } catch {
             out = null;
+            why = 'engine';
           }
           if (!out) {
+            // Base pas encore là : la demande attend. Habitant en échec : lui seul en pantin, la 3D reste en service.
+            if (why === 'notReady') continue jobs;
             this.queue3d.delete(id);
+            if (why === 'citizen') {
+              c.failedAt = this.now();
+              continue jobs;
+            }
             if (++this.nullStreak >= DEAD_STREAK) {
               this.deadAt = this.now();
               deadNow = true;

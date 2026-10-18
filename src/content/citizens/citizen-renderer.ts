@@ -33,6 +33,7 @@ export type RendererLike = {
 
 export type SpriteAnchors = Record<Anchor | 'hands', readonly [number, number]>;
 export type CitizenSprite = { url: string; anchors: SpriteAnchors };
+export type RenderFailure = 'engine' | 'citizen' | 'notReady';
 
 // Contour encré, plus fin sur le corps que sur les vêtements. L'épaisseur d'OutlineEffect est en espace de découpe : un
 // décalage t y fait t·W/2 px en largeur et t·H/2 px en hauteur. On la tire d'une épaisseur visée en pixels sur le côté
@@ -258,6 +259,13 @@ export class CitizenRenderer {
   // Textures recolorées par (base, peau) : 6 bases × 8 peaux au plus.
   private readonly tones = new Map<string, THREE.Texture>();
   private disposed = false;
+  private failure: RenderFailure | null = null;
+
+  /** Cause du dernier `null` de render (null après un rendu réussi) : moteur (pas de WebGL, contexte perdu, rendu détruit),
+   * habitant (habillage ou pose en échec : lui seul retombe en pantin) ou base pas encore chargée. */
+  lastFailure(): RenderFailure | null {
+    return this.failure;
+  }
 
   constructor(opts: CitizenRendererOptions) {
     this.px = opts.pxPerUnit;
@@ -288,15 +296,26 @@ export class CitizenRenderer {
   }
 
   render(desc: CitizenDesc, key: FigureKey, light: number, face: string): CitizenSprite | null {
-    if (this.disposed) return null;
+    const out = this.draw(desc, key, light, face);
+    if (out) this.failure = null;
+    return out;
+  }
+
+  private fail(why: RenderFailure): null {
+    this.failure = why;
+    return null;
+  }
+
+  private draw(desc: CitizenDesc, key: FigureKey, light: number, face: string): CitizenSprite | null {
+    if (this.disposed) return this.fail('engine');
     this.prepare(desc);
     const base = this.bases.get(desc.base);
-    if (!base) return null;
+    if (!base) return this.fail('notReady');
     const R = this.engine();
-    if (!R || R.lost?.()) return null;
+    if (!R || R.lost?.()) return this.fail('engine');
     try {
       const rig = this.rigOf(desc, base);
-      if (!rig) return null;
+      if (!rig) return this.fail('citizen');
       // Parapluie ouvert selon la clé (la pluie l'ouvre, comme pour le pantin 2D) ; sinon, celui de l'habitant reste fermé.
       const umbrella = shapeFromSignature(key.sig).umbrella;
       // Même pose que la cuisson 2D (bake.ts `poseOfKey`) : le 3D regarde du même côté que le pantin pour la même clé.
@@ -312,14 +331,16 @@ export class CitizenRenderer {
       this.umbrella(rig, umbrella);
       try {
         R.render(this.scene, this.camera);
+      } catch {
+        return this.fail('engine');
       } finally {
         this.scene.remove(rig.wrap);
       }
       // Contexte perdu pendant le rendu : l'image serait vide.
-      if (R.lost?.()) return null;
+      if (R.lost?.()) return this.fail('engine');
       return { url: R.domElement.toDataURL('image/png'), anchors: this.anchors(rig) };
     } catch {
-      return null;
+      return this.fail('citizen');
     }
   }
 

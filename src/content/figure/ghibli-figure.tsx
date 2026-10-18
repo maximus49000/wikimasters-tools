@@ -199,7 +199,7 @@ function refreshFigure(reg: FigureRegistry, node: Element): boolean {
 // tout le temps avec les visages animés (clignements des figures fixes).
 function track(reg: FigureRegistry, node: Element, pk: string, key: FigureKey, want: string): void {
   wantedPoses.set(node, key);
-  if (reg.is3D(pk) && (reg.animatedFaces() || node.getAttribute('data-key') !== want)) reg.watch(node, () => refreshFigure(reg, node));
+  if (reg.wants3D(pk) && (reg.animatedFaces() || node.getAttribute('data-key') !== want)) reg.watch(node, () => refreshFigure(reg, node));
   else reg.unwatch(node);
 }
 
@@ -331,7 +331,7 @@ export function poseFigure(reg: FigureRegistry, node: Element | null, pose: Pose
     const href = reg.hold(node, got.sk);
     if (href) showSprite(reg, node, got.sk, href, key);
   }
-  if (reg.is3D(pk)) track(reg, node, pk, key, want);
+  if (reg.wants3D(pk)) track(reg, node, pk, key, want);
 }
 
 // Cache une figure (nœud devenu inactif) : <image> sans href, data-key effacé, clé libérée, objets tenus cachés. Idempotent.

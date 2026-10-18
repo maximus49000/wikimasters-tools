@@ -335,6 +335,84 @@ describe('3D hors service', () => {
   });
 });
 
+describe('habitant en échec', () => {
+  it('un habitant dont l’habillage échoue reste en pantin, les autres restent en 3D (la 3D ne passe pas hors service)', () => {
+    const { r, fake, clock } = setup();
+    fake.isReady = true;
+    const real = fake.render.bind(fake);
+    let failure: 'citizen' | null = null;
+    const bad = OUTFITS[1]!;
+    fake.render = (d: CitizenDesc, ...rest: [FigureKey, number, string]) => {
+      if (d.items.some((i) => i.color === bad.topColor)) {
+        fake.renders++;
+        failure = 'citizen';
+        return null as unknown as ReturnType<Fake['render']>;
+      }
+      failure = null;
+      return real(d, ...rest);
+    };
+    Object.assign(fake, { lastFailure: () => failure });
+    const good = mount(r, fig());
+    const broken = mount(r, fig({ out: bad }));
+    for (let i = 0; i < 20; i++) {
+      poseFigure(r, good.node, { ...POSE, phase: i % PHASES });
+      poseFigure(r, broken.node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+    expect(good.node.getAttribute('data-key')!.includes('@3d')).toBe(true);
+    expect(broken.node.getAttribute('data-key')!.includes('@3d')).toBe(false);
+    expect(r.is3D(good.node.getAttribute('data-palette')!)).toBe(true);
+    expect(r.is3D(broken.node.getAttribute('data-palette')!)).toBe(false);
+    // Un seul essai pour l'habitant en échec (pas de nouvel essai avant 30 s) ; un nouveau passant attendu se montre en 3D.
+    const failed = fake.renders - PHASES;
+    expect(failed).toBe(1);
+    const other = mount(r, fig({ out: OUTFITS[2], waitFor3D: true }));
+    r.flush();
+    expect(other.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    // Après 30 s, nouvel essai pour lui seul.
+    clock.t += 30_000;
+    poseFigure(r, broken.node, { ...POSE, phase: 3 });
+    r.flush();
+    expect(fake.renders - 2 * PHASES).toBe(2);
+    good.unmount();
+    broken.unmount();
+    other.unmount();
+  });
+});
+
+describe('file des rendus 3D', () => {
+  it('cycle non redemandé depuis 15 images : abandonné', () => {
+    const { r, fake } = setup();
+    const { node, unmount } = mount(r, fig());
+    hideFigure(r, node);
+    for (let i = 0; i < 16; i++) r.flush();
+    fake.isReady = true;
+    r.flush();
+    expect(fake.renders).toBe(0);
+    unmount();
+  });
+  it('3D hors service : une figure fixe re-rendue par React reste mise de côté et passe en 3D au nouvel essai', () => {
+    const { r, fake, clock } = setup();
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    const draw = (s: Sky): void => act(() => root.render(<FigureContext.Provider value={r}><svg>{fig({ s, waitFor3D: true })}</svg></FigureContext.Provider>));
+    draw(sky);
+    const node = host.querySelector('[data-figure]')!;
+    clock.t = WAIT3D_FALLBACK_MS;
+    r.flush();
+    expect(href(node)).toBe(BLANK_SPRITE);
+    // Re-rendu React pendant la panne (nouvelle minute, autre palier).
+    draw({ ...sky, daylight: 0.5 });
+    fake.isReady = true;
+    clock.t += 30_000;
+    // Nouvel essai : aucune pose ni rendu React, la figure fixe passe en 3D.
+    r.flush();
+    r.flush();
+    expect(node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    act(() => root.unmount());
+  });
+});
+
 describe('visages', () => {
   it('sans `faces` : visage neutre (aucun état dans la clé) ; avec : état du visage dans la clé, figures fixes suivies', () => {
     const clock = { t: 0 };

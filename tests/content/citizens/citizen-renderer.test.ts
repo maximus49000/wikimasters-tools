@@ -70,6 +70,7 @@ describe('CitizenRenderer', () => {
     const d = desc();
     expect(r.ready(d)).toBe(false);
     expect(r.render(d, KEY, 1, '')).toBeNull();
+    expect(r.lastFailure()).toBe('notReady');
     r.prepare(d);
     r.prepare(d); // idempotent
     expect(r.render(d, KEY, 1, '')).toBeNull();
@@ -77,6 +78,7 @@ describe('CitizenRenderer', () => {
     await vi.waitFor(() => expect(r.ready(d)).toBe(true));
     const out = r.render(d, KEY, 1, '');
     expect(out?.url).toBe('data:image/png;base64,FAUX');
+    expect(r.lastFailure()).toBeNull();
   });
 
   it('sans WebGL (création du rendu en échec) : null, sans exception', async () => {
@@ -85,6 +87,8 @@ describe('CitizenRenderer', () => {
     r.prepare(d);
     await vi.waitFor(() => expect(r.ready(d)).toBe(true));
     expect(r.render(d, KEY, 1, '')).toBeNull();
+    // Panne du moteur (compte pour la mise hors service de la 3D).
+    expect(r.lastFailure()).toBe('engine');
   });
 
   it('base introuvable : pas prête, pas de nouvelle tentative à chaque image', async () => {
@@ -264,7 +268,10 @@ describe('CitizenRenderer', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(t0);
     try {
       expect(r.render(d, KEY, 1, '')).toBeNull();
+      // Échec propre à l'habitant (lui seul retombe en pantin).
+      expect(r.lastFailure()).toBe('citizen');
       expect(r.render(d, KEY, 1, '')).toBeNull();
+      expect(r.lastFailure()).toBe('citizen');
       expect(dressRig).toHaveBeenCalledTimes(1);
       now.mockReturnValue(t0 + 31_000);
       expect(r.render(d, KEY, 1, '')).not.toBeNull();
