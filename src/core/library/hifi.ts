@@ -63,10 +63,10 @@ export function sleeveRest(hifi: { x: number; y: number; z: number }, kind: Slee
 }
 
 // ---------- Pochette debout (zoom de la chaîne) ----------
-// Pleine taille (sans la réduction de la pochette couchée), dressée face à l'utilisateur à droite du poste, un peu penchée en arrière
-// comme calée contre un support ; à gauche du poste si elle dépasserait du bureau (`deskW`, cm).
+// Pleine taille (sans la réduction de la pochette couchée), dressée face à l'utilisateur à droite du poste, penchée en arrière
+// comme sur un chevalet (35° : sous la caméra plongeante du zoom, la couverture garde presque ses proportions) ; à gauche du poste si elle dépasserait du bureau (`deskW`, cm).
 const STAND_GAP = 3;
-const STAND_LEAN = 10;
+const STAND_LEAN = 35;
 // `corners` : couverture (face avant), haut gauche, haut droit, bas droit, bas gauche ; `back` : les mêmes coins au dos. `w` × `h` : taille (cm).
 export function sleeveStand(hifi: { x: number; y: number; z: number }, kind: SleeveKind, deskW = Infinity): { corners: V3[]; back: V3[]; w: number; h: number } {
   const [w, h, t] = SLEEVE_CM[kind];
