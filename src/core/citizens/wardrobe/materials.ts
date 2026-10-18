@@ -11,6 +11,8 @@ export type Motif = Pattern | Band;
 const GRAD = new THREE.DataTexture(new Uint8Array([150, 150, 160, 255, 255, 255, 255, 255]), 2, 1, THREE.RGBAFormat);
 GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter;
 GRAD.needsUpdate = true;
+/** Rampe toon deux tons partagée (corps du rendu hors écran compris) : ne jamais la libérer. */
+export const TOON_RAMP: THREE.Texture = GRAD;
 
 export function toon(color: string, side: THREE.Side = THREE.DoubleSide, pattern: Motif | null = null): THREE.MeshToonMaterial {
   const m = new THREE.MeshToonMaterial({ color: new THREE.Color(color), gradientMap: GRAD, side, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });

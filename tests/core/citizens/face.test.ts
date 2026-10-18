@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
-  blendEmotion, blinkAt, blinkLevel, EMOTIONS, emotionFor, faceLayer, faceState, type Emotion,
+  blendEmotion, blinkAt, blinkLevel, EMOTIONS, emotionFor, faceLayer, faceState, parseFaceState, type Emotion,
 } from '../../../src/core/citizens/face';
 import type { FaceMarks } from '../../../src/core/citizens/manifest';
 import { analyse } from '../../../src/core/citizens/wardrobe';
@@ -100,6 +100,18 @@ describe('faceState', () => {
     expect(blinkLevel(0.1)).toBe(0);
     expect(blinkLevel(0.5)).toBe(0.5);
     expect(blinkLevel(0.9)).toBe(1);
+  });
+
+  it('se relit (parseFaceState) : même émotion, même clé', () => {
+    for (const e of Object.keys(EMOTIONS) as Emotion[])
+      for (const b of [0, 0.5, 1]) {
+        const k = faceState(e, b);
+        const p = parseFaceState(k);
+        expect(p.emotion).toBe(e);
+        expect(faceState(p.emotion, p.blink)).toBe(k);
+      }
+    expect(parseFaceState('tb5')).toEqual({ emotion: 'triste', blink: 0.5 });
+    expect(parseFaceState('zz')).toEqual({ emotion: 'neutre', blink: 0 });
   });
 });
 

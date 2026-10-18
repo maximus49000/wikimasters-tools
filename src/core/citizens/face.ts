@@ -241,3 +241,13 @@ export function faceState(e: Emotion, blink: number): string {
   const lvl = EMOTIONS[e].lid >= 1 ? 0 : blinkLevel(blink);
   return CODE[e] + (lvl === 0 ? '' : lvl === 0.5 ? 'b5' : 'b1');
 }
+
+const DECODE = Object.fromEntries(Object.entries(CODE).map(([e, c]) => [c, e as Emotion])) as Record<string, Emotion>;
+
+/** Inverse de `faceState` (rendu des sprites) : émotion et niveau de clignement ; clé inconnue → neutre, yeux ouverts. */
+export function parseFaceState(s: string): { emotion: Emotion; blink: 0 | 0.5 | 1 } {
+  const m = /^([a-z]?)(b5|b1)?$/.exec(s);
+  const emotion = m ? DECODE[m[1]!] : undefined;
+  if (!m || !emotion) return { emotion: 'neutre', blink: 0 };
+  return { emotion, blink: m[2] === 'b5' ? 0.5 : m[2] === 'b1' ? 1 : 0 };
+}

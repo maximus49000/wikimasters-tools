@@ -12,7 +12,7 @@ import { gilet, tablier } from './wardrobe/work';
 import { accessory } from './wardrobe/accessories';
 
 export { analyse, JOINTS, type BodyInfo, type JointName, type Part, type Skull, type VertexInfo } from './wardrobe/body';
-export { toon, type Band, type Motif } from './wardrobe/materials';
+export { toon, TOON_RAMP, type Band, type Motif } from './wardrobe/materials';
 export { garments, shell, skirt } from './wardrobe/shell';
 export { beard, bonnet, cap, hair, HAIR_STYLES, skull } from './wardrobe/hair';
 export { gilet, GILET_BANDE, tablier } from './wardrobe/work';
