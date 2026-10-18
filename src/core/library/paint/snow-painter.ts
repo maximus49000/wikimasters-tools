@@ -161,7 +161,7 @@ function paintRoofSnow(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding, nea
     for (let x = c.x0 + ROOF_REACH; x <= c.x1 - ROOF_REACH; x += 0.8) dab(ctx, rng, x, c.y0 + ROOF_REACH + 0.05, ROOF_R, SNOW, 0.95, 1.8, 0);
   }
   if (b.far) return;
-  if (layout && mansard) paintBrisisSnow(ctx, rng, b, onDormer);
+  if (layout && layout.roof.kind === 'mansard') paintBrisisSnow(ctx, rng, b, layout.roof.terrasson, onDormer);
   // Rebord de la corniche, sur toute la largeur (peinte par-dessus le toit : son haut est un appui, comme ceux des fenêtres).
   // Touches couchées de rayon ≤ 0,5 : portée 0,5 × DAB_SPREAD en hauteur, × 1,8 en largeur (rentrées d'autant aux bouts).
   const cy = eave - CORNICE_UP + 0.1 + 0.5 * DAB_SPREAD;
@@ -173,10 +173,11 @@ function paintRoofSnow(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding, nea
 }
 
 // Brisis de la mansarde : pente presque verticale, la neige n'y tient qu'en plaques clairsemées entre le terrasson et la
-// corniche, plus rares vers le bas, jamais sur les lucarnes. Touches couchées (rot 0) dans le trapèze rentré de leur portée.
-function paintBrisisSnow(ctx: PaintCtx, rng: () => number, b: PaintBuilding, onDormer: (x: number, y: number) => boolean): void {
+// corniche (sous le terrasson de la mise en page), plus rares vers le bas, jamais sur les lucarnes. Touches couchées
+// (rot 0) dans le trapèze rentré de leur portée.
+function paintBrisisSnow(ctx: PaintCtx, rng: () => number, b: PaintBuilding, terrasson: number, onDormer: (x: number, y: number) => boolean): void {
   const eave = b.top + b.look.roofH;
-  const bt = b.top + 4;
+  const bt = b.top + terrasson;
   const r = 0.75;
   const reachX = r * 1.8 * DAB_SPREAD;
   const reachY = r * DAB_SPREAD;
@@ -274,25 +275,85 @@ export function hillRoofPoints(h: HillHouse): [number, number][] {
       : [[x - o, top + rh], [x + o, top + 1], [x + w - o, top + 1], [x + w + o, top + rh]];
 }
 
+// Ce qui est peint devant la colline : immeubles (fond et premier plan, sous leur ligne de toit) et socles des jumeaux.
+// Ligne affine entre deux cassures : son minimum sur un intervalle est pris aux bornes ou aux cassures.
+type Front = { x0: number; x1: number; y: (x: number) => number; cuts: readonly number[] };
+
+function frontsOver(plan: CityPaintPlan, a: number, b: number): Front[] {
+  const out: Front[] = [];
+  for (const bd of plan.buildings) {
+    const s = roofSpan(bd);
+    if (s.x1 >= a && s.x0 <= b) out.push({ ...s, y: (x) => roofLineY(bd, x), cuts: roofCuts(bd) });
+  }
+  for (const p of plan.podiums) if (p.x + p.w >= a && p.x <= b) out.push({ x0: p.x, x1: p.x + p.w, y: () => p.top, cuts: [] });
+  return out;
+}
+
+// Plus haut de ce qui est devant sur [a, b] ; Infinity si rien.
+function frontMin(fronts: readonly Front[], a: number, b: number): number {
+  let y = Infinity;
+  for (const f of fronts) {
+    if (f.x1 < a || f.x0 > b) continue;
+    const lo = Math.max(a, f.x0);
+    const hi = Math.min(b, f.x1);
+    y = Math.min(y, f.y(lo), f.y(hi));
+    for (const k of f.cuts) if (k > lo && k < hi) y = Math.min(y, f.y(k));
+  }
+  return y;
+}
+
 // Fond : bande blanche à bord net le long de la crête (sous la ligne) et trait de neige sur le haut des toits des maisons.
-function paintHillSnow(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number, houses: readonly HillHouse[]): void {
+// La neige posée est un seul calque au-dessus de toute la ville : la colline n'est enneigée que là où aucun immeuble ni
+// socle ne passe devant (bande en colonnes de 1 px rognées au plus haut de ce qui est devant, trait découpé en morceaux
+// de 0,5 px gardés seulement s'ils restent, épaisseur comprise, au-dessus de ce qui est devant).
+export function paintHillSnow(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number, houses: readonly HillHouse[]): void {
   const a = x0 - 4;
   const b = x1 + 4;
   const crest = (x: number): number => hillCrestY(plan, x);
+  const lo = Math.min(a, ...houses.map((h) => h.x - 2 * h.s - 2));
+  const hi = Math.max(b, ...houses.map((h) => h.x + h.w + 2 * h.s + 2));
+  const fronts = frontsOver(plan, lo, hi);
   ctx.fillStyle = rgba(SNOW, 0.95);
   ctx.beginPath();
-  ctx.moveTo(a, crest(a) + 4);
-  for (let x = a; x < b; x += 4) ctx.lineTo(x, crest(x));
-  ctx.lineTo(b, crest(b));
-  ctx.lineTo(b, crest(b) + 4);
-  for (let x = b; x > a; x -= 4) ctx.lineTo(x, crest(x) + 4);
-  ctx.closePath();
+  for (let x = a; x < b; x += 1) {
+    const c = Math.min(b, x + 1);
+    const ca = crest(x);
+    const cc = crest(c);
+    const front = frontMin(fronts, x, c);
+    const ba = Math.min(ca + 4, front);
+    const bc = Math.min(cc + 4, front);
+    if (ba <= ca || bc <= cc) continue;
+    ctx.moveTo(x, ca);
+    ctx.lineTo(c, cc);
+    ctx.lineTo(c, bc);
+    ctx.lineTo(x, ba);
+    ctx.closePath();
+  }
   ctx.fill();
   ctx.strokeStyle = rgba(SNOW, 0.95);
   for (const h of houses) {
-    ctx.lineWidth = 1.6 * h.s;
+    const hw = 0.8 * h.s;
+    ctx.lineWidth = 2 * hw;
     ctx.beginPath();
-    hillRoofPoints(h).forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py + 0.8 * h.s) : ctx.lineTo(px, py + 0.8 * h.s)));
+    const pts = hillRoofPoints(h).map(([px, py]): [number, number] => [px, py + hw]);
+    let open = false;
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1]!;
+      const [bx, by] = pts[i]!;
+      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 0.5));
+      for (let k = 0; k < n; k++) {
+        const p0: [number, number] = [ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n];
+        const p1: [number, number] = [ax + ((bx - ax) * (k + 1)) / n, ay + ((by - ay) * (k + 1)) / n];
+        const keep = Math.max(p0[1], p1[1]) + hw <= frontMin(fronts, Math.min(p0[0], p1[0]) - hw, Math.max(p0[0], p1[0]) + hw);
+        if (!keep) {
+          open = false;
+          continue;
+        }
+        if (!open) ctx.moveTo(p0[0], p0[1]);
+        ctx.lineTo(p1[0], p1[1]);
+        open = true;
+      }
+    }
     ctx.stroke();
   }
 }

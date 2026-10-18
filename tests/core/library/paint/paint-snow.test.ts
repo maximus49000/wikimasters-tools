@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { heightOn, roofOutline } from '../../../../src/core/library/city/facade-layout';
 import { cityPaintPlan, hillCrestY, type CityPaintPlan, type PaintBuilding } from '../../../../src/core/library/paint/city-plan';
 import { TILE, tileCount } from '../../../../src/core/library/paint/city-painter';
-import { chimneyBoxes, dormerTopY, hillRoofPoints, paintSnowTile, roofLineY } from '../../../../src/core/library/paint/snow-painter';
+import { chimneyBoxes, dormerTopY, hillRoofPoints, paintHillSnow, paintSnowTile, roofLineY, roofSpan } from '../../../../src/core/library/paint/snow-painter';
 import { recordingCtx } from './recording-ctx';
 
 afterEach(() => vi.restoreAllMocks());
@@ -13,7 +13,7 @@ afterEach(() => vi.restoreAllMocks());
 function allowed(plan: ReturnType<typeof cityPaintPlan>, x: number, y: number): boolean {
   if (y >= plan.ground - 1e-6) return true;
   if (y >= hillCrestY(plan, x) - 1e-6 && y <= hillCrestY(plan, x) + 4 + 1e-6) return true;
-  if (plan.hill.houses.some((h) => hillRoofPoints(h).some(([px, py]) => Math.abs(px - x) < 1e-6 && Math.abs(py + 0.8 * h.s - y) < 1e-6))) return true;
+  if (plan.hill.houses.some((h) => onPolyline(hillRoofPoints(h).map(([px, py]) => [px, py + 0.8 * h.s]), x, y))) return true;
   return plan.buildings.some((b) => {
     if (x >= b.x - 2 && x <= b.x + b.w + 2 && y >= roofLineY(b, x) - 1e-6 && y <= plan.ground) return true;
     if (chimneyBoxes(plan, b).some((c) => x >= c.x0 - 1e-6 && x <= c.x1 + 1e-6 && y >= c.y0 - 1e-6)) return true;
@@ -22,6 +22,25 @@ function allowed(plan: ReturnType<typeof cityPaintPlan>, x: number, y: number): 
       return t !== null && y >= t - 1e-6;
     });
   });
+}
+
+// Point sur la ligne brisée (trait de neige d'un toit de maison du fond, découpé en morceaux).
+function onPolyline(pts: [number, number][], x: number, y: number): boolean {
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay] = pts[i - 1]!;
+    const [bx, by] = pts[i]!;
+    if (x < Math.min(ax, bx) - 1e-6 || x > Math.max(ax, bx) + 1e-6) continue;
+    if (Math.abs((bx - ax) * (y - ay) - (by - ay) * (x - ax)) <= 1e-6 * Math.hypot(bx - ax, by - ay)) return true;
+  }
+  return false;
+}
+
+// Haut de ce qui est peint devant la colline en x : ligne de toit des immeubles (fond et premier plan), socles ; Infinity si rien.
+function frontTop(plan: CityPaintPlan, x: number): number {
+  let y = Infinity;
+  for (const b of plan.buildings) if (x >= roofSpan(b).x0 && x <= roofSpan(b).x1) y = Math.min(y, roofLineY(b, x));
+  for (const p of plan.podiums) if (x >= p.x && x <= p.x + p.w) y = Math.min(y, p.top);
+  return y;
 }
 
 // Neige d'un seul immeuble : la tranche avec lui seul moins la même tranche sans immeuble (crête, maisons du fond, sol).
@@ -87,7 +106,7 @@ describe('neige posée', () => {
     expect(cases.length).toBeGreaterThan(3);
     for (const { plan, b } of cases) {
       const l = b.layout!;
-      const bt = b.top + 4;
+      const bt = b.top + (l.roof.kind === 'mansard' ? l.roof.terrasson : 4);
       const pts = snowOf(plan, b).filter(([, y]) => y < l.eave - 0.8);
       // Terrasson : la bande du haut, de top + 0,5 à top + 4.
       expect(pts.filter(([x, y]) => y < bt && x > b.x + 6 && x < b.x + b.w - 6).length).toBeGreaterThan(20);
@@ -183,6 +202,23 @@ describe('neige posée', () => {
         const hidden = far.filter(([x, y]) => y < plan.ground && near.some((b) => x >= b.x - 2 && x <= b.x + b.w + 2 && y >= roofLineY(b, x) - 1e-6));
         expect(hidden.slice(0, 3)).toEqual([]);
       }
+    });
+  }
+
+  for (const seed of [1, 4, 7]) {
+    it(`graine ${seed} : la neige de la colline (crête, toits des maisons) n’est jamais peinte sur un immeuble ni un socle`, () => {
+      const plan = cityPaintPlan(1080, 340, seed);
+      let seen = 0;
+      for (let t = 0; t < tileCount(1080); t++) {
+        const ctx = recordingCtx();
+        const houses = plan.hill.houses.filter((h) => h.x - 2 < (t + 1) * TILE + 2 && h.x + h.w + 2 > t * TILE - 2);
+        paintHillSnow(ctx, plan, t * TILE, Math.min(1080, (t + 1) * TILE), houses);
+        seen += ctx.points.length;
+        // Sommet d'un morceau de neige : jamais sous le haut de ce qui est devant (à la marge d'arrondi près).
+        const under = ctx.points.filter(([x, y]) => y > frontTop(plan, x) + 1e-6);
+        expect(under.slice(0, 3)).toEqual([]);
+      }
+      expect(seen).toBeGreaterThan(200);
     });
   }
 
