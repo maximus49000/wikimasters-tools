@@ -24,7 +24,7 @@
 - Modèles : **Fable** uniquement pour dessiner (tâches 6, 7, 10 : port du code de la maquette, aucune signature ni branchement modifiés) ; **Opus** pour la logique, le moteur, les branchements, la neige, les tests DOM ; **Sonnet** pour le mécanique (tâche 1). Commits terminés par `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (tâches Fable : `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` ; tâche Sonnet : le nom exact du modèle qui l'exécute).
 - Commentaires en français, densité et idiome du code voisin ; pas d'ESLint ; `describe/it` en français ; tout nouveau test entre dans une famille de `tests/familles.ts` (ici `scene-ville`, `scene-meteo`, `scene-pietons`, `scene-evenements`) ; commande : `npm run test:famille -- <noms>`.
 - Une seule session lance des tests à la fois (vérifier qu'aucun vitest d'une autre session ne tourne) ; `git stash` interdit ; avant chaque commit `git branch --show-current` doit afficher `feat/facades-parisiennes`.
-- Pièges du worktree : `node_modules` en jonction vers le dépôt principal ; `.wxt/` doit exister (le copier depuis le dépôt principal sinon `TSCONFIG_ERROR`) ; vitest avale `console.log` (`--silent=false`).
+- Pièges du worktree : `node_modules` est installé localement (npm ci, avec three et @fontsource) et `.wxt/` existe (npx wxt prepare) ; vitest avale `console.log` (`--silent=false`).
 - Pas de fiche WikiHow ; pas de mesure téléphone par PR (campagne après G7).
 
 ## Review Focus
