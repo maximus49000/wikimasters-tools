@@ -4,7 +4,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
-import { BLANK_SPRITE, FigureContext, FigureRegistry, figureAnchors, paletteKey, spriteKey, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
+import { BLANK_SPRITE, FigureContext, FigureRegistry, figureAnchors, paletteKey, phaseSet, spriteKey, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
 import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, hideFigure, poseFigure, rainOutfit, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
 import { CitizenRenderer } from '../../../src/content/citizens/citizen-renderer';
 import { RENDER_BUDGET_MS, WAIT3D_FALLBACK_MS } from '../../../src/content/figure/citizen-config';
@@ -161,6 +161,23 @@ describe('repli pantin et passage en 3D', () => {
     expect(node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
     unmount();
   });
+  it('figure immobile (debout) : une seule pose distincte, passage en 3D après 1 rendu', () => {
+    const stand: PoseIn = { yaw: 0, gait: 'stand', phase: 0, head: 0 };
+    expect(phaseSet(keyOf(o, stand)).phases).toEqual([0]);
+    expect(phaseSet(keyOf(o)).phases).toHaveLength(PHASES);
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const { node, unmount } = mount(r, <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={stand} />);
+    r.flush();
+    expect(fake.renders).toBe(1);
+    expect(node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    // Une autre phase de la même pose immobile : même image 3D, aucun rendu de plus.
+    poseFigure(r, node, { ...stand, phase: 7 });
+    r.flush();
+    expect(fake.renders).toBe(1);
+    expect(node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    unmount();
+  });
   it('6 marcheurs, rendu de 4 ms (2 par image) : jamais la même image plus de 2 changements de phase de suite (demi-tour en route)', () => {
     const { r, fake } = setup(4);
     fake.isReady = true;
@@ -281,6 +298,8 @@ describe('3D hors service', () => {
     expect(fake.renders).toBe(2 * PHASES);
     expect(b.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
     expect(r.is3D(b.node.getAttribute('data-palette')!)).toBe(true);
+    // La figure fixe `a` (ni rendu React ni poseFigure depuis) est reprise en suivi et passe en 3D elle aussi.
+    expect(a.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
     a.unmount();
     b.unmount();
   });

@@ -2,7 +2,7 @@
 import { createContext, useContext } from 'react';
 import { INK_WIDTH, anchorsOf, bakeFigure, keyString, type Anchor, type FigureKey } from '../../core/library/figure/bake';
 import { shapeFromSignature } from '../../core/library/figure/dress';
-import { PHASES, riding, type ArmPose } from '../../core/library/figure/skeleton';
+import { PHASES, poseOf, riding, type ArmPose } from '../../core/library/figure/skeleton';
 import { citizenKey, type CitizenDesc, type Emotion } from '../../core/citizens/catalogue';
 import type { CitizenSprite } from '../citizens/citizen-renderer';
 import { CITIZENS_3D, RENDER_BUDGET_MS, WAIT3D_FALLBACK_MS } from './citizen-config';
@@ -159,6 +159,41 @@ export const HOLD_3D_FRAMES = 2;
 // pantins partout, sans attente, nouvel essai après REPROBE_MS.
 const DEAD_STREAK = 5;
 const REPROBE_MS = 30_000;
+// Phases distinctes d'une pose (repère : la pose du pantin, comme le rendu 3D la calcule) : une allure immobile (debout,
+// assis, pied à terre…) donne la même pose à toutes les phases, une seule image suffit. `rep[p]` : première phase de même
+// pose que p ; `phases` : les phases distinctes. Calculé une fois par pose sans phase.
+type PhaseSet = { rep: Uint8Array; phases: number[] };
+const phaseSets = new Map<string, PhaseSet>();
+export function phaseSet(key: FigureKey): PhaseSet {
+  const umbrella = shapeFromSignature(key.sig).umbrella;
+  const id = `${umbrella ? 1 : 0}|${key.yaw}|${key.gait}|${key.head}|${key.arms}|${key.lean}`;
+  let ps = phaseSets.get(id);
+  if (!ps) {
+    const seen = new Map<string, number>();
+    const rep = new Uint8Array(PHASES);
+    const phases: number[] = [];
+    const round = (_k: string, v: unknown): unknown => (typeof v === 'number' ? Math.round(v * 1e5) / 1e5 || 0 : v);
+    for (let p = 0; p < PHASES; p++) {
+      const pose = poseOf((key.yaw * Math.PI) / 8, (p * 2 * Math.PI) / PHASES, key.gait, { headYaw: (key.head * Math.PI) / 8, umbrella, arms: key.arms, lean: key.lean });
+      const sig = JSON.stringify(pose, round);
+      const first = seen.get(sig);
+      if (first === undefined) {
+        seen.set(sig, p);
+        phases.push(p);
+        rep[p] = p;
+      } else rep[p] = first;
+    }
+    ps = { rep, phases };
+    if (phaseSets.size >= 4096) phaseSets.clear();
+    phaseSets.set(id, ps);
+  }
+  return ps;
+}
+// Pose ramenée à sa phase représentative (clés des sprites 3D : une seule image pour les phases identiques).
+const repKey = (key: FigureKey): FigureKey => {
+  const r = phaseSet(key).rep[key.phase % PHASES]!;
+  return r === key.phase ? key : { ...key, phase: r };
+};
 // Demande de rendu 3D : un cycle (les PHASES phases d'une pose, visage neutre) ou une image seule (état du visage).
 // Priorité : 0 = figure qui montre déjà de la 3D (nouvelle orientation, nouveau geste) ou visage, 1 = cycle commencé,
 // 2 = nouveau cycle, 3 = cycle déjà complet à un autre palier de lumière (servi en attendant).
@@ -203,6 +238,9 @@ export class FigureRegistry {
   private readonly meta3d = new Map<string, Meta3D>();
   // Habitants dont l'attente 3D court (waitFor3D) : seuls examinés à chaque image.
   private readonly waitingSet = new Set<Citizen>();
+  // Figures retirées du suivi pendant que la 3D est hors service : remises en suivi au nouvel essai.
+  private readonly parked = new Map<Element, () => boolean>();
+  private kick = false;
   private everRendered = false;
   private nullStreak = 0;
   private deadAt: number | null = null;
@@ -285,6 +323,9 @@ export class FigureRegistry {
     if (this.now() - this.deadAt < REPROBE_MS) return true;
     this.deadAt = null;
     this.nullStreak = 0;
+    for (const [node, refresh] of this.parked) this.watchers.set(node, refresh);
+    this.parked.clear();
+    this.kick = true;
     return false;
   }
   // Une palette porte-t-elle un habitant 3D (et le rendu 3D peut-il venir) ?
@@ -321,15 +362,16 @@ export class FigureRegistry {
   // Clé du sprite voulu pour (palette, pose) : 3D pour une palette 3D, sinon celle du pantin.
   keyFor(pk: string, key: FigureKey): string {
     const c = this.citizenOf(pk);
-    return c ? spriteKey3D(pk, key, this.faceOf(c, key)) : spriteKey(pk, key);
+    return c ? spriteKey3D(pk, repKey(key), this.faceOf(c, key)) : spriteKey(pk, key);
   }
   // Cycle d'une pose : l'habitant et la pose sans la phase (ni la lumière, ni le visage).
   private cycleId(c: Citizen, key: FigureKey): string {
     return `${c.ck}|${key.sig}|${key.yaw}|${key.gait}|${key.head}|${key.arms}|${key.lean}`;
   }
-  private complete(cid: string): boolean {
+  // Cycle complet : toutes ses phases distinctes rendues (une seule pour une pose immobile).
+  private complete(cid: string, key: FigureKey): boolean {
     const n = this.cycles.get(cid);
-    return n !== undefined && n.every((v) => v > 0);
+    return n !== undefined && phaseSet(key).phases.every((p) => n[p]! > 0);
   }
   // Sprite 3D servable : l'exact, sinon le dernier rendu du même habitant, même pose, même visage (autre palier de lumière),
   // sinon visage neutre.
@@ -356,12 +398,13 @@ export class FigureRegistry {
   // (la lecture n'attend jamais un rendu), sinon cycle mis en file et pantin (repli) ; `wait` (waitFor3D) : rien tant que
   // l'attente court ; `from3D` : la figure montre déjà de la 3D (cycle prioritaire). Pantin : peint tout de suite si `now`
   // (première apparition), sinon mis en file. Palette 2D : exactement ensure / request d'avant.
-  pick(pk: string, key: FigureKey, now: boolean, wait = false, from3D = false): { sk: string; url: string } | null {
+  pick(pk: string, key2D: FigureKey, now: boolean, wait = false, from3D = false): { sk: string; url: string } | null {
     const c = this.citizenOf(pk);
     if (c && this.c3d !== null && !this.dead()) {
+      const key = repKey(key2D);
       const face = this.faceOf(c, key);
       const cid = this.cycleId(c, key);
-      if (this.complete(cid)) {
+      if (this.complete(cid, key)) {
         const got = this.find3D(pk, c, key, face);
         if (got) {
           // Visage ou palier de lumière pas encore rendus : le plus proche est servi, l'exact est rendu ensuite.
@@ -376,8 +419,8 @@ export class FigureRegistry {
       this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key, face: '', cid, prio: from3D ? 0 : this.cycles.has(cid) ? 1 : 2 });
       if (wait && this.waiting(c)) return null;
     }
-    const sk = spriteKey(pk, key);
-    const url = now ? (this.hit(sk) ?? this.create(pk, key, sk)) : this.request2D(pk, key, sk);
+    const sk = spriteKey(pk, key2D);
+    const url = now ? (this.hit(sk) ?? this.create(pk, key2D, sk)) : this.request2D(pk, key2D, sk);
     return url === null ? null : { sk, url };
   }
   // Figure qui attend mieux que son image (pantin de repli, ou rien en waitFor3D) : `refresh` est rappelée après les flush
@@ -388,6 +431,7 @@ export class FigureRegistry {
   }
   unwatch(node: Element): void {
     this.watchers.delete(node);
+    this.parked.delete(node);
   }
   size(): number {
     return this.sprites.size;
@@ -530,8 +574,10 @@ export class FigureRegistry {
           continue;
         }
         const light = Number(this.palettes.get(job.pk)?.['c3d-light']);
-        // Cycle : à partir de la phase demandée (la prochaine montrée), toutes les phases.
-        const keys = job.kind === 'one' ? [job.key] : Array.from({ length: PHASES }, (_, i) => ({ ...job.key, phase: (job.key.phase + i) % PHASES }));
+        // Cycle : ses phases distinctes, à partir de la phase demandée (la prochaine montrée).
+        const ph = phaseSet(job.key).phases;
+        const from = Math.max(0, ph.indexOf(job.key.phase));
+        const keys = job.kind === 'one' ? [job.key] : ph.map((_, i) => ({ ...job.key, phase: ph[(from + i) % ph.length]! }));
         for (const k of keys) {
           const sk = spriteKey3D(job.pk, k, job.face);
           if (this.sprites.has(sk)) continue;
@@ -576,7 +622,9 @@ export class FigureRegistry {
       }
     }
     if (this.watchers.size === 0) return;
-    if (made === 0 && !expired && !deadNow && !this.faces && this.frame % WATCH_EVERY !== 0) return;
+    const kick = this.kick;
+    this.kick = false;
+    if (made === 0 && !expired && !deadNow && !kick && !this.faces && this.frame % WATCH_EVERY !== 0) return;
     for (const [node, refresh] of [...this.watchers]) {
       let done: boolean;
       try {
@@ -584,7 +632,10 @@ export class FigureRegistry {
       } catch {
         done = true;
       }
-      if (done) this.watchers.delete(node);
+      if (!done) continue;
+      this.watchers.delete(node);
+      // Retirée parce que la 3D est hors service : reprise au nouvel essai.
+      if (this.deadAt !== null) this.parked.set(node, refresh);
     }
   }
 }
