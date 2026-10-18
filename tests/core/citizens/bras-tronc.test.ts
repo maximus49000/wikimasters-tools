@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { applyPose, boneMap } from '../../../src/core/citizens/retarget';
+import { applyPose, boneMap, prepareHull } from '../../../src/core/citizens/retarget';
+import { analyse, dressRig } from '../../../src/core/citizens/wardrobe';
 import { boneName, comp } from '../../../src/core/citizens/wardrobe/body';
 import { poseOf, type ArmPose, type Gait } from '../../../src/core/library/figure/skeleton';
 
@@ -88,5 +89,33 @@ describe('bras hors du tronc', () => {
       expect(worst, `${name} ${where}`).toBeLessThan(0.003);
       if (name === 'femme-forte' || name === 'mamie') expect(before, `${name} sans correction`).toBeGreaterThan(0.012);
     }
+  });
+});
+
+describe('enveloppe du tronc (revue du 2026-10-18)', () => {
+  it('mesurée à l’habillage (prepareHull), part du corps gardée par géométrie : même enveloppe qu’une mesure complète', async () => {
+    const { body } = await load('mamie');
+    const A = analyse(body);
+    const worn = dressRig(A, [{ k: 'top', color: '#C03030', sleeve: 0.45 }], '#C68642', body);
+    for (const o of worn) body.parent!.add(o);
+    // Première mesure (corps mesuré puis gardé), puis une seconde sur une autre carte des os (corps repris du cache).
+    const m1 = boneMap(body.skeleton);
+    prepareHull(m1, body.parent!);
+    const m2 = boneMap(body.skeleton);
+    prepareHull(m2, body.parent!);
+    const h1 = m1.hull!, h2 = m2.hull!;
+    expect(h1).toBeTruthy();
+    expect([...h2.r]).toEqual([...h1.r]);
+    for (let b = 0; b < h1.arm.length; b++) expect(h2.arm[b]).toBeCloseTo(h1.arm[b]!, 6);
+    expect(h2.hand).toBeCloseTo(h1.hand, 6);
+    expect(h2.handLen).toBeCloseTo(h1.handLen, 6);
+    // Déjà là : applyPose ne la remesure pas.
+    applyPose(body.parent!, m2, poseOf(0, 0, 'walk'), A.H / 40, 'walk');
+    expect(m2.hull).toBe(h2);
+    // Le vêtement compte : sans lui, l'enveloppe du buste est plus étroite.
+    for (const o of worn) body.parent!.remove(o);
+    const m3 = boneMap(body.skeleton);
+    prepareHull(m3, body.parent!);
+    expect(m3.hull!.r.reduce((a, b) => a + b, 0)).toBeLessThan(h1.r.reduce((a, b) => a + b, 0));
   });
 });

@@ -277,6 +277,15 @@ const TORSO = new Set(['Hips', 'Spine', 'Spine1', 'Spine2']);
 const THIGH = new Set(['LeftUpLeg', 'RightUpLeg']);
 const ARM_SIDE: Record<string, Side> = { LeftArm: 'Left', LeftForeArm: 'Left', LeftHand: 'Left', RightArm: 'Right', RightForeArm: 'Right', RightHand: 'Right' };
 
+// Part du corps de base dans l'enveloppe (rayons, sommes et comptes du bras et de la main), par géométrie du corps.
+type BodyHull = { sig: string; r: Float32Array; arm: Float32Array; armN: Float32Array; hand: number; handN: number; handLen: number; n: number };
+const bodyHulls = new WeakMap<THREE.BufferGeometry, BodyHull>();
+// Enveloppe mesurée à l'habillage du rig (CitizenRenderer.build) plutôt qu'au premier applyPose : le premier rendu ne la paie
+// plus. Sans effet si elle est déjà là.
+export function prepareHull(m: BoneMap, rig: THREE.Object3D): void {
+  if (m.hull === undefined) m.hull = buildHull(m, rig);
+}
+
 function buildHull(m: BoneMap, rig: THREE.Object3D): Hull | null {
   const P0 = m.rest.pos;
   const torsoLen = P0.Neck.y - P0.Hips.y;
@@ -291,6 +300,8 @@ function buildHull(m: BoneMap, rig: THREE.Object3D): Hull | null {
   const up = { Left: P0.LeftArm.distanceTo(P0.LeftForeArm), Right: P0.RightArm.distanceTo(P0.RightForeArm) };
   const fore = { Left: P0.LeftForeArm.distanceTo(P0.LeftHand), Right: P0.RightForeArm.distanceTo(P0.RightHand) };
   const d = new THREE.Vector3(), q = new THREE.Vector3();
+  // Repère de la mesure (le même pour toutes les tenues d'une base) : la part du corps n'est valable que pour lui.
+  const sig = [y0, dy, cx, cz, P0.LeftArm, P0.LeftHand, P0.RightArm, P0.RightHand].map((v) => (typeof v === 'number' ? v : `${v.x},${v.y},${v.z}`)).join('|');
   rig.traverse((o) => {
     const mesh = o as THREE.SkinnedMesh;
     if (!mesh.isSkinnedMesh || !mesh.skeleton.bones.includes(m.bones.Hips)) return;
@@ -299,10 +310,26 @@ function buildHull(m: BoneMap, rig: THREE.Object3D): Hull | null {
     const acc = !!mesh.userData.accessory;
     const g = mesh.geometry, P = g.attributes.position, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight;
     if (!P || !SI || !SW) return;
-    const names = mesh.skeleton.bones.map((b) => boneName(b.name));
     // Vêtements (garde-robe : attribut bindPos) : seulement au-dessus des hanches. Plus bas, jupes, pans de manteau et
     // sacs s'évasent loin du corps : les éviter mettrait les bras en croix ; la main frôle le tissu comme en vrai.
     const cloth = !!g.attributes.bindPos;
+    // Corps de la base (ni vêtement ni accessoire : géométrie partagée par tous les habitants de cette base) : sa part de
+    // l'enveloppe est mesurée une fois par géométrie, puis ajoutée telle quelle.
+    const shared = !cloth && !acc;
+    if (shared) {
+      const c = bodyHulls.get(g);
+      if (c && c.sig === sig) {
+        for (let j = 0; j < r.length; j++) if (c.r[j]! > r[j]!) r[j] = c.r[j]!;
+        for (let b = 0; b < ARM_BINS; b++) { arm[b] = arm[b]! + c.arm[b]!; armN[b] = armN[b]! + c.armN[b]!; }
+        hand += c.hand; handN += c.handN; handLen = Math.max(handLen, c.handLen); n += c.n;
+        return;
+      }
+    }
+    // Part du corps mesurée à part (puis gardée) : accumulateurs propres, ajoutés ensuite.
+    const own = shared ? { r: new Float32Array(r.length), arm: new Float32Array(ARM_BINS), armN: new Float32Array(ARM_BINS), hand: 0, handN: 0, handLen: 0, n: 0 } : null;
+    const tR = own ? own.r : r, tArm = own ? own.arm : arm, tArmN = own ? own.armN : armN;
+    let tHand = 0, tHandN = 0, tHandLen = 0, tN = 0;
+    const names = mesh.skeleton.bones.map((b) => boneName(b.name));
     for (let i = 0; i < P.count; i++) {
       let best = -1, bw = 0;
       for (let k = 0; k < 4; k++) {
@@ -321,13 +348,13 @@ function buildHull(m: BoneMap, rig: THREE.Object3D): Hull | null {
         q.set(x, y, z).sub(a);
         const t = q.dot(d) / L, dist = q.addScaledVector(d, -t * L).length();
         if (/Hand/.test(name) || t > 1) {
-          hand += Math.min(dist, 0.15 * L);
-          handN++;
-          handLen = Math.max(handLen, Math.min((t - 1) * L, 0.5 * L));
+          tHand += Math.min(dist, 0.15 * L);
+          tHandN++;
+          tHandLen = Math.max(tHandLen, Math.min((t - 1) * L, 0.5 * L));
         } else if (t >= 0.25) {
           const b = Math.min(ARM_BINS - 1, Math.floor(t * ARM_BINS));
-          arm[b] = arm[b]! + Math.min(dist, 0.2 * L);
-          armN[b] = armN[b]! + 1;
+          tArm[b] = tArm[b]! + Math.min(dist, 0.2 * L);
+          tArmN[b] = tArmN[b]! + 1;
         }
         continue;
       }
@@ -335,10 +362,17 @@ function buildHull(m: BoneMap, rig: THREE.Object3D): Hull | null {
       const dx = x - cx, dz = z - cz;
       const ia = Math.floor(((Math.atan2(dx, dz) + Math.PI) / (2 * Math.PI)) * NA) % NA;
       const j = Math.round((y - y0) / dy) * NA + ia;
-      const g = acc ? ra : r;
-      g[j] = Math.max(g[j]!, Math.hypot(dx, dz));
-      n++;
+      const gr = acc ? ra : tR;
+      gr[j] = Math.max(gr[j]!, Math.hypot(dx, dz));
+      tN++;
     }
+    if (own) {
+      own.hand = tHand; own.handN = tHandN; own.handLen = tHandLen; own.n = tN;
+      bodyHulls.set(g, { sig, ...own });
+      for (let j = 0; j < r.length; j++) if (own.r[j]! > r[j]!) r[j] = own.r[j]!;
+      for (let b = 0; b < ARM_BINS; b++) { arm[b] = arm[b]! + own.arm[b]!; armN[b] = armN[b]! + own.armN[b]!; }
+    }
+    hand += tHand; handN += tHandN; handLen = Math.max(handLen, tHandLen); n += tN;
   });
   if (!n) return null;
   // Cases vides (maillage lâche) : le plus grand des voisins.
@@ -498,8 +532,8 @@ export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRi
     armUp[s].copy(vT);
     armLow[s].copy(vS);
   }
-  // Bras tenus hors du tronc habillé (enveloppe mesurée une fois par rig).
-  if (m.hull === undefined) m.hull = buildHull(m, rig);
+  // Bras tenus hors du tronc habillé (enveloppe mesurée une fois par rig, d'habitude dès l'habillage : prepareHull).
+  prepareHull(m, rig);
   if (m.hull) clearArms(m.hull, R, W, qP, qC);
 
   // Rotations locales, de la racine vers les extrémités (DRIVEN suit l'ordre parent avant enfant).
