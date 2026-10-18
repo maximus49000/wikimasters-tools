@@ -3,12 +3,13 @@ import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import type { Change } from '../core/library/city/shops/lifecycle';
 import type { MovingStep } from '../core/library/city/shops/moving';
-import { moverAt, pieceAt, planCrew, type CrewInput, type CrewPlan, type HeavyPiece, type MoverAt, type Pt, type Seg } from '../core/library/city/shops/moving-crew';
+import { moverAt, pieceAt, planCrew, type CrewInput, type CrewPlan, type HeavyPiece, type MoverAt, type PieceAt, type Pt, type Seg } from '../core/library/city/shops/moving-crew';
 import type { ShopFrame } from '../core/library/city/shops/slots';
 import { changePlans, type ShopView } from '../core/library/city/shops/view';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { setIfChanged } from './city-shops-life';
+import { citizenSeed } from '../core/citizens/identity';
 import { tone } from './city-sprites';
 import { PosedPerson, STANDING, applyPose, poseHandles, type PoseHandles } from './shop-gesture-sprites';
 import { DOOR_DARK, doorDarkOpacity, type Passage } from '../core/library/city/doorway';
@@ -17,6 +18,8 @@ import { shapeOf, signatureOf } from '../core/library/figure/dress';
 import { YAW_BACK, YAW_FRONT, YAW_RIGHT, facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import type { ArmPose } from '../core/library/figure/skeleton';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
+import { carryFit, carryLineY, type Carrier } from './figure/carry-fit';
+import { CITIZENS_3D } from './figure/citizen-config';
 import type { FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 import { useSceneDayStart } from './parade-layer';
@@ -340,7 +343,8 @@ const ghibliPose = (p: MoverAt, k: number): PoseIn => ({
   arms: (p.load ? 'carry' : p.gait === 'stand' ? p.arms : 'swing') as ArmPose,
 });
 const classicPose = (p: MoverAt): Pose => (p.load ? HOLD : p.arms === 'reach' ? REACH : STANDING);
-// Hauteur des mains d'un déménageur Ghibli qui porte (bras `carry`), unités du pantin : le meuble lourd y est posé.
+// Hauteur des mains d'un déménageur Ghibli qui porte (bras `carry`), unités du pantin : le meuble lourd y est posé (la boucle
+// le règle ensuite sur les mains 3D, pieceTransform).
 const ghibliHands = (o: Outfit): number => {
   const a = anchorsOf({ sig: signatureOf(shapeOf(o, false)), yaw: YAW_RIGHT, gait: 'stand', phase: 0, head: 0, arms: 'carry', lean: 0 });
   return -(a.handR[1] + a.handL[1]) / 2;
@@ -409,7 +413,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
   );
   const figure = (i: number, p: MoverAt, on: boolean): ReactElement =>
     ghibli ? (
-      <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} initial={ghibliPose(p, kp)} hidden={!on} held={[{ anchor: 'hands', node: box(p.load === 'carton') }]} />
+      <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} initial={ghibliPose(p, kp)} hidden={!on} held={[{ anchor: 'hands', node: box(p.load === 'carton') }]} citizen={citizenSeed(`${id}/mover/${day}/${i}`)} kind="adult" />
     ) : (
       <>
         <PosedPerson outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} accessory={null} pose={classicPose(p)} />
@@ -497,7 +501,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
           </Fragment>
         );
       })}
-      <g data-mover="piece" transform={`translate(${(piece?.where === 'street' ? piece.x : g.a.x).toFixed(1)} ${(piece?.where === 'street' ? piece.y : g.a.y).toFixed(1)})`} visibility={piece?.where === 'street' ? 'visible' : 'hidden'}>
+      <g data-mover="piece" data-lift={CITIZENS_3D ? lift.toFixed(2) : undefined} transform={`translate(${(piece?.where === 'street' ? piece.x : g.a.x).toFixed(1)} ${(piece?.where === 'street' ? piece.y : g.a.y).toFixed(1)})`} visibility={piece?.where === 'street' ? 'visible' : 'hidden'}>
         {pieceArt}
       </g>
       <svg data-piece-door="" x={pBox.clip.x.toFixed(2)} y={pBox.clip.y.toFixed(2)} width={pBox.clip.w.toFixed(2)} height={pBox.clip.h.toFixed(2)} overflow="hidden" visibility={piece?.where === 'door' ? 'visible' : 'hidden'}>
@@ -512,7 +516,8 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
 // ---------- Boucle : planning des porteurs ----------
 type MoverNodes = { street: Element; door: Element | null; inside: Element | null; streetFig: Element | null; doorFig: Element | null; insideFig: Element | null; insideG: Element | null; boxes: Element[]; handles: PoseHandles[] };
 type Box = { x: number; y: number; w: number; h: number };
-export type Crew = { input: CrewInput; door: Box; window: Box; ghibli: boolean; movers: MoverNodes[]; piece: Element | null; pieceDoor: Element | null; kinds: Element[] };
+// `lift` : hauteur (px) du dessous du meuble lourd au-dessus de l'origine de son groupe (mains du pantin de référence).
+export type Crew = { input: CrewInput; door: Box; window: Box; ghibli: boolean; movers: MoverNodes[]; piece: Element | null; pieceDoor: Element | null; kinds: Element[]; lift: number };
 const boxOf = (e: Element | null): Box => ({ x: Number(e?.getAttribute('x') ?? 0), y: Number(e?.getAttribute('y') ?? 0), w: Number(e?.getAttribute('width') ?? 0), h: Number(e?.getAttribute('height') ?? 0) });
 export function collectMovers(root: Element): Crew[] {
   const out: Crew[] = [];
@@ -549,6 +554,7 @@ export function collectMovers(root: Element): Crew[] {
       movers,
       piece: node.querySelector(':scope > [data-mover="piece"]'),
       pieceDoor: node.querySelector(':scope > svg[data-piece-door]'),
+      lift: Number(node.querySelector(':scope > [data-mover="piece"]')?.getAttribute('data-lift') ?? 0),
       kinds: [...node.querySelectorAll('[data-piece]')],
     });
   }
@@ -560,6 +566,26 @@ function doorRectOf(node: Element): Box {
   if (!d) return { x: 0, y: 0, w: 0, h: 0 };
   const [x, y, w, h] = d.split(' ').map(Number);
   return { x: x!, y: y!, w: w!, h: h! };
+}
+
+// Meuble lourd sur le trottoir : entre les deux porteurs, à la hauteur des mains du pantin (rendu) ; un porteur montré en 3D
+// déplace et incline le meuble pour que sa ligne d'appui passe par les mains 3D des deux porteurs (carryFit).
+function pieceTransform(c: Crew, hp: NonNullable<PieceAt>, movers: readonly MoverAt[], kp: number): string {
+  const base = `translate(${hp.x.toFixed(1)} ${hp.y.toFixed(1)})`;
+  const ma = movers[hp.a];
+  const mb = movers[hp.b];
+  if (!CITIZENS_3D || !c.ghibli || ma?.where !== 'street' || mb?.where !== 'street') return base;
+  const carrier = (m: MoverAt, i: number): Carrier => {
+    const fig = c.movers[i]?.streetFig ?? null;
+    return { fig, x: m.x, y: m.y, ref: { sig: fig?.getAttribute('data-sig') ?? '', yaw: m.yaw, gait: 'stand', phase: 0, head: 0, arms: 'carry', lean: 0 }, anchor: 'hands' };
+  };
+  const f = carryFit(carrier(ma, hp.a), carrier(mb, hp.b), kp);
+  if (!f) return base;
+  // Le dessous du meuble (à `lift` au-dessus de l'origine du groupe) posé sur la ligne des mains, incliné autour de ce point.
+  const lift = c.lift;
+  const x = hp.x + f.dx;
+  const y = carryLineY(f, x) + lift;
+  return `translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${f.deg.toFixed(2)} 0 ${(-lift).toFixed(2)})`;
 }
 
 // Pose de l'équipe à l'instant t (s) : n'écrit que ce qui change. `figures` : registre des pantins (Ghibli).
@@ -595,7 +621,7 @@ export function placeMovers(crews: Crew[], t: number, m: CityMetrics, figures: F
     setIfChanged(c.piece, 'visibility', hp?.where === 'street' ? 'visible' : 'hidden');
     setIfChanged(c.pieceDoor, 'visibility', hp?.where === 'door' ? 'visible' : 'hidden');
     if (hp) {
-      if (hp.where === 'street') setIfChanged(c.piece, 'transform', `translate(${hp.x.toFixed(1)} ${hp.y.toFixed(1)})`);
+      if (hp.where === 'street') setIfChanged(c.piece, 'transform', pieceTransform(c, hp, movers, kp));
       else if (c.pieceDoor && c.door.w > 0) placeSill(c.pieceDoor, c.door, piecePassage(hp.depth, c.input.door), m, 1, 1);
       for (const kd of c.kinds) setIfChanged(kd, 'visibility', kd.getAttribute('data-piece') === hp.load ? 'visible' : 'hidden');
     }

@@ -10,6 +10,7 @@ import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { citizenSeed } from '../core/citizens/identity';
 import { STAGE, STAGE_STAND, spotLens } from './install-sprites';
 import { useSceneDayStart } from './parade-layer';
 import { PropImage } from './prop/prop-host';
@@ -160,7 +161,8 @@ const poseOfMusician = (i: number, p: MusicianPos, unit: number): PoseIn => {
 // Instrument tenu (repère du pantin, poignet droit à l'origine), placé d'après les mains de la pose `arms` (accroches du
 // pantin à l'arrêt, orientation de jeu) : la marche ne fait que translater l'objet avec la main droite. G5 : image cellulo
 // `stage-prop` (props/music.ts) aux mêmes accroches (main gauche relative `dx`, `dy` et pied `foot`, arrondis au demi : une
-// image par orientation du pantin), le dessin SVG d'avant en repli tant qu'elle n'est pas cuite.
+// image par orientation du pantin), le dessin SVG d'avant en repli tant qu'elle n'est pas cuite. Habitant 3D : l'instrument
+// suit la main droite 3D (objet tenu) ; sa forme reste tirée des mains du pantin (une image par orientation, pas par habitant).
 function GhibliProp({ kind, sky, outfit, yaw, walking }: { kind: Instrument; sky: Sky; outfit: Outfit; yaw: number; walking: boolean }): ReactElement {
   const t = (c: string): string => tone(c, sky);
   const sig = signatureOf(shapeOf(outfit, false));
@@ -275,7 +277,7 @@ export function StageBand({ stageX, base, unit, width, minutes, dayOffset, outfi
             <g key={`${m.instrument}-${p.mode}`} {...attrs} transform={transformOf(p)}>
               <g>
                 {sway}
-                <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={poseOfMusician(i, p, unit)} held={[{ anchor: 'handR', node }]} />
+                <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={poseOfMusician(i, p, unit)} held={[{ anchor: 'handR', node }]} citizen={citizenSeed(`${stageId}:${m.instrument}`)} kind="adult" />
               </g>
             </g>
           );

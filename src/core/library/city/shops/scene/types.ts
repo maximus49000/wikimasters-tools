@@ -36,7 +36,8 @@ export type Segment = { t0: number; t1: number; move: MoveId | 'walk' | 'turn' |
 // `enter` / `exit` : instants où le client franchit la porte du local (null s'il n'entre pas) ; pour un employé, sortie de
 // l'arrière-boutique / retour (null s'il est là aux bornes du créneau). `arriveAt` : arrivée du client à la porte (s depuis le
 // début du créneau, Party.arriveAt) ; `dir` : son sens de marche à l'aller (Party.dir) ; null tous deux pour un employé.
-export type ActorTrack = { id: ActorId; role: 'staff' | 'customer'; outfit: Outfit; scale: number; party: string | null; enter: number | null; exit: number | null; arriveAt: number | null; dir: 1 | -1 | null; segments: Segment[] };
+// `child` : enfant d'un parti parent-enfant (corps d'enfant en 3D) ; absent pour un adulte.
+export type ActorTrack = { id: ActorId; role: 'staff' | 'customer'; outfit: Outfit; scale: number; child?: true; party: string | null; enter: number | null; exit: number | null; arriveAt: number | null; dir: 1 | -1 | null; segments: Segment[] };
 export type Score = { key: string; start: number; length: number; tracks: ActorTrack[]; log: string[] };
 // État de la rue fourni au créneau (déjà déterministe) : début d'averse, de défilé, passages du car (s depuis le début du créneau) ;
 // `paradeTo` : dernier instant du défilé dans le créneau (absent ou null : inconnu) ; `umbrellas` : on a son parapluie (absent : non), le client qui sort l'ouvre au lieu d'attendre la fin de l'averse (street.ts).

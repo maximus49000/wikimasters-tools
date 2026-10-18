@@ -19,7 +19,7 @@ import type { Weather } from '../core/library/weather/weather-types';
 import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import type { FigureRegistry } from './figure/figure-host';
-import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { GhibliFigure, hideFigure, poseFigure, shopIdentity, type PoseIn } from './figure/ghibli-figure';
 import '../core/library/paint/props/terrace';
 import { PropImage } from './prop/prop-host';
 import { AccessorySprite, GhibliPosed, applyGhibliPose, facingOfYaw, ghibliHandles, ghibliPoseOf, type GhibliPoseHandles } from './shop-gesture-sprites';
@@ -643,8 +643,9 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
   }
   // Rang du fond d'abord : les tables du rang côté rue passent devant.
   const order = places.map((p, i) => ({ p, i })).sort((a, b) => a.p.row - b.p.row || a.i - b.i);
-  const guestFigure = (outfit: Outfit) => (p: PoseIn, on: boolean): ReactElement =>
-    ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={false} umbrella={false} initial={p} hidden={!on} /> : <PersonSprite outfit={outfit} sky={sky} rainy={false} umbrella={false} />;
+  // Habitant 3D d'un convive : la clé de sa visite (la même assis et en marche), son humeur de fond.
+  const guestFigure = (outfit: Outfit, key: string) => (p: PoseIn, on: boolean): ReactElement =>
+    ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={false} umbrella={false} initial={p} hidden={!on} {...shopIdentity(outfit, key)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={false} umbrella={false} />;
   // Employé (serveur, porteur) : pantin en tablier (objet du commerce à la main droite pour le serveur), ou passant et tablier.
   const staffFigure = (withItem: boolean, who: Outfit = waiterOutfit) => (p: PoseIn, on: boolean, held: boolean): ReactElement =>
     ghibli ? (
@@ -656,6 +657,7 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
         work="apron"
         initial={p}
         hidden={!on}
+        {...shopIdentity(who, undefined, 'adult')}
         held={withItem ? [{ anchor: 'handR', node: <g data-item-hand="" display={on && held ? 'inline' : 'none'}><AccessorySprite id={accessory} sky={sky} ghibli /></g> }] : undefined}
       />
     ) : (
@@ -738,7 +740,7 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
                     >
                       <g data-guest-seat="" display={seatOn ? 'inline' : 'none'}>
                         {ghibli ? (
-                          <GhibliPosed outfit={outfitOf(i, g)} sky={sky} rainy={false} accessory={accessory} figure={ghibliPoseOf(pose, yaw, true)} gesture={pose} seated hidden={!seatOn} />
+                          <GhibliPosed outfit={outfitOf(i, g)} sky={sky} rainy={false} accessory={accessory} figure={ghibliPoseOf(pose, yaw, true)} gesture={pose} seated hidden={!seatOn} who={shopIdentity(outfitOf(i, g), key)} />
                         ) : (
                           <PersonSprite outfit={outfitOf(i, g)} sky={sky} rainy={false} umbrella={false} seated />
                         )}
@@ -764,7 +766,7 @@ export function ShopTerrace({ view, frame, metrics, minutes, date, weather, crow
               if (!trip) return null;
               return (
                 <g key={`trip-${key}`} data-terrace-trip={key} data-trip={JSON.stringify(trip)}>
-                  <TripBody v={tripAt(trip, since)} trip={trip} metrics={metrics} figure={guestFigure(outfitOf(i, g))} ghibli={ghibli} />
+                  <TripBody v={tripAt(trip, since)} trip={trip} metrics={metrics} figure={guestFigure(outfitOf(i, g), keyOf(i, g))} ghibli={ghibli} />
                 </g>
               );
             })}

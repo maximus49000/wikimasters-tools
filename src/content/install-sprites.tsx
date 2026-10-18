@@ -606,7 +606,7 @@ export function CargoBike({ sky, lights, ladder, flags, rider, ghibli }: { sky: 
       ) : art(true)}
       {rider && ghibli && (
         <g data-worker="">
-          <GhibliRider outfit={rider} sky={sky} rainy={ghibli.rainy} dir={ghibli.dir} phase={ghibli.phase} work="vest" seatX={-4} seatY={-17.6} />
+          <GhibliRider outfit={rider} sky={sky} rainy={ghibli.rainy} dir={ghibli.dir} phase={ghibli.phase} work="vest" seatX={-4} seatY={-17.6} kind="adult" />
         </g>
       )}
       {rider && !ghibli && (

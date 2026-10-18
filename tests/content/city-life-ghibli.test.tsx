@@ -10,6 +10,9 @@ import type { CityContext } from '../../src/core/library/city/intensity';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { pedestriansFor } from '../../src/core/library/city/people';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
+import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content/figure/figure-host';
+import { citizenKey, type CitizenDesc } from '../../src/core/citizens/catalogue';
+import { citizenSeed } from '../../src/core/citizens/identity';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
@@ -118,5 +121,39 @@ describe('ombres portées des passants la nuit (Ghibli)', () => {
     expect(make(12 * 60).querySelector('[data-actor-shades]')).toBeNull();
     localStorage.removeItem(ART_KEY);
     expect(make(23 * 60).querySelector('[data-actor-shades]')).toBeNull();
+  });
+});
+
+describe('habitants 3D des passants', () => {
+  // Faux rendu 3D (base pas encore prête) : le registre retient les habitants, les figures restent en attente ou en pantin.
+  const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => null, dispose() {} };
+  it('graine = id du passant, même clé d’habitant d’un rendu à l’autre ; enfants en corps d’enfant ; waitFor3D', () => {
+    writeArt('ghibli');
+    const reg = new FigureRegistry('t3d', { citizens: () => fake });
+    const spy = vi.spyOn(reg, 'citizen');
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const draw = (minutes: number): Map<number, CitizenDesc> => {
+      spy.mockClear();
+      const sky = skyAt(minutes, times);
+      const city: CityContext = { minutes, day: dayContext({ y: 2026, m: 10, d: 9 }, []), precip: 0, snow: false, storm: false, daylight: sky.daylight };
+      act(() => root.render(<FigureContext.Provider value={reg}><svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={city} rainy={false} /></svg></FigureContext.Provider>));
+      return new Map(spy.mock.calls.map(([d, seed]) => [seed, d] as const));
+    };
+    const first = draw(12 * 60);
+    const second = draw(12 * 60 + 47);
+    const peds = pedestriansFor(720, 1);
+    for (const p of peds) {
+      const a = first.get(citizenSeed(p.id));
+      expect(a, p.id).toBeDefined();
+      expect(citizenKey(second.get(citizenSeed(p.id))!)).toBe(citizenKey(a!));
+      expect(a!.base === 'enfant').toBe(p.profile === 'child');
+      p.companions.forEach((_, k) => expect(first.get(citizenSeed(`${p.id}+${k}`))!.base === 'enfant').toBe(!p.pair));
+    }
+    const figs = [...host.querySelectorAll('[data-ped] [data-figure]')];
+    expect(figs.length).toBeGreaterThan(0);
+    for (const f of figs) expect(f.hasAttribute('data-wait3d')).toBe(true);
   });
 });

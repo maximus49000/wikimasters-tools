@@ -5,7 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InstallLayer, barrierK } from '../../src/content/install-layer';
 import { BARRIER } from '../../src/content/install-sprites';
-import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { FigureContext, FigureRegistry, type Citizen3D, type SpriteAnchors } from '../../src/content/figure/figure-host';
+import type { CitizenDesc } from '../../src/core/citizens/catalogue';
 import { collectWorkers, placeWorkers } from '../../src/content/city-shops-life';
 import type { YMD } from '../../src/core/library/city/calendar';
 import { absMinute, crewAt, decorSetsFor, itemEquipment } from '../../src/core/library/city/install';
@@ -37,12 +38,11 @@ const NOW = 1_790_000_000_000;
 
 // Calque monté sur une racine gardée (re-rendu à la minute suivante : la marche se règle sur le déplacement).
 type Mount = { host: HTMLDivElement; at: (minutes: number, nowS?: number) => void; figures: FigureRegistry };
-const mount = (date: YMD, ghibli: boolean): Mount => {
+const mount = (date: YMD, ghibli: boolean, figures = new FigureRegistry('t8', { perFrame: 200 })): Mount => {
   const host = document.createElement('div');
   document.body.append(host);
   const root = createRoot(host);
   mounted.push({ root, host });
-  const figures = new FigureRegistry('t8', { perFrame: 200 });
   const node = (minutes: number): ReactNode => (
     <FigureContext.Provider value={figures}>
       <svg>
@@ -228,5 +228,82 @@ describe('équipes d’installation au pantin (Ghibli)', () => {
     for (let i = 1; i < yaws.length; i++) expect(gap(yaws[i]!, yaws[i - 1]!)).toBeLessThanOrEqual(2);
     expect(new Set(yaws).size).toBeGreaterThan(2);
     expect(gaits.has('step')).toBe(true);
+  });
+});
+
+describe('charge portée à deux, porteurs en 3D', () => {
+  // Faux rendu 3D : main droite d'autant plus haute que l'habitant est grand (porteurs de tailles différentes).
+  const anchorsFor = (d: CitizenDesc): SpriteAnchors => {
+    const s = d.height / 1.7;
+    const p = (x: number, y: number): readonly [number, number] => [x * s, y * s];
+    return { handR: p(7, -21), handL: p(-5, -21), hands: p(1, -21), head: p(0, -40), headTop: p(0, -47), nape: p(0, -34), seat: p(0, -19) };
+  };
+  const fake: Citizen3D = { ready: () => true, prepare() {}, render: (d: CitizenDesc) => ({ url: 'data:image/png;base64,3D', anchors: anchorsFor(d) }), dispose() {} };
+  it('barrière posée : sa ligne de prise passe par la main droite 3D de chaque porteur (± 1 unité)', () => {
+    const m = findMinute(D14, 'barriers-bastille', (c) => c.step === 'place' && !c.removing && kindOf(D14, 'barriers-bastille', c.itemId).eq === 'hand');
+    const figures = new FigureRegistry('t3di', { perFrame: 200, citizens: () => fake });
+    const r = mount(D14, true, figures);
+    r.at(m);
+    const placed = collectWorkers(r.host);
+    act(() => {
+      for (let i = 0; i < 40; i++) {
+        placeWorkers(placed, NOW / 1000 + m * 60, figures);
+        figures.flush();
+      }
+    });
+    const crew = r.host.querySelector('[data-crew="barriers-bastille"]')!;
+    const ws = ['a', 'b'].map((id) => crew.querySelector(`:scope > [data-worker-k="${id}"]`)!);
+    const figs = ws.map((w) => w.querySelector('[data-figure]')!);
+    for (const f of figs) expect(f.getAttribute('data-key')).toMatch(/@3d/);
+    const load = crew.querySelector('[data-carried-item="barrier"]')!;
+    const fit = load.querySelector(':scope > [data-carry-fit]')!.getAttribute('transform')!;
+    const tm = /translate\(([-\d.]+) ([-\d.]+)\) rotate\(([-\d.]+) 0 ([-\d.]+)\)/.exec(fit)!;
+    expect(tm).not.toBeNull();
+    const [dx, ty, deg, py] = tm.slice(1).map(Number) as [number, number, number, number];
+    const ox = Number(load.getAttribute('data-x'));
+    const oy = Number(load.getAttribute('data-base'));
+    const hands = ws.map((w, i) => {
+      const a3 = figures.anchors(figs[i]!.getAttribute('data-key')!)!;
+      return [Number(w.getAttribute('data-wx')) + a3.handR[0] * K, Number(w.getAttribute('data-wy')) + a3.handR[1] * K] as const;
+    });
+    expect(Math.abs(hands[0]![1] - hands[1]![1])).toBeGreaterThan(0.3 * metrics.unit);
+    for (const [hx, hy] of hands) {
+      // Point de la main dans le repère de la charge avant le réglage (inverse de translate puis rotate autour de (0, py)).
+      const a = (-deg * Math.PI) / 180;
+      const x = hx - ox - dx;
+      const y = hy - oy - ty - py;
+      const ly = x * Math.sin(a) + y * Math.cos(a) + py;
+      expect(Math.abs(ly - py)).toBeLessThanOrEqual(metrics.unit);
+    }
+  });
+});
+
+describe('interrupteur coupé (CITIZENS_3D = false)', () => {
+  it('charge portée à deux : ni attributs de réglage ni groupe data-carry-fit (DOM d’avant)', async () => {
+    const m = findMinute(D14, 'barriers-bastille', (c) => c.step === 'place' && !c.removing && kindOf(D14, 'barriers-bastille', c.itemId).eq === 'hand');
+    vi.resetModules();
+    vi.doMock('../../src/content/figure/citizen-config', async (orig) => ({ ...(await orig<object>()), CITIZENS_3D: false }));
+    const il = await import('../../src/content/install-layer');
+    const fh = await import('../../src/content/figure/figure-host');
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    vi.spyOn(Date, 'now').mockReturnValue(NOW + m * 60_000);
+    act(() =>
+      root.render(
+        <fh.FigureContext.Provider value={new fh.FigureRegistry('t3d0', { perFrame: 200 })}>
+          <svg>
+            <il.InstallLayer width={W} height={H} seed={SEED} sky={skyAt(m, times)} still={false} date={D14} minutes={m} metrics={metrics} rainy={false} ghibli />
+          </svg>
+        </fh.FigureContext.Provider>,
+      ),
+    );
+    expect(host.querySelector('[data-crew="barriers-bastille"] [data-carried-item="barrier"]')).not.toBeNull();
+    for (const sel of ['[data-carry-fit]', '[data-carry-watch]', '[data-shape]', '[data-base]', '[data-wx]', '[data-wy]', '[data-ref]', '[data-wait3d]', '[data-pin]']) {
+      expect(host.querySelector(sel), sel).toBeNull();
+    }
+    vi.doUnmock('../../src/content/figure/citizen-config');
+    vi.resetModules();
   });
 });

@@ -29,3 +29,8 @@ id = "72e483ff9a0247eaadeb0150ea053c8b"
 [[previews.d1_databases]]
 binding = "USAGE_DB"
 database_id = "ad7adf65-1cfd-4696-abdc-1d13b22462f7"
+
+# Modèles 3D allégés des habitants (relay/public/persos, produits par `npm run citizens:models`) :
+# servis directement par Cloudflare avant le Worker, en-têtes dans relay/public/_headers.
+[assets]
+directory = "./relay/public"

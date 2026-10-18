@@ -3,7 +3,9 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { FigureContext, FigureRegistry, type Citizen3D, type SpriteAnchors } from '../../src/content/figure/figure-host';
+import type { CitizenDesc } from '../../src/core/citizens/catalogue';
+import { STREET_SCALE } from '../../src/core/library/city/metrics';
 import { useSceneDayStart } from '../../src/content/parade-layer';
 import { MovingCrew, MovingTruck, cachedPlan, collectMovers, placeMovers } from '../../src/content/moving-truck';
 import { moverAt, pieceAt, type CrewInput, type MoverAt } from '../../src/core/library/city/shops/moving-crew';
@@ -295,5 +297,60 @@ describe('camion de déménagement en Ghibli (V5)', () => {
   });
   it('classique inchangé', () => {
     expect(truck(midMinute('truck-arrives'), false).querySelector('[data-scripted-car]')).toBeNull();
+  });
+});
+
+describe('meuble lourd porté à deux, porteurs en 3D', () => {
+  // Faux rendu 3D : mains d'autant plus hautes que l'habitant est grand (deux porteurs de tailles différentes).
+  const handsOf = (d: CitizenDesc): SpriteAnchors => {
+    const s = d.height / 1.7;
+    const p = (x: number, y: number): readonly [number, number] => [x * s, y * s];
+    return { handR: p(6, -22), handL: p(4, -22), hands: p(5, -22), head: p(0, -40), headTop: p(0, -47), nape: p(0, -34), seat: p(0, -19) };
+  };
+  const fake: Citizen3D = { ready: () => true, prepare() {}, render: (d: CitizenDesc) => ({ url: 'data:image/png;base64,3D', anchors: handsOf(d) }), dispose() {} };
+  it('les bouts du meuble posent sur les mains 3D de chaque porteur (± 1 unité)', () => {
+    const figures = new FigureRegistry('t3dm', { perFrame: 200, citizens: () => fake });
+    const kp = metrics.unit * STREET_SCALE.person;
+    let checked = 0;
+    for (const name of ['carry-out', 'carry-in']) {
+      if (!plan.steps.some((x) => x.step === name)) continue;
+      const minute = midMinute(name);
+      const c = mount(minute, true, figures);
+      const crews = collectMovers(c);
+      const sc = scriptOf(c);
+      for (let t = D0 + minute * 60; t < D0 + minute * 60 + 60 && checked < 5; t += 1) {
+        const { movers, heavy } = frameAt(sc, t);
+        if (!heavy || heavy.where !== 'street' || movers[heavy.a]?.where !== 'street' || movers[heavy.b]?.where !== 'street') continue;
+        for (let i = 0; i < 40; i++) {
+          placeMovers(crews, t, metrics, figures);
+          figures.flush();
+        }
+        placeMovers(crews, t, metrics, figures);
+        const figA = crews[0]!.movers[heavy.a]!.streetFig!;
+        const figB = crews[0]!.movers[heavy.b]!.streetFig!;
+        if (!/@3d/.test(figA.getAttribute('data-key') ?? '') || !/@3d/.test(figB.getAttribute('data-key') ?? '')) continue;
+        const piece = c.querySelector('[data-mover="piece"]')!;
+        const m = /translate\(([-\d.]+) ([-\d.]+)\) rotate\(([-\d.]+) ([-\d.]+) ([-\d.]+)\)/.exec(piece.getAttribute('transform')!)!;
+        expect(m).not.toBeNull();
+        const [X, Y, deg, cx, cy] = m.slice(1).map(Number) as [number, number, number, number, number];
+        const lift = -translateOf(piece.firstElementChild!.getAttribute('transform')!)[1];
+        const local = (wx: number, wy: number): [number, number] => {
+          const a = (-deg * Math.PI) / 180;
+          const px = wx - X - cx;
+          const py = wy - Y - cy;
+          return [cx + px * Math.cos(a) - py * Math.sin(a), cy + px * Math.sin(a) + py * Math.cos(a)];
+        };
+        const handWorld = (fig: Element, mv: MoverAt): [number, number] => {
+          const a3 = figures.anchors(fig.getAttribute('data-key')!)!;
+          return [mv.x + a3.hands[0] * kp, mv.y + a3.hands[1] * kp];
+        };
+        const ha = handWorld(figA, movers[heavy.a]!);
+        const hb = handWorld(figB, movers[heavy.b]!);
+        expect(Math.abs(ha[1] - hb[1])).toBeGreaterThan(0.3 * metrics.unit);
+        for (const h of [ha, hb]) expect(Math.abs(local(h[0], h[1])[1] - -lift)).toBeLessThanOrEqual(metrics.unit);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });
