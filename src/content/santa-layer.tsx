@@ -313,13 +313,20 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
             <rect key={i} x={b.x - 2} y={ground - b.h - 9} width={b.w + 4} height={b.h + 13} fill="#000" />
           ))}
         </mask>
+        <radialGradient id={`${maskId}-win`}>
+          <stop offset="0" stopColor="rgb(255,214,140)" stopOpacity={0.35} />
+          <stop offset="1" stopColor="rgb(255,196,112)" stopOpacity={0} />
+        </radialGradient>
       </defs>
       <g data-santa="">
         <g data-santa-hill="" mask={`url(#${maskId})`}>
+          {/* Fenêtre de la maison visitée (notes §5, réveillon) : vitre ambre opaque comme les fenêtres allumées de la ville
+              (une vitre crème à halo rectangulaire se lisait à peine au banc, tâche 15) et halo radial en screen de rayon 9·s. */}
           {view.lit && (
             <g data-santa-window="" data-x={win.x} data-y={win.y}>
-              <rect x={win.x - 1.5} y={win.y - 1.5} width={win.w + 3} height={win.h + 3} rx={1.5} fill="#FFE08A" opacity={0.4} />
-              <rect x={win.x} y={win.y} width={win.w} height={win.h} fill="#FFF6C8" />
+              <circle data-santa-window-halo="" cx={win.x + win.w / 2} cy={win.y + win.h / 2} r={9 * hill.s} fill={`url(#${maskId}-win)`} style={{ mixBlendMode: 'screen' }} />
+              <rect data-santa-window-glass="" x={win.x} y={win.y} width={win.w} height={win.h} fill="#FFD27A" stroke="#2A1A18" strokeWidth={0.4 * hill.s} />
+              <rect x={win.x + win.w * 0.2} y={win.y + win.h * 0.15} width={win.w * 0.25} height={win.h * 0.7} fill="#FFF1C8" />
             </g>
           )}
           <g data-santa-roof="" transform={`translate(${hill.cx.toFixed(1)} ${hill.y.toFixed(1)}) scale(${dir} 1)`}>{train}</g>

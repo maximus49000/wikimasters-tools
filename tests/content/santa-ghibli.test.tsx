@@ -251,6 +251,14 @@ describe('père Noël Ghibli', () => {
     expect(hidden.querySelector('[data-santa-figure]')).toBeNull();
     const win = hidden.querySelector('[data-santa-window]')!;
     expect(Number(win.getAttribute('data-x'))).toBeCloseTo(santaHillWindow(hill).x);
+    // Fenêtre lisible (notes §5, réveillon) : vitre ambre opaque comme les fenêtres allumées de la ville, et halo radial en
+    // screen de rayon 9·s (pas un voile crème).
+    const glass = win.querySelector('[data-santa-window-glass]')!;
+    expect(glass.getAttribute('fill')).toBe('#FFD27A');
+    const halo = win.querySelector('circle[data-santa-window-halo]')!;
+    expect(Number(halo.getAttribute('r'))).toBeCloseTo(9 * hill.s, 1);
+    expect(halo.getAttribute('fill')).toMatch(/^url\(#/);
+    expect((halo as SVGElement).style.mixBlendMode).toBe('screen');
   });
   it('brume et teinte de nuit du groupe posé : palette du pantin différente de celle du passage simple, harnais et givre teints', () => {
     const far = mount(hAt(0.27), true);
