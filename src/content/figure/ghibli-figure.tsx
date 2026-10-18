@@ -1,5 +1,5 @@
 // src/content/figure/ghibli-figure.tsx
-import { useLayoutEffect, useRef, type ReactElement, type ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, type ReactElement, type ReactNode } from 'react';
 import { anchorsOf, keyString, type Anchor, type FigureKey } from '../../core/library/figure/bake';
 import { shapeOf, signatureOf, type Work } from '../../core/library/figure/dress';
 import type { ArmPose } from '../../core/library/figure/skeleton';
@@ -303,6 +303,7 @@ export function GhibliFigure({
   pin?: Anchor;
 }): ReactElement {
   const reg = useFigureRegistry();
+  if (useContext(EnterWait3D)) waitFor3D = true;
   const ref = useRef<SVGGElement | null>(null);
   const sig = signatureOf(shapeOf(outfit, umbrella, work));
   const pk = reg.addPalette(citizenPalette(reg, outfit, sky, rainy, umbrella, work, { citizen, kind, emotion, sex, beard }));
@@ -365,6 +366,41 @@ export function GhibliFigure({
         ))}
     </g>
   );
+}
+
+// Groupe qui entre par un bord avec ses personnages (vélo et cycliste, véhicule et occupants, unité du défilé) : sous ce
+// contexte, chaque figure attend sa 3D (waitFor3D, en tête de file) ; la boucle du groupe le cache tant qu'il est hors champ et
+// qu'un de ses personnages attend encore (gateEntering). Il entre ainsi directement en 3D : ni pantin qui change de modèle
+// sous les yeux, ni véhicule vide.
+export const EnterWait3D = createContext(false);
+// Figures en attente d'un groupe (cherchées une fois par nœud ; vidée quand toutes ont une image).
+const waitingOf = new WeakMap<Element, Element[]>();
+// Groupe `root` montrable ? Hors champ (`onScreen` faux) : ses figures attendent leur 3D (false tant qu'une attend : le groupe
+// reste caché). Dans le champ : l'attente est levée, pantin de repli tout de suite pour qui n'a pas encore sa 3D (true) — un
+// groupe entré dans le champ est toujours montré entier.
+export function gateEntering(reg: FigureRegistry, root: Element, onScreen: boolean): boolean {
+  let figs = waitingOf.get(root);
+  if (!figs) waitingOf.set(root, (figs = [...root.querySelectorAll('[data-figure][data-wait3d]')]));
+  if (figs.length === 0) return true;
+  let ready = true;
+  for (const f of figs) {
+    if (f.hasAttribute('data-key') || !f.hasAttribute('data-wait3d')) continue;
+    if (onScreen) releaseWait3D(reg, f);
+    else ready = false;
+  }
+  if (ready) waitingOf.set(root, figs.filter((f) => !f.hasAttribute('data-key') && f.hasAttribute('data-wait3d')));
+  return ready;
+}
+// Fin de l'attente 3D d'une figure pas encore montrée : sa pose voulue est montrée tout de suite (3D si elle est là, sinon pantin).
+function releaseWait3D(reg: FigureRegistry, node: Element): void {
+  node.removeAttribute('data-wait3d');
+  const key = wantedPoses.get(node);
+  const pk = node.getAttribute('data-palette');
+  if (!key || pk === null || node.getAttribute('data-sig') !== key.sig) return;
+  const got = reg.pick(pk, key, true, false, null);
+  if (!got) return;
+  const href = reg.hold(node, got.sk);
+  if (href) showSprite(reg, node, got.sk, href, key);
 }
 
 // Pose d'une figure par la boucle : n'écrit que si la pose change ; sprite manquant → demandé, image courante gardée. Une

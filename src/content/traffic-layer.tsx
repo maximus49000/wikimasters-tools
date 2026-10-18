@@ -22,7 +22,7 @@ import { useCarRegistry } from './vehicle/car-host';
 import { ExhaustPuffs, placePuffs } from './vehicle/exhaust-puffs';
 import { GhibliCar, placeCar } from './vehicle/ghibli-car';
 import { FOOT_DOWN_V, GhibliBike, crankPhase, riderPose } from './figure/ghibli-cyclist';
-import { GhibliFigure, poseFigure, prewarmCitizen } from './figure/ghibli-figure';
+import { EnterWait3D, GhibliFigure, gateEntering, poseFigure, prewarmCitizen, prewarmFigure } from './figure/ghibli-figure';
 import { PropImage } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -171,6 +171,15 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         if (!a) continue;
         const look = paintedLook(a, ghibli);
         node.setAttribute('transform', transformOf(w, a, metrics, t, look !== null));
+        if (ghibli && !still) {
+          // Habitants 3D : véhicule caché hors champ tant qu'un de ses personnages attend sa 3D ; entré dans le champ, toujours entier.
+          const half = (a.car ? a.car.L / 2 : (SPRITE_HALF[a.kind] ?? 20)) * kOf(a, metrics);
+          const x = agentView(w, a, t).x;
+          const ok = gateEntering(figures, node, x + half > 0 && x - half < w.width);
+          if (node.getAttribute('visibility') !== (ok ? 'visible' : 'hidden')) node.setAttribute('visibility', ok ? 'visible' : 'hidden');
+          // Cycliste en attente : son arrêt pied à terre (feu, file) rendu d'avance aussi.
+          if (!ok && a.kind === 'bike') prewarmFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), [riderPose(1, 0, true)]);
+        }
         if (look) {
           // Véhicule Ghibli : roues, occupants, images peintes, gyrophares ; feu stop, feux de détresse ; bouffées au pot.
           const k = kOf(a, metrics);
@@ -224,6 +233,8 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         const dir = TRACK_DIR[a.track];
         return (
           <g key={a.id} data-life-id={a.id} data-vehicle="" data-kind={a.kind} data-lane={a.track} data-active="true" transform={transformOf(w, a, metrics, now, painted)}>
+            {/* Personnages du véhicule (cycliste, pilote, occupants) : attente de leur 3D hors champ (EnterWait3D, gateEntering). */}
+            <EnterWait3D.Provider value={ghibli && !still}>
             {look ? (
               <>
                 <GhibliCar look={look} dir={dir} sky={sky} rainy={rainy} lights={lights} still={still} />
@@ -249,6 +260,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
                 <circle cx={half - 1.2} cy={-11.5} r={1.3} />
               </g>
             )}
+            </EnterWait3D.Provider>
           </g>
         );
       })}

@@ -5,7 +5,7 @@ import { PARADE_SPEED, paradeOn, paradeUnits, paradeX, type ParadeLane, type Par
 import { phaseIndexOf } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { useFigureRegistry } from './figure/figure-host';
-import { poseFigure } from './figure/ghibli-figure';
+import { EnterWait3D, gateEntering, poseFigure } from './figure/ghibli-figure';
 import { FIG, PARADE_YAW, ParadeUnitSprite, paradeArms, type MarchArms } from './parade-sprites';
 import { useWallClockLoop } from './use-wallclock-loop';
 import { useCarRegistry } from './vehicle/car-host';
@@ -36,7 +36,11 @@ export function useSceneDayStart(minutes: number, nowS: number): number {
 
 type Props = { width: number; seed: number; sky: Sky; still: boolean; dayFests: readonly FestivityId[]; minutes: number; metrics: CityMetrics; lane: ParadeLane; ghibli?: boolean };
 
-const visibleAt = (units: readonly ParadeUnit[], width: number, t: number): ParadeUnit[] => units.filter((u) => paradeX(u, width, t) !== null);
+// Habitants 3D : une unité est montée ENTER_LEAD_S secondes avant d'entrer dans le champ, cachée hors champ tant qu'un de ses
+// personnages attend sa 3D (EnterWait3D, gateEntering) : marcheurs et cavaliers entrent directement en 3D.
+const ENTER_LEAD_S = 6;
+const nearAt = (u: ParadeUnit, width: number, t: number): boolean => paradeX(u, width, t) !== null || paradeX(u, width, t + ENTER_LEAD_S) !== null;
+const visibleAt = (units: readonly ParadeUnit[], width: number, t: number): ParadeUnit[] => units.filter((u) => nearAt(u, width, t));
 const keyOf = (list: readonly ParadeUnit[]): string => list.map((u) => u.id).join(',');
 
 // Marcheurs et véhicules peints d'une unité (nœuds lus une fois par nœud d'unité).
@@ -68,6 +72,8 @@ export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metric
         const node = el.querySelector(`[data-parade-id="${u.id}"]`);
         node?.setAttribute('transform', transformAt(u, t));
         if (!ghibli || !node) continue;
+        const ok = gateEntering(figures, node, paradeX(u, width, t) !== null);
+        if (node.getAttribute('visibility') !== (ok ? 'visible' : 'hidden')) node.setAttribute('visibility', ok ? 'visible' : 'hidden');
         let marchers = marchersOf.get(node);
         // Relu si les enfants ont été remplacés (bascule de graphisme) : nœuds détachés.
         if (!marchers || (marchers.length > 0 && !marchers[0]!.isConnected)) marchersOf.set(node, (marchers = [...node.querySelectorAll('[data-arms]')]));
@@ -90,12 +96,14 @@ export function ParadeLayer({ width, seed, sky, still, dayFests, minutes, metric
   if (!on) return null;
   // Rendu : les unités dans le champ au dernier passage de la boucle (et au premier rendu, celles de l'instant présent).
   const ids = new Set(shown.split(','));
-  const list = units.filter((u) => ids.has(u.id) || paradeX(u, width, now) !== null);
+  const list = units.filter((u) => ids.has(u.id) || nearAt(u, width, now));
   return (
     <g data-parade="" data-lane={lane} ref={root}>
       {list.map((u) => (
         <g key={u.id} data-parade-id={u.id} transform={transformAt(u, now)}>
-          <ParadeUnitSprite unit={u} sky={sky} still={still} ghibli={ghibli} />
+          <EnterWait3D.Provider value={ghibli}>
+            <ParadeUnitSprite unit={u} sky={sky} still={still} ghibli={ghibli} />
+          </EnterWait3D.Provider>
         </g>
       ))}
     </g>

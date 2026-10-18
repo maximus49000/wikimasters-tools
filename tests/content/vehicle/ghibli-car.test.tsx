@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { FigureContext, FigureRegistry, useFigureRegistry, type Citizen3D } from '../../../src/content/figure/figure-host';
 import { useCarRegistry } from '../../../src/content/vehicle/car-host';
 import { GhibliCar, placeCar } from '../../../src/content/vehicle/ghibli-car';
+import { EnterWait3D } from '../../../src/content/figure/ghibli-figure';
 import { genCar } from '../../../src/core/library/city/traffic/cars';
 import { carArt } from '../../../src/core/library/city/traffic/car-art';
 import { lookOfCar, type VehicleLook } from '../../../src/core/library/city/traffic/look';
@@ -191,7 +192,7 @@ describe('voiture Ghibli sans boucle (V5)', () => {
 });
 
 describe('voiture Ghibli : occupants 3D', () => {
-  it('occupant d’une voiture qui arrive : rien tant que sa 3D se rend (voiture encore hors champ), puis directement en 3D, jamais le pantin', async () => {
+  it('occupant d’une voiture qui arrive (EnterWait3D, circulation) : rien tant que sa 3D se rend (voiture encore hors champ), puis directement en 3D, jamais le pantin', async () => {
     const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
     const fake: Citizen3D = { ready: () => true, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
     const fig = new FigureRegistry('tcar', { citizens: () => fake, now: () => 0 });
@@ -200,7 +201,9 @@ describe('voiture Ghibli : occupants 3D', () => {
       createRoot(host).render(
         <FigureContext.Provider value={fig}>
           <svg>
-            <GhibliCar look={lookOfCar(genCar(11, 'berline', 0.2))} dir={1} sky={sky} rainy={false} lights={false} />
+            <EnterWait3D.Provider value>
+              <GhibliCar look={lookOfCar(genCar(11, 'berline', 0.2))} dir={1} sky={sky} rainy={false} lights={false} />
+            </EnterWait3D.Provider>
           </svg>
         </FigureContext.Provider>,
       ),
