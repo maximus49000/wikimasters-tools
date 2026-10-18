@@ -49,11 +49,14 @@ describe('lumière de nuit', () => {
     // Lampe à droite : l'ombre part vers la gauche.
     expect(Math.min(...xs(actorShadow(80, 300, 6, 18, 100, 1)!))).toBeLessThan(77);
   });
-  it('colonne de pluie : 90 traits, un sur trois au cœur ambre, de plus en plus pâles vers le bas', () => {
+  it('colonne de pluie : 120 traits, un sur trois au cœur ambre, nets en haut et de plus en plus pâles vers le bas', () => {
     const s = wetStrokes(7, 60, 1, 42);
-    expect(s).toHaveLength(90);
-    expect(s.filter((t) => t.core).length).toBe(30);
-    expect(s.every((t) => t.y >= 0 && t.y <= 60 && t.a >= 0 && t.a <= 0.75)).toBe(true);
+    expect(s).toHaveLength(120);
+    expect(s.filter((t) => t.core).length).toBe(40);
+    expect(s.every((t) => t.y >= 0 && t.y <= 60 && t.a >= 0 && t.a <= 1)).toBe(true);
+    // Les traits du haut (premier quart) sont francs : alpha moyen ≥ 0,6 (maquette night-rain).
+    const top = s.filter((t) => t.y < 15);
+    expect(top.reduce((a, t) => a + t.a, 0) / top.length).toBeGreaterThanOrEqual(0.6);
     expect(wetStrokes(7, 60, 1, 42)).toEqual(s);
   });
 });

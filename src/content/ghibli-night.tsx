@@ -71,7 +71,8 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
   const lampViews = lamps.map((lamp) => {
     const lit = lampLit(lamp, minutes, daylight, forcedNight);
     const blobs = lampBlobs(lamp.x, m.curb, u, k);
-    const hw = 7 * u;
+    // Colonne de pluie : 10u de demi-largeur (maquette 7u ; trop étroite au banc face à night-rain).
+    const hw = 10 * u;
     return {
       lamp,
       lit,
