@@ -88,8 +88,9 @@ describe('applyPose', () => {
   });
 
   it('marche : genou plié au retour de la jambe, pied jamais botté en arrière', () => {
-    // De profil : flexion maximale quand la cuisse passe à la verticale (±10°), tibia jamais à plus de 50° derrière la
-    // cuisse ; le pantin plie au plus fort cuisse encore en arrière (−12°, tibia à −69° à la phase 11).
+    // De profil : flexion maximale (55–65°, comme une vraie marche) cuisse un peu devant la verticale (0 à 15°), tibia
+    // jamais à plus de 50° derrière la cuisse ; le pantin plie au plus fort cuisse encore en arrière (−12°, tibia à −69°
+    // à la phase 11).
     let best = -1, thAtBest = 0;
     for (let i = 0; i < 360; i++) {
       const ph = (i * Math.PI) / 180, th = 24 * Math.sin(ph);
@@ -97,8 +98,10 @@ describe('applyPose', () => {
       expect(th - k, `phase ${i}°`).toBeGreaterThanOrEqual(-50.0001);
       if (k > best) { best = k; thAtBest = th; }
     }
-    expect(Math.abs(thAtBest)).toBeLessThan(10);
-    expect(best).toBeGreaterThan(40);
+    expect(thAtBest).toBeGreaterThan(0);
+    expect(thAtBest).toBeLessThan(15);
+    expect(best).toBeGreaterThan(55);
+    expect(best).toBeLessThan(65);
   });
 
   it('la tête suit le repère de tête du pantin (tourne avec headYaw)', () => {
@@ -273,8 +276,10 @@ describe('applyPose', () => {
     expect(() => boneMap(bad.skeleton)).toThrow(/LeftForeArm/);
   });
 
-  // Les vrais modèles ne sont pas droits au repos (cou ≈ 6° en arrière du bassin) : le buste penchait en arrière.
-  it('vrais modèles : la ligne Hips → Neck suit pelvis → neck du pantin à moins de 3°', async () => {
+  // Les vrais modèles ont, debout et droits, la ligne Hips → Neck ≈ 6° en arrière. Le buste tourne du seul penché du
+  // pantin à partir de cette pose : poser cette ligne sur celle du pantin basculait le buste de 6 à 9° vers l'avant
+  // (« fesses en arrière », retour S26 du 2026-10-18) ; l'aligner sur l'axe y sans correction le laissait en arrière.
+  it('vrais modèles : la ligne Hips → Neck penche de l’angle du pantin à partir du repos (à 1,5° près)', async () => {
     for (const name of ['homme-fort', 'femme-frele', 'enfant']) {
       // Nom à empreinte lu dans le manifeste (persos/m/<nom>.<sha256 8>.glb).
       const persos = resolve(__dirname, '../../../relay/public/persos');
@@ -297,10 +302,14 @@ describe('applyPose', () => {
               const p = poseOf(yawOf(y), phaseOf(ph), g, { lean });
               applyPose(rigObj, map, p, 0.02, g);
               gltf.scene.updateMatrixWorld(true);
-              const d = deg(w(map.bones.Neck).sub(w(map.bones.Hips)), v(p.neck).sub(v(p.pelvis)));
+              // Penché vers l'avant (le long de F) : celui du pantin, compté à partir de la ligne de repos.
+              const F = new THREE.Vector3(p.fr.F[0], 0, p.fr.F[2]).normalize();
+              const tilt = (t: THREE.Vector3, f: THREE.Vector3): number => (Math.atan2(t.dot(f), t.y) * 180) / Math.PI;
+              const got = tilt(w(map.bones.Neck).sub(w(map.bones.Hips)), F) - tilt(map.rest.torso, new THREE.Vector3(0, 0, 1));
+              const d = Math.abs(got - tilt(v(p.neck).sub(v(p.pelvis)), F));
               if (d > worst) { worst = d; where = `${name} ${g} yaw ${y} phase ${ph} lean ${lean}`; }
             }
-      expect(worst, where).toBeLessThan(3);
+      expect(worst, where).toBeLessThan(1.5);
     }
   });
 });
