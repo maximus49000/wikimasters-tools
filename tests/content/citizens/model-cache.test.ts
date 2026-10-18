@@ -8,8 +8,8 @@ const manifest = {
   version: 1,
   bases: {
     papy: {
-      glb: 'papy.glb',
-      png: 'papy.png',
+      glb: 'm/papy.0123abcd.glb',
+      png: 'm/papy.4567cdef.png',
       metres: 1.7,
       aged: true,
       face: {
@@ -174,5 +174,21 @@ describe('model-cache', () => {
     __resetModelCache();
     const horsLigne: Deps = { ...deps, fetch: async () => Promise.reject(new Error('hors ligne')) };
     expect(await loadBase('papy', horsLigne)).not.toBeNull();
+  });
+
+  it('modèle refait (nouvelle empreinte dans le manifeste) : le nouveau GLB est téléchargé, jamais l’ancien en cache', async () => {
+    const { deps, fetchMock } = faux();
+    await loadBase('papy', deps);
+    expect(fetchMock.mock.calls.some(([u]) => u.endsWith('/persos/m/papy.0123abcd.glb'))).toBe(true);
+    __resetModelCache();
+    const papy = manifest.bases.papy;
+    const avant = papy.glb;
+    papy.glb = 'm/papy.89abcdef.glb';
+    try {
+      expect(await loadBase('papy', deps)).not.toBeNull();
+      expect(fetchMock.mock.calls.some(([u]) => u.endsWith('/persos/m/papy.89abcdef.glb'))).toBe(true);
+    } finally {
+      papy.glb = avant;
+    }
   });
 });

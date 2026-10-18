@@ -2,8 +2,8 @@
   "version": 1,
   "bases": {
     "homme-fort": {
-      "glb": "homme-fort.glb",
-      "png": "homme-fort.png",
+      "glb": "m/homme-fort.cb20b1c8.glb",
+      "png": "m/homme-fort.68d0a9f6.png",
       "metres": 1.7,
       "face": {
         "eyes": [
@@ -70,8 +70,8 @@
       }
     },
     "homme-maigre": {
-      "glb": "homme-maigre.glb",
-      "png": "homme-maigre.png",
+      "glb": "m/homme-maigre.ebd7affa.glb",
+      "png": "m/homme-maigre.d9ab2899.png",
       "metres": 1.82,
       "face": {
         "eyes": [
@@ -138,8 +138,8 @@
       }
     },
     "femme-frele": {
-      "glb": "femme-frele.glb",
-      "png": "femme-frele.png",
+      "glb": "m/femme-frele.ce35b386.glb",
+      "png": "m/femme-frele.29004c12.png",
       "metres": 1.62,
       "face": {
         "eyes": [
@@ -206,8 +206,8 @@
       }
     },
     "femme-forte": {
-      "glb": "femme-forte.glb",
-      "png": "femme-forte.png",
+      "glb": "m/femme-forte.c4210adb.glb",
+      "png": "m/femme-forte.dd08b6b1.png",
       "metres": 1.65,
       "face": {
         "eyes": [
@@ -274,8 +274,8 @@
       }
     },
     "femme-grande": {
-      "glb": "femme-grande.glb",
-      "png": "femme-grande.png",
+      "glb": "m/femme-grande.acd582ac.glb",
+      "png": "m/femme-grande.77a76ae4.png",
       "metres": 1.76,
       "face": {
         "eyes": [
@@ -342,8 +342,8 @@
       }
     },
     "papy": {
-      "glb": "papy.glb",
-      "png": "papy.png",
+      "glb": "m/papy.06067a09.glb",
+      "png": "m/papy.8a2140e2.png",
       "metres": 1.66,
       "aged": true,
       "face": {
@@ -411,8 +411,8 @@
       }
     },
     "mamie": {
-      "glb": "mamie.glb",
-      "png": "mamie.png",
+      "glb": "m/mamie.92fcac82.glb",
+      "png": "m/mamie.f259f79e.png",
       "metres": 1.54,
       "aged": true,
       "face": {
@@ -480,8 +480,8 @@
       }
     },
     "enfant": {
-      "glb": "enfant.glb",
-      "png": "enfant.png",
+      "glb": "m/enfant.994dc454.glb",
+      "png": "m/enfant.46dd675c.png",
       "metres": 1.25,
       "child": true,
       "face": {

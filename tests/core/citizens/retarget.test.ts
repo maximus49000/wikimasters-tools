@@ -246,7 +246,10 @@ describe('applyPose', () => {
   // Les vrais modèles ne sont pas droits au repos (cou ≈ 6° en arrière du bassin) : le buste penchait en arrière.
   it('vrais modèles : la ligne Hips → Neck suit pelvis → neck du pantin à moins de 3°', async () => {
     for (const name of ['homme-fort', 'femme-frele', 'enfant']) {
-      const buf = readFileSync(resolve(__dirname, `../../../relay/public/persos/${name}.glb`));
+      // Nom à empreinte lu dans le manifeste (persos/m/<nom>.<sha256 8>.glb).
+      const persos = resolve(__dirname, '../../../relay/public/persos');
+      const glb = (JSON.parse(readFileSync(resolve(persos, 'manifest.json'), 'utf8')) as { bases: Record<string, { glb: string }> }).bases[name]!.glb;
+      const buf = readFileSync(resolve(persos, glb));
       const gltf = await new Promise<{ scene: THREE.Group }>((ok, ko) =>
         new GLTFLoader().parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, '', ok, ko));
       let body: THREE.SkinnedMesh | null = null;

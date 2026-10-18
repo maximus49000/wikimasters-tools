@@ -3,7 +3,11 @@
 // (calculés au banc sur les modèles pleine résolution) et sont recopiés tels quels.
 // Usage : npm run citizens:models -- <dossier des modèles d'origine>   (ou variable CITIZENS_SRC)
 // Le dossier contient base-generique, base-homme-maigre, base-femme-frele, base-papy, base-mamie, base-enfant, base-femme-forte, base-femme-grande (model.glb).
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+// Les GLB et PNG vont dans persos/m/ sous un nom qui porte l'empreinte de leur contenu (`homme-fort.3f2a9c1d.glb`) : servis
+// « immutable » (relay/public/_headers), un modèle refait change de nom et n'est jamais confondu avec l'ancien ; le manifeste
+// (persos/manifest.json, servi sans cache) donne les noms du jour. Les anciens fichiers de m/ sont retirés.
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
@@ -42,6 +46,15 @@ const visages = JSON.parse(readFileSync(join(ici, 'faces-source.json'), 'utf8'))
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
 await MeshoptSimplifier.ready;
 mkdirSync(sortie, { recursive: true });
+const modeles = join(sortie, 'm');
+rmSync(modeles, { recursive: true, force: true });
+mkdirSync(modeles, { recursive: true });
+// Nom à empreinte : 8 caractères hexadécimaux du SHA-256 du contenu.
+const ecrire = (nom, ext, octets) => {
+  const fichier = `${nom}.${createHash('sha256').update(octets).digest('hex').slice(0, 8)}.${ext}`;
+  writeFileSync(join(modeles, fichier), octets);
+  return `m/${fichier}`;
+};
 
 const compteTriangles = (doc) => {
   let n = 0;
@@ -64,16 +77,16 @@ for (const [nom, def] of Object.entries(BASES)) {
   const textures = doc.getRoot().listTextures();
   if (textures.length === 0) throw new Error(`${nom} : aucune texture`);
   const image = textures[0].getImage();
-  await sharp(image).resize(TEXTURE_PX, TEXTURE_PX, { fit: 'fill' }).png({ compressionLevel: 9 }).toFile(join(sortie, `${nom}.png`));
+  const png = ecrire(nom, 'png', await sharp(image).resize(TEXTURE_PX, TEXTURE_PX, { fit: 'fill' }).png({ compressionLevel: 9 }).toBuffer());
   for (const mat of doc.getRoot().listMaterials()) mat.setBaseColorTexture(null);
   for (const t of doc.getRoot().listTextures()) t.dispose();
 
-  await io.write(join(sortie, `${nom}.glb`), doc);
+  const glb = ecrire(nom, 'glb', await io.writeBinary(doc));
   console.log(`${nom} : ${Math.round(avant)} -> ${Math.round(compteTriangles(doc))} triangles`);
 
   manifeste.bases[nom] = {
-    glb: `${nom}.glb`,
-    png: `${nom}.png`,
+    glb,
+    png,
     metres: def.metres,
     ...(def.aged ? { aged: true } : {}),
     ...(def.child ? { child: true } : {}),
