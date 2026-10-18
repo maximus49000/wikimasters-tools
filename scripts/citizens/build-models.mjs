@@ -1,8 +1,8 @@
-// Allège les 6 modèles pleine résolution (Mixamo, ~18 Mo chacun) en GLB légers + PNG 512 px,
+// Allège les 8 modèles pleine résolution (Mixamo, ~18 Mo chacun) en GLB légers + PNG 512 px,
 // et écrit le manifeste lu par le jeu. Les repères du visage viennent de faces-source.json
 // (calculés au banc sur les modèles pleine résolution) et sont recopiés tels quels.
 // Usage : npm run citizens:models -- <dossier des modèles d'origine>   (ou variable CITIZENS_SRC)
-// Le dossier contient base-generique, base-homme-maigre, base-femme-frele, base-papy, base-mamie, base-enfant (model.glb).
+// Le dossier contient base-generique, base-homme-maigre, base-femme-frele, base-papy, base-mamie, base-enfant, base-femme-forte, base-femme-grande (model.glb).
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,8 @@ const BASES = {
   'homme-fort': { dossier: 'base-generique', metres: 1.7 },
   'homme-maigre': { dossier: 'base-homme-maigre', metres: 1.82 },
   'femme-frele': { dossier: 'base-femme-frele', metres: 1.62 },
+  'femme-forte': { dossier: 'base-femme-forte', metres: 1.65 },
+  'femme-grande': { dossier: 'base-femme-grande', metres: 1.76 },
   papy: { dossier: 'base-papy', metres: 1.66, aged: true },
   mamie: { dossier: 'base-mamie', metres: 1.54, aged: true },
   enfant: { dossier: 'base-enfant', metres: 1.25, child: true },

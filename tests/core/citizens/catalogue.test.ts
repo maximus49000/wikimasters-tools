@@ -11,7 +11,7 @@ const base: Outfit = {
   bottom: 'pants', bottomColor: '#243044', accessory: 'none', accessoryColor: '#2E8B6A',
 };
 const tenue = (o: Partial<Outfit>): Outfit => ({ ...base, ...o });
-const FEMMES = ['femme-frele', 'mamie'];
+const FEMMES = ['femme-frele', 'femme-forte', 'femme-grande', 'mamie'];
 
 describe('générateur aléatoire', () => {
   it('est déterministe', () => {
@@ -29,8 +29,13 @@ describe('générateur aléatoire', () => {
   it("ne met jupe ou robe qu'aux femmes, mamies et enfants", () => {
     for (const s of SEEDS) {
       const d = citizen(s);
-      if (jupes(d)) expect(['femme-frele', 'mamie', 'enfant']).toContain(d.base);
+      if (jupes(d)) expect([...FEMMES, 'enfant']).toContain(d.base);
     }
+  });
+
+  it('fait apparaître les trois silhouettes de femme', () => {
+    const bases = new Set(SEEDS.map((s) => citizen(s).base));
+    for (const b of ['femme-frele', 'femme-forte', 'femme-grande']) expect(bases.has(b)).toBe(true);
   });
 
   it('ne met jamais de casquette aux anciens', () => {
@@ -40,17 +45,17 @@ describe('générateur aléatoire', () => {
     }
   });
 
-  it('fait apparaître les 8 peaux, les 6 bases et des humeurs variées', () => {
+  it('fait apparaître les 8 peaux, les 8 bases et des humeurs variées', () => {
     const ds = SEEDS.map(citizen);
     expect(new Set(ds.map((d) => d.skin)).size).toBe(PEAUX.length);
-    expect(new Set(ds.map((d) => d.base)).size).toBe(6);
+    expect(new Set(ds.map((d) => d.base)).size).toBe(8);
     const humeurs = new Set(ds.map((d) => d.mood));
     expect(humeurs.has('neutre') && humeurs.has('content')).toBe(true);
     expect(humeurs.size).toBeGreaterThan(3);
   });
 
   it('donne une taille proche de celle de la base', () => {
-    const metres: Record<string, number> = { 'homme-fort': 1.7, 'homme-maigre': 1.82, 'femme-frele': 1.62, papy: 1.66, mamie: 1.54, enfant: 1.25 };
+    const metres: Record<string, number> = { 'homme-fort': 1.7, 'homme-maigre': 1.82, 'femme-frele': 1.62, 'femme-forte': 1.65, 'femme-grande': 1.76, papy: 1.66, mamie: 1.54, enfant: 1.25 };
     for (const s of SEEDS.slice(0, 200)) {
       const d = citizen(s);
       const m = metres[d.base]!;

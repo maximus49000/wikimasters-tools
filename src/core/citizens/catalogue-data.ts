@@ -57,6 +57,8 @@ export const TYPES: Record<string, PermisBase> = {
   'homme-maigre': { hair: ['court', 'raie', 'degarni', 'rase', 'frise', 'afro'], beard: ['pleine', 'courte', 'moustache', 'bouc'], tops: ['tee', 'debardeur', 'chemise', 'pull', 'manteau', 'manteauLong'], bottoms: ['pantalon', 'short', 'pantacourt'], feet: ['chaussures', 'baskets', 'bottes'] },
   papy: { hair: ['couronne', 'degarni', 'court', 'rase'], beard: ['moustache', 'pleine', 'courte'], tops: ['chemise', 'pull', 'manteau', 'manteauLong'], bottoms: ['pantalon', 'pantacourt'], feet: ['chaussures', 'bottines'] },
   'femme-frele': { hair: ['carre', 'long', 'queue', 'chignon', 'frise', 'afro', 'tresses', 'rase'], beard: [], tops: ['tee', 'debardeur', 'chemise', 'pull', 'manteau', 'manteauLong'], bottoms: ['pantalon', 'short', 'jupeCourte', 'jupeGenou', 'jupeLongue', 'robe', 'robeLongue'], feet: ['chaussures', 'baskets', 'bottes', 'bottines'] },
+  'femme-forte': { hair: ['carre', 'long', 'queue', 'chignon', 'frise', 'afro', 'tresses', 'rase'], beard: [], tops: ['tee', 'debardeur', 'chemise', 'pull', 'manteau', 'manteauLong'], bottoms: ['pantalon', 'short', 'jupeCourte', 'jupeGenou', 'jupeLongue', 'robe', 'robeLongue'], feet: ['chaussures', 'baskets', 'bottes', 'bottines'] },
+  'femme-grande': { hair: ['carre', 'long', 'queue', 'chignon', 'frise', 'afro', 'tresses', 'rase'], beard: [], tops: ['tee', 'debardeur', 'chemise', 'pull', 'manteau', 'manteauLong'], bottoms: ['pantalon', 'short', 'jupeCourte', 'jupeGenou', 'jupeLongue', 'robe', 'robeLongue'], feet: ['chaussures', 'baskets', 'bottes', 'bottines'] },
   mamie: { hair: ['chignon', 'boucles', 'carre', 'court'], beard: [], tops: ['chemise', 'pull', 'manteau', 'manteauLong'], bottoms: ['pantalon', 'jupeGenou', 'jupeLongue', 'robeLongue'], feet: ['chaussures', 'bottines'] },
   enfant: { hair: ['enfant', 'couettes', 'carre', 'queue', 'frise', 'tresses', 'afro', 'rase'], beard: [], tops: ['tee', 'pull', 'manteau'], bottoms: ['pantalon', 'short', 'jupeCourte', 'robe'], feet: ['baskets', 'bottes', 'chaussures'] },
 };
@@ -67,7 +69,9 @@ export type DefBase = { glb: string; metres: number; weight: number; sex: 'f' | 
 export const BASES: Record<string, DefBase> = {
   'homme-fort': { glb: 'base-generique', metres: 1.7, weight: 14, sex: 'm' },
   'homme-maigre': { glb: 'base-homme-maigre', metres: 1.82, weight: 14, sex: 'm' },
-  'femme-frele': { glb: 'base-femme-frele', metres: 1.62, weight: 26, sex: 'f' },
+  'femme-frele': { glb: 'base-femme-frele', metres: 1.62, weight: 10, sex: 'f' },
+  'femme-forte': { glb: 'base-femme-forte', metres: 1.65, weight: 8, sex: 'f' },
+  'femme-grande': { glb: 'base-femme-grande', metres: 1.76, weight: 8, sex: 'f' },
   papy: { glb: 'base-papy', metres: 1.66, weight: 12, sex: 'm', aged: true },
   mamie: { glb: 'base-mamie', metres: 1.54, weight: 12, sex: 'f', aged: true },
   enfant: { glb: 'base-enfant', metres: 1.25, weight: 22, sex: 'n', child: true },
@@ -79,6 +83,8 @@ export const HAIR: Record<string, Pondere> = {
   'homme-fort': [['court', 5], ['raie', 3], ['degarni', 2], ['rase', 3], ['frise', 2, 'curly'], ['afro', 1, 'curly'], [null, 1]],
   'homme-maigre': [['court', 5], ['raie', 4], ['degarni', 2], ['rase', 3], ['frise', 2, 'curly'], ['afro', 1, 'curly'], [null, 1]],
   'femme-frele': [['carre', 4], ['long', 5], ['queue', 3], ['chignon', 2], ['frise', 2, 'curly'], ['afro', 2, 'curly'], ['tresses', 2, 'curly'], ['rase', 0.4]],
+  'femme-forte': [['carre', 4], ['long', 5], ['queue', 3], ['chignon', 2], ['frise', 2, 'curly'], ['afro', 2, 'curly'], ['tresses', 2, 'curly'], ['rase', 0.4]],
+  'femme-grande': [['carre', 4], ['long', 5], ['queue', 3], ['chignon', 2], ['frise', 2, 'curly'], ['afro', 2, 'curly'], ['tresses', 2, 'curly'], ['rase', 0.4]],
   papy: [['couronne', 5], ['degarni', 3], ['court', 2], ['rase', 1], [null, 1]],
   mamie: [['chignon', 4], ['boucles', 5], ['carre', 2], ['court', 1]],
   enfant: [['enfant', 5], ['couettes', 2], ['carre', 2], ['queue', 2], ['frise', 2, 'curly'], ['tresses', 1.5, 'curly'], ['afro', 1, 'curly'], ['rase', 1]],
@@ -88,6 +94,8 @@ export const TOPS: Record<string, ReadonlyArray<readonly [string, number]>> = {
   'homme-fort': [['tee', 5], ['chemise', 3], ['pull', 3], ['debardeur', 1], ['manteau', 1.5], ['manteauLong', 1]],
   'homme-maigre': [['tee', 5], ['chemise', 4], ['pull', 3], ['debardeur', 1], ['manteau', 1.5], ['manteauLong', 1]],
   'femme-frele': [['tee', 4], ['chemise', 3], ['pull', 3], ['debardeur', 2], ['manteau', 1.5], ['manteauLong', 1]],
+  'femme-forte': [['tee', 4], ['chemise', 3], ['pull', 4], ['debardeur', 1], ['manteau', 1.5], ['manteauLong', 1]],
+  'femme-grande': [['tee', 4], ['chemise', 3], ['pull', 3], ['debardeur', 2], ['manteau', 1.5], ['manteauLong', 1]],
   papy: [['chemise', 4], ['pull', 4], ['manteau', 1.5], ['manteauLong', 1.5]],
   mamie: [['chemise', 3], ['pull', 4], ['manteau', 1.5], ['manteauLong', 2]],
   enfant: [['tee', 6], ['pull', 3], ['manteau', 1.5]],
@@ -96,16 +104,20 @@ export const BOTTOMS: Record<string, ReadonlyArray<readonly [string, number]>> =
   'homme-fort': [['pantalon', 7], ['short', 2], ['pantacourt', 1.5]],
   'homme-maigre': [['pantalon', 7], ['short', 2], ['pantacourt', 1.5]],
   'femme-frele': [['pantalon', 4], ['short', 1.5], ['jupeCourte', 1.5], ['jupeGenou', 2.5], ['jupeLongue', 2.5]],
+  'femme-forte': [['pantalon', 4], ['short', 0.5], ['jupeCourte', 0.5], ['jupeGenou', 2.5], ['jupeLongue', 2.5]],
+  'femme-grande': [['pantalon', 4], ['short', 1.5], ['jupeCourte', 1.5], ['jupeGenou', 2.5], ['jupeLongue', 2.5]],
   papy: [['pantalon', 8], ['pantacourt', 1]],
   mamie: [['pantalon', 3], ['jupeGenou', 3], ['jupeLongue', 4]],
   enfant: [['pantalon', 4], ['short', 4], ['jupeCourte', 2]],
 };
 // Robe : [probabilité, robes possibles] (à la place du haut + bas).
-export const DRESS: Record<string, readonly [number, readonly string[]]> = { 'femme-frele': [0.2, ['robe', 'robeLongue']], mamie: [0.25, ['robeLongue']], enfant: [0.12, ['robe']] };
+export const DRESS: Record<string, readonly [number, readonly string[]]> = { 'femme-frele': [0.2, ['robe', 'robeLongue']], 'femme-forte': [0.25, ['robe', 'robeLongue']], 'femme-grande': [0.2, ['robe', 'robeLongue']], mamie: [0.25, ['robeLongue']], enfant: [0.12, ['robe']] };
 export const FEET: Record<string, ReadonlyArray<readonly [string, number]>> = {
   'homme-fort': [['chaussures', 4], ['baskets', 4], ['bottes', 1]],
   'homme-maigre': [['chaussures', 4], ['baskets', 4], ['bottes', 1]],
   'femme-frele': [['chaussures', 4], ['baskets', 3], ['bottes', 1.5], ['bottines', 2]],
+  'femme-forte': [['chaussures', 4], ['baskets', 3], ['bottes', 1.5], ['bottines', 2]],
+  'femme-grande': [['chaussures', 4], ['baskets', 3], ['bottes', 1.5], ['bottines', 2]],
   papy: [['chaussures', 6], ['bottines', 2]],
   mamie: [['chaussures', 6], ['bottines', 2]],
   enfant: [['baskets', 6], ['bottes', 1.5], ['chaussures', 1]],

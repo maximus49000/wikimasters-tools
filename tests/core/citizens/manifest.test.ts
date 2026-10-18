@@ -7,16 +7,16 @@ const brut: unknown = JSON.parse(readFileSync('relay/public/persos/manifest.json
 describe('manifeste des modèles allégés', () => {
   const manifeste = ManifestSchema.parse(brut);
 
-  it('décrit les 6 bases', () => {
+  it('décrit les 8 bases', () => {
     expect(Object.keys(manifeste.bases).sort()).toEqual(
-      ['enfant', 'femme-frele', 'homme-fort', 'homme-maigre', 'mamie', 'papy'],
+      ['enfant', 'femme-forte', 'femme-frele', 'femme-grande', 'homme-fort', 'homme-maigre', 'mamie', 'papy'],
     );
   });
 
   it('donne la taille en mètres de chaque base', () => {
     const metres = Object.fromEntries(Object.entries(manifeste.bases).map(([nom, b]) => [nom, b.metres]));
     expect(metres).toEqual({
-      'homme-fort': 1.7, 'homme-maigre': 1.82, 'femme-frele': 1.62, papy: 1.66, mamie: 1.54, enfant: 1.25,
+      'homme-fort': 1.7, 'homme-maigre': 1.82, 'femme-frele': 1.62, 'femme-forte': 1.65, 'femme-grande': 1.76, papy: 1.66, mamie: 1.54, enfant: 1.25,
     });
   });
 
