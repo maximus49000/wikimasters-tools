@@ -501,7 +501,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
           </Fragment>
         );
       })}
-      <g data-mover="piece" data-lift={lift.toFixed(2)} transform={`translate(${(piece?.where === 'street' ? piece.x : g.a.x).toFixed(1)} ${(piece?.where === 'street' ? piece.y : g.a.y).toFixed(1)})`} visibility={piece?.where === 'street' ? 'visible' : 'hidden'}>
+      <g data-mover="piece" data-lift={CITIZENS_3D ? lift.toFixed(2) : undefined} transform={`translate(${(piece?.where === 'street' ? piece.x : g.a.x).toFixed(1)} ${(piece?.where === 'street' ? piece.y : g.a.y).toFixed(1)})`} visibility={piece?.where === 'street' ? 'visible' : 'hidden'}>
         {pieceArt}
       </g>
       <svg data-piece-door="" x={pBox.clip.x.toFixed(2)} y={pBox.clip.y.toFixed(2)} width={pBox.clip.w.toFixed(2)} height={pBox.clip.h.toFixed(2)} overflow="hidden" visibility={piece?.where === 'door' ? 'visible' : 'hidden'}>

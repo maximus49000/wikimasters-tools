@@ -26,8 +26,7 @@ import { workerPose, type CrewLook, type WorkerMove } from './city-shops-life';
 import { entranceLeft } from './city-sprites';
 import { carryFit, carryLineY, type Carrier } from './figure/carry-fit';
 import { CITIZENS_3D } from './figure/citizen-config';
-import { useFigureRegistry } from './figure/figure-host';
-import { GhibliFigure } from './figure/ghibli-figure';
+import { GhibliFigure, setShown3DFitter } from './figure/ghibli-figure';
 import { paintProp, propKey, type PropRegistry, type PropSpec } from './prop/prop-host';
 import {
   BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
@@ -655,23 +654,18 @@ const footNodes = (c: FootCrew, inp: Pick<CrewInput, 'outfits' | 'sky' | 'rainy'
 };
 
 // Charge portée à deux (barrière, planche, comptoir), porteurs passés en 3D : les porteurs sont placés au rendu pour que les
-// mains du pantin tiennent les bouts ; quand l'un montre une image 3D (sans re-rendu), le registre rappelle ce réglage, qui pose
-// la charge sur la ligne des mains 3D (carryFit). Positions : celles du rendu (porteurs et charge glissent ensemble par la même
-// transition CSS, l'écart relatif reste juste).
+// mains du pantin tiennent les bouts ; dès que l'un passe du pantin à la 3D ou l'inverse (sans re-rendu), la figure rappelle ce
+// réglage (setShown3DFitter), qui pose la charge sur la ligne des mains 3D (carryFit). Positions : celles du rendu (porteurs et
+// charge glissent ensemble par la même transition CSS, l'écart relatif reste juste).
 function CarryFitWatch({ k }: { k: number }): ReactElement {
-  const reg = useFigureRegistry();
   const ref = useRef<SVGGElement | null>(null);
   useLayoutEffect(() => {
-    const marker = ref.current;
-    const crew = marker?.parentElement;
-    if (!marker || !crew) return;
-    const fit = (): boolean => {
-      fitCarried(crew, k);
-      return false;
-    };
+    const crew = ref.current?.parentElement;
+    if (!crew) return;
+    const fit = (): void => fitCarried(crew, k);
     fit();
-    reg.watch(marker, fit);
-    return () => reg.unwatch(marker);
+    setShown3DFitter(crew, fit);
+    return () => setShown3DFitter(crew, null);
   });
   return <g data-carry-watch="" ref={ref} />;
 }
@@ -793,7 +787,7 @@ function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp:
       data-worker=""
       data-worker-k={id}
       data-pose={w.pose}
-      {...(move ? { 'data-move': JSON.stringify(move), 'data-wx': w.x.toFixed(2), 'data-wy': w.y.toFixed(2), 'data-ref': `${move.look.yaw}|${move.look.arms}` } : {})}
+      {...(move ? { 'data-move': JSON.stringify(move), ...(CITIZENS_3D ? { 'data-wx': w.x.toFixed(2), 'data-wy': w.y.toFixed(2), 'data-ref': `${move.look.yaw}|${move.look.arms}` } : {}) } : {})}
       style={{ transform: `translate(${w.x.toFixed(1)}px, ${w.y.toFixed(1)}px)`, transition: MOVE }}
     >
       {move ? (
@@ -1009,12 +1003,13 @@ function handCrew(inp: CrewInput): FootCrew {
       ? `matrix(${lerp(k, 0.3 * k, tilt).toFixed(3)}, ${lerp(0, 0.72 * k, tilt).toFixed(3)}, 0, ${k.toFixed(3)}, 0, 0)`
       : `matrix(${u.toFixed(3)}, 0, 0, ${u.toFixed(3)}, 0, 0)`;
     // `data-carry-fit` : réglage de la charge sur les mains 3D des porteurs (CarryFitWatch), dans le repère de `shape`.
+    // Interrupteur coupé : ni attributs ni groupe de réglage (DOM d'avant).
     const sm = barrier ? [lerp(k, 0.3 * k, tilt), lerp(0, 0.72 * k, tilt), 0, k] : [u, 0, 0, u];
+    const art = barrier ? <Barrier sky={inp.sky} ghibli={inp.ghibli} /> : counter ? <CarriedCounter sky={inp.sky} ghibli={inp.ghibli} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />;
+    const fit = CITIZENS_3D ? { 'data-base': base.toFixed(2), 'data-shape': sm.map((v) => v.toFixed(4)).join(' ') } : {};
     return (
-      <g {...attrs} data-base={base.toFixed(2)} data-shape={sm.map((v) => v.toFixed(4)).join(' ')} style={{ transform: `translate(${x.toFixed(1)}px, ${base.toFixed(1)}px) ${shape}`, transition: MOVE }}>
-        <g data-carry-fit="">
-          {barrier ? <Barrier sky={inp.sky} ghibli={inp.ghibli} /> : counter ? <CarriedCounter sky={inp.sky} ghibli={inp.ghibli} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
-        </g>
+      <g {...attrs} {...fit} style={{ transform: `translate(${x.toFixed(1)}px, ${base.toFixed(1)}px) ${shape}`, transition: MOVE }}>
+        {CITIZENS_3D ? <g data-carry-fit="">{art}</g> : art}
       </g>
     );
   };

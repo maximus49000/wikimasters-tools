@@ -277,3 +277,33 @@ describe('charge portée à deux, porteurs en 3D', () => {
     }
   });
 });
+
+describe('interrupteur coupé (CITIZENS_3D = false)', () => {
+  it('charge portée à deux : ni attributs de réglage ni groupe data-carry-fit (DOM d’avant)', async () => {
+    const m = findMinute(D14, 'barriers-bastille', (c) => c.step === 'place' && !c.removing && kindOf(D14, 'barriers-bastille', c.itemId).eq === 'hand');
+    vi.resetModules();
+    vi.doMock('../../src/content/figure/citizen-config', async (orig) => ({ ...(await orig<object>()), CITIZENS_3D: false }));
+    const il = await import('../../src/content/install-layer');
+    const fh = await import('../../src/content/figure/figure-host');
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    vi.spyOn(Date, 'now').mockReturnValue(NOW + m * 60_000);
+    act(() =>
+      root.render(
+        <fh.FigureContext.Provider value={new fh.FigureRegistry('t3d0', { perFrame: 200 })}>
+          <svg>
+            <il.InstallLayer width={W} height={H} seed={SEED} sky={skyAt(m, times)} still={false} date={D14} minutes={m} metrics={metrics} rainy={false} ghibli />
+          </svg>
+        </fh.FigureContext.Provider>,
+      ),
+    );
+    expect(host.querySelector('[data-crew="barriers-bastille"] [data-carried-item="barrier"]')).not.toBeNull();
+    for (const sel of ['[data-carry-fit]', '[data-carry-watch]', '[data-shape]', '[data-base]', '[data-wx]', '[data-wy]', '[data-ref]', '[data-wait3d]', '[data-pin]']) {
+      expect(host.querySelector(sel), sel).toBeNull();
+    }
+    vi.doUnmock('../../src/content/figure/citizen-config');
+    vi.resetModules();
+  });
+});
