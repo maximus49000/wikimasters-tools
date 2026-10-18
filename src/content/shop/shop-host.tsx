@@ -7,6 +7,8 @@ import { paintInterior } from '../../core/library/paint/shop/interiors';
 import { tone } from '../city-sprites';
 import { BLANK_SPRITE } from '../figure/figure-host';
 import { PaintRegistry, paintSurface, quantDay } from '../paint-registry';
+import type { LightBlob } from '../../core/library/city/night-light';
+import { LAMP_TINT, buffers, noCanvas, tintAndMask } from '../painted-city';
 
 // Images peintes des commerces (G4a) : chaque local est peint UNE fois par clé sur un canvas hors écran, en trois couches
 // (fond de la vitrine, premier plan devant le personnel avec la vitre, façade percée à la vitrine), puis gardé en PNG
@@ -90,4 +92,46 @@ export function useShopLayer(look: ShopLook | null, layer: ShopLayer): string | 
   if (key === null) last.current = null;
   if (url !== null) last.current = url;
   return url ?? last.current;
+}
+
+// ---------- Lumière d'un lampadaire sur une devanture (G5, tâche 15) ----------
+// La devanture peinte (calque `facade`) passe par-dessus la découpe éclairée du décor (ghibli-night.tsx) : sans cela, la
+// lueur du lampadaire s'arrête au haut du rez-de-chaussée. Même opération que paintLitPatch (« deux peintures ») : la façade
+// peinte DE JOUR, teinte ambre (LAMP_TINT), découpée par le masque d'intensité des taches du lampadaire (`blobs`, repère du
+// local : origine = shopOrigin). Posée par-dessus la façade de nuit, à l'opacité `dim` des lumières de la ville.
+export const glowKey = (l: ShopLook, blobs: readonly LightBlob[]): string =>
+  `glow|${shopKey({ ...l, day: 1, lit: false }, 'facade')}|${blobs.map((b) => `${b.cx.toFixed(1)},${b.cy.toFixed(1)},${b.rx.toFixed(1)},${b.ry.toFixed(1)},${b.peak}`).join(';')}`;
+export function paintShopGlow(l: ShopLook, blobs: readonly LightBlob[]): string {
+  if (noCanvas()) return BLANK_SPRITE;
+  const box = layerBox(l, 'facade');
+  const pw = Math.max(1, Math.ceil(box.w * SHOP_PX));
+  const ph = Math.max(1, Math.ceil(box.h * SHOP_PX));
+  const b = buffers(pw, ph);
+  if (!b) return BLANK_SPRITE;
+  const [lit, day, mask] = b as [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D];
+  // Façade de jour (aucune teinte de nuit), dans le repère du local.
+  lit.setTransform(SHOP_PX, 0, 0, SHOP_PX, -box.x * SHOP_PX, -box.y * SHOP_PX);
+  paintFacade(tintedCtx(lit as unknown as ShopPaintCtx, (c: string) => c), specOf({ ...l, day: 1, lit: false }));
+  lit.setTransform(1, 0, 0, 1, 0, 0);
+  tintAndMask([lit, day, mask], blobs, LAMP_TINT, [SHOP_PX, SHOP_PX, -box.x * SHOP_PX, -box.y * SHOP_PX]);
+  return lit.canvas.toDataURL('image/png');
+}
+// Image de la lueur (null tant qu'elle n'est pas peinte ; `blobs` vide : rien).
+// `want` faux : l'image déjà cuite est rendue (fondu de sortie d'un lampadaire qui s'éteint) mais rien n'est demandé.
+export function useShopGlow(look: ShopLook | null, blobs: readonly LightBlob[], want = true): string | null {
+  const reg = useContext(ShopContext);
+  const [, bump] = useState(0);
+  const key = look && blobs.length > 0 ? glowKey(look, blobs) : null;
+  const url = reg && key ? reg.get(key) : null;
+  useEffect(() => {
+    if (!want || !reg || !key || !look || reg.get(key) !== null) return;
+    return reg.want(
+      key,
+      () => paintShopGlow(look, blobs),
+      () => bump((n) => n + 1),
+    );
+    // `look` et `blobs` sont entièrement décrits par la clé.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reg, key, want]);
+  return url;
 }

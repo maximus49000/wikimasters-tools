@@ -1,7 +1,7 @@
 import { INK } from '../cel';
 import { L, shadeOf, type CelOpts } from '../shop/cel';
 import type { TintedCtx } from '../shop/ctx';
-import { ball, disc, flagArt, groundShadow, halo, PD, RD, RRD, tube, wheel } from './kit';
+import { ball, disc, FLAG_AMP, flagArt, groundShadow, halo, PD, RD, RRD, tube, wheel } from './kit';
 import { registerProps, type PropArgs, type PropPaint } from './index';
 
 // Installations de fête cellulo (G5, tâches 5 et 6), portées de la maquette validée (docs/superpowers/maquettes/g5-fetes/index.html :
@@ -321,6 +321,22 @@ function doorFlag(x: TintedCtx, a: PropArgs, p: PropPaint): void {
   x.restore();
 }
 
+// Cadres des drapeaux (comme paradeFlagBox) : tissu + creux maximal de la vague (FLAG_AMP × h, +0,01 de marge, × 1,15 en
+// bas) + trait (0,6), sans descendre sous le cadre du support (lampadaire) ni de la hampe et de sa pointe (porte).
+const flagAmp = (h: number, a: PropArgs): number => (flagStill(a) ? 0 : h * (FLAG_AMP + 0.01));
+function lampFlagBox(a: PropArgs): readonly [number, number, number, number] {
+  const amp = flagAmp(7, a);
+  const y0 = Math.min(-71 - amp - 0.6, -72.6);
+  const y1 = Math.max(-64 + amp * 1.15 + 0.6, -60.6);
+  return [-21.8, y0, 22.3, y1 - y0];
+}
+function doorFlagBox(a: PropArgs): readonly [number, number, number, number] {
+  const amp = flagAmp(5, a);
+  const y0 = Math.min(-45 - amp - 0.6, -47);
+  const y1 = Math.max(-40 + amp * 1.15 + 0.6, -30.2);
+  return [6.2, y0, 10.5, y1 - y0];
+}
+
 const paintOf = (fn: (x: TintedCtx, a: PropArgs) => void) => (x: TintedCtx, a: PropArgs, _p: PropPaint): void => fn(x, a);
 
 registerProps({
@@ -335,7 +351,6 @@ registerProps({
   'cargo-bike': { box: () => [-38, -23.5, 58.5, 25], paint: paintOf(cargoBike) },
   'flatbed-load': { box: flatbedLoadBox, paint: paintOf(flatbedLoad) },
   'stowed-ladder': { box: (a) => [-ladderLen(a) / 2 - 0.8, -2, ladderLen(a) + 1.6, 4], paint: paintOf((x, a) => stowedLadder(x, ladderLen(a))) },
-  // Cadres : tissu (vague ≤ 13 % de h en haut, × 1,15 en bas) + trait, support ou hampe et rotule / pointe.
-  'lamp-flag': { box: () => [-21.8, -72.6, 22.3, 12], frames: FLAG_FRAMES, paint: lampFlag },
-  'door-flag': { box: () => [6.2, -47, 10.5, 16.8], frames: FLAG_FRAMES, paint: doorFlag },
+  'lamp-flag': { box: lampFlagBox, frames: FLAG_FRAMES, paint: lampFlag },
+  'door-flag': { box: doorFlagBox, frames: FLAG_FRAMES, paint: doorFlag },
 });

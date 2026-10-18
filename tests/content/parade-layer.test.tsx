@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CityLifeLayer } from '../../src/content/city-life';
 import { ParadeUnitSprite } from '../../src/content/parade-sprites';
 import { ParadeLayer } from '../../src/content/parade-layer';
+import { collectCycles, placeCycles, PropContext, PropRegistry, propKey, type PropSpec } from '../../src/content/prop/prop-host';
+import { HORSE_CYCLE_S } from '../../src/core/library/paint/props/parade';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
@@ -223,6 +225,122 @@ describe('véhicules du défilé en Ghibli (V5)', () => {
     expect(host).not.toBeNull();
     const turned = [...host!.querySelectorAll('[data-scripted-car] [data-wheel]')].some((w) => !/rotate\(0(\.00)?\)/.test(w.getAttribute('transform')!));
     expect(turned).toBe(true);
+  });
+});
+
+// G5 (tâche 8) : cheval, drapeaux, instruments, fusils et coiffes en images cellulo du registre d'accessoires ; le dessin SVG
+// reste le repli tant que l'image n'est pas cuite ; les poses cycliques sont choisies par la boucle (placeCycles).
+describe('cortège du 14 juillet en cellulo (G5)', () => {
+  const sky = skyAt(630, times);
+  const day = sky.daylight;
+  // Registre à cuisson manuelle dont l'« image » est la clé (jsdom n'a pas de canvas) : les href disent quelle pose est posée.
+  class KeyedRegistry extends PropRegistry {
+    override want(k: string, _paint: () => string, done: () => void): () => void {
+      return super.want(k, () => `url:${k}`, done);
+    }
+  }
+  const unit = (kind: ParadeKind, half = 80) => ({ id: `u-${kind}`, kind, variant: 0.4, half, start: 0, lane: 'near' as const });
+  const gUnit = (kind: ParadeKind, still = false): { host: HTMLDivElement; jobs: (() => void)[]; reg: PropRegistry } => {
+    const jobs: (() => void)[] = [];
+    const reg = new KeyedRegistry('t', { schedule: (cb) => jobs.push(cb) });
+    const host = render(
+      <PropContext.Provider value={reg}>
+        <svg><ParadeUnitSprite unit={unit(kind)} sky={sky} still={still} ghibli /></svg>
+      </PropContext.Provider>,
+    );
+    return { host, jobs, reg };
+  };
+  const bake = async (jobs: (() => void)[]): Promise<void> => {
+    while (jobs.length) await act(async () => jobs.shift()!());
+  };
+  const specOf = (node: Element): PropSpec => JSON.parse(node.getAttribute('data-cycle-spec')!) as PropSpec;
+  const href = (node: Element): string => node.querySelector(':scope > image')!.getAttribute('href')!;
+  const key = (spec: PropSpec, frame: number): string => `url:${propKey({ ...spec, frame })}`;
+
+  it('cavalerie : trois chevaux en image `horse` cyclique (1,2 s, phases 0 / ¼ / ½), repli SVG avant cuisson, cavalier pantin par-dessus ; la boucle pose la pose de l’instant', async () => {
+    const { host, jobs, reg } = gUnit('cavalry');
+    const horses = [...host.querySelectorAll('[data-horse] > [data-prop-cycle]')];
+    expect(horses).toHaveLength(3);
+    expect(horses.map((h) => h.getAttribute('data-prop-cycle'))).toEqual(Array<string>(3).fill(String(HORSE_CYCLE_S)));
+    expect(horses.map((h) => Number(h.getAttribute('data-cycle-phase')))).toEqual([0, 0.25, 0.5]);
+    for (const h of horses) expect(specOf(h)).toMatchObject({ id: 'horse', day });
+    // Avant cuisson : le cheval SVG (quatre jambes) ; le cavalier est un pantin monté, avec son casque à l'accroche de la tête.
+    expect(count(host, '[data-horse] [data-horse-leg]')).toBe(12);
+    expect(count(host, '[data-horse] image')).toBe(0);
+    expect(count(host, '[data-parade-figure] [data-figure]')).toBe(3);
+    expect(count(host, '[data-parade-figure] [data-held="head"]')).toBe(3);
+    await bake(jobs);
+    expect(count(host, '[data-horse] image')).toBe(3);
+    expect(count(host, '[data-horse] [data-horse-leg]')).toBe(0);
+    expect(count(host, '[data-horse] animateTransform')).toBe(0);
+    for (const h of horses) expect(href(h)).toBe(key(specOf(h), 0));
+    // Boucle : à t = 0,6 s (demi-cycle), pose 4 pour la phase 0, 6 pour ¼, 0 pour ½ ; la pose est demandée puis posée.
+    const cycles = collectCycles(host);
+    expect(cycles).toHaveLength(3);
+    placeCycles(cycles, 0.6, reg);
+    await bake(jobs);
+    placeCycles(cycles, 0.6, reg);
+    expect(horses.map(href)).toEqual([key(specOf(horses[0]!), 4), key(specOf(horses[1]!), 6), key(specOf(horses[2]!), 0)]);
+    // Même instant : rien ne change ; l'image ne porte jamais de miroir.
+    placeCycles(cycles, 0.6, reg);
+    expect(horses.map(href)).toEqual([key(specOf(horses[0]!), 4), key(specOf(horses[1]!), 6), key(specOf(horses[2]!), 0)]);
+    expect(host.innerHTML).not.toMatch(/scale\(-1/);
+  });
+  it('fanfare : six instruments en image au repère de leur dessin ; grosse caisse (1 s) et caisse claire (0,5 s) cycliques, cuivres et canne fixes ; coiffes en image à la tête', async () => {
+    const { host, jobs } = gUnit('band');
+    expect(count(host, '[data-instrument="bass-drum"] > [data-prop-cycle="1"]')).toBe(1);
+    expect(count(host, '[data-instrument="snare"] > [data-prop-cycle="0.5"]')).toBe(1);
+    for (const k of ['tuba', 'trumpet', 'bugle', 'baton']) expect(count(host, `[data-instrument="${k}"] [data-prop-cycle]`), k).toBe(0);
+    expect(count(host, '[data-instrument] image')).toBe(0);
+    await bake(jobs);
+    expect(count(host, '[data-instrument] image')).toBe(6);
+    expect(count(host, '[data-instrument] path, [data-instrument] circle, [data-instrument] ellipse')).toBe(0);
+    expect(count(host, '[data-held="head"] image')).toBe(6);
+    // Les instruments restent accrochés aux mains du pantin, avec le décalage du dessin.
+    expect(host.querySelector('[data-instrument="bass-drum"]')!.getAttribute('transform')).toBe('translate(-4 19)');
+    expect(host.querySelector('[data-held="hands"] [data-instrument="tuba"]')).not.toBeNull();
+  });
+  it('infanterie : fusils et coiffes en image ; porte-drapeaux : hampe et tissu `parade-flag` (27 × 18, hampe 51) cycliques, une phase par porteur', async () => {
+    const inf = gUnit('infantry');
+    await bake(inf.jobs);
+    expect(count(inf.host, '[data-rifle] image')).toBe(8);
+    expect(count(inf.host, '[data-rifle] line')).toBe(0);
+    expect(count(inf.host, '[data-held="head"] image')).toBe(8);
+    const fl = gUnit('flags');
+    const bearers = [...fl.host.querySelectorAll('[data-flag-bearer] [data-prop-cycle]')];
+    expect(bearers).toHaveLength(3);
+    expect(new Set(bearers.map((b) => b.getAttribute('data-cycle-phase'))).size).toBe(3);
+    for (const b of bearers) expect(specOf(b)).toMatchObject({ id: 'parade-flag', args: { w: 27, h: 18, pole: 51 } });
+    await bake(fl.jobs);
+    expect(count(fl.host, '[data-flag-bearer] image')).toBe(3);
+    expect(count(fl.host, '[data-flag-bearer] rect, [data-flag-bearer] line')).toBe(0);
+  });
+  it('jeeps et chars : tissu des drapeaux d’antenne en image cyclique posée à `top`, hampe SVG conservée', async () => {
+    const { host, jobs } = gUnit('jeeps');
+    expect(count(host, '[data-tricolore] > [data-prop-cycle]')).toBe(4);
+    await bake(jobs);
+    expect(count(host, '[data-tricolore] image')).toBe(4);
+    expect(count(host, '[data-tricolore] rect')).toBe(0);
+    expect(count(host, 'line')).toBeGreaterThanOrEqual(4);
+    expect(host.querySelector('[data-tricolore]')!.getAttribute('transform')).toBe('translate(0 -34)');
+    const tanks = gUnit('tanks');
+    expect(count(tanks.host, '[data-tricolore] > [data-prop-cycle]')).toBe(2);
+  });
+  it('mouvement réduit : aucun nœud cyclique ; images en pose 0, drapeaux plats (args still)', async () => {
+    for (const kind of ['cavalry', 'flags', 'band', 'jeeps'] as const) {
+      const { host, jobs, reg } = gUnit(kind, true);
+      expect(count(host, '[data-prop-cycle]'), kind).toBe(0);
+      await bake(jobs);
+      expect(count(host, 'image'), kind).toBeGreaterThan(0);
+      if (kind === 'flags') expect(reg.get(propKey({ id: 'parade-flag', args: { w: 27, h: 18, pole: 51, still: true }, day }))).not.toBeNull();
+      if (kind === 'cavalry') expect(count(host, '[data-horse] image')).toBe(3);
+    }
+  });
+  it('classique : aucune image, aucun nœud cyclique', () => {
+    for (const kind of ['cavalry', 'band', 'flags', 'infantry', 'jeeps'] as const) {
+      const c = render(<svg><ParadeUnitSprite unit={unit(kind)} sky={sky} still={false} /></svg>);
+      expect(count(c, 'image, [data-prop-cycle], [data-horse]'), kind).toBe(0);
+    }
   });
 });
 

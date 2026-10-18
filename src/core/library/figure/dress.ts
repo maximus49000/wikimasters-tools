@@ -7,21 +7,23 @@ export type TopShape = 'coat' | 'tee' | 'long';
 export type BottomShape = 'skirt' | 'shorts' | 'pants';
 // Tenue de travail par-dessus (gilet de chantier, tablier de commerçant) : `none` pour les passants.
 export type Work = 'none' | 'vest' | 'apron';
-export type Shape = { hair: Hair; top: TopShape; bottom: BottomShape; acc: Accessory; umbrella: boolean; work: Work };
+// `santa` (G5) : tenue du père Noël (corpulence, barbe, fourrure, ceinture, gants, bottes, bonnet à pompon).
+export type Shape = { hair: Hair; top: TopShape; bottom: BottomShape; acc: Accessory; umbrella: boolean; work: Work; santa?: boolean };
 const WORK_CODE: Record<Work, string> = { none: 'n', vest: 'v', apron: 'a' };
 
-export function shapeOf(o: Outfit, umbrella: boolean, work: Work = 'none'): Shape {
+export function shapeOf(o: Outfit, umbrella: boolean, work: Work = 'none', santa = false): Shape {
   const top: TopShape = o.top === 'coat' ? 'coat' : o.top === 'tee' || o.top === 'jersey' ? 'tee' : 'long';
   const bottom: BottomShape = o.bottom === 'skirt' || o.bottom === 'dress' ? 'skirt' : o.bottom === 'shorts' ? 'shorts' : 'pants';
-  return { hair: o.hair, top, bottom, acc: o.accessory, umbrella, work };
+  return { hair: o.hair, top, bottom, acc: o.accessory, umbrella, work, santa };
 }
 
-// Six champs : coiffure.haut.bas.accessoire.parapluie.travail (n / v / a).
-export const signatureOf = (s: Shape): string => `${s.hair}.${s.top}.${s.bottom}.${s.acc}.${s.umbrella ? 'u' : 'n'}.${WORK_CODE[s.work]}`;
+// Six champs : coiffure.haut.bas.accessoire.parapluie.travail (n / v / a) ; septième champ `s` pour le père Noël seulement
+// (les signatures des autres pantins, donc les clés de leurs sprites, ne changent pas).
+export const signatureOf = (s: Shape): string => `${s.hair}.${s.top}.${s.bottom}.${s.acc}.${s.umbrella ? 'u' : 'n'}.${WORK_CODE[s.work]}${s.santa ? '.s' : ''}`;
 
 // Relit aussi les signatures à cinq champs (avant les tenues de travail) : travail `none`.
 export function shapeFromSignature(sig: string): Shape {
-  const [hair, top, bottom, acc, u, w] = sig.split('.');
+  const [hair, top, bottom, acc, u, w, x] = sig.split('.');
   const work: Work = w === 'v' ? 'vest' : w === 'a' ? 'apron' : 'none';
-  return { hair: hair as Hair, top: top as TopShape, bottom: bottom as BottomShape, acc: acc as Accessory, umbrella: u === 'u', work };
+  return { hair: hair as Hair, top: top as TopShape, bottom: bottom as BottomShape, acc: acc as Accessory, umbrella: u === 'u', work, santa: x === 's' };
 }

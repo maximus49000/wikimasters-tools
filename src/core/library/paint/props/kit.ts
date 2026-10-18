@@ -199,14 +199,18 @@ export function wheel(x: ShopPaintCtx, cx: number, cy: number, r: number, spokes
 export const FLAG_COLORS = ['#2B4FA0', '#F4F2EA', '#C0302B'] as const;
 
 // Tissu d'un drapeau (FlagArt) : hampe à x = 0, tissu vers +x, haut à y = 0. `wave` : bord haut
-// y(u) = h·u·(0,08·sin(5,2u − 7,5t + φ) + 0,05·sin(2,6u − 5t + φ)), bord bas ×1,15 ; tranches descendantes ombrées, montantes
-// rehaussées. Sans vague (mouvement réduit) : tissu plat, un pli d'ombre fixe par bande, indépendant de t et φ.
+// y(u) = h·u·(0,13·sin(5,2u − 7,5t + φ) + 0,08·sin(2,6u − 5t + φ)), bord bas ×1,15 ; tranches descendantes ombrées, montantes
+// rehaussées. Les pulsations 7,5 et 5 sont des multiples entiers de 2,5 : la période commune reste FLAG_CYCLE_S = 2π/2,5
+// (8 poses qui bouclent). Amplitudes relevées après comparaison avec la maquette (0,08 / 0,05 trop plates à l'échelle de la
+// rue) ; `FLAG_AMP` = creux maximal du bord haut en fraction de h (les cadres des peintres s'en servent). Sans vague (mouvement
+// réduit) : tissu plat, un pli d'ombre fixe par bande, indépendant de t et φ.
+export const FLAG_AMP = 0.13 + 0.08;
 export function flagArt(x: ShopPaintCtx, o: { w: number; h: number; t: number; wave: boolean; phase: number; colors?: readonly [string, string, string] }): void {
   const { w, h, t, wave, phase } = o;
   const cols = o.colors ?? FLAG_COLORS;
   const n = 12;
   const b = w / 3;
-  const yAt = (u: number): number => (wave ? Math.sin(u * 5.2 - t * 7.5 + phase) * h * 0.08 * u + Math.sin(u * 2.6 - t * 5 + phase) * h * 0.05 * u : 0);
+  const yAt = (u: number): number => (wave ? Math.sin(u * 5.2 - t * 7.5 + phase) * h * 0.13 * u + Math.sin(u * 2.6 - t * 5 + phase) * h * 0.08 * u : 0);
   for (let k = 0; k < 3; k++) {
     const c = cols[k]!;
     x.beginPath();
@@ -229,8 +233,8 @@ export function flagArt(x: ShopPaintCtx, o: { w: number; h: number; t: number; w
         const u0 = (k + i / n) / 3;
         const u1 = (k + (i + 1) / n) / 3;
         const d = yAt(u1) - yAt(u0);
-        if (d > 0.03) x.fillStyle = shadeOf(c, 0.32);
-        else if (d < -0.05) x.fillStyle = lightOf(c, 0.25);
+        if (d > 0.03) x.fillStyle = shadeOf(c, 0.38);
+        else if (d < -0.05) x.fillStyle = lightOf(c, 0.3);
         else continue;
         x.fillRect(u0 * w, -h, (u1 - u0) * w + 0.1, 3 * h);
       }

@@ -30,8 +30,9 @@ import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { CITIZENS_3D } from './figure/citizen-config';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure, prewarmFigure, type PoseIn } from './figure/ghibli-figure';
+import { poseEventArt } from './city-event-art';
 import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
-import { MarkHeld, markAnchor, markArms } from './festive-marks';
+import { MarkHeld, markAnchor, markArms, markPhase } from './festive-marks';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, warmCustomers, type CustomerWarmCache, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
 import { ShopScene, collectScene, muteScene, placeScene, sceneBudget, type SceneNodes } from './shop/shop-scene';
 import { staffSpans, type SceneShop } from './shop/scene-scores';
@@ -41,7 +42,7 @@ import { InstallLayer, collectFlags, placeFlags, type WavingFlag } from './insta
 import { ParadeCrowd } from './parade-crowd';
 import { ParadeLayer } from './parade-layer';
 import { interiorPost } from './shop-interiors';
-import { PropContext, PropImage } from './prop/prop-host';
+import { PropContext, PropImage, collectCycles, placeCycles, type CycledNode } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { ghibliStaffPost } from './shop/ghibli-shop-glass';
 import { collectCarriers, collectCups, collectTerraceGuests, collectWaiters, placeCarriers, placeCups, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type CupNode, type TerraceGuestNode, type Waiter } from './shop-terrace';
@@ -51,6 +52,7 @@ import { FrontSidewalk } from './front-sidewalk';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
 import { CROSS_HALF, type ScheduledArrival, type TrafficEnv } from '../core/library/city/traffic/engine';
 import { SantaLayer } from './santa-layer';
+import { GullsLayer } from './gulls-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -385,6 +387,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
 
   // Terrasses : météo de la minute et des 10 précédentes (hystérésis du moteur).
   const terraceSky = useTerraceWeather(weather, rainy, city.minutes);
+  // Mouettes (G5) : intensité de la pluie relue à la minute, à l'instant figé en mouvement réduit (sans horloge météo, `rainy`
+  // compte pour une pluie franche).
+  const gullRain = useMemo(() => {
+    if (!weather) return rainy ? 0.65 : 0;
+    const w = weather.read(still ? (frozen.current ?? 0) * 1000 : Date.now());
+    return w.kind === 'rain' ? w.precip : 0;
+  }, [weather, rainy, city.minutes, still]);
 
   // Événements de la ville : programme du grand créneau, événements actifs, voitures effacées, ambulances.
   // Fêtes actives à la minute de la scène (père Noël : 24 décembre de nuit).
@@ -508,6 +517,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let workers: PlacedWorker[] = [];
     // Ghibli : drapeaux de fête qui ondulent (poses clés choisies par la boucle).
     let flags: WavingFlag[] = [];
+    // Ghibli : signes de fête à poses cycliques tenus par les passants (ballon, note, serpentin, drapeau : festive-marks.tsx).
+    let cycles: CycledNode[] = [];
     // Figures Ghibli de chaque passant (compagnons, puis lui-même, au même pas), trouvées à la collecte des nœuds.
     const pedFigs = new Map<string, Element[]>();
     // Nœuds de porte des habitants (<svg> imbriqués), par trajet.
@@ -531,6 +542,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       if (!el) return;
       // Une fois par image : peint les sprites demandés (budget par image) et applique le plafond.
       if (ghibli) figures.flush();
+      // Un nœud à poses cycliques remplacé par un re-rendu sans nouvelle boucle (G5) : table des nœuds refaite.
+      if (nodes && ghibli && cycles.some((c) => !c.node.isConnected)) nodes = null;
       if (!nodes) {
         nodes = new Map();
         for (const node of el.querySelectorAll<SVGGElement>('[data-life-id]')) nodes.set(node.getAttribute('data-life-id')!, node);
@@ -550,10 +563,18 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         staffWalks = ghibli ? collectStaffWalks(el) : [];
         workers = ghibli ? collectWorkers(el) : [];
         flags = ghibli ? collectFlags(el) : [];
+        cycles = [];
         if (ghibli) {
           for (const p of peds) {
             const node = nodes.get(p.id);
-            if (node) pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
+            if (!node) continue;
+            pedFigs.set(p.id, [...node.querySelectorAll(':scope > [data-companion] > [data-figure]'), ...node.querySelectorAll(':scope > [data-figure]')]);
+            cycles.push(...collectCycles(node));
+          }
+          // Engins du ciel, ballons, cloches et chien du promeneur à poses cycliques (G5).
+          for (const e of events.active) {
+            const node = nodes.get(e.key);
+            if (node) cycles.push(...collectCycles(node));
           }
         }
         scene = ghibli ? collectScene(el) : null;
@@ -604,6 +625,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (e.layer === 'fixed') setIfChanged(node, 'opacity', eventOpacity(e, t, still));
         // Ghibli : pas des figurants du trottoir réglés sur leur chemin (le ripeur du camion garde sa pose).
         else if (ghibli && e.layer === 'sidewalk') poseEventFigures(figures, node, e, t, metrics, still);
+        // Ghibli : parties vectorielles calculées en t (feux d'artifice, traînée de l'avion, côté de la flèche de la grue).
+        if (ghibli) poseEventArt(node, e, t, still);
       }
       for (const trip of trips) {
         const node = nodes.get(trip.id);
@@ -662,6 +685,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           placeStaffWalks(staffWalks, t, metrics, figures);
           placeWorkers(workers, t, figures);
           placeFlags(flags, t, props);
+          placeCycles(cycles, t, props);
         }
       }
       // Mouvement réduit : l'employé reste dans sa pose de départ (debout à son poste).
@@ -687,7 +711,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const sceneSeconds = city.minutes * 60 + (t0! - sceneClock.current.base);
   const eventNode = (e: CityEvent): ReactElement => (
     <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
-      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} walked={e.layer === 'sidewalk' ? eventWalked(e, t0, metrics) : 0} />
+      <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} walked={e.layer === 'sidewalk' ? eventWalked(e, t0, metrics) : 0} now={t0} />
     </g>
   );
   const of = (pred: (e: CityEvent) => boolean): CityEvent[] => events.active.filter(pred);
@@ -726,11 +750,14 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         </defs>
       )}
       <g data-city-events-back="">
+        {/* Mouettes (G5) : derrière les immeubles, au fond du ciel, sous la grue, les engins du ciel (cerf-volant, ballons, père Noël,
+            défilé aérien) et le feu d'artifice. */}
+        <GullsLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} minutes={city.minutes} rain={gullRain} still={still} frozenT={frozen.current ?? 0} ghibli={ghibli} />
         {fireworks.length > 0 && <g data-event-mask="skyline" mask={`url(#${maskBase}-skyline)`}>{fireworks.map(eventNode)}</g>}
         {cranes.length > 0 && <g data-event-mask="near" mask={`url(#${maskBase}-near)`}>{cranes.map(eventNode)}</g>}
         {of((e) => e.layer === 'sky' || e.id === 'kite' || e.id === 'apartment' || e.id === 'bells').map(eventNode)}
         <SantaLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} fests={fests} daylight={city.daylight} still={still} frozenT={frozen.current!} ghibli={ghibli} />
-        <FlypastLayer width={width} height={height} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} />
+        <FlypastLayer width={width} height={height} sky={sky} still={still} dayFests={dayFests} minutes={city.minutes} ghibli={ghibli} />
       </g>
       {/* Ordre de dessin : trottoir (passants, habitants, événements de trottoir) au fond, contre les immeubles, puis les
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}
@@ -914,7 +941,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   citizen={citizenSeed(p.id)}
                   kind={kindOfProfile(p.profile)}
                   waitFor3D
-                  held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} /> }] : undefined}
+                  held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} day={sky.daylight} still={still} phase={markPhase(p.id)} /> }] : undefined}
                 />
               ) : (
                 <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={mark} />

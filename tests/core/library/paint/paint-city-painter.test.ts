@@ -7,12 +7,11 @@ import { recordingCtx } from './recording-ctx';
 afterEach(() => vi.restoreAllMocks());
 
 // Un point est permis s'il est dans la rue (y ≥ sol), dans un immeuble (débord d'avant-toit ≤ 2 px, antenne ≤ 9 px au-dessus),
-// dans le fond (sous le haut de la colline, maisons et repères compris) ou dans une mouette.
+// ou dans le fond (sous le haut de la colline, maisons et repères compris).
 function allowed(plan: ReturnType<typeof cityPaintPlan>, x: number, y: number): boolean {
   if (y >= plan.ground - 1e-6) return true;
   if (plan.buildings.some((b) => x >= b.x - 2 && x <= b.x + b.w + 2 && y >= b.top - 9 - 1e-6)) return true;
-  if (y >= hillTopY(plan, x) - 1e-6) return true;
-  return plan.hill.gulls.some((g) => Math.abs(x - g.x) <= 8 * g.s + 1 && Math.abs(y - g.y) <= 6 * g.s + 1);
+  return y >= hillTopY(plan, x) - 1e-6;
 }
 
 describe('peintre de tranche', () => {

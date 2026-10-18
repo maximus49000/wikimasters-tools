@@ -5,6 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { ParadeCrowd, SHOULDER_SCALE, SHOULDER_SEAT } from '../../src/content/parade-crowd';
+import { collectCycles, placeCycles, PropContext, PropRegistry, propKey, type PropSpec } from '../../src/content/prop/prop-host';
+import { FLAG_CYCLE_S } from '../../src/core/library/paint/props/install';
 import { anchorsOf, type FigureKey } from '../../src/core/library/figure/bake';
 import { phaseIndexOf } from '../../src/core/library/figure/gait';
 import { DOOR_WIDTH, STREET_SCALE, cityMetrics } from '../../src/core/library/city/metrics';
@@ -69,6 +71,35 @@ const translateOf = (tr: string): [number, number] => {
   return [Number(m[1]), Number(m[2])];
 };
 const spectators = (c: Element): Element[] => [...c.querySelectorAll('[data-parade-crowd] [data-spectator]')];
+
+// G5 (tâche 8) : drapeaux et téléphones des spectateurs en images cellulo `crowd-prop` ; registre à cuisson manuelle dont
+// l'« image » est la clé (jsdom n'a pas de canvas).
+class KeyedRegistry extends PropRegistry {
+  override want(k: string, _paint: () => string, done: () => void): () => void {
+    return super.want(k, () => `url:${k}`, done);
+  }
+}
+const gMount = (t: number, still = false): { host: HTMLDivElement; jobs: (() => void)[]; reg: PropRegistry; day: number } => {
+  writeArt('ghibli');
+  vi.spyOn(Date, 'now').mockReturnValue(t * 1000);
+  if (still) vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+  const minutes = Math.floor((t - D0) / 60);
+  const sky = skyAt(minutes, times);
+  const jobs: (() => void)[] = [];
+  const reg = new KeyedRegistry('t', { schedule: (cb) => jobs.push(cb) });
+  const host = render(
+    <PropContext.Provider value={reg}>
+      <svg>
+        <ParadeCrowd width={W} seed={SEED} sky={sky} still={still} rainy={false} dayFests={['bastille']} minutes={minutes} metrics={M} doorXs={DOOR_LEFTS} ghibli />
+      </svg>
+    </PropContext.Provider>,
+  );
+  return { host, jobs, reg, day: sky.daylight };
+};
+const bake = async (jobs: (() => void)[]): Promise<void> => {
+  while (jobs.length) await act(async () => jobs.shift()!());
+};
+const count = (c: Element, sel: string): number => c.querySelectorAll(sel).length;
 // Une seule entrée de seuil : trouve un instant où un spectateur passe le seuil d'une porte (profondeur ≈ 0,5).
 function sillMoment(arriving: boolean): { t: number; s: Spectator; p: SpectatorPos } {
   for (let t = at(arriving ? 8.5 : 12.25); t < at(arriving ? 10 : 13.3); t += 0.25) {
@@ -184,6 +215,52 @@ describe('foule du 14 juillet en Ghibli', () => {
     expect(spectators(c).length).toBeGreaterThanOrEqual(50);
     expect(c.querySelectorAll('[data-parade-crowd] animate, [data-parade-crowd] animateTransform').length).toBe(0);
     for (const n of spectators(c)) expect(keyOf(adultOf(n)).gait).toBe('stand');
+  });
+  it('G5 : drapeaux en image `crowd-prop` cyclique (période de la vague, phase du spectateur), téléphones en image fixe, repli SVG avant cuisson ; la boucle pose le tissu de l’instant', async () => {
+    const { host, jobs, reg, day } = gMount(at(11));
+    const flags = [...host.querySelectorAll('[data-prop="flag"] > [data-prop-cycle]')];
+    const phones = [...host.querySelectorAll('[data-prop="phone"]')];
+    expect(flags.length).toBeGreaterThan(0);
+    expect(phones.length).toBeGreaterThan(0);
+    expect(count(host, '[data-prop="phone"] [data-prop-cycle]')).toBe(0);
+    for (const f of flags) {
+      expect(Number(f.getAttribute('data-prop-cycle'))).toBeCloseTo(FLAG_CYCLE_S, 9);
+      expect(JSON.parse(f.getAttribute('data-cycle-spec')!)).toEqual({ id: 'crowd-prop', args: { kind: 'flag' }, day });
+    }
+    expect(new Set(flags.map((f) => f.getAttribute('data-cycle-phase'))).size).toBeGreaterThan(1);
+    // Repli : le drapeau SVG (hampe + trois bandes) tant que l'image n'est pas cuite ; le balancement autour de la main reste.
+    expect(count(host, '[data-prop="flag"] rect')).toBe(flags.length * 3);
+    expect(count(host, '[data-prop="flag"] image')).toBe(0);
+    expect(count(host, '[data-prop="flag"] > animateTransform')).toBe(flags.length);
+    await bake(jobs);
+    expect(count(host, '[data-prop="flag"] image')).toBe(flags.length);
+    expect(count(host, '[data-prop="flag"] rect')).toBe(0);
+    expect(count(host, '[data-prop="phone"] image')).toBe(phones.length);
+    expect(count(host, '[data-prop="phone"] rect')).toBe(0);
+    // Deux images au plus pour tous les téléphones et drapeaux à la pose 0.
+    expect(reg.size()).toBeLessThanOrEqual(2);
+    // Boucle : à t = 3/8 de période, chaque drapeau montre la pose (3 + 8·phase) mod 8 ; au plus 8 images de tissu pour toute la foule.
+    const cycles = collectCycles(host);
+    expect(cycles).toHaveLength(flags.length);
+    const t = (3 / 8) * FLAG_CYCLE_S;
+    placeCycles(cycles, t, reg);
+    await bake(jobs);
+    placeCycles(cycles, t, reg);
+    for (const f of flags) {
+      const u = t / FLAG_CYCLE_S + Number(f.getAttribute('data-cycle-phase'));
+      const frame = Math.floor((u - Math.floor(u)) * 8);
+      expect(f.querySelector(':scope > image')!.getAttribute('href')).toBe(`url:${propKey({ id: 'crowd-prop', args: { kind: 'flag' }, day, frame })}`);
+    }
+    expect(reg.size()).toBeLessThanOrEqual(2 + 8);
+  });
+  it('G5 : mouvement réduit : drapeaux plats (args still), aucun nœud cyclique', async () => {
+    const { host, jobs, reg, day } = gMount(at(11), true);
+    expect(count(host, '[data-prop-cycle]')).toBe(0);
+    expect(count(host, '[data-prop="flag"]')).toBeGreaterThan(0);
+    await bake(jobs);
+    expect(count(host, '[data-prop="flag"] image')).toBeGreaterThan(0);
+    const spec: PropSpec = { id: 'crowd-prop', args: { kind: 'flag', still: true }, day };
+    expect(reg.get(propKey(spec))).not.toBeNull();
   });
 });
 

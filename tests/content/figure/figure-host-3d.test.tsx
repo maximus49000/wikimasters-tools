@@ -93,26 +93,27 @@ describe('interrupteur coupé (CITIZENS_3D = false)', () => {
     );
     const nodes = [...host.querySelectorAll('[data-figure]')];
     const got = nodes.map((n) => ({ pk: hashString(n.getAttribute('data-palette')!), sk: hashString(n.getAttribute('data-key')!), attrs: n.getAttributeNames().join(' '), img: href(n) === BLANK_SPRITE }));
-    // Valeurs relevées avec le code d'avant le branchement (2a7d1473) : rien ne change.
+    // Valeurs relevées avec le code d'avant le branchement (2a7d1473), recalculées à la fusion de G5 partie 2 (cases du père
+    // Noël beard…cheek ajoutées à la palette 2D) : rien d'autre ne change.
     expect(got).toMatchInlineSnapshot(`
       [
         {
           "attrs": "data-figure data-sig data-palette data-key",
           "img": true,
-          "pk": 3276458429,
-          "sk": 2818459407,
+          "pk": 1258577356,
+          "sk": 1225420244,
         },
         {
           "attrs": "data-figure data-sig data-palette data-key",
           "img": true,
-          "pk": 1288525300,
-          "sk": 4214355484,
+          "pk": 2555707737,
+          "sk": 3794079191,
         },
         {
           "attrs": "data-figure data-sig data-palette data-key",
           "img": true,
-          "pk": 3906990862,
-          "sk": 1611038801,
+          "pk": 2422620167,
+          "sk": 4190391626,
         },
       ]
     `);

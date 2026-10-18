@@ -111,11 +111,12 @@ export function setLitPatchPainterForTests(painter: LitPatchPainter | null): voi
 // Peintre en vigueur (double de test, sinon le canvas).
 export const litPatchPainter = (): LitPatchPainter => litOverride ?? paintLitPatch;
 
-const noCanvas = (): boolean => typeof document === 'undefined' || (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom'));
+export const noCanvas = (): boolean => typeof document === 'undefined' || (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom'));
 
-// Canvas hors écran réutilisés (peinture synchrone : une image à la fois).
+// Canvas hors écran réutilisés (peinture synchrone : une image à la fois), remis à w × h px, repère identité, sans fusion.
+// Partagés avec la lueur des devantures (shop/shop-host.tsx, paintShopGlow).
 let bufs: CanvasRenderingContext2D[] | null = null;
-function buffers(w: number, h: number): CanvasRenderingContext2D[] | null {
+export function buffers(w: number, h: number): CanvasRenderingContext2D[] | null {
   if (!bufs) {
     const made: CanvasRenderingContext2D[] = [];
     for (let i = 0; i < 3; i++) {
@@ -192,9 +193,25 @@ export const paintLitPatch: LitPatchPainter = (plan, box, blobs, tint = LAMP_TIN
     lit.restore();
   }
   lit.setTransform(1, 0, 0, 1, 0, 0);
-  // Copie de jour : garde l'alpha (les vides du décor restent vides après la teinte).
+  // 2-3. Version éclairée découpée par le masque, dans le repère du monde.
+  tintAndMask([lit, day, mask], blobs, tint, [sx, sy, -box.x * sx, -box.y * sy]);
+  return lit.canvas.toDataURL('image/png');
+};
+
+// « Deux peintures », étapes 2 et 3, partagées par la découpe du décor (paintLitPatch) et la lueur des devantures
+// (shop/shop-host.tsx, paintShopGlow). `lit` porte la scène DE JOUR (pixels, alpha compris, repère identité) ; elle devient
+// la version éclairée (multiply de la teinte, léger regain d'éclat en screen, alpha de jour rendu), puis est découpée par le
+// masque d'intensité des taches `blobs`, peintes dans le repère `toPx` = [échelle x, échelle y, décalage x, décalage y].
+export function tintAndMask(
+  [lit, day, mask]: readonly [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D],
+  blobs: readonly LightBlob[],
+  tint: LitTint,
+  [sx, sy, ox, oy]: readonly [number, number, number, number],
+): void {
+  const pw = lit.canvas.width;
+  const ph = lit.canvas.height;
+  // Copie de jour : garde l'alpha (les vides restent vides après la teinte).
   day.drawImage(lit.canvas, 0, 0);
-  // 2. Version éclairée : multiply, puis léger regain d'éclat en screen.
   lit.globalCompositeOperation = 'multiply';
   lit.fillStyle = tint.multiply;
   lit.fillRect(0, 0, pw, ph);
@@ -207,14 +224,12 @@ export const paintLitPatch: LitPatchPainter = (plan, box, blobs, tint = LAMP_TIN
   }
   lit.globalCompositeOperation = 'destination-in';
   lit.drawImage(day.canvas, 0, 0);
-  // 3. Masque d'intensité, dans le repère du monde.
-  mask.setTransform(sx, 0, 0, sy, -box.x * sx, -box.y * sy);
+  mask.setTransform(sx, 0, 0, sy, ox, oy);
   for (const blob of blobs) maskBlob(mask, blob);
   mask.setTransform(1, 0, 0, 1, 0, 0);
   lit.drawImage(mask.canvas, 0, 0);
   lit.globalCompositeOperation = 'source-over';
-  return lit.canvas.toDataURL('image/png');
-};
+}
 
 // Pluie : colonne de lumière (traits de `wetStrokes`), image de `w` × `h` px du monde, axe au milieu, haut = bord du trottoir.
 export const AMBER = 'rgb(255,196,112)';

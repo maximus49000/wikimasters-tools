@@ -122,3 +122,9 @@ describe('plan de la ville peinte', () => {
     expect(pairs).toBeGreaterThan(20);
   });
 });
+
+describe('mouettes du plan peint (G5)', () => {
+  it('plus de mouettes figées : elles volent dans leur calque animé', () => {
+    for (const seed of [1, 7, 42]) expect(cityPaintPlan(1080, 340, seed).hill.gulls).toEqual([]);
+  });
+});

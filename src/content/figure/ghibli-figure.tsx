@@ -32,9 +32,15 @@ export const rainOutfit = (o: Outfit, rainy: boolean): Outfit => (wearsRaincoat(
 // Lumière du rendu 3D : NIGHT_LIGHT la nuit, 1 le jour ; le rendu en tire la teinte de nuit du pantin (lightColor).
 export const citizenLight = (sky: Sky): number => NIGHT_LIGHT + (1 - NIGHT_LIGHT) * sky.daylight;
 
-export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, c3d?: { key: string; light: number }): Palette {
+// Allure du pantin 2D (G5) : `santa` : tenue du père Noël (bottes noires ; les cases de la tenue sont toujours présentes, la
+// clé de palette est complète) ; `haze` (0–1) : pantin lointain, couleurs mélangées au bleu de brume du décor du fond
+// (#9CC0E4) avant la teinte du moment.
+export type FigureLook = { santa?: boolean; haze?: number };
+const HAZE = '#9CC0E4';
+export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, c3d?: { key: string; light: number }, look: FigureLook = {}): Palette {
+  const { santa = false, haze = 0 } = look;
   const lit: Sky = { ...sky, daylight: step(sky.daylight) };
-  const t = (c: string): string => tone(c, lit);
+  const t = (c: string): string => tone(haze > 0 ? mixHex(c, HAZE, haze) : c, lit);
   const slots: Record<string, string> = {
     skin: o.skin,
     top: rainOutfit(o, rainy).topColor,
@@ -42,12 +48,20 @@ export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, c3d?: { key: 
     hair: o.hairColor,
     hat: o.hatColor,
     acc: o.accessoryColor,
-    shoe: '#3a2a24',
+    shoe: santa ? '#1E1A18' : '#3a2a24',
     umb: '#C0392B',
     // Tenues de travail : gilet orange, bande claire (rétroréfléchissante), tablier écru.
     vest: '#F28C28',
     band: '#E8E8E0',
     apron: '#F4F1EA',
+    // Père Noël (G5) : barbe, fourrure et gants écrus, ceinture noire, boucle dorée, nez et joues rosés.
+    beard: '#F6F3EC',
+    fur: '#F6F3EC',
+    glove: '#F6F3EC',
+    belt: '#231A16',
+    buckle: '#E8B93A',
+    nose: '#E8A090',
+    cheek: '#F0A8A0',
   };
   const p: Palette = { 'f-ink': t('#33241f'), 'f-ground': '#3a2f5a' };
   for (const [k, c] of Object.entries(slots)) {
@@ -264,8 +278,10 @@ function track(reg: FigureRegistry, node: Element, pk: string, key: FigureKey, w
 // détenue) reste et la nouvelle clé est mise en file ; la boucle (poseFigure, data-palette déjà à jour) la pose dès qu'elle
 // est peinte. Seule une première apparition peint tout de suite (ensure). La clé affichée est détenue dès la mise en page,
 // libérée au démontage ; les sprites de l'ancienne palette, libérés, partent avec le plafond.
-// `work` : tenue de travail (dans la signature) ; `held` : objets tenus, posés aux accroches de la pose affichée dès le rendu
-// (les foules immobiles n'appellent jamais poseFigure), déplacés ensuite par poseFigure, cachés avec la figure.
+// `work` : tenue de travail (dans la signature) ; `santa` : tenue du père Noël (dans la signature et la palette) ; `held` :
+// objets tenus, posés aux accroches de la pose affichée dès le rendu (les foules immobiles n'appellent jamais poseFigure),
+// déplacés ensuite par poseFigure, cachés avec la figure. `santa` et `haze` (pantin voilé de brume) : toujours le pantin 2D,
+// même avec CITIZENS_3D (pas de base 3D du père Noël, pas de brume sur les sprites 3D).
 // Habitants 3D : `citizen` (graine ; défaut : hachage de la tenue), `kind` (enfant, ancien…), `emotion` (humeur du visage),
 // `waitFor3D` (aucune image tant que la 3D peut arriver, WAIT3D_FALLBACK_MS au plus, puis pantin), `pin` (accroche 3D posée
 // sur celle du pantin : selle du cycliste).
@@ -277,6 +293,8 @@ export function GhibliFigure({
   initial,
   hidden = false,
   work = 'none',
+  santa = false,
+  haze = 0,
   held,
   citizen,
   kind,
@@ -293,6 +311,8 @@ export function GhibliFigure({
   initial: PoseIn;
   hidden?: boolean;
   work?: Work;
+  santa?: boolean;
+  haze?: number;
   held?: readonly Held[];
   citizen?: number;
   kind?: CitizenKind;
@@ -305,8 +325,12 @@ export function GhibliFigure({
   const reg = useFigureRegistry();
   if (useContext(EnterWait3D)) waitFor3D = true;
   const ref = useRef<SVGGElement | null>(null);
-  const sig = signatureOf(shapeOf(outfit, umbrella, work));
-  const pk = reg.addPalette(citizenPalette(reg, outfit, sky, rainy, umbrella, work, { citizen, kind, emotion, sex, beard }));
+  const sig = signatureOf(shapeOf(outfit, umbrella, work, santa));
+  const pk = reg.addPalette(
+    santa || haze > 0
+      ? figurePalette(outfit, sky, rainy, undefined, { santa, haze })
+      : citizenPalette(reg, outfit, sky, rainy, umbrella, work, { citizen, kind, emotion, sex, beard }),
+  );
   const key = keyOf(sig, initial);
   const want = reg.keyFor(pk, key);
   let shownKey: string | undefined;

@@ -3,7 +3,8 @@
 // Interrupteur des habitants 3D coupé (CITIZENS_3D = false) = retour arrière de l'utilisateur : la scène Ghibli doit être
 // EXACTEMENT celle d'avant la branche des habitants 3D. Ville vivante (passants, habitants, commerces, circulation, bus) un jour
 // ordinaire et grand défilé du 14 juillet, image par image (100 ms) : empreintes du DOM relevées avec le code d'avant
-// (e53e9565, même scénario) ; aucune demande d'avance, aucun portillon d'entrée, aucun attribut `visibility` posé.
+// (e53e9565, même scénario ; relevées à nouveau sur la tête de G5 partie 2, 79bd348c, à sa fusion avec main) ; aucune
+// demande d'avance, aucun portillon d'entrée, aucun attribut `visibility` posé.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -104,8 +105,8 @@ describe('interrupteur coupé : scène d’avant la branche', () => {
 });
 
 // Relevés avec le code d'avant la branche (e53e9565), même scénario.
-const ORDINARY = ['115851:c924d5c4', '113134:4fc8f215', '107434:75025b0b', '107689:5e08a020'];
-const PARADE = ['368957:ee75de41', '368924:5499248b', '358996:ed9cc254', '358972:b4b3ab2'];
+const ORDINARY = ['139615:1af950c2', '136450:d81c18f1', '129854:6fbcb741', '130109:c4aa3b52'];
+const PARADE = ['449288:b2bdd41e', '449255:547571c4', '437479:8298202d', '437455:a0abb837'];
 // Unités du défilé montées à chaque image.
 const PARADE_UNITS = [
   ...Array<number>(39).fill(10), 9, 9, 9, 9, ...Array<number>(8).fill(10), ...Array<number>(18).fill(11), ...Array<number>(11).fill(10), 9,

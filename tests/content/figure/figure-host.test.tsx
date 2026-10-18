@@ -36,6 +36,19 @@ describe('palette', () => {
     expect(r.addPalette(figurePalette(o, night, false))).not.toBe(r.addPalette(pal));
     expect(r.addPalette({ ...pal })).toBe(r.addPalette(pal));
   });
+  it('père Noël : cases de la tenue (barbe, fourrure, ceinture, boucle, gants, nez, joues) et bottes noires', () => {
+    const p = figurePalette(o, sky, false, undefined, { santa: true });
+    for (const s of ['beard', 'fur', 'belt', 'buckle', 'glove', 'nose', 'cheek']) {
+      expect(p[`f-${s}`]).toBeTruthy();
+      expect(p[`fs-${s}`]).toBeTruthy();
+    }
+    expect([p['f-beard'], p['f-fur'], p['f-glove'], p['f-belt'], p['f-buckle'], p['f-nose'], p['f-cheek'], p['f-shoe']].map((c) => c!.toUpperCase())).toEqual([
+      '#F6F3EC', '#F6F3EC', '#F6F3EC', '#231A16', '#E8B93A', '#E8A090', '#F0A8A0', '#1E1A18',
+    ]);
+    // Sans père Noël : chaussures ordinaires, mais les cases existent (clé de palette complète).
+    expect(pal['f-shoe']!.toUpperCase()).toBe('#3A2A24');
+    expect(pal['f-beard']).toBeTruthy();
+  });
   it('teinte quantifiée au huitième de jour : 0,51 et 0,53 même palette, 0,3 et 0,7 différentes', () => {
     const at = (daylight: number): Palette => figurePalette(o, { ...sky, daylight }, false);
     expect(at(0.51)).toEqual(at(0.53));

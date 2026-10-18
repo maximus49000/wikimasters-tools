@@ -25,6 +25,9 @@ import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghib
 import { useSceneDayStart } from './parade-layer';
 import type { Pose } from '../core/library/city/shops/gestures';
 import { ScriptedCar } from './vehicle/scripted-car';
+import { PropImage, PropInMirror } from './prop/prop-host';
+import { PIECE_LEN } from '../core/library/paint/props/moving';
+import '../core/library/paint/props/moving';
 
 // Déménagement du matin (vague 1b-iv-b), le jour d'un changement de commerce (moving.ts) : un camion blanc et bleu arrive, se
 // gare au bord du trottoir juste après la porte du local (du côté opposé à la vitrine, pour qu'on la voie se vider puis se
@@ -123,13 +126,16 @@ const WHITE = '#F4F6F8';
 const BLUE = '#2E6FD6';
 
 // Hayon : panneau articulé en bas de la caisse ; fermé il est vertical, ouvert il fait rampe vers l'arrière. `move` :
-// transition CSS du panneau (quelques secondes, à l'heure du planning).
-function Tailgate({ open, sky, move }: { open: number; sky: Sky; move?: string }): ReactElement {
+// transition CSS du panneau (quelques secondes, à l'heure du planning). Ghibli (G5) : image cellulo `tailgate` (panneau
+// galvanisé à nervures, charnière) peinte fermée dans le repère de la charnière et tournée par le même groupe, avec la même
+// transition ; le camion peint étant en miroir pour `dir` = −1, l'image est cuite dans ce sens (PropInMirror).
+function Tailgate({ open, sky, move, ghibli = false, dir = 1 }: { open: number; sky: Sky; move?: string; ghibli?: boolean; dir?: 1 | -1 }): ReactElement {
   const t = (c: string): string => tone(c, sky);
+  const panel = <rect x={-1.6} y={-27} width={1.6} height={27} fill={t('#D8DCE2')} stroke={t('#8C939C')} strokeWidth={0.3} />;
   return (
     <g transform={`translate(${TRUCK_REAR} ${HINGE_Y})`}>
       <g data-tailgate-panel="" style={{ transform: `rotate(${(-90 * open).toFixed(1)}deg)`, transition: move }}>
-        <rect x={-1.6} y={-27} width={1.6} height={27} fill={t('#D8DCE2')} stroke={t('#8C939C')} strokeWidth={0.3} />
+        {ghibli ? <PropInMirror spec={{ id: 'tailgate', args: { open: 0 }, dir, day: sky.daylight }} fallback={panel} /> : panel}
       </g>
     </g>
   );
@@ -201,7 +207,7 @@ export function MovingTruck({ view, frame, change, offset, seed, minutes, width,
     >
       {ghibli ? (
         <ScriptedCar spec={{ id: 'moving-truck', seed: hashString(view.slot.id) }} dir={g.away} k={g.kv} sky={sky} rainy={rainy} lights={lights} still={still} occupied={occupied} roll={{ worldX: x, move }}>
-          <Tailgate open={gate.open} sky={sky} move={gate.move} />
+          <Tailgate open={gate.open} sky={sky} move={gate.move} ghibli dir={g.away} />
         </ScriptedCar>
       ) : (
         <g transform={`scale(${(g.away * g.kv).toFixed(3)} ${g.kv.toFixed(3)})`}>
@@ -331,8 +337,17 @@ function BoxSprite({ sky }: { sky: Sky }): ReactElement {
     </>
   );
 }
-// Ghibli : le même carton, posé sur les deux mains du pantin (accroche `hands`), centré entre elles.
+// Ghibli : le même carton, posé sur les deux mains du pantin (accroche `hands`), centré entre elles ; G5 : image cellulo
+// `box` (kraft, ruban, « FRAGILE ») au même cadre, carton classique en repli tant qu'elle n'est pas cuite.
 const GHIBLI_BOX = 'translate(-9 21)';
+const GhibliBox = ({ sky }: { sky: Sky }): ReactElement => <PropImage spec={{ id: 'box', day: sky.daylight }} fallback={<BoxSprite sky={sky} />} />;
+// Ghibli : meuble lourd cellulo `piece`, peint en unités (longueur PIECE_LEN = PAIR_GAP + 6, celle de `pieceLen` à unit = 1) et
+// mis à l'échelle du monde ici.
+const GhibliPiece = ({ kind, u, sky }: { kind: HeavyPiece; u: number; sky: Sky }): ReactElement => (
+  <g transform={`scale(${u.toFixed(3)})`}>
+    <PropImage spec={{ id: 'piece', args: { kind, len: PIECE_LEN }, day: sky.daylight }} fallback={<PieceSprite kind={kind} len={PIECE_LEN} u={1} sky={sky} />} />
+  </g>
+);
 
 // Ghibli : pose du pantin (sans miroir) ; classique : geste du passant (retourné selon le sens de marche).
 const ghibliPose = (p: MoverAt, k: number): PoseIn => ({
@@ -408,7 +423,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
   const kp = g.kp;
   const box = (on: boolean): ReactElement => (
     <g data-mover-box="" visibility={on ? 'visible' : 'hidden'}>
-      {ghibli ? <g transform={GHIBLI_BOX}><BoxSprite sky={sky} /></g> : <BoxSprite sky={sky} />}
+      {ghibli ? <g transform={GHIBLI_BOX}><GhibliBox sky={sky} /></g> : <BoxSprite sky={sky} />}
     </g>
   );
   const figure = (i: number, p: MoverAt, on: boolean): ReactElement =>
@@ -453,7 +468,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
     <g transform={`translate(0 ${(-lift).toFixed(2)})`}>
       {(['vitrine', 'etagere', 'table', 'fauteuil'] as const).map((kd) => (
         <g key={kd} data-piece={kd} visibility={piece?.load === kd ? 'visible' : 'hidden'}>
-          <PieceSprite kind={kd} len={pieceLen} u={u} sky={sky} />
+          {ghibli ? <GhibliPiece kind={kd} u={u} sky={sky} /> : <PieceSprite kind={kd} len={pieceLen} u={u} sky={sky} />}
         </g>
       ))}
     </g>

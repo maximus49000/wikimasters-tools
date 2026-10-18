@@ -24,7 +24,10 @@ export type LightBlob = { cx: number; cy: number; rx: number; ry: number; peak: 
 export const LANTERN = { dx: 9, dy: -77 } as const;
 
 // Lampadaire au pied `x`, bord du trottoir `curb`, échelle du sprite `k` : mur et air autour de la lanterne (modeste : pas
-// de brouillard), flaque du trottoir au pied du mât (la plus lumineuse, aplatie), chaussée (faible, rapide).
+// de brouillard), flaque du trottoir au pied du mât (la plus lumineuse, aplatie), chaussée (faible, rapide), et un cœur plus
+// serré autour de la lanterne (ajout après comparaison au banc, tâche 15 : sur les tranches de nuit de l'app, plus claires
+// que le multiply de la maquette, la seule lueur du mur se lisait à peine ; le cœur redonne l'îlot doré net de street-night).
+// Les taches se cumulent dans le masque (alpha composé).
 export function lampBlobs(x: number, curb: number, u: number, k: number): LightBlob[] {
   const gx = x + LANTERN.dx * k;
   const gy = curb + LANTERN.dy * k;
@@ -32,6 +35,7 @@ export function lampBlobs(x: number, curb: number, u: number, k: number): LightB
     { cx: gx, cy: gy + 12 * u, rx: 44 * u, ry: 40 * u, peak: 1 },
     { cx: x + 3 * u, cy: curb - 2 * u, rx: 56 * u, ry: 14 * u, peak: 1 },
     { cx: x + 3 * u, cy: curb + 9 * u, rx: 50 * u, ry: 10 * u, peak: 0.6 },
+    { cx: gx, cy: gy + 6 * u, rx: 34 * u, ry: 32 * u, peak: 1 },
   ];
 }
 
@@ -98,17 +102,18 @@ export function nearestLamp(x: number, lamps: readonly { x: number }[]): number 
   return best;
 }
 
-// Pluie : colonne de lumière sous une lampe ou une vitrine (demi-largeur hw, du bord du trottoir sur `depth` px) : 90 petits
+// Pluie : colonne de lumière sous une lampe ou une vitrine (demi-largeur hw, du bord du trottoir sur `depth` px) : 120 petits
 // traits horizontaux brisés (1,5..5,5u × 0,5u), qui s'élargissent et s'écartent vers le bas, densité en v², alpha décroissant
-// vers le trottoir d'en face, un trait sur trois au cœur ambre. x relatif à l'axe de la colonne, y relatif au bord du trottoir.
+// vers le trottoir d'en face (francs en haut : 0,7..1), un trait sur trois au cœur ambre. x relatif à l'axe de la colonne, y
+// relatif au bord du trottoir. (Maquette : 90 traits à 0,55..1 × 0,75 ; trop pâles au banc sur la chaussée de l'app.)
 export type WetStroke = { x: number; y: number; w: number; h: number; a: number; core: boolean };
 export function wetStrokes(hw: number, depth: number, u: number, seed: number): WetStroke[] {
   const rng = mulberry32(seed);
   const out: WetStroke[] = [];
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 120; i++) {
     const v = rng();
     const f = v * v;
-    const a = (1 - f) * (0.55 + 0.45 * rng()) * 0.75;
+    const a = (1 - f) * (0.7 + 0.3 * rng());
     const w = (1.5 + rng() * 4) * u * (1 + f * 1.2);
     const ox = (rng() - 0.5) * 2 * hw * (0.6 + 0.6 * f);
     out.push({ x: ox - w / 2, y: f * depth, w, h: 0.5 * u, a, core: i % 3 === 0 });

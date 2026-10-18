@@ -2,12 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { actorShadow, lampBlobs, nearestLamp, patchBox, shopBlobs, wetStrokes } from '../../../../src/core/library/city/night-light';
 
 describe('lumière de nuit', () => {
-  it('trois zones par lampadaire, flaque la plus forte au pied', () => {
+  it('quatre zones par lampadaire : mur, cœur du mur autour de la lanterne, flaque au pied, chaussée', () => {
     const b = lampBlobs(100, 300, 1, 0.85);
-    expect(b).toHaveLength(3);
+    expect(b).toHaveLength(4);
     expect(b[1]!.cy).toBeCloseTo(298);
     expect(b[1]!.rx).toBeCloseTo(56);
     expect(b[2]!.peak).toBeCloseTo(0.6);
+    // Cœur du mur : centré sur la lanterne (9, −77)·k, plus serré que la lueur du mur (îlot doré net, maquette street-night).
+    const core = b[3]!;
+    expect(core.cx).toBeCloseTo(100 + 9 * 0.85);
+    expect(Math.abs(core.cy - (300 - 77 * 0.85))).toBeLessThanOrEqual(8);
+    expect(core.rx).toBeLessThan(b[0]!.rx);
+    expect(core.peak).toBeGreaterThanOrEqual(0.8);
   });
   it('la découpe englobe toutes les zones', () => {
     const box = patchBox(lampBlobs(100, 300, 1, 0.85));
@@ -43,11 +49,14 @@ describe('lumière de nuit', () => {
     // Lampe à droite : l'ombre part vers la gauche.
     expect(Math.min(...xs(actorShadow(80, 300, 6, 18, 100, 1)!))).toBeLessThan(77);
   });
-  it('colonne de pluie : 90 traits, un sur trois au cœur ambre, de plus en plus pâles vers le bas', () => {
+  it('colonne de pluie : 120 traits, un sur trois au cœur ambre, nets en haut et de plus en plus pâles vers le bas', () => {
     const s = wetStrokes(7, 60, 1, 42);
-    expect(s).toHaveLength(90);
-    expect(s.filter((t) => t.core).length).toBe(30);
-    expect(s.every((t) => t.y >= 0 && t.y <= 60 && t.a >= 0 && t.a <= 0.75)).toBe(true);
+    expect(s).toHaveLength(120);
+    expect(s.filter((t) => t.core).length).toBe(40);
+    expect(s.every((t) => t.y >= 0 && t.y <= 60 && t.a >= 0 && t.a <= 1)).toBe(true);
+    // Les traits du haut (premier quart) sont francs : alpha moyen ≥ 0,6 (maquette night-rain).
+    const top = s.filter((t) => t.y < 15);
+    expect(top.reduce((a, t) => a + t.a, 0) / top.length).toBeGreaterThanOrEqual(0.6);
     expect(wetStrokes(7, 60, 1, 42)).toEqual(s);
   });
 });
