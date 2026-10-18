@@ -2498,7 +2498,7 @@ export const ENTRIES: Entry[] = [
           { label: 'Visages et clignements', text: 'Les visages et les émotions se voient dans la vue rapprochée « Dehors » de la Ville ; les personnages immobiles (clients au comptoir, gens assis en terrasse) y clignent aussi des yeux. Dans la vue d’ensemble, les personnages sont trop petits : ils gardent un visage calme, yeux ouverts.' },
           { label: 'Limites', text: 'Au tout premier lancement, les personnages se téléchargent (quelques Mo) : en attendant, les anciens pantins s’affichent puis sont remplacés. Si l’appareil ne sait pas dessiner en 3D ou si le serveur est injoignable, les anciens pantins restent. Les cheveux et les vêtements sont rigides : ils suivent le corps sans flotter.' },
         ],
-        scene: { page: '/collection', closeWindows: true, reveal: ['[data-wmt-library-entry]'] },
+        scene: { page: '/collection', closeWindows: true },
       },
     ],
   },
