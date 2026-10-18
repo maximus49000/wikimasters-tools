@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { CityEvent } from '../core/library/city/events';
 import { FAR_SHRINK, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
-import { CROSS_HALF, MARGIN, TRACK_DIR, advance, lightPoleX, agentView, braking, stopLines, warmTraffic, type Agent, type TrafficEnv, type TrafficWorld } from '../core/library/city/traffic/engine';
+import { CROSS_HALF, MARGIN, TRACK_DIR, advance, lightPoleX, agentView, braking, scheduledCrew, stopLines, warmTraffic, type Agent, type TrafficEnv, type TrafficWorld } from '../core/library/city/traffic/engine';
 import type { Walker } from '../core/library/city/traffic/crossing';
 import type { Rider } from '../core/library/city/traffic/bus-stop';
 import { nextStops } from '../core/library/city/traffic/bus-lines';
@@ -17,10 +17,11 @@ import { DEFAULT_RIDER, PersonSprite, VehicleSprite, tone } from './city-sprites
 import { useFigureRegistry } from './figure/figure-host';
 import { createPuffs, emitPuffs, forgetPuffSources } from '../core/library/city/traffic/exhaust';
 import { lookOfCar, type VehicleLook } from '../core/library/city/traffic/look';
-import { specialLook } from '../core/library/city/traffic/special-art';
+import { specialArt, specialLook } from '../core/library/city/traffic/special-art';
 import { useCarRegistry } from './vehicle/car-host';
 import { ExhaustPuffs, placePuffs } from './vehicle/exhaust-puffs';
-import { GhibliCar, placeCar } from './vehicle/ghibli-car';
+import { GhibliCar, placeCar, prewarmSeats } from './vehicle/ghibli-car';
+import { CITIZENS_3D } from './figure/citizen-config';
 import { FOOT_DOWN_V, GhibliBike, crankPhase, riderPose } from './figure/ghibli-cyclist';
 import { EnterWait3D, GhibliFigure, gateEntering, poseFigure, prewarmCitizen, prewarmFigure } from './figure/ghibli-figure';
 import { PropImage } from './prop/prop-host';
@@ -34,15 +35,22 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // livreur) sont des véhicules du moteur, dessinés avec leur sprite d'événement. Feux stop au freinage, feux de détresse en
 // livraison. Mouvement réduit : instantané du démarrage à chaud, immobile.
 
-export type TrafficHandle = { world: TrafficWorld; env: TrafficEnv };
+// `wait3D` (habitants 3D) : véhicules hors champ dont un personnage attend sa 3D (relevés par la boucle des voies) ; le moteur
+// les retient juste avant le bord (HOLD_MAX_S au plus). `warmAt` : dernier rendu d'avance des occupants des arrivées planifiées.
+export type TrafficHandle = { world: TrafficWorld; env: TrafficEnv; wait3D?: Set<string>; warmAt?: number };
+// Habitants 3D : occupants des arrivées planifiées tirés de leur clé (préparés avant l'entrée). Interrupteur à false :
+// environnement d'avant, inchangé.
+const withCrews = (env: TrafficEnv): TrafficEnv => (CITIZENS_3D ? { ...env, keyedCrews: true } : env);
+// Avance des rendus d'occupants d'une arrivée planifiée (s avant son heure d'entrée).
+const CREW_WARM_S = 10;
 
 // Moteur de la pièce : recréé (démarrage à chaud) quand la rue change ; l'environnement (demande, fermeture, arrivées
 // planifiées, livraisons) est relu à chaque pas.
 export function useTraffic(o: { width: number; seed: number; unit: number; env: TrafficEnv; startS: number }): TrafficHandle {
   const ref = useRef<{ key: string; handle: TrafficHandle } | null>(null);
   const key = `${o.width}|${o.seed}|${o.unit.toFixed(4)}`;
-  if (!ref.current || ref.current.key !== key) ref.current = { key, handle: { world: warmTraffic({ width: o.width, seed: o.seed, unit: o.unit, startS: o.startS }, o.env), env: o.env } };
-  ref.current.handle.env = o.env;
+  if (!ref.current || ref.current.key !== key) ref.current = { key, handle: { world: warmTraffic({ width: o.width, seed: o.seed, unit: o.unit, startS: o.startS }, withCrews(o.env)), env: withCrews(o.env), wait3D: new Set(), warmAt: 0 } };
+  ref.current.handle.env = withCrews(o.env);
   return ref.current.handle;
 }
 
@@ -157,7 +165,18 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
   const place = useMemo(
     () => (now: number): void => {
       const t = still ? frozenT : now;
-      if (!still) advance(w, t, handle.env);
+      const wait3D = (handle.wait3D ??= new Set());
+      if (!still) advance(w, t, handle.env, ghibli && CITIZENS_3D ? wait3D : undefined);
+      // Arrivées planifiées (bus, tram…) attendues dans CREW_WARM_S s : leurs occupants rendus d'avance (2 fois par seconde).
+      if (ghibli && CITIZENS_3D && !still && Math.abs(t - (handle.warmAt ?? -Infinity)) >= 0.5) {
+        handle.warmAt = t;
+        for (const e of handle.env.arrivals) {
+          if (w.spawned.has(e.key) || e.start - t > CREW_WARM_S || t - e.start > 300) continue;
+          const crew = scheduledCrew(w, e);
+          if (crew) prewarmSeats(figures, specialArt(crew).seats, TRACK_DIR[e.track], sky, rainy);
+        }
+        if (wait3D.size > 0) for (const id of wait3D) if (!w.agents.some((a) => a.id === id)) wait3D.delete(id);
+      }
       if (w.roster !== seen.current) {
         seen.current = w.roster;
         setRoster(w.roster);
@@ -177,6 +196,9 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
           const x = agentView(w, a, t).x;
           const ok = gateEntering(figures, node, x + half > 0 && x - half < w.width);
           if (node.getAttribute('visibility') !== (ok ? 'visible' : 'hidden')) node.setAttribute('visibility', ok ? 'visible' : 'hidden');
+          // Retenu hors champ par le moteur tant qu'il attend (pas de pantin à l'entrée) ; HOLD_MAX_S au plus.
+          if (ok) wait3D.delete(a.id);
+          else wait3D.add(a.id);
           // Cycliste en attente : son arrêt pied à terre (feu, file) rendu d'avance aussi.
           if (!ok && a.kind === 'bike') prewarmFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), [riderPose(1, 0, true)]);
         }
@@ -209,7 +231,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         cars.flush();
       }
     },
-    [w, handle, metrics, still, frozenT, ghibli, figures, cars, puffs],
+    [w, handle, metrics, still, frozenT, ghibli, figures, cars, puffs, sky, rainy],
   );
   useWallClockLoop(place, [place]);
   // Mouvement réduit : un seul placement après le montage.

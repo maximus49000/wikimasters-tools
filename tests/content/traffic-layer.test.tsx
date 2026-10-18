@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { BusStopRiders, Crosswalk, TrafficFixtures, TrafficLane, type TrafficHandle } from '../../src/content/traffic-layer';
 import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
 import { cityMetrics } from '../../src/core/library/city/metrics';
-import { advance, agentView, warmTraffic, type Agent, type TrafficEnv } from '../../src/core/library/city/traffic/engine';
+import { HOLD_MAX_S, MARGIN, advance, agentView, warmTraffic, type Agent, type TrafficEnv } from '../../src/core/library/city/traffic/engine';
 import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content/figure/figure-host';
 import { EnterWait3D, GhibliFigure, gateEntering } from '../../src/content/figure/ghibli-figure';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
@@ -228,6 +228,8 @@ describe('cyclistes et habitants 3D', () => {
     const bikeEnv: TrafficEnv = { ...env, demand: { near: 0.2, far: 0.2, bike: 3 } };
     const world = warmTraffic({ width: 1080, seed: 9, unit: m.unit, startS: T0 }, bikeEnv);
     const off = (a: Agent): boolean => { const x = agentView(world, a, world.t).x; return x < -12 * m.unit || x > 1080 + 12 * m.unit; };
+    // Retenu au ras du bord (habitants 3D) : entre les deux, ni l'un ni l'autre n'est exigé (un pas de moteur près).
+    const near = (a: Agent): boolean => { const x = agentView(world, a, world.t).x; return x < -4 * m.unit && x > -12 * m.unit; };
     let t = T0;
     while (t < T0 + 600 && !world.agents.some((a) => a.kind === 'bike' && off(a))) advance(world, (t += 0.1), bikeEnv);
     expect(world.agents.some((a) => a.kind === 'bike' && off(a))).toBe(true);
@@ -254,9 +256,40 @@ describe('cyclistes et habitants 3D', () => {
         offSeen++;
         expect(drawn).toBe(false);
         expect(node.getAttribute('visibility')).toBe('hidden');
-      } else expect(drawn).toBe(true);
+      } else if (!near(a)) expect(drawn).toBe(true);
     }
     expect(offSeen).toBeGreaterThan(0);
+  });
+  it('véhicule hors champ en attente : relevé pour le moteur, retenu avant le bord (HOLD_MAX_S au plus), puis entre', async () => {
+    const bikeEnv: TrafficEnv = { ...env, demand: { near: 0.2, far: 0.2, bike: 3 } };
+    const world = warmTraffic({ width: 1080, seed: 9, unit: m.unit, startS: T0 }, bikeEnv);
+    let t = T0;
+    while (t < T0 + 600 && !world.agents.some((a) => a.kind === 'bike' && a.s + a.half < 40 * m.unit)) advance(world, (t += 0.1), bikeEnv);
+    const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+    const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
+    const figures = new FigureRegistry('thold', { citizens: () => fake, now: () => 0 });
+    const handle: TrafficHandle = { world, env: bikeEnv };
+    const host = document.createElement('div');
+    await act(async () =>
+      createRoot(host).render(
+        <FigureContext.Provider value={figures}>
+          <svg>
+            <TrafficLane handle={handle} lane="near" metrics={m} sky={sky} lights={false} rainy={false} still={false} ghibli fests={[]} eventsByKey={new Map()} frozenT={world.t} />
+          </svg>
+        </FigureContext.Provider>,
+      ),
+    );
+    const waiting = world.agents.filter((a) => a.kind === 'bike' && a.s + a.half <= MARGIN * m.unit && handle.wait3D?.has(a.id));
+    expect(waiting.length).toBeGreaterThan(0);
+    const bike = waiting[0]!;
+    const t0 = world.t;
+    let entered = 0;
+    for (let k = 1; k <= 60 && !entered; k++) {
+      advance(world, t0 + k * 0.1, bikeEnv, handle.wait3D);
+      if (bike.s + bike.half > MARGIN * m.unit) entered = world.t;
+    }
+    expect(entered - t0).toBeGreaterThanOrEqual(HOLD_MAX_S - 0.2);
+    expect(entered).toBeGreaterThan(0); // puis entre (au ralenti hors champ, il passe le bord après la retenue)
   });
   it('gateEntering : hors champ, attend la 3D ; la 3D arrive : figure en 3D, groupe montrable ; dans le champ sans 3D : pantin', async () => {
     const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
