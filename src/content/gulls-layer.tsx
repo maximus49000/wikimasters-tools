@@ -4,6 +4,7 @@ import { hillChimneyTop, visibleHillHouses } from '../core/library/city/santa';
 import { cityPaintPlan, type HillHouse } from '../core/library/paint/city-plan';
 import { PROPS } from '../core/library/paint/props/index';
 import type { Sky } from '../core/library/sky';
+import { MASK_PAD_X, facadeMaskRect, maskTop, type FacadeBox } from './facade-mask';
 import { PropContext, paintProp, propKey, type PropSpec } from './prop/prop-host';
 import { useWallClockLoop } from './use-wallclock-loop';
 
@@ -19,12 +20,6 @@ import { useWallClockLoop } from './use-wallclock-loop';
 export const GULL_POOL = 16;
 const GATE_KEEP_S = 4 * 3600;
 
-// Masque des façades (silhouettes de la rue devant la colline) : débord de 2 px de chaque côté, 9 px au-dessus du toit pour
-// ce que le peintre fait dépasser (antennes).
-const MASK_PAD_X = 2;
-const MASK_PAD_TOP = 9;
-type FacadeBox = { x: number; w: number; h: number };
-const maskTop = (f: FacadeBox, ground: number): number => ground - f.h - MASK_PAD_TOP;
 
 // Oiseau posé entier hors du masque des façades : son image (cadre `gull` × PERCH_K·s, centrée 1,5·sP au-dessus de la
 // brique, comme `lander`) ne touche aucune silhouette de la rue.
@@ -133,7 +128,7 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
           <rect x={0} y={0} width={width} height={height} fill="#fff" />
           {/* Silhouettes avec ce que le peintre fait dépasser (antenne, débords), comme le masque du père Noël. */}
           {facades.map((b, i) => (
-            <rect key={i} x={b.x - MASK_PAD_X} y={maskTop(b, ground)} width={b.w + 2 * MASK_PAD_X} height={b.h + MASK_PAD_TOP + 4} fill="#000" />
+            <rect key={i} {...facadeMaskRect(b, ground)} fill="#000" />
           ))}
         </mask>
       </defs>

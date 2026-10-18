@@ -13,6 +13,7 @@ import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 import { collectCycles, placeCycles, PropContext, type CycledNode } from './prop/prop-host';
 import { ClassicSantaWalker, GhibliHarness, GhibliReindeer, GhibliSack, GhibliSleighBody, GhibliTrail, HARNESS_FLIGHT, SantaSprite, TEAM_FLIGHT, TEAM_LANDED, ghibliTone } from './santa-sprite';
+import { facadeMaskRect } from './facade-mask';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Ghibli (G5) : vrai pantin du père Noël (tenue `santa` du moteur : barbe, fourrure, ceinture, bottes, gants ; le bonnet rouge
@@ -307,10 +308,9 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
       <defs>
         <mask id={maskId} maskUnits="userSpaceOnUse" x={0} y={0} width={width} height={height}>
           <rect x={0} y={0} width={width} height={height} fill="#fff" />
-          {/* Silhouettes avec ce que le peintre fait dépasser : antenne (8 px au-dessus du toit), débord des pignons et du
-              mur du fond (2 px de chaque côté). */}
+          {/* Silhouettes avec ce que le peintre fait dépasser (facade-mask.ts : antennes, débord des pignons et du mur du fond). */}
           {facades.map((b, i) => (
-            <rect key={i} x={b.x - 2} y={ground - b.h - 9} width={b.w + 4} height={b.h + 13} fill="#000" />
+            <rect key={i} {...facadeMaskRect(b, ground)} fill="#000" />
           ))}
         </mask>
         <radialGradient id={`${maskId}-win`}>

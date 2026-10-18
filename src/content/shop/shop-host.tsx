@@ -8,7 +8,7 @@ import { tone } from '../city-sprites';
 import { BLANK_SPRITE } from '../figure/figure-host';
 import { PaintRegistry, paintSurface, quantDay } from '../paint-registry';
 import type { LightBlob } from '../../core/library/city/night-light';
-import { LAMP_TINT, maskBlob } from '../painted-city';
+import { LAMP_TINT, buffers, noCanvas, tintAndMask } from '../painted-city';
 
 // Images peintes des commerces (G4a) : chaque local est peint UNE fois par clé sur un canvas hors écran, en trois couches
 // (fond de la vitrine, premier plan devant le personnel avec la vitre, façade percée à la vitrine), puis gardé en PNG
@@ -101,62 +101,20 @@ export function useShopLayer(look: ShopLook | null, layer: ShopLayer): string | 
 // local : origine = shopOrigin). Posée par-dessus la façade de nuit, à l'opacité `dim` des lumières de la ville.
 export const glowKey = (l: ShopLook, blobs: readonly LightBlob[]): string =>
   `glow|${shopKey({ ...l, day: 1, lit: false }, 'facade')}|${blobs.map((b) => `${b.cx.toFixed(1)},${b.cy.toFixed(1)},${b.rx.toFixed(1)},${b.ry.toFixed(1)},${b.peak}`).join(';')}`;
-let glowBufs: [CanvasRenderingContext2D, CanvasRenderingContext2D] | null | undefined;
-function glowBuffers(): [CanvasRenderingContext2D, CanvasRenderingContext2D] | null {
-  if (glowBufs !== undefined) return glowBufs;
-  try {
-    const a = document.createElement('canvas').getContext('2d');
-    const b = document.createElement('canvas').getContext('2d');
-    glowBufs = a && b ? [a, b] : null;
-  } catch {
-    glowBufs = null;
-  }
-  return glowBufs;
-}
 export function paintShopGlow(l: ShopLook, blobs: readonly LightBlob[]): string {
-  const s = paintSurface();
-  const bufs = glowBuffers();
-  if (!s || !bufs) return BLANK_SPRITE;
+  if (noCanvas()) return BLANK_SPRITE;
   const box = layerBox(l, 'facade');
   const pw = Math.max(1, Math.ceil(box.w * SHOP_PX));
   const ph = Math.max(1, Math.ceil(box.h * SHOP_PX));
-  const { canvas, ctx } = s;
-  canvas.width = pw;
-  canvas.height = ph;
-  ctx.setTransform(SHOP_PX, 0, 0, SHOP_PX, -box.x * SHOP_PX, -box.y * SHOP_PX);
-  ctx.clearRect(box.x, box.y, box.w, box.h);
-  // Façade de jour (aucune teinte de nuit).
-  paintFacade(tintedCtx(ctx as unknown as ShopPaintCtx, (c: string) => c), specOf({ ...l, day: 1, lit: false }));
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const [day, mask] = bufs;
-  for (const c of bufs) {
-    c.canvas.width = pw;
-    c.canvas.height = ph;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.globalCompositeOperation = 'source-over';
-    c.globalAlpha = 1;
-  }
-  day.drawImage(canvas, 0, 0);
-  // Version éclairée : multiply ambre, regain d'éclat en screen, alpha de la façade rendu.
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = LAMP_TINT.multiply;
-  ctx.fillRect(0, 0, pw, ph);
-  if (LAMP_TINT.screen) {
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = LAMP_TINT.screenAlpha ?? 1;
-    ctx.fillStyle = LAMP_TINT.screen;
-    ctx.fillRect(0, 0, pw, ph);
-    ctx.globalAlpha = 1;
-  }
-  ctx.globalCompositeOperation = 'destination-in';
-  ctx.drawImage(day.canvas, 0, 0);
-  // Masque d'intensité dans le repère du local.
-  mask.setTransform(SHOP_PX, 0, 0, SHOP_PX, -box.x * SHOP_PX, -box.y * SHOP_PX);
-  for (const b of blobs) maskBlob(mask, b);
-  mask.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(mask.canvas, 0, 0);
-  ctx.globalCompositeOperation = 'source-over';
-  return canvas.toDataURL('image/png');
+  const b = buffers(pw, ph);
+  if (!b) return BLANK_SPRITE;
+  const [lit, day, mask] = b as [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D];
+  // Façade de jour (aucune teinte de nuit), dans le repère du local.
+  lit.setTransform(SHOP_PX, 0, 0, SHOP_PX, -box.x * SHOP_PX, -box.y * SHOP_PX);
+  paintFacade(tintedCtx(lit as unknown as ShopPaintCtx, (c: string) => c), specOf({ ...l, day: 1, lit: false }));
+  lit.setTransform(1, 0, 0, 1, 0, 0);
+  tintAndMask([lit, day, mask], blobs, LAMP_TINT, [SHOP_PX, SHOP_PX, -box.x * SHOP_PX, -box.y * SHOP_PX]);
+  return lit.canvas.toDataURL('image/png');
 }
 // Image de la lueur (null tant qu'elle n'est pas peinte ; `blobs` vide : rien).
 export function useShopGlow(look: ShopLook | null, blobs: readonly LightBlob[]): string | null {

@@ -110,8 +110,10 @@ export function useProp(spec: PropSpec | null): Shown | null {
 }
 
 // <image> au cadre du peintre ; sinon (registre absent, peintre inconnu, première image pas encore cuite) `fallback`.
-// Avec un registre (Ghibli), le repli est enveloppé dans <g data-prop-fallback> : le banc attend qu'il n'en reste aucun, et
-// un repli qui reste affiché se voit ; sans registre (classique), le repli est rendu nu (DOM inchangé).
+// Avec un registre, le repli est enveloppé dans <g data-prop-fallback> : le banc attend qu'il n'en reste aucun, et un repli
+// qui reste affiché se voit ; sans registre (tests, hôtes sans PropContext), le repli est rendu nu. Dans l'app, PropContext
+// est toujours fourni (RoomView) : ce qui protège le classique, ce sont les gardes `ghibli ?` des appelants, qui ne montent
+// PropImage qu'en Ghibli.
 export function PropImage({ spec, fallback = null }: { spec: PropSpec; fallback?: ReactNode }): ReactElement {
   const shown = useProp(spec);
   const reg = useContext(PropContext);

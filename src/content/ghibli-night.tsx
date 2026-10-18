@@ -79,7 +79,7 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
       blobs,
       box: patchBox(blobs),
       patchKey: `lamp|${base}|${lamp.x}|${k.toFixed(3)}`,
-      wetKey: `wet|${seed}|${lamp.x}|${u.toFixed(3)}|${depth.toFixed(1)}`,
+      wetKey: `wet|${seed}|${lamp.x}|${hw.toFixed(2)}|${u.toFixed(3)}|${depth.toFixed(1)}`,
       hw,
       colW: 2 * wetHalfWidth(hw, u),
     };
