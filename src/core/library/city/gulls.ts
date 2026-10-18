@@ -36,7 +36,7 @@ const APPROACH = 5;
 const PERCHED = 42;
 const TAKEOFF = 6;
 const LAND_FROM = 70; // l'oiseau quitte la volée à 70 px de la cheminée
-const PERCH_K = 0.6; // échelle posée = 0,6 × échelle de la maison (le corps couvre la brique de 3 s)
+export const PERCH_K = 0.6; // échelle posée = 0,6 × échelle de la maison (le corps couvre la brique de 3 s)
 const TIERS = [
   { s: 0.3, far: 0.6, speed: 9 },
   { s: 0.55, far: 0.35, speed: 16 },

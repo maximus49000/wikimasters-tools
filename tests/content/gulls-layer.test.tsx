@@ -118,4 +118,17 @@ describe('calque des mouettes', () => {
       expect(p.s).toBe(h.s);
     }
   });
+  it('cheminée juste au-dessus d’un immeuble de la rue : écartée si le masque des façades cacherait l’oiseau posé', () => {
+    const plan = cityPaintPlan(W, H, SEED);
+    const ground = H * 0.7;
+    const p0 = perches[0]!;
+    // Immeuble étroit (la maison reste « visible ») sous la cheminée : le haut de son masque (toit − 9 px pour les antennes)
+    // passe 2 px au-dessus de la brique.
+    const below = { x: p0.x - 1, w: 2, h: ground - (p0.y - 2) - 9 };
+    const after = gullPerches(plan.hill.houses, [below], ground, W);
+    expect(after.some((q) => Math.abs(q.x - p0.x) < 1e-9)).toBe(false);
+    // Le même immeuble 20 px plus bas laisse l'oiseau entier visible : la cheminée reste un perchoir.
+    const lower = { ...below, h: below.h - 20 };
+    expect(gullPerches(plan.hill.houses, [lower], ground, W).some((q) => Math.abs(q.x - p0.x) < 1e-9)).toBe(true);
+  });
 });

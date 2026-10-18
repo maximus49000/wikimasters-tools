@@ -1,5 +1,5 @@
 import { useContext, useId, useMemo, useRef, type ReactElement } from 'react';
-import { flocksAt, gullMinutes, gullsOpen, type GullPerch } from '../core/library/city/gulls';
+import { PERCH_K, flocksAt, gullMinutes, gullsOpen, type GullPerch } from '../core/library/city/gulls';
 import { hillChimneyTop, visibleHillHouses } from '../core/library/city/santa';
 import { cityPaintPlan, type HillHouse } from '../core/library/paint/city-plan';
 import { PROPS } from '../core/library/paint/props/index';
@@ -19,13 +19,33 @@ import { useWallClockLoop } from './use-wallclock-loop';
 export const GULL_POOL = 16;
 const GATE_KEEP_S = 4 * 3600;
 
-// Cheminées où se poser : maisons des rangs 1 et 2 (le rang 0 est trop loin) dont le toit se voit, entières dans la scène.
-export function gullPerches(houses: readonly HillHouse[], facades: readonly { x: number; w: number; h: number }[], ground: number, width: number): GullPerch[] {
+// Masque des façades (silhouettes de la rue devant la colline) : débord de 2 px de chaque côté, 9 px au-dessus du toit pour
+// ce que le peintre fait dépasser (antennes).
+const MASK_PAD_X = 2;
+const MASK_PAD_TOP = 9;
+type FacadeBox = { x: number; w: number; h: number };
+const maskTop = (f: FacadeBox, ground: number): number => ground - f.h - MASK_PAD_TOP;
+
+// Oiseau posé entier hors du masque des façades : son image (cadre `gull` × PERCH_K·s, centrée 1,5·sP au-dessus de la
+// brique, comme `lander`) ne touche aucune silhouette de la rue.
+function perchVisible(top: { x: number; y: number }, s: number, facades: readonly FacadeBox[], ground: number): boolean {
+  const sP = PERCH_K * s;
+  const [bx, by, bw, bh] = PROPS.gull!.box({ wing: 'perched' });
+  const yP = top.y - 1.5 * sP;
+  const x0 = top.x + bx * sP;
+  const x1 = top.x + (bx + bw) * sP;
+  const y1 = yP + (by + bh) * sP;
+  return facades.every((f) => x1 <= f.x - MASK_PAD_X || x0 >= f.x + f.w + MASK_PAD_X || y1 <= maskTop(f, ground));
+}
+
+// Cheminées où se poser : maisons des rangs 1 et 2 (le rang 0 est trop loin) dont le toit se voit, entières dans la scène,
+// et dont l'oiseau posé ne serait pas caché par le masque des façades (cheminée juste au-dessus d'un immeuble de la rue).
+export function gullPerches(houses: readonly HillHouse[], facades: readonly FacadeBox[], ground: number, width: number): GullPerch[] {
   const out: GullPerch[] = [];
   for (const h of visibleHillHouses(houses, facades, ground)) {
     if (h.row === 0 || h.x < 0 || h.x + h.w > width) continue;
     const top = hillChimneyTop(h);
-    if (top) out.push({ x: top.x, y: top.y, s: h.s, haze: h.haze });
+    if (top && perchVisible(top, h.s, facades, ground)) out.push({ x: top.x, y: top.y, s: h.s, haze: h.haze });
   }
   return out;
 }
@@ -113,7 +133,7 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
           <rect x={0} y={0} width={width} height={height} fill="#fff" />
           {/* Silhouettes avec ce que le peintre fait dépasser (antenne, débords), comme le masque du père Noël. */}
           {facades.map((b, i) => (
-            <rect key={i} x={b.x - 2} y={ground - b.h - 9} width={b.w + 4} height={b.h + 13} fill="#000" />
+            <rect key={i} x={b.x - MASK_PAD_X} y={maskTop(b, ground)} width={b.w + 2 * MASK_PAD_X} height={b.h + MASK_PAD_TOP + 4} fill="#000" />
           ))}
         </mask>
       </defs>
