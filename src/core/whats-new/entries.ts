@@ -2591,4 +2591,26 @@ export const ENTRIES: Entry[] = [
       },
     ],
   },
+  {
+    id: 'habitants-3d-2026-10',
+    theme: 'collection',
+    glyph: '🧍',
+    title: 'Des habitants en 3D',
+    summary: 'Les passants, commerçants et clients de la Ville sont maintenant des personnages en 3D, tous différents, qui gardent les mêmes gestes',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Une ville peuplée d’habitants tous différents',
+        text: 'Dans la Ville de Ma Pièce, les passants, les commerçants, les clients, les musiciens et les déménageurs sont dessinés à partir de personnages en 3D, dans le même style dessin animé que le décor. Chacun a sa silhouette, sa couleur de peau, sa coiffure et ses vêtements, et garde tous les gestes d’avant : payer, servir, trinquer, porter un meuble.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À rendre la Ville plus vivante et plus variée : on ne croise plus deux fois le même passant, les enfants ont une silhouette d’enfant, les anciens une silhouette d’ancien, et les visages montrent une émotion selon le geste (content en payant, heureux en trinquant).' },
+          { label: 'D’où viennent les personnages', text: 'Huit corps de base (homme fort, homme mince, trois silhouettes de femme, papy, mamie, enfant) ont été créés avec AutoSprite puis allégés. Ils sont téléchargés une seule fois depuis le serveur de l’application et gardés sur l’appareil.' },
+          { label: 'Comment ils sont tirés au hasard', text: 'Chaque habitant reçoit, toujours le même pour une même personne, un corps, une taille, une des huit couleurs de peau, une coiffure, une barbe ou une casquette selon ce qui lui va (pas de barbe pour un enfant, pas de casquette pour un ancien, pas de jupe pour un homme), puis une tenue et des couleurs. Les tenues de travail (gilet, tablier) et le parapluie sous la pluie viennent de la scène.' },
+          { label: 'Visages et clignements', text: 'Les visages et les émotions se voient dans la vue rapprochée « Dehors » de la Ville ; les personnages immobiles (clients au comptoir, gens assis en terrasse) y clignent aussi des yeux. Dans la vue d’ensemble, les personnages sont trop petits : ils gardent un visage calme, yeux ouverts.' },
+          { label: 'Limites', text: 'Au tout premier lancement, les personnages se téléchargent (quelques Mo) : en attendant, les anciens pantins s’affichent puis sont remplacés. Si l’appareil ne sait pas dessiner en 3D ou si le serveur est injoignable, les anciens pantins restent. Les cheveux et les vêtements sont rigides : ils suivent le corps sans flotter.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
 ];

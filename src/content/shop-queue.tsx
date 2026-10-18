@@ -13,10 +13,11 @@ import { INK } from '../core/library/paint/cel';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import { TURN_S, YAW_BACK, facingYaw, phaseIndexOf, turnYaw } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
+import { citizenSeed } from '../core/citizens/identity';
 import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
-import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { GhibliFigure, poseFigure, type CitizenIdentity, type PoseIn } from './figure/ghibli-figure';
 import '../core/library/paint/props/terrace';
 import { PropImage } from './prop/prop-host';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -405,7 +406,9 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
   const tr = life.current.trans;
   if (!door && !tr) return null;
   const bouncers = [0, 1].map((i) => bouncerOutfit(seed, id, i));
-  const person = (o: Outfit, pose: FigurePose): ReactElement => (ghibli ? <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={pose} /> : <PersonSprite outfit={o} sky={sky} rainy={false} umbrella={false} />);
+  // Habitant 3D : file, graine par défaut (la tenue : la file en a 12, même tenue, même personne) ; videurs : leur graine, adultes.
+  const bouncerId = (i: number): CitizenIdentity => ({ citizen: citizenSeed(`${id}/bouncer/${i}`), kind: 'adult' });
+  const person = (o: Outfit, pose: FigurePose, who: CitizenIdentity = {}): ReactElement => (ghibli ? <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={pose} {...who} /> : <PersonSprite outfit={o} sky={sky} rainy={false} umbrella={false} />);
   // Trajet scripté au rendu : sur le trottoir, ou dans le seuil d'une porte (club ou immeuble, <svg> rogné avec l'ombre).
   const renderWalk = (w: ClubWalk): ReactElement | null => {
     const v = clubWalkAt(w, nowT);
@@ -415,7 +418,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
     const attrs = b >= 0 ? { 'data-bouncer': '' } : { 'data-queue-id': w.id, 'data-queue-leaving': '' };
     const fig = (
       <>
-        {person(o, v.pose)}
+        {person(o, v.pose, b >= 0 ? bouncerId(b) : {})}
         {!ghibli && v.pose.arms === 'crossed' && <CrossedArms outfit={o} sky={sky} />}
       </>
     );
@@ -507,7 +510,7 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
         return (
           <g key={i} data-bouncer="" transform={`translate(${(doorX + side * BOUNCER_DX * u).toFixed(1)} ${(metrics.doorY + 1).toFixed(1)}) scale(${((ghibli ? 1 : side) * kb).toFixed(3)} ${kb.toFixed(3)})`}>
             {ghibli ? (
-              <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={pose} />
+              <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={pose} {...bouncerId(i)} />
             ) : (
               <>
                 <PersonSprite outfit={o} sky={sky} rainy={false} umbrella={false} />

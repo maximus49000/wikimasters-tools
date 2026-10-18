@@ -350,7 +350,8 @@ export function moverAt(segs: readonly Seg[], door: Pt, t: number): MoverAt {
 // Meuble lourd porté à deux : au milieu des deux porteurs du même aller. Un porteur pas encore parti (encore dedans) compte à
 // l'origine du meuble (porte du local, arrière du camion), un porteur déjà arrivé à sa destination : le meuble dépasse de la
 // porte ou de la caisse, porté par celui qui est dehors. Sur le seuil quand les deux y sont ; caché quand personne ne le porte.
-export type PieceAt = { load: HeavyPiece; where: 'street' | 'door'; x: number; y: number; depth: number } | null;
+// `a`, `b` : les deux porteurs (indices des déménageurs).
+export type PieceAt = { load: HeavyPiece; where: 'street' | 'door'; x: number; y: number; depth: number; a: number; b: number } | null;
 export function pieceAt(plan: CrewPlan, movers: readonly MoverAt[], door: Pt, t?: number): PieceAt {
   for (const [job, jb] of plan.jobs.entries()) {
     if (jb.load === 'carton' || jb.load === null) continue;
@@ -373,8 +374,8 @@ export function pieceAt(plan: CrewPlan, movers: readonly MoverAt[], door: Pt, t?
     };
     const pa = anchor(jb.a, a);
     const pb = anchor(jb.b, b);
-    if (pa.door !== null && pb.door !== null) return { load: jb.load as HeavyPiece, where: 'door', x: door.x, y: door.y, depth: (pa.door + pb.door) / 2 };
-    return { load: jb.load as HeavyPiece, where: 'street', x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2, depth: 0 };
+    if (pa.door !== null && pb.door !== null) return { load: jb.load as HeavyPiece, where: 'door', x: door.x, y: door.y, depth: (pa.door + pb.door) / 2, a: jb.a, b: jb.b };
+    return { load: jb.load as HeavyPiece, where: 'street', x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2, depth: 0, a: jb.a, b: jb.b };
   }
   return null;
 }

@@ -1,0 +1,9 @@
+# Manifeste des persos : jamais servi depuis un cache sans revalidation (il donne les noms à empreinte du jour).
+/persos/manifest.json
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-cache
+
+# Modèles et textures à empreinte de contenu (persos/m/<nom>.<sha256 8>.glb|png, npm run citizens:models) : immuables.
+/persos/m/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000, immutable

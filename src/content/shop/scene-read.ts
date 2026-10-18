@@ -10,6 +10,7 @@ import { sidewalkPlan, type SidewalkPlan } from '../../core/library/city/shops/s
 import type { ActorTrack, Score } from '../../core/library/city/shops/scene/types';
 import type { Horn } from '../../core/library/city/traffic/horns';
 import type { Sky } from '../../core/library/sky';
+import { shown3DAnchors } from '../figure/ghibli-figure';
 import type { GateOf, SceneStaff, ShopPlan } from './scene-scores';
 
 // Lecture des partitions pour la boucle de la scène des commerces (G4b) : état d'exécution d'une boutique, fenêtre de
@@ -115,13 +116,17 @@ export function hornHead(horns: readonly Horn[], t: number, wx: number, yaw: num
 
 // ---------- Accroches et emplacements partagés ----------
 const anchorCache = new Map<string, ReturnType<typeof anchorsOf>>();
-// Point d'accroche du pantin (repère du sprite) ramené au calque : pieds en (x, y), échelle k.
-export function anchorAt(key: FigureKey, anchor: Anchor, x: number, y: number, k: number): readonly [number, number] {
-  const ks = keyString(key);
-  let a = anchorCache.get(ks);
+// Point d'accroche (repère du sprite) ramené au calque : pieds en (x, y), échelle k. Avec `fig` (la figure qui porte) : accroches
+// de l'image 3D qu'elle montre (décalage d'épingle compris), sinon celles du pantin pour `key`.
+export function anchorAt(key: FigureKey, anchor: Anchor, x: number, y: number, k: number, fig?: Element | null): readonly [number, number] {
+  let a: Record<Anchor, readonly [number, number]> | null = shown3DAnchors(fig ?? null);
   if (!a) {
-    if (anchorCache.size > 2048) anchorCache.clear();
-    anchorCache.set(ks, (a = anchorsOf(key)));
+    const ks = keyString(key);
+    a = anchorCache.get(ks) ?? null;
+    if (!a) {
+      if (anchorCache.size > 2048) anchorCache.clear();
+      anchorCache.set(ks, (a = anchorsOf(key)));
+    }
   }
   const p = a[anchor];
   return [x + p[0] * k, y + p[1] * k];

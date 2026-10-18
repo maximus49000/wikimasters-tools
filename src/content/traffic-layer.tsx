@@ -12,6 +12,7 @@ import type { Vehicle } from '../core/library/city/vehicles';
 import type { FestivityId } from '../core/library/city/calendar';
 import type { Sky } from '../core/library/sky';
 import { CityEventSprite } from './city-event-sprites';
+import { citizenSeed } from '../core/citizens/identity';
 import { DEFAULT_RIDER, PersonSprite, VehicleSprite, tone } from './city-sprites';
 import { useFigureRegistry } from './figure/figure-host';
 import { createPuffs, emitPuffs, forgetPuffSources } from '../core/library/city/traffic/exhaust';
@@ -231,7 +232,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
             ) : ev ? (
               <CityEventSprite event={ev} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} />
             ) : ghibli && a.kind === 'bike' ? (
-              <GhibliBike outfit={a.rider ?? DEFAULT_RIDER} color={tone(a.color, sky)} ink={tone('#3B3F4A', sky)} sky={sky} rainy={rainy} dir={1} phase={still ? 0 : crankPhase(a.dist / kOf(a, metrics))} lights={lights} stopped={a.v < FOOT_DOWN_V * metrics.unit} />
+              <GhibliBike outfit={a.rider ?? DEFAULT_RIDER} color={tone(a.color, sky)} ink={tone('#3B3F4A', sky)} sky={sky} rainy={rainy} dir={1} phase={still ? 0 : crankPhase(a.dist / kOf(a, metrics))} lights={lights} stopped={a.v < FOOT_DOWN_V * metrics.unit} citizen={citizenSeed(`rider:${a.seed}`)} />
             ) : (
               <VehicleSprite vehicle={asVehicle(a)} sky={sky} lights={lights} />
             )}
@@ -512,7 +513,7 @@ export function CrossingLayer({ handle, metrics, sky, rainy, still, ghibli, froz
         const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
         return (
           <g key={p.id} data-crosser={p.id} transform={transform(p)}>
-            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} citizen={Math.floor(p.u * 1e9)} waitFor3D /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
           </g>
         );
       })}
@@ -587,7 +588,7 @@ export function BusStopRiders({ handle, metrics, sky, rainy, still, ghibli, froz
         const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
         return (
           <g key={p.id} data-rider={p.id} data-stage={p.stage} transform={transform(p)}>
-            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} citizen={Math.floor(p.u * 1e9)} waitFor3D /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
           </g>
         );
       })}

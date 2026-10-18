@@ -32,7 +32,9 @@ const gaitOf = (s: Seat): Gait => s.gait ?? 'seated';
 const yawOf = (dir: 1 | -1): number => (dir > 0 ? 0 : 8);
 
 // Place d'un occupant : tête du pantin assis, selle (en selle) ou pieds (debout ; origine du sprite) sur (x, headY) du
-// siège, à l'échelle du siège.
+// siège, à l'échelle du siège. Habitant 3D : l'accroche qui sert à le placer (tête, selle) est épinglée sur celle du pantin
+// (`pinOf`) : l'image 3D garde sa place dans les vitres, quelle que soit sa silhouette.
+const pinOf = (s: Seat): 'head' | 'seat' | undefined => (gaitOf(s) === 'seated' ? 'head' : gaitOf(s) === 'mount' ? 'seat' : undefined);
 function seatPlacement(s: Seat, dir: 1 | -1): { transform: string; hands: readonly [number, number] } {
   const sig = signatureOf(shapeOf(outfitOf(s), false));
   const gait = gaitOf(s);
@@ -87,7 +89,7 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false, roll, 
     return (
       <g key={i} data-seat={i} data-role={s.role} data-hx={n2(s.x * dir)} data-hy={n2(s.headY)}>
         <g transform={p.transform}>
-          <GhibliFigure outfit={outfitOf(s)} sky={sky} rainy={rainy} umbrella={false} initial={{ yaw: yawOf(dir), gait: gaitOf(s), phase: 0, head: 0, arms: armsOf(s) }} />
+          <GhibliFigure outfit={outfitOf(s)} sky={sky} rainy={rainy} umbrella={false} initial={{ yaw: yawOf(dir), gait: gaitOf(s), phase: 0, head: 0, arms: armsOf(s) }} citizen={s.outfitSeed} kind={s.child ? 'child' : undefined} pin={pinOf(s)} />
         </g>
       </g>
     );
