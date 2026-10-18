@@ -13,7 +13,8 @@ export type JointName = (typeof JOINTS)[number];
 export type Part = 'hand' | 'arm' | 'shoulder' | 'leg' | 'foot' | 'head' | 'neck' | 'torso';
 // Relevé d'un sommet du corps : position au repos, membre de l'os dominant, avancement le long du bras (0 = épaule,
 // 1 = poignet) et de la jambe (0 = hanche, 1 = cheville), prolongés hors du membre.
-export type VertexInfo = { x: number; y: number; z: number; part: Part; armT: number; legT: number };
+// `cloth` : sommet d'un vêtement ajouté à l'enveloppe habillée (accessoires), absent du relevé du corps.
+export type VertexInfo = { x: number; y: number; z: number; part: Part; armT: number; legT: number; cloth?: true };
 
 // Champ du crâne (rayon max par direction depuis le centre mesuré de la tête).
 export type Skull = { c: THREE.Vector3; R: (az: number, el: number) => number; top: number; low: number; size: number };

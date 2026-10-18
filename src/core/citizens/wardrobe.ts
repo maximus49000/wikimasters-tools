@@ -21,8 +21,9 @@ export { accessory, ACCESSORIES, PARAPLUIE_DEFAUT, parapluieOuvert, type Accesso
 const flat = (m: THREE.SkinnedMesh | THREE.SkinnedMesh[]): THREE.SkinnedMesh[] => (Array.isArray(m) ? m : [m]);
 
 // Une pièce → ses maillages. `A` porte la teinte de peau (bras nus).
-// `tops` : hauts déjà construits, rentrés dans une jupe ; `tuck` : une jupe est portée (les hauts y sont rentrés).
-function piece(A: BodyInfo, p: Piece, tops: THREE.Mesh[], tuck: boolean): THREE.SkinnedMesh[] {
+// `tops` : hauts déjà construits, rentrés dans une jupe ; `tuck` : une jupe est portée (les hauts y sont rentrés) ;
+// `cloth` : vêtements déjà construits, sous les sangles et les sacs.
+function piece(A: BodyInfo, p: Piece, tops: THREE.Mesh[], tuck: boolean, cloth: THREE.Mesh[] = []): THREE.SkinnedMesh[] {
   switch (p.k) {
     case 'top': return [garments.top(A, tuck ? { ...p, tuckY: skirtTop(A) - TUCK_DEPTH * A.H } : p)];
     case 'bottom': return [garments.bottom(A, p)];
@@ -38,9 +39,12 @@ function piece(A: BodyInfo, p: Piece, tops: THREE.Mesh[], tuck: boolean): THREE.
     case 'gilet': return [gilet(A, p.color)];
     case 'tablier': return tablier(A, p.color);
     case 'bonnet': return bonnet(A, p.color);
-    case 'accessory': return accessory(A, p.what, p.color);
+    case 'accessory': return accessory(A, p.what, p.color, cloth);
   }
 }
+
+// Vêtements du corps, construits avant les accessoires (sangles et sacs se posent sur le tissu mesuré au repos).
+const CLOTH = new Set<Piece['k']>(['top', 'bottom', 'skirt', 'collar', 'gilet', 'tablier']);
 
 // Pièces mesurées sur le crâne.
 const HEAD_PIECES = new Set<Piece['k']>(['hair', 'beard', 'cap', 'bonnet']);
@@ -61,7 +65,9 @@ export function dressRig(info: BodyInfo, pieces: Piece[], skin: string, body: TH
     const tuck = pieces.some((p) => p.k === 'skirt');
     for (const p of pieces) if (p.k === 'top') built.set(p, piece(A, p, [], tuck));
     const tops = [...built.values()].flat();
-    for (const p of pieces) out.push(...(built.get(p) ?? piece(A, p, tops, tuck)));
+    for (const p of pieces) if (!built.has(p) && CLOTH.has(p.k)) built.set(p, piece(A, p, tops, tuck));
+    const cloth = [...built.values()].flat();
+    for (const p of pieces) out.push(...(built.get(p) ?? piece(A, p, tops, tuck, cloth)));
   } catch (e) {
     disposeRig([...new Set([...out, ...[...built.values()].flat()])]);
     throw e;

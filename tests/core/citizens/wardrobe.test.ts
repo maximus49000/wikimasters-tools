@@ -185,10 +185,10 @@ describe('nouvelles pièces', () => {
 });
 
 describe('accessoires', () => {
-  // Os attendu pour chaque maillage de chaque accessoire, dans l'ordre de construction.
-  const BONES: Record<string, string[]> = {
-    'sac-a-dos': ['Spine2', 'Spine2', 'Spine2', 'Spine2'],
-    sac: ['Hips', 'Hips', 'Spine2'],
+  // Os attendu pour chaque maillage de chaque accessoire, dans l'ordre de construction (null : fondu sur plusieurs os).
+  const BONES: Record<string, (string | null)[]> = {
+    'sac-a-dos': ['Spine2', 'Spine2', 'Spine2', 'Spine2', 'Spine2'],
+    sac: ['Hips', 'Hips', 'Hips', null],
     mallette: ['RightHand', 'RightHand'],
     ballon: ['RightHand'],
     echarpe: ['Neck', 'Spine2'],
@@ -200,14 +200,24 @@ describe('accessoires', () => {
       checkBound(ms);
       const expected = BONES[what]!;
       expect(ms).toHaveLength(expected.length);
-      ms.forEach((m, i) => rigidOn(m, A.idx[expected[i]!]!));
+      ms.forEach((m, i) => { const b = expected[i]; if (b) rigidOn(m, A.idx[b]!); });
     }
   });
-  it('sac : sac au bassin, bandoulière au torse ; écharpe : cou + pan au torse', () => {
+  it('sac : sac au bassin, bandoulière fondue du bassin (bas) au thorax (haut) ; écharpe : cou + pan au torse', () => {
     const sac = dress({ k: 'accessory', what: 'sac', color: '#6B4A2E' });
     const bones = sac.map((m) => (m as THREE.Mesh).geometry.attributes.skinIndex!.getX(0));
     expect(bones).toContain(A.idx.Hips);
-    expect(bones).toContain(A.idx.Spine2);
+    // Bandoulière : chaque sommet sur Spine2 (poids w) + Hips (1 − w), w qui croît avec la hauteur.
+    const g = (sac[3] as THREE.Mesh).geometry, SI = g.attributes.skinIndex!, SW = g.attributes.skinWeight!, P = g.attributes.position!;
+    let wLow = 1, wHigh = 0;
+    for (let i = 0; i < SI.count; i++) {
+      expect([SI.getX(i), SI.getY(i)]).toEqual([A.idx.Spine2, A.idx.Hips]);
+      expect(SW.getX(i) + SW.getY(i)).toBeCloseTo(1, 6);
+      if (P.getY(i) < A.J.Hips.y) wLow = Math.min(wLow, SW.getX(i));
+      if (P.getY(i) > A.J.Spine2.y) wHigh = Math.max(wHigh, SW.getX(i));
+    }
+    expect(wLow).toBe(0);
+    expect(wHigh).toBe(1);
     const ech = dress({ k: 'accessory', what: 'echarpe', color: '#C03030' });
     const eb = ech.map((m) => (m as THREE.Mesh).geometry.attributes.skinIndex!.getX(0));
     expect(eb).toContain(A.idx.Neck);
