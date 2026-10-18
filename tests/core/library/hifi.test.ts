@@ -54,7 +54,7 @@ describe('poste hi-fi', () => {
     const station = smallPlacement('h', 'hifi', 'desk', 10, 2.5);
     const cd = sleeveStand(station, 'cd');
     expect([cd.w, cd.h]).toEqual([14.2, 12.5]);
-    const [tl, tr, br, bl] = cd.corners as [number[], number[], number[], number[]];
+    const [tl, tr, br, bl] = cd.corners.map((p) => [...p]) as [number[], number[], number[], number[]];
     expect(bl[1]).toBe(station.y);
     expect(br[1]).toBe(station.y);
     expect(tl[1]).toBeGreaterThan(station.y);
