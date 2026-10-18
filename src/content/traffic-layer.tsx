@@ -22,7 +22,7 @@ import { useCarRegistry } from './vehicle/car-host';
 import { ExhaustPuffs, placePuffs } from './vehicle/exhaust-puffs';
 import { GhibliCar, placeCar } from './vehicle/ghibli-car';
 import { FOOT_DOWN_V, GhibliBike, crankPhase, riderPose } from './figure/ghibli-cyclist';
-import { GhibliFigure, poseFigure } from './figure/ghibli-figure';
+import { GhibliFigure, poseFigure, prewarmCitizen } from './figure/ghibli-figure';
 import { PropImage } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -556,15 +556,27 @@ export function BusStopRiders({ handle, metrics, sky, rainy, still, ghibli, froz
     return { yaw: v.yaw, gait: v.walking ? ('walk' as const) : ('stand' as const), phase: v.walking ? phaseIndexOf((p.walked + p.step * 14 * u) / v.k) : 0, head: 0 };
   };
   const seen = useRef(w.roster);
+  // Dernière demande d'avance des voyageurs dans le bus (secondes).
+  const warmAt = useRef(-Infinity);
   const place = useMemo(
     () => (now: number): void => {
-      void now;
       if (w.roster !== seen.current) {
         seen.current = w.roster;
         setRoster(w.roster);
       }
       const el = root.current;
       if (!el) return;
+      // Habitants 3D : un voyageur encore dans le bus (pas de nœud) fait rendre d'avance ses poses de descente (vers nous ou de
+      // dos) et de départ (vers un bord) : il descend directement en 3D, une demande par seconde (partie où il descendra).
+      if (ghibli && !still && Math.abs(now - warmAt.current) >= 1) {
+        warmAt.current = now;
+        for (const p of w.stopCrowd.riders) {
+          if (p.stage !== 'inside' || (p.side === 'far' ? 'far' : 'near-step') !== part) continue;
+          const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
+          const walk = (yaw: number) => ({ yaw, gait: 'walk' as const, phase: 0, head: 0 });
+          prewarmCitizen(figures, { outfit, sky, rainy, umbrella: false, id: { citizen: Math.floor(p.u * 1e9) } }, [walk(p.side === 'near' ? 4 : 12), walk(0), walk(8)]);
+        }
+      }
       for (const p of w.stopCrowd.riders) {
         if (partOf(p) !== part) continue;
         const node = el.querySelector(`[data-rider="${p.id}"]`);
@@ -588,7 +600,9 @@ export function BusStopRiders({ handle, metrics, sky, rainy, still, ghibli, froz
         const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
         return (
           <g key={p.id} data-rider={p.id} data-stage={p.stage} transform={transform(p)}>
-            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} citizen={Math.floor(p.u * 1e9)} waitFor3D /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+            {/* waitFor3D seulement pour qui arrive par un bord : un voyageur qui descend du bus apparaît en place, il n'est jamais
+                caché (ses poses sont préparées pendant qu'il est dans le bus). */}
+            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} citizen={Math.floor(p.u * 1e9)} waitFor3D={p.stage === 'arrive'} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
           </g>
         );
       })}

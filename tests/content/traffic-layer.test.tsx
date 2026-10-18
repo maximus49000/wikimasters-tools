@@ -196,3 +196,24 @@ describe('mobilier de rue peint (G5)', () => {
     expect(c.host.querySelector('circle[data-light-lamp]')!.getAttribute('opacity')).toBe('0.18');
   });
 });
+
+// Retour du téléphone (pré-prod 1729) : un voyageur qui descend du bus apparaît en place, à la porte ; avec waitFor3D il restait
+// caché jusqu'à 4 s (pendant sa descente) et surgissait sur le trottoir.
+describe('voyageurs du bus et habitants 3D', () => {
+  it('Ghibli : seul celui qui arrive par un bord attend sa 3D ; celui qui descend du bus est visible tout de suite', async () => {
+    const line = { ref: '30', from: 'Hôtel de Ville', to: 'Louise Michel', colour: '#e6007e', stops: ['Hôtel de Ville', 'Lutin', 'Brisepotière', 'Louise Michel'] };
+    const busEnv: TrafficEnv = { ...env, busLines: [line], arrivals: [{ key: 'b1', kind: 'bus', track: 'near', start: T0 - 3 }] };
+    const world = warmTraffic({ width: 1080, seed: 4, unit: m.unit, startS: T0 }, busEnv);
+    let t = T0;
+    while (t < T0 + 600 && !world.stopCrowd.riders.some((p) => p.stage === 'alight')) advance(world, (t += 0.1), busEnv);
+    const alight = world.stopCrowd.riders.find((p) => p.stage === 'alight');
+    expect(alight).toBeDefined();
+    const part = alight!.side === 'far' ? 'far' : 'near-step';
+    const host = document.createElement('div');
+    await act(async () => createRoot(host).render(<svg><BusStopRiders handle={{ world, env: busEnv }} metrics={m} sky={sky} rainy={false} still={false} ghibli frozenT={t} part={part} /></svg>));
+    const fig = host.querySelector(`[data-rider="${alight!.id}"] [data-figure]`)!;
+    expect(fig).not.toBeNull();
+    expect(fig.hasAttribute('data-wait3d')).toBe(false);
+    expect(fig.firstElementChild!.getAttribute('href')).not.toBeNull();
+  });
+});

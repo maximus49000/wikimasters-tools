@@ -28,7 +28,7 @@ import type { Sky } from '../core/library/sky';
 import { useArtStyle } from './art-setting';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry } from './figure/figure-host';
-import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
+import { GhibliFigure, hideFigure, poseFigure, prewarmFigure, type PoseIn } from './figure/ghibli-figure';
 import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
 import { MarkHeld, markAnchor, markArms } from './festive-marks';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
@@ -206,6 +206,37 @@ const lockedHappens = (lock: TripLock, trip: Trip, t: number, gate: number): boo
   lock.set(trip.id, { turn, on });
   return on;
 };
+
+// Habitants 3D : un trajet qui a lieu dans moins de WARM_AHEAD_S secondes (ou en cours) fait rendre d'avance les cycles de
+// toutes ses poses (orientation × allure, relevées tous les quarts de seconde le long du trajet) : l'habitant sort de sa porte
+// directement en 3D, sans pantin ni changement de modèle sous les yeux (il n'a pas d'attente waitFor3D : il apparaît en place).
+export const WARM_AHEAD_S = 12;
+type WarmCache = Map<string, { start: number; poses: PoseIn[] }>;
+export function tripWarmPoses(trip: Trip, cache: WarmCache, width: number, t: number, gate: number, m: CityMetrics): PoseIn[] | null {
+  const c = (((t + trip.phase) % TRIP_CYCLE) + TRIP_CYCLE) % TRIP_CYCLE;
+  // Début du tour en cours si le trajet est en route, sinon du prochain.
+  const start = tripAt(trip, width, t) !== null ? t - c : t - c + TRIP_CYCLE;
+  if (start - t > WARM_AHEAD_S || !tripHappens(trip, start + 1, gate)) return null;
+  let e = cache.get(trip.id);
+  if (!e || Math.abs(e.start - start) > 0.5) {
+    const seen = new Map<string, PoseIn>();
+    let on = false;
+    for (let dt = 0; dt < TRIP_CYCLE; dt += 0.25) {
+      const p = tripAt(trip, width, start + dt);
+      if (!p) {
+        if (on) break;
+        continue;
+      }
+      on = true;
+      const pose = residentPose(trip, p, m, false);
+      const k = `${pose.yaw}|${pose.gait}`;
+      if (!seen.has(k)) seen.set(k, pose);
+    }
+    e = { start, poses: [...seen.values()] };
+    cache.set(trip.id, e);
+  }
+  return e.poses;
+}
 
 // État d'un habitant à l'instant t : passage s'il a lieu ce tour-ci, et nœud visible (rue ou porte).
 const residentView = (trip: Trip, lock: TripLock, gate: number, width: number, t: number): { pos: Passage | null; street: boolean; door: boolean } => {
@@ -487,6 +518,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // Scène G4b (Ghibli) : nœuds de ShopScene, posés après les clients de l'ancien rendu.
     let scene: SceneNodes | null = null;
     let posedAt = -Infinity;
+    // Habitants 3D : poses des trajets à venir (cache par trajet) et dernière demande d'avance (une par seconde).
+    const warm: WarmCache = new Map();
+    let warmAt = -Infinity;
     return (now: number): void => {
       // Mouvement réduit : toujours le même instant, y compris quand le placement est refait après un changement de minute.
       const t = still ? frozen.current! : now;
@@ -594,6 +628,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           placeSill(dnode, doorOpening(tripDoorX(trip, v.pos), metrics), v.pos, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir);
           if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics, still));
         } else if (ghibli && doorOff) hideFigure(figures, dnode.querySelector('[data-figure]'));
+      }
+      if (ghibli && !still && Math.abs(t - warmAt) >= 1) {
+        warmAt = t;
+        for (const trip of trips) {
+          const poses = tripWarmPoses(trip, warm, width, t, trip.kind === 'out' ? flow.out : flow.in, metrics);
+          if (poses) prewarmFigure(figures, nodes.get(trip.id)?.querySelector(':scope > [data-figure]') ?? null, poses);
+        }
       }
       // Halls : allumés tant que la minuterie court et qu'il fait sombre ; n'écrire qu'à la bascule (allumage franc, extinction douce).
       for (const [x, node] of hallNodes) {
