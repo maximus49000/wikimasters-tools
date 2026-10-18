@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Piece } from '../../../src/core/citizens/catalogue';
 import { analyse, disposeRig, dressRig, garments, hair, parapluieOuvert, PARAPLUIE_DEFAUT, skirt, type BodyInfo } from '../../../src/core/citizens/wardrobe';
+import { drapeNormals } from '../../../src/core/citizens/wardrobe/body';
+import { skirtTop, TUCK_DEPTH } from '../../../src/core/citizens/wardrobe/shell';
 import { vi } from 'vitest';
 import { makeHumanoid } from './fixtures/humanoid';
 
@@ -101,8 +103,8 @@ describe('pièces du banc', () => {
     const g = m.geometry, B = g.attributes.bindPos!, P = g.attributes.position!;
     for (let i = 0; i < B.count; i++) {
       expect(B.getY(i)).toBeGreaterThanOrEqual(hemY - 1e-5);
-      // Position gonflée le long des normales : à peine sous la coupe.
-      expect(P.getY(i)).toBeGreaterThanOrEqual(hemY - 0.01);
+      // Position gonflée le long des normales drapées (lissées, un peu plongeantes au bas du ventre) : à peine sous la coupe.
+      expect(P.getY(i)).toBeGreaterThanOrEqual(hemY - 0.01 * A.H);
     }
   });
   it('skirt : poids bassin = 1 en haut, somme des poids = 1 partout', () => {
@@ -258,6 +260,54 @@ describe('toutes les pièces', () => {
     const c = (ms: THREE.Object3D[]) => ((ms[0] as THREE.SkinnedMesh).material as THREE.MeshToonMaterial).color.getHexString();
     expect(c(dress({ k: 'gilet', color: '#123456' }))).toBe('123456');
     expect(c(dress({ k: 'tablier', color: '#654321' }))).toBe('654321');
+  });
+});
+
+describe('haut et jupe', () => {
+  // Corps aux courbes fortes (femme forte) : aisance 1,6, le haut gonflé dépasse le rayon d'une jupe ordinaire.
+  const B: BodyInfo = { ...A, ease: 1.6 };
+  const top: Piece = { k: 'top', sleeve: 0.93, off: 0.013, hem: 0.05, color: '#4A7A44' };
+  const jupe: Piece = { k: 'skirt', len: 0.95, flare: 0.3, color: '#3A3A48' };
+  it('directions drapées : unitaires, identiques sur les sommets confondus', () => {
+    const g = body.geometry, P = g.attributes.position!, D = drapeNormals(g);
+    expect(drapeNormals(g)).toBe(D);
+    const seen = new Map<string, number>();
+    for (let i = 0; i < P.count; i++) {
+      expect(Math.hypot(D[i * 3]!, D[i * 3 + 1]!, D[i * 3 + 2]!)).toBeCloseTo(1, 5);
+      const k = `${P.getX(i).toFixed(5)},${P.getY(i).toFixed(5)},${P.getZ(i).toFixed(5)}`, j = seen.get(k);
+      if (j === undefined) seen.set(k, i);
+      else for (let c = 0; c < 3; c++) expect(D[i * 3 + c]).toBe(D[j * 3 + c]);
+    }
+  });
+  it('avec une jupe, le haut est rentré : coupé sous le haut de la jupe, la jupe passe par-dessus', () => {
+    const [skirtM, topM] = dressRig(B, [jupe, top], '#C8906A') as THREE.SkinnedMesh[];
+    const yTop = skirtTop(B), cut = yTop - TUCK_DEPTH * B.H;
+    const T = topM!.geometry.attributes.bindPos!, TP = topM!.geometry.attributes.position!;
+    for (let i = 0; i < T.count; i++) expect(T.getY(i)).toBeGreaterThanOrEqual(cut - 1e-5);
+    // Rayon de la jupe par rangée et par colonne (grille 25 × 65 au repos).
+    const S = skirtM!.geometry.attributes.position!, c = B.J.Hips, NA = 64;
+    const ring = (iy: number, ia: number) => Math.hypot(S.getX(iy * (NA + 1) + ia) - c.x, S.getZ(iy * (NA + 1) + ia) - c.z);
+    const rowY = (iy: number) => S.getY(iy * (NA + 1));
+    let checked = 0;
+    for (let i = 0; i < TP.count; i++) {
+      const y = TP.getY(i);
+      if (y > yTop) continue;
+      // Rangée la plus proche, les deux colonnes qui encadrent l'angle du sommet : la jupe est dehors.
+      let iy = 0;
+      for (let k = 1; k <= 24; k++) if (Math.abs(rowY(k) - y) < Math.abs(rowY(iy) - y)) iy = k;
+      const dx = TP.getX(i) - c.x, dz = TP.getZ(i) - c.z;
+      const ia = Math.floor(((Math.atan2(dx, dz) + Math.PI) / (2 * Math.PI)) * NA) % NA;
+      expect(Math.hypot(dx, dz)).toBeLessThan(Math.min(ring(iy, ia), ring(iy, ia + 1)));
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(20);
+  });
+  it('sans jupe, le haut garde sa longueur', () => {
+    const [topM] = dressRig(B, [top], '#C8906A') as THREE.SkinnedMesh[];
+    const T = topM!.geometry.attributes.bindPos!;
+    let lo = Infinity;
+    for (let i = 0; i < T.count; i++) lo = Math.min(lo, T.getY(i));
+    expect(lo).toBeLessThan(skirtTop(B) - TUCK_DEPTH * B.H - 0.01);
   });
 });
 

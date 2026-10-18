@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import type { Piece } from './catalogue';
 import type { BodyInfo } from './wardrobe/body';
-import { garments, skirt } from './wardrobe/shell';
+import { garments, skirt, skirtTop, TUCK_DEPTH } from './wardrobe/shell';
 import { beard, bonnet, cap, hair, skull } from './wardrobe/hair';
 import { gilet, tablier } from './wardrobe/work';
 import { accessory } from './wardrobe/accessories';
@@ -21,11 +21,12 @@ export { accessory, ACCESSORIES, PARAPLUIE_DEFAUT, parapluieOuvert, type Accesso
 const flat = (m: THREE.SkinnedMesh | THREE.SkinnedMesh[]): THREE.SkinnedMesh[] => (Array.isArray(m) ? m : [m]);
 
 // Une pièce → ses maillages. `A` porte la teinte de peau (bras nus).
-function piece(A: BodyInfo, p: Piece): THREE.SkinnedMesh[] {
+// `tops` : hauts déjà construits, rentrés dans une jupe ; `tuck` : une jupe est portée (les hauts y sont rentrés).
+function piece(A: BodyInfo, p: Piece, tops: THREE.Mesh[], tuck: boolean): THREE.SkinnedMesh[] {
   switch (p.k) {
-    case 'top': return [garments.top(A, p)];
+    case 'top': return [garments.top(A, tuck ? { ...p, tuckY: skirtTop(A) - TUCK_DEPTH * A.H } : p)];
     case 'bottom': return [garments.bottom(A, p)];
-    case 'skirt': return [skirt(A, p)];
+    case 'skirt': return [skirt(A, { ...p, over: tops })];
     case 'socks': return [garments.socks(A, p)];
     case 'shoes': return flat(garments.shoes(A, p));
     case 'boots': return flat(garments.boots(A, p));
@@ -52,11 +53,17 @@ export function dressRig(info: BodyInfo, pieces: Piece[], skin: string, body: TH
   if (pieces.some((p) => HEAD_PIECES.has(p.k))) info.skull ??= skull(info);
   const A: BodyInfo = { ...info, body, skin };
   // Tout ou rien : si une pièce échoue, celles déjà construites sont libérées avant de propager l'erreur.
+  // Avec une jupe, les hauts y sont rentrés : construits avant elle (elle passe par-dessus leur bas) ; l'ordre de sortie
+  // reste celui des pièces.
   const out: THREE.Object3D[] = [];
+  const built = new Map<Piece, THREE.SkinnedMesh[]>();
   try {
-    for (const p of pieces) out.push(...piece(A, p));
+    const tuck = pieces.some((p) => p.k === 'skirt');
+    for (const p of pieces) if (p.k === 'top') built.set(p, piece(A, p, [], tuck));
+    const tops = [...built.values()].flat();
+    for (const p of pieces) out.push(...(built.get(p) ?? piece(A, p, tops, tuck)));
   } catch (e) {
-    disposeRig(out);
+    disposeRig([...new Set([...out, ...[...built.values()].flat()])]);
     throw e;
   }
   return out;

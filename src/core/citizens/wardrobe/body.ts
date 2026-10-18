@@ -105,6 +105,57 @@ export function smooth(pos: number[], ind: number[], iters: number): void {
   }
 }
 
+// Directions de gonflement « drapées » : normales du corps lissées sur la surface soudée (les sommets dédoublés aux
+// coutures de texture sont fusionnés par position, sinon la coque s'ouvrirait). Dans un pli concave (sous la poitrine,
+// sous un ventre rond), les normales brutes des deux lèvres se croisent : gonflée le long d'elles, la coque se replie
+// sur elle-même et le contour (coque inversée de l'OutlineEffect) ressort en tache sombre. Lissées, elles s'écartent
+// ensemble : le tissu passe par-dessus le pli. Calculé une fois par géométrie (partagée par les clones d'une base).
+// Passes de lissage : assez pour couvrir un pli dans les zones finement maillées (sous la poitrine).
+export const DRAPE_ITERS = 20;
+const DRAPE = new WeakMap<THREE.BufferGeometry, Float32Array>();
+export function drapeNormals(g: THREE.BufferGeometry): Float32Array {
+  const hit = DRAPE.get(g);
+  if (hit) return hit;
+  const P = g.attributes.position!, N = g.attributes.normal!;
+  const key = new Map<string, number>(), group = new Int32Array(P.count);
+  for (let i = 0; i < P.count; i++) {
+    const k = `${Math.round(P.getX(i) * 1e5)},${Math.round(P.getY(i) * 1e5)},${Math.round(P.getZ(i) * 1e5)}`;
+    let id = key.get(k);
+    if (id === undefined) { id = key.size; key.set(k, id); }
+    group[i] = id;
+  }
+  const n = key.size, d = new Float64Array(n * 3), nb = Array.from({ length: n }, () => new Set<number>());
+  for (let i = 0; i < P.count; i++) { const j = group[i]! * 3; d[j] = d[j]! + N.getX(i); d[j + 1] = d[j + 1]! + N.getY(i); d[j + 2] = d[j + 2]! + N.getZ(i); }
+  const src = g.index ? g.index.array : Array.from({ length: P.count }, (_, i) => i);
+  for (let k = 0; k < src.length; k += 3) {
+    const a = group[src[k]!]!, b = group[src[k + 1]!]!, c = group[src[k + 2]!]!;
+    nb[a]!.add(b).add(c); nb[b]!.add(a).add(c); nb[c]!.add(a).add(b);
+  }
+  const lists = nb.map((s) => [...s]);
+  const unit = (v: Float64Array): void => {
+    for (let j = 0; j < n * 3; j += 3) { const l = Math.hypot(v[j]!, v[j + 1]!, v[j + 2]!) || 1; v[j] = v[j]! / l; v[j + 1] = v[j + 1]! / l; v[j + 2] = v[j + 2]! / l; }
+  };
+  unit(d);
+  for (let it = 0; it < DRAPE_ITERS; it++) {
+    const o = d.slice();
+    for (let j = 0; j < n; j++) {
+      const L = lists[j]!;
+      if (!L.length) continue;
+      let x = 0, y = 0, z = 0;
+      for (const m of L) { x += d[m * 3]!; y += d[m * 3 + 1]!; z += d[m * 3 + 2]!; }
+      o[j * 3] = d[j * 3]! * 0.5 + (x / L.length) * 0.5;
+      o[j * 3 + 1] = d[j * 3 + 1]! * 0.5 + (y / L.length) * 0.5;
+      o[j * 3 + 2] = d[j * 3 + 2]! * 0.5 + (z / L.length) * 0.5;
+    }
+    unit(o);
+    d.set(o);
+  }
+  const out = new Float32Array(P.count * 3);
+  for (let i = 0; i < P.count; i++) { const j = group[i]! * 3; out[i * 3] = d[j]!; out[i * 3 + 1] = d[j + 1]!; out[i * 3 + 2] = d[j + 2]!; }
+  DRAPE.set(g, out);
+  return out;
+}
+
 // Maillage skinné lié au squelette du corps (même instance de `Skeleton`, même matrice de liaison).
 export function skinned(
   A: BodyInfo, pos: number[], nor: number[] | null, si: number[], sw: number[], ind: number[], color: string,

@@ -4,12 +4,13 @@
 //  • « jupes » : cône construit autour du bassin, poids partagés entre bassin et cuisses — jupe, robe, bas de manteau.
 import * as THREE from 'three';
 import type { Pattern } from '../catalogue';
-import { comp, skinned, smooth, type Attr, type BodyInfo, type VertexInfo } from './body';
+import { comp, drapeNormals, skinned, smooth, type Attr, type BodyInfo, type VertexInfo } from './body';
 import type { Motif } from './materials';
 
 export type Field = (v: VertexInfo) => number;
 export type Reshape = (pos: number[], i: number, bind: number[]) => void;
-export type ShellOpts = { reshape?: Reshape; pattern?: Motif | null };
+// `drape` : gonfler le long des normales lissées (`drapeNormals`) au lieu des normales brutes — le tissu enjambe les plis.
+export type ShellOpts = { reshape?: Reshape; pattern?: Motif | null; drape?: boolean };
 
 // Coque : zone du corps où le champ `field(v)` est positif, découpée proprement sur la ligne field = 0 (les triangles
 // à cheval sont tranchés, les nouveaux sommets interpolés), puis gonflée de `off` (fraction de la hauteur du corps).
@@ -21,17 +22,20 @@ export function shell(A: BodyInfo, field: Field, off: number | Field, color: str
   const pos: number[] = [], nor: number[] = [], si: number[] = [], sw: number[] = [], ind: number[] = [];
   const offAt = typeof off === 'function' ? (v: number) => off(A.info[v]!) * A.H : () => off * A.H;
   const bind: number[] = [];
+  // Direction de gonflement du sommet v (composante k), aussi normale de la coque (ombrage, contour) : brute, ou drapée.
+  const D = opts.drape ? drapeNormals(g) : null;
+  const dir = (v: number, k: number): number => (D ? D[v * 3 + k]! : comp(N, v, k));
   const map = new Map<number, number>();
   const vert = (v: number): number => {
     let j = map.get(v);
     if (j === undefined) {
       j = pos.length / 3; map.set(v, j);
       const d = offAt(v);
-      pos.push(P.getX(v) + N.getX(v) * d, P.getY(v) + N.getY(v) * d, P.getZ(v) + N.getZ(v) * d);
+      pos.push(P.getX(v) + dir(v, 0) * d, P.getY(v) + dir(v, 1) * d, P.getZ(v) + dir(v, 2) * d);
       // Motifs : sur les bras (horizontaux en pose de liaison), la coordonnée des rayures suit le bras (|x|) pour faire des anneaux.
       const inf = A.info[v]!, arm = inf.part === 'arm' || inf.part === 'hand';
       bind.push(P.getX(v), arm ? Math.abs(P.getX(v)) + A.J.Spine2.y : P.getY(v), P.getZ(v));
-      nor.push(N.getX(v), N.getY(v), N.getZ(v));
+      nor.push(dir(v, 0), dir(v, 1), dir(v, 2));
       for (let k = 0; k < 4; k++) { si.push(comp(SI, v, k)); sw.push(comp(SW, v, k)); }
     }
     return j;
@@ -40,7 +44,8 @@ export function shell(A: BodyInfo, field: Field, off: number | Field, color: str
   const cut = (a: number, b: number): number => {
     const t = f[a]! / (f[a]! - f[b]!);
     const L = (A_: Attr, i: number) => comp(A_, a, i) + (comp(A_, b, i) - comp(A_, a, i)) * t;
-    const n: [number, number, number] = [L(N, 0), L(N, 1), L(N, 2)];
+    const m = (k: number) => dir(a, k) + (dir(b, k) - dir(a, k)) * t;
+    const n: [number, number, number] = [m(0), m(1), m(2)];
     const d = offAt(a) + (offAt(b) - offAt(a)) * t;
     pos.push(L(P, 0) + n[0] * d, L(P, 1) + n[1] * d, L(P, 2) + n[2] * d);
     const ia = A.info[a]!, armA = ia.part === 'arm' || ia.part === 'hand';
@@ -93,25 +98,58 @@ export function bodyRadius(A: BodyInfo): (y: number, az: number) => number {
   };
 }
 
-export type SkirtOpts = { top?: number; len?: number; flare?: number; off?: number; color: string; folds?: number; pattern?: Pattern | null };
+// `over` : vêtements déjà construits dont le bas passe SOUS la jupe (haut rentré dedans).
+export type SkirtOpts = { top?: number; len?: number; flare?: number; off?: number; color: string; folds?: number; pattern?: Pattern | null; over?: THREE.Mesh[] };
+
+// Haut rentré dans une jupe : il descend de TUCK_DEPTH sous le haut de la jupe (assez pour ne jamais laisser de jour à
+// la marche, pas plus : plus bas, la torsion du buste contre le bassin le fait ressortir), et la jupe passe à TUCK_GAP
+// au-dessus de lui (fractions de la hauteur du corps).
+export const TUCK_DEPTH = 0.05, TUCK_GAP = 0.008;
+export const skirtTop = (A: BodyInfo): number => A.waistY + 0.02 * A.H;
+
+// Rayon horizontal (autour de `c`) des vêtements `over` dans la tranche de hauteur [y0, y1], par secteur d'angle (NA
+// secteurs, le secteur ia commence à l'angle -π + ia·2π/NA, comme les colonnes de la jupe), élargi aux secteurs
+// voisins ; 0 = rien dans ce secteur.
+export function coverRadius(over: THREE.Mesh[], c: THREE.Vector3, y0: number, y1: number, NA: number): Float32Array {
+  const row = new Float32Array(NA);
+  for (const m of over) {
+    const P = m.geometry.attributes.position!;
+    for (let i = 0; i < P.count; i++) {
+      const y = P.getY(i);
+      if (y < y0 || y > y1) continue;
+      const dx = P.getX(i) - c.x, dz = P.getZ(i) - c.z;
+      const a = Math.floor(((Math.atan2(dx, dz) + Math.PI) / (2 * Math.PI)) * NA) % NA;
+      row[a] = Math.max(row[a]!, Math.hypot(dx, dz));
+    }
+  }
+  return row.map((_, a) => Math.max(row[a]!, row[(a + 1) % NA]!, row[(a + NA - 1) % NA]!));
+}
 
 // Jupe : du haut (yTop) jusqu'à la longueur `len` (fraction de la hauteur hanche→cheville), évasée de `flare`.
-export function skirt(A: BodyInfo, { top = A.waistY + 0.02 * A.H, len = 0.6, flare = 0.35, off = 0.012, color, folds = 0.006, pattern = null }: SkirtOpts): THREE.SkinnedMesh {
+// Un haut porté avec (`over`) est rentré dedans : la jupe ne descend jamais sous lui, sinon son bas ressortait à travers
+// la jupe en traînées (corps ronds : le haut gonflé le long des normales dépasse le rayon de la jupe).
+export function skirt(A: BodyInfo, { top = skirtTop(A), len = 0.6, flare = 0.35, off = 0.012, color, folds = 0.006, pattern = null, over = [] }: SkirtOpts): THREE.SkinnedMesh {
   const R = bodyRadius(A), c = A.J.Hips, e = A.ease ?? 1;
   const ankle = A.J.LeftFoot.y, hem = top - len * (A.J.LeftUpLeg.y - ankle);
   const NA = 64, NY = 24, pos: number[] = [], si: number[] = [], sw: number[] = [], ind: number[] = [];
+  // Haut rentré : son rayon autour de chaque rangée de la jupe (tranche d'une rangée de part et d'autre, sans le
+  // dépasser au-dessus du haut de la jupe), plus une marge.
+  const step = (top - hem) / NY, gap = TUCK_GAP * A.H;
+  const under = (y: number) => (over.length ? coverRadius(over, c, y - step, Math.min(top, y + step), NA) : null);
   const H = A.idx.Hips, L = A.idx.LeftUpLeg, Rr = A.idx.RightUpLeg;
   // Rayon de départ : le plus large du corps entre la taille et le haut des cuisses (la jupe tombe sans coller).
   const base = (az: number) => { let r = 0; for (let y = top; y >= top - 0.25 * (top - hem); y -= 0.01) r = Math.max(r, R(y, az)); return r; };
   for (let iy = 0; iy <= NY; iy++) {
-    const t = iy / NY, y = top + (hem - top) * t;
+    const t = iy / NY, y = top + (hem - top) * t, u = under(y);
     for (let ia = 0; ia <= NA; ia++) {
       const az = -Math.PI + (ia / NA) * 2 * Math.PI;
       let r0 = 0.02;
       for (let dy = -0.03; dy <= 0.03; dy += 0.01) r0 = Math.max(r0, R(top + dy * A.H, az));
       r0 += off * e * A.H;
       const fold = folds * A.H * Math.pow(t, 1.4) * (0.6 * Math.sin(az * 9 + 0.7) + 0.4 * Math.sin(az * 14 + 2.1));
-      const r = r0 + (base(az) + off * e * A.H - r0) * Math.min(1, t * 4) + flare * (top - hem) * t * t + fold;
+      // Jamais sous le haut rentré dedans (0 = rien dessous : rayon d'origine).
+      const lip = u && u[ia % NA]! > 0 ? u[ia % NA]! + gap : 0;
+      const r = Math.max(lip, r0 + (base(az) + off * e * A.H - r0) * Math.min(1, t * 4)) + flare * (top - hem) * t * t + fold;
       pos.push(c.x + Math.sin(az) * r, y, c.z + Math.cos(az) * r);
       const s = Math.sin(az);
       const wl = t * 0.8 * (0.5 + 0.5 * s), wr = t * 0.8 * (0.5 - 0.5 * s);
@@ -132,7 +170,8 @@ export const aT = (v: VertexInfo): number => (v.part === 'head' || v.part === 'n
 export const lT = (v: VertexInfo): number => v.legT;
 export const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
-export type TopOpts = { sleeve?: number; off?: number; color: string; hem?: number; collar?: number; neckR?: number; ease?: number; pattern?: Pattern | null };
+// `tuckY` : hauteur sous laquelle le haut est coupé, rentré dans une jupe (l'aisance garde la forme d'origine).
+export type TopOpts = { sleeve?: number; off?: number; color: string; hem?: number; collar?: number; neckR?: number; ease?: number; pattern?: Pattern | null; tuckY?: number };
 export type BottomOpts = { cut?: number; off?: number; color: string; rise?: number; slim?: boolean; pattern?: Pattern | null };
 
 export const garments = {
@@ -141,14 +180,15 @@ export const garments = {
   skin: (A: BodyInfo, { from = -0.1, to = 0.5 }: { from?: number; to?: number }) => shell(A, (v) => (v.part === 'arm' || v.part === 'shoulder' ? Math.min(aT(v) - from, to - aT(v)) * 0.2 : -1), 0.002, A.skin ?? '#F2C8A0'),
   // Hauts : `sleeve` = longueur de manche, `hem` = bas du haut sous la taille, `ease` = aisance : le tissu s'écarte du corps
   // vers le bas du haut et vers le poignet au lieu de coller comme une seconde peau.
-  top: (A: BodyInfo, { sleeve = 0.45, off = 0.008, color, hem = 0.065, collar = 0.3, neckR = 0.062, ease = 0.008, pattern = null }: TopOpts) => {
+  top: (A: BodyInfo, { sleeve = 0.45, off = 0.008, color, hem = 0.065, collar = 0.3, neckR = 0.062, ease = 0.008, pattern = null, tuckY = -Infinity }: TopOpts) => {
     const hemY = A.waistY - hem * A.H, colY = A.J.Neck.y + collar * (A.J.Head.y - A.J.Neck.y);
     const nx = A.J.Neck.x, nz = A.J.Neck.z, r0 = neckR * A.H;
     const col = (v: VertexInfo) => Math.max(colY - v.y, Math.hypot(v.x - nx, v.z - nz) - r0);
     const chest = A.J.Spine2.y;
     const e = A.ease ?? 1;
     const offAt = (v: VertexInfo) => e * (off + ease * (v.part === 'arm' ? clamp01(aT(v)) * 0.8 : clamp01((chest - v.y) / (chest - hemY))));
-    return shell(A, (v) => Math.min(v.y - hemY, col(v), (sleeve - aT(v)) * 0.2, v.part === 'hand' || v.part === 'head' ? -1 : 1), offAt, color, { pattern });
+    const cutY = Math.max(hemY, tuckY);
+    return shell(A, (v) => Math.min(v.y - cutY, col(v), (sleeve - aT(v)) * 0.2, v.part === 'hand' || v.part === 'head' ? -1 : 1), offAt, color, { pattern, drape: true });
   },
   // Col de chemise : bande montante autour du cou.
   collar: (A: BodyInfo, { color, collar = 0.3, neckR = 0.062 }: { color: string; collar?: number; neckR?: number }) => {

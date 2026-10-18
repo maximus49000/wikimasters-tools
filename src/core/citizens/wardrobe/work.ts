@@ -7,6 +7,8 @@ import { aT, bodyRadius, clamp01, shell } from './shell';
 // Bande réfléchissante du gilet (la couleur du gilet et celle du tablier viennent de la pièce).
 export const GILET_BANDE = '#E8E8E0';
 
+// Gilet, bavette et cordon du tablier : gonflés le long des normales drapées, comme les hauts qu'ils recouvrent (sinon
+// le haut ressortait dans les plis du torse).
 // Gilet : comme un haut sans manches (emmanchure au ras de l'épaule, encolure large), un peu plus gonflé que le plus
 // épais des hauts (manteau 0,018 + aisance 0,008) pour passer par-dessus ; une bande claire à mi-hauteur.
 export function gilet(A: BodyInfo, color: string): THREE.SkinnedMesh {
@@ -18,7 +20,7 @@ export function gilet(A: BodyInfo, color: string): THREE.SkinnedMesh {
   const off = (v: VertexInfo) => e * (0.022 + 0.008 * clamp01((chest - v.y) / (chest - hemY)));
   const mid = hemY + 0.45 * (chest - hemY), half = 0.013 * A.H;
   return shell(A, (v) => Math.min(v.y - hemY, col(v), (-0.02 - aT(v)) * 0.2, v.part === 'hand' || v.part === 'head' ? -1 : 1), off, color, {
-    pattern: { kind: 'bande', color: GILET_BANDE, lo: mid - half, hi: mid + half },
+    pattern: { kind: 'bande', color: GILET_BANDE, lo: mid - half, hi: mid + half }, drape: true,
   });
 }
 
@@ -29,8 +31,8 @@ export function tablier(A: BodyInfo, color: string): THREE.SkinnedMesh[] {
   const zc = A.J.Spine2.z, cx = A.J.Spine2.x;
   const chestY = A.J.Spine2.y + 0.35 * (A.J.Neck.y - A.J.Spine2.y), bibLow = A.waistY - 0.03 * A.H, halfW = 0.075 * A.H;
   const out = (v: VertexInfo) => v.part === 'hand' || v.part === 'head' || v.part === 'arm' || v.part === 'neck';
-  const bib = shell(A, (v) => (out(v) ? -1 : Math.min(v.z - zc, chestY - v.y, v.y - bibLow, halfW - Math.abs(v.x - cx))), 0.022 * (A.ease ?? 1), color);
-  const tie = shell(A, (v) => (out(v) ? -1 : Math.min(v.y - (A.waistY - 0.01 * A.H), A.waistY + 0.01 * A.H - v.y)), 0.026 * (A.ease ?? 1), color);
+  const bib = shell(A, (v) => (out(v) ? -1 : Math.min(v.z - zc, chestY - v.y, v.y - bibLow, halfW - Math.abs(v.x - cx))), 0.022 * (A.ease ?? 1), color, { drape: true });
+  const tie = shell(A, (v) => (out(v) ? -1 : Math.min(v.y - (A.waistY - 0.01 * A.H), A.waistY + 0.01 * A.H - v.y)), 0.026 * (A.ease ?? 1), color, { drape: true });
   return [bib, apronPanel(A, color), tie];
 }
 
