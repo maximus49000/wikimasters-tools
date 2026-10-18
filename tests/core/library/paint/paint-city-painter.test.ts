@@ -4,6 +4,7 @@ import { CORNICE, LEFT_GAP, leftOf, paintBuilding, paintCityTile, paintPodium, T
 import { doorsFor } from '../../../../src/core/library/city/doors';
 import { roofOutline } from '../../../../src/core/library/city/facade-layout';
 import { PAINT_VERSION } from '../../../../src/core/library/paint/city-painter';
+import { paintParisRoof } from '../../../../src/core/library/paint/roof-painter';
 import { recordingCtx } from './recording-ctx';
 
 afterEach(() => vi.restoreAllMocks());
@@ -203,6 +204,54 @@ describe('peintre de tranche', () => {
       }
     }
     expect(n).toBeGreaterThan(100);
+  });
+
+  it('dernier étage court : corniche (rehaut, trait, ombre) interrompue au droit des vitres, jour = nuit', () => {
+    // Le peintre du toit ne touche aucune vitre d'étage : ni remplissage, ni trait (épaisseur comprise). Les vitres des
+    // lucarnes sont peintes par lui (exclues).
+    let close = 0;
+    let bitten = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const plan = cityPaintPlan(1440, 340, seed);
+      for (const b of plan.buildings) {
+        if (b.far || !b.layout) continue;
+        const panes = b.layout.windows.filter((v) => v.kind !== 'dormer');
+        const eave = b.top + b.look.roofH;
+        close += panes.filter((v) => v.y < eave + 4.8).length;
+        bitten += panes.filter((v) => v.y < eave + 2.55).length;
+        const ctx = recordingCtx();
+        const strokes: { pts: [[number, number], [number, number]]; lw: number }[] = [];
+        let path: [number, number][] = [];
+        const { beginPath, moveTo, lineTo, stroke, strokeRect } = ctx;
+        ctx.beginPath = () => { path = []; beginPath(); };
+        ctx.moveTo = (x, y) => { path.push([x, y]); moveTo(x, y); };
+        ctx.lineTo = (x, y) => { path.push([x, y]); lineTo(x, y); };
+        ctx.stroke = () => { for (let i = 1; i < path.length; i++) strokes.push({ pts: [path[i - 1]!, path[i]!], lw: ctx.lineWidth }); stroke(); };
+        ctx.strokeRect = (x, y, w, h) => {
+          const c: [number, number][] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+          for (let i = 1; i < c.length; i++) strokes.push({ pts: [c[i - 1]!, c[i]!], lw: ctx.lineWidth });
+          strokeRect(x, y, w, h);
+        };
+        paintParisRoof(ctx, plan, b);
+        const hits = (x0: number, y0: number, x1: number, y1: number) =>
+          panes.find((v) => x0 < v.x + v.w - 1e-6 && x1 > v.x + 1e-6 && y0 < v.y + v.h - 1e-6 && y1 > v.y + 1e-6);
+        for (const o of ctx.ops) {
+          if (o.op !== 'fillRect') continue;
+          const [x, y, w, h] = o.args as [number, number, number, number];
+          expect(hits(x, y, x + w, y + h), `remplissage ${o.args.join(',')}`).toBeUndefined();
+        }
+        for (const { pts: [[ax, ay], [bx, by]], lw } of strokes) {
+          // Segments droits seulement (corniche, souches) : le contour du toit, en pente, est au-dessus de l'avant-toit.
+          if (ax !== bx && ay !== by) continue;
+          const r = lw / 2;
+          expect(hits(Math.min(ax, bx) - r, Math.min(ay, by) - r, Math.max(ax, bx) + r, Math.max(ay, by) + r), `trait ${ax},${ay} → ${bx},${by}`).toBeUndefined();
+        }
+      }
+    }
+    // Des vitres du dernier étage dans la bande de la corniche existent bien (sinon le test ne prouve rien).
+    expect(close).toBeGreaterThan(0);
+    // … et sous le rehaut et le trait de la corniche (eave + 2,55).
+    expect(bitten).toBeGreaterThan(0);
   });
 
   it('premier plan : le trait encré du toit suit exactement roofOutline', () => {

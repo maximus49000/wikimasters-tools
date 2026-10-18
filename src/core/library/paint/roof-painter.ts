@@ -100,8 +100,27 @@ export function paintParisRoof(ctx: PaintCtx, _plan: CityPaintPlan, b: PaintBuil
     fillRect(ctx, light(rc, 0.5), rx - 1, top + 0.3, 2, 0.8);
     inkLine(ctx, pts, 0.9);
   }
-  // Corniche sous le toit : rehaut, ombre nette dessous ; peinte après l'aplat du toit pour rester entière.
-  fillRect(ctx, light(wall, 0.5), x - 1.5, eave - 0.8, w + 3, 3);
+  // Corniche sous le toit : rehaut, ombre nette dessous ; peinte après l'aplat du toit pour rester entière. Dernier étage
+  // court (vitre plus haute que eave + 2,55, bas du trait compris) : le rehaut et son trait remontent au droit de la vitre
+  // (encoche à 0,4 px de part et d'autre, bas du trait posé sur le haut de la vitre), qui reste entière de jour comme le
+  // calque de nuit la redessine. Sans vitre mordue, le rectangle encré d'origine.
+  const cTop = eave - 0.8;
+  const cBot = eave + 2.2;
+  const notches = (layout?.windows ?? [])
+    .filter((v) => v.kind !== 'dormer' && v.y < cBot + 0.35 && v.y + v.h > cTop)
+    .map((v) => [v.x - 0.4, v.x + v.w + 0.4, Math.max(cTop + 0.5, Math.min(cBot, v.y - 0.35))] as const)
+    .sort((a, b) => a[0] - b[0]);
+  // Profil du bas de la corniche, de gauche à droite : [x0, x1, bas].
+  const profile: [number, number, number][] = [];
+  let px = x - 1.5;
+  for (const [c0, c1, yb] of notches) {
+    if (c0 > px) profile.push([px, c0, cBot]);
+    const e = Math.min(c1, x + w + 1.5);
+    if (e > Math.max(px, c0)) profile.push([Math.max(px, c0), e, yb]);
+    px = Math.max(px, e);
+  }
+  if (px < x + w + 1.5) profile.push([px, x + w + 1.5, cBot]);
+  for (const [s0, s1, yb] of profile) fillRect(ctx, light(wall, 0.5), s0, cTop, s1 - s0, yb - cTop);
   // Ombre de la corniche : interrompue au droit des vitres du dernier étage qu'elle mordrait (étage court : la vitre
   // commence dès eave + 2,3 ; le calque de nuit la redessine entière, le jour doit montrer la même fenêtre). Les tableaux
   // (0,9 px de part et d'autre) restent tels que peints.
@@ -118,7 +137,12 @@ export function paintParisRoof(ctx: PaintCtx, _plan: CityPaintPlan, b: PaintBuil
     bx = Math.max(bx, c1);
   }
   if (bx < x + w) fillRect(ctx, bandC, bx, bandY, x + w - bx, bandH);
-  inkRect(ctx, x - 1.5, eave - 0.8, w + 3, 3, 0.7);
+  if (!notches.length) inkRect(ctx, x - 1.5, cTop, w + 3, 3, 0.7);
+  else {
+    const outline: [number, number][] = [[x - 1.5, cBot], [x - 1.5, cTop], [x + w + 1.5, cTop]];
+    for (const [s0, s1, yb] of [...profile].reverse()) outline.push([s1, yb], [s0, yb]);
+    inkLine(ctx, outline, 0.7, true);
+  }
   if (layout) {
     for (const c of layout.chimneys) paintChimney(ctx, c);
     for (const d of layout.dormers) paintDormer(ctx, b, d);

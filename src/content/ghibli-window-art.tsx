@@ -9,7 +9,8 @@ import type { FacadeLayout, FacadeWindow, Home, HomeTone, Level } from '../core/
 //   l'un transparent quand l'autre est visible) : seule l'opacité du groupe parent bascule ; les nœuds varient d'une
 //   fenêtre à l'autre (rideaux, accessoire, silhouette, balcon, appui, jardinière), jamais pour une même fenêtre ;
 // - budget : le calque entier reste sous la borne mesurée sur main (≈ 18 nœuds par fenêtre allumable, lueur comprise) ;
-//   ici 7 à 14 nœuds par fenêtre, la lueur (deux paliers + liseré) étant une définition partagée par taille (<use>) ;
+//   ici 7 à 14 nœuds par fenêtre, la lueur (deux paliers + liseré) étant une définition partagée par taille et hauteur
+//   bornée (<use>) ;
 // - aucune animation, aucun dégradé, aucun filtre.
 const INK = '#2A1A18';
 export const GLOW = 'rgba(255,214,130,0.22)';
@@ -34,35 +35,52 @@ const BAR_STEP = 1.5;
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 // Taille de la lueur arrondie au demi-pixel : une définition partagée par toutes les fenêtres de même gabarit.
 const q = (v: number): number => Math.round(v * 2) / 2;
-export const glowSize = (w: number, h: number): { w: number; h: number } => ({ w: q(w), h: q(h) });
-export const glowId = (prefix: string, w: number, h: number): string => `${prefix}-glow-${q(w) * 10}x${q(h) * 10}`;
+// Profondeur naturelle de la lueur sous l'appui ; le point le plus bas de sa forme entière est à 0,9 d + 1 (milieu de la courbe).
+const glowDepth = (h: number): number => clamp(h * 0.7, 4, 9);
+// Hauteur bornée : place sous la vitre jusqu'au plancher `floor` (étage 0 : plancher de l'étage ; socle des jumeaux : haut du
+// rez-de-chaussée), mesurée depuis le bas de la vitre arrondie (q(h)) et arrondie au demi-pixel INFÉRIEUR (jamais sous le
+// plancher) ; undefined quand la lueur entière tient (même définition que sans borne).
+export function glowBound(y: number, h: number, floor: number | null): number | undefined {
+  if (floor === null) return undefined;
+  const dMax = Math.max(0, Math.floor((floor - y - q(h)) * 2) / 2);
+  return dMax < 0.9 * glowDepth(q(h)) + 1 ? dMax : undefined;
+}
+export const glowSize = (w: number, h: number, dMax?: number): { w: number; h: number; dMax?: number } => (dMax === undefined ? { w: q(w), h: q(h) } : { w: q(w), h: q(h), dMax });
+export const glowId = (prefix: string, w: number, h: number, dMax?: number): string => `${prefix}-glow-${q(w) * 10}x${q(h) * 10}${dMax === undefined ? '' : `-${dMax * 10}`}`;
 
 // Lueur qui retombe sous l'appui, en coordonnées de la fenêtre (coin haut gauche en 0,0) : trapèze à fond arrondi de
 // `d = clamp(0,7 h, 4, 9)` px, bord net ; `k` = palier (1 : forme entière, 0,55 : palier intérieur plus court et plus étroit).
-function glowPath(w: number, h: number, k: number): string {
-  const d = clamp(h * 0.7, 4, 9);
-  return `M-0.5 ${h}H${w + 0.5}L${w + 1.5 + 1.5 * k} ${h + d * k * 0.8}Q${w / 2} ${h + d * k + 2 * k} ${-1.5 - 1.5 * k} ${h + d * k * 0.8}Z`;
+// `dMax` : hauteur bornée sous la vitre, fond arrondi gardé (aplati) : d réduit pour que le bas de la courbe (0,9 d + r/2,
+// r = 2 sans borne) n'aille pas au-delà ; sous 1 px, d = 0 et l'arrondi seul porte la lueur.
+function glowPath(w: number, h: number, k: number, dMax?: number): string {
+  let d = glowDepth(h);
+  let r = 2;
+  if (dMax !== undefined && 0.9 * d + 1 > dMax) {
+    d = dMax >= 1 ? (dMax - 1) / 0.9 : 0;
+    r = dMax >= 1 ? 2 : 2 * dMax;
+  }
+  return `M-0.5 ${h}H${w + 0.5}L${w + 1.5 + 1.5 * k} ${h + d * k * 0.8}Q${w / 2} ${h + d * k + r * k} ${-1.5 - 1.5 * k} ${h + d * k * 0.8}Z`;
 }
 
 // Lueur d'une fenêtre allumée : deux paliers plats (forme douce à bord net) + liseré fin autour du cadre, par taille.
-function Glow({ w, h }: { w: number; h: number }): ReactElement {
+function Glow({ w, h, dMax }: { w: number; h: number; dMax?: number }): ReactElement {
   return (
     <>
-      <path d={glowPath(w, h, 1)} fill={GLOW} />
-      <path d={glowPath(w, h, 0.55)} fill={GLOW} />
+      <path d={glowPath(w, h, 1, dMax)} fill={GLOW} />
+      <path d={glowPath(w, h, 0.55, dMax)} fill={GLOW} />
       <rect x={-1.6} y={-1.2} width={w + 3.2} height={h + 1.2} fill={GLOW_RIM} />
     </>
   );
 }
 
-export function GlowDefs({ prefix, sizes }: { prefix: string; sizes: readonly { w: number; h: number }[] }): ReactElement {
+export function GlowDefs({ prefix, sizes }: { prefix: string; sizes: readonly { w: number; h: number; dMax?: number }[] }): ReactElement {
   return (
     <defs>
       {sizes.map((s) => {
-        const id = glowId(prefix, s.w, s.h);
+        const id = glowId(prefix, s.w, s.h, s.dMax);
         return (
           <g key={id} id={id} data-glow-def="">
-            <Glow w={q(s.w)} h={q(s.h)} />
+            <Glow w={q(s.w)} h={q(s.h)} dMax={s.dMax} />
           </g>
         );
       })}
@@ -101,8 +119,9 @@ export function nightCurtain(color: string, wall: string): string {
 
 const rectPath = (x: number, y: number, w: number, h: number): string => `M${x} ${y}h${w}v${h}h${-w}z`;
 const curtainWidth = (w: number): number => clamp(w * 0.22, 1, 1.8);
-// Menuiserie d'une fenêtre : cadre, meneau, traverse si h ≥ 8 (comme `paintDayWindow`).
-const joineryPath = (x: number, y: number, w: number, h: number): string => `${rectPath(x, y, w, h)}M${x + w / 2} ${y}v${h}${h >= 8 ? `M${x} ${y + h * 0.33}h${w}` : ''}`;
+// Menuiserie d'une fenêtre : cadre, meneau, traverse si h ≥ 8 (comme `paintDayWindow`) ; lucarne : jamais de traverse
+// (comme sa vitre de jour, `paintGlass` de roof-painter).
+const joineryPath = ({ x, y, w, h, kind }: FacadeWindow): string => `${rectPath(x, y, w, h)}M${x + w / 2} ${y}v${h}${h >= 8 && kind !== 'dormer' ? `M${x} ${y + h * 0.33}h${w}` : ''}`;
 
 // Vitres éteintes d'un immeuble la nuit : chemins couvrant toutes ses vitres et lucarnes (`windows` : étages, cage,
 // entresol, lucarnes vitrées ; œils-de-bœuf de `dormers`) : vitre sombre, reflet, ombre du linteau, rideaux des logements
@@ -126,7 +145,7 @@ export function NightGlass({ layout, wall, opacity }: { layout: GlassLayout; wal
       glass += rectPath(x, y, w, h);
       shine += `M${x} ${y + h * 0.55}L${x + w * 0.5} ${y}H${x + w * 0.7}L${x} ${y + h * 0.95}z`;
       top += rectPath(x, y, w, 1);
-      frames += joineryPath(x, y, w, h);
+      frames += joineryPath(win);
       const balcony = balconyOf(win, layout.levels?.[win.level] ?? null, layout.x);
       if (balcony) bars += barsPath(win, balcony);
       const curtain = win.kind !== 'stair' && win.home >= 0 ? (layout.homes?.[win.home]?.curtain ?? null) : null;
@@ -240,28 +259,23 @@ function LitBalcony({ win, balcony }: { win: FacadeWindow; balcony: Balcony }): 
 
 // Fenêtre allumée : lueur (<use> de la définition de sa taille), vitre teintée, reflet haut ou barre de télé (tous deux
 // montés, l'un transparent), voilage ou rideaux du logement, accessoire ou silhouette, menuiserie, appui éclairé,
-// jardinière et balcon éclairés. `level` : étage (balcon devant la fenêtre), null pour lucarnes et socle.
-export function LitWindow({ win, home, level, tone, glow }: { win: FacadeWindow; home: Home | null; level: Level | null; tone: HomeTone; glow: string }): ReactElement {
+// jardinière et balcon éclairés. `level` : étage (balcon devant la fenêtre), null pour lucarnes et socle ; `facadeX` : x de
+// la façade (barreaux d'un balcon filant au même pas que ceux de la vitre éteinte : aucun saut pendant le fondu) ; `glow` :
+// définition de la lueur à sa taille, à hauteur bornée pour l'étage 0 et le socle (glowBound : rien sous le plancher).
+export function LitWindow({ win, home, level, facadeX, tone, glow }: { win: FacadeWindow; home: Home | null; level: Level | null; facadeX?: number; tone: HomeTone; glow: string }): ReactElement {
   const { x, y, w, h } = win;
   const tv = tone === 'tv';
   const curtain = home?.curtain ?? null;
   const prop = home ? (home.props[home.bays.indexOf(win.bay)] ?? null) : null;
-  const balcony = balconyOf(win, level);
+  const balcony = balconyOf(win, level, facadeX);
   // Appui éclairé : seules les fenêtres d'étage en ont un de peint (pas la porte-fenêtre ; les lucarnes non plus, roof-painter).
   const sill = win.kind === 'std' || win.kind === 'top';
   let voile = '';
   if (curtain?.style === 'voile') for (let k = 1; k < w; k += 1.6) voile += `M${x + k} ${y}L${x + k - 0.6} ${y + h}`;
   const cw = curtainWidth(w);
-  // Lueur bornée au plancher de l'étage le plus bas (index 0 : juste au-dessus du rez-de-chaussée, ou de l'entresol jamais
-  // allumé) : elle ne retombe pas sur le bandeau d'enseigne des boutiques. Découpe CSS du <use> (aucun nœud de plus, pas
-  // de filtre) : polygone en px de scène depuis le haut de la boîte de la définition (y − 1,2, le liseré) jusqu'au plancher ;
-  // les étages intermédiaires gardent la lueur entière, qui passe le bandeau (maquette). Socle des jumeaux : `level` est
-  // null, lueur entière.
-  const floor = win.level === 0 && level ? level.y + level.h - (y - 1.2) : null;
-  const clip = floor !== null ? `polygon(-20px -20px, ${w + 40}px -20px, ${w + 40}px ${floor}px, -20px ${floor}px)` : undefined;
   return (
     <>
-      <use href={`#${glow}`} x={x} y={y} style={clip ? { clipPath: clip } : undefined} />
+      <use href={`#${glow}`} x={x} y={y} />
       <rect x={x} y={y} width={w} height={h} fill={toneColor(tone)} />
       <rect x={x} y={y} width={w} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0 : tone === 'cream' ? 0.3 : 0.2} />
       <rect x={x + 0.6} y={y + h * 0.35} width={Math.max(0, w - 1.2)} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0.35 : 0} />
@@ -284,7 +298,7 @@ export function LitWindow({ win, home, level, tone, glow }: { win: FacadeWindow;
           <rect x={x + cw - 0.4} y={y} width={0.4} height={h} fill="rgba(0,0,0,0.18)" />
         </>
       )}
-      <path d={joineryPath(x, y, w, h)} fill="none" stroke={INK} strokeWidth={0.55} />
+      <path d={joineryPath(win)} fill="none" stroke={INK} strokeWidth={0.55} />
       {sill && <rect x={x - 1.2} y={y + h} width={w + 2.4} height={1} fill={SILL_LIT} />}
       {win.box && <rect x={x - 0.4} y={y + h + 0.2} width={w + 0.8} height={1.2} fill={GLOW_SLAB} />}
       {balcony && <LitBalcony win={win} balcony={balcony} />}

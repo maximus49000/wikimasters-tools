@@ -3,8 +3,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GhibliWindows } from '../../src/content/ghibli-windows';
-import { NightGlass, amb, luminance, nightCurtain, nightGlass, nightVoile } from '../../src/content/ghibli-window-art';
-import { PLASTERS, STONES } from '../../src/core/library/city/facade-layout';
+import { LitWindow, NightGlass, amb, luminance, nightCurtain, nightGlass, nightVoile } from '../../src/content/ghibli-window-art';
+import { PLASTERS, STONES, type FacadeWindow } from '../../src/core/library/city/facade-layout';
+import { GROUND_FLOOR } from '../../src/core/library/city/metrics';
 import { FAR_WINDOW, cityFacades } from '../../src/core/library/city/facades';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { PODIUM_H } from '../../src/core/library/scene-world';
@@ -148,12 +149,113 @@ describe('calque des fenêtres Ghibli', () => {
     const ids = new Set(defs.map((d) => d.id));
     expect(ids.size).toBe(defs.length);
     const sizes = new Set(allumables.map((w) => `${Math.round(w.w * 2) / 2}x${Math.round(w.h * 2) / 2}`));
-    expect(defs.length).toBe(sizes.size);
+    // Une définition par taille, plus une par hauteur bornée (étage 0, socle) : chacune servie, aucune en double.
+    expect(defs.length).toBeGreaterThanOrEqual(sizes.size);
+    const used = new Set(lamps().map((el) => el.querySelector('use')!.getAttribute('href')!.slice(1)));
+    expect(used.size).toBe(defs.length);
     // Chaque fenêtre allumée reprend la définition de sa taille.
     for (const el of lamps()) {
       const href = el.querySelector('use')!.getAttribute('href')!;
       expect(ids.has(href.slice(1))).toBe(true);
     }
+  });
+
+  it('lueur bornée en SVG : aucune lueur de l’étage 0 ni du socle des jumeaux ne descend sous son plancher', () => {
+    // Point le plus bas d'un chemin de lueur (segments et courbe quadratique échantillonnée), en coordonnées de la définition.
+    const lowest = (d: string): number => {
+      const n = (d.match(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? []).map(Number);
+      const [, h, , , ly, , cy, , y2] = n as number[];
+      let m = Math.max(h!, ly!, y2!);
+      for (let t = 0; t <= 1; t += 0.01) m = Math.max(m, (1 - t) ** 2 * ly! + 2 * (1 - t) * t * cy! + t * t * y2!);
+      return m;
+    };
+    let level0 = 0;
+    let podium = 0;
+    for (let seed = 1; seed <= 12 && (level0 === 0 || podium === 0); seed++) {
+      const buildings = cityFacades(1440, 340, seed);
+      const ground = cityMetrics(340).ground;
+      render({ buildings });
+      const els = lamps();
+      let k = 0;
+      for (const b of buildings) {
+        if (b.far) continue;
+        const tower = b.layout?.windows.length ?? 0;
+        b.lamps.forEach((win, j) => {
+          if (win.home < 0) return;
+          const el = els[k++]!;
+          const use = el.querySelector('use')!;
+          // Plus de découpe CSS : la borne est dans la définition elle-même.
+          expect(use.getAttribute('style')).toBeNull();
+          let floor: number | null = null;
+          if (j < tower && win.level === 0) {
+            const lv = b.layout!.levels[0]!;
+            floor = lv.y + lv.h;
+            level0++;
+          } else if (j >= tower) {
+            floor = ground - GROUND_FLOOR;
+            podium++;
+          }
+          if (floor === null) return;
+          const def = container.querySelector(`[id="${use.getAttribute('href')!.slice(1)}"]`)!;
+          const y = Number(use.getAttribute('y'));
+          for (const p of def.querySelectorAll('path')) expect(y + lowest(p.getAttribute('d')!)).toBeLessThanOrEqual(floor + 1e-6);
+          // Fond arrondi gardé : la lueur reste un chemin à courbe.
+          expect(def.querySelector('path')!.getAttribute('d')).toContain('Q');
+        });
+      }
+      expect(k).toBe(els.length);
+    }
+    expect(level0).toBeGreaterThan(0);
+    expect(podium).toBeGreaterThan(0);
+  });
+
+  it('balcon filant : les barreaux de la fenêtre allumée tombent sur ceux de la vitre éteinte (pas de saut au fondu)', () => {
+    const barXs = (d: string): string[] => [...d.matchAll(/M(-?[\d.]+) [\d.e-]+V/g)].map((m) => Number(m[1]).toFixed(4));
+    render({ daylight: 0 });
+    const glass = [...container.querySelectorAll('[data-night-glass]')];
+    const els = lamps();
+    const near = facades.filter((b) => !b.far && b.layout);
+    let k = 0;
+    let checked = 0;
+    for (const b of facades) {
+      if (b.far) continue;
+      const tower = b.layout?.windows.length ?? 0;
+      const night = b.layout ? new Set(barXs(glass[near.indexOf(b)]!.querySelector('[data-night-bars]')?.getAttribute('d') ?? '')) : new Set<string>();
+      b.lamps.forEach((win, j) => {
+        if (win.home < 0) return;
+        const el = els[k++]!;
+        if (j >= tower || win.kind !== 'french' || b.layout!.levels[win.level]?.balcony !== 'filant') return;
+        const bars = [...el.querySelectorAll('path')].find((p) => p.getAttribute('stroke-width') === '0.5')!;
+        const xs = barXs(bars.getAttribute('d')!);
+        expect(xs.length).toBeGreaterThan(0);
+        for (const x of xs) expect(night.has(x), `barreau ${x}`).toBe(true);
+        checked++;
+      });
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('lucarne haute (h ≥ 8) : pas de traverse, ni allumée ni éteinte, comme la vitre de jour', () => {
+    const win: FacadeWindow = { x: 10, y: 20, w: 5, h: 9, kind: 'dormer', level: -1, bay: 0, home: 0, key: 0, u: 0.5, blue: false, main: true, box: false };
+    const std: FacadeWindow = { ...win, kind: 'std', level: 0 };
+    const draw = (w: FacadeWindow) =>
+      act(() => {
+        root.render(
+          <svg>
+            <NightGlass layout={{ windows: [w], dormers: [] }} wall="#EDE2C8" opacity={1} />
+            <LitWindow win={w} home={null} level={null} tone="warm" glow="g" />
+          </svg>,
+        );
+      });
+    const traverse = `M10 ${20 + 9 * 0.33}h5`;
+    draw(win);
+    expect(container.querySelector('[data-night-frames]')!.getAttribute('d')).not.toContain(traverse);
+    const lit = [...container.querySelectorAll('path')].filter((p) => p.getAttribute('stroke-width') === '0.55');
+    expect(lit.length).toBe(2);
+    for (const p of lit) expect(p.getAttribute('d')).not.toContain(traverse);
+    // Fenêtre d'étage de même taille : traverse gardée (paintDayWindow).
+    draw(std);
+    expect(container.querySelector('[data-night-frames]')!.getAttribute('d')).toContain(traverse);
   });
 
   it('vitres éteintes jamais plus claires que le mur : voilage et rideaux ambiants sous la luminance du mur ambiant', () => {

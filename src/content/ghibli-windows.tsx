@@ -1,10 +1,11 @@
 import { useId, useMemo, type ReactElement } from 'react';
 import { nightness, roomLit, roomTone, windowLit, type WindowDay } from '../core/library/city/window-lights';
-import { FAR_WINDOW, type Facade, type FarWindow } from '../core/library/city/facades';
+import { FAR_WINDOW, GROUND_FLOOR, type Facade, type FarWindow } from '../core/library/city/facades';
+import { PODIUM_H } from '../core/library/scene-world';
 import type { FacadeWindow, Home, Level } from '../core/library/city/facade-layout';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import type { Rgb } from '../core/library/paint/color';
-import { GlowDefs, LitWindow, NightGlass, glowId, glowSize } from './ghibli-window-art';
+import { GlowDefs, LitWindow, NightGlass, glowBound, glowId, glowSize } from './ghibli-window-art';
 
 // Calque des fenêtres de la ville peinte (vague Ghibli), hors filtre d'étalonnage, au-dessus des tranches du décor. Ordre :
 // 1. lumières du mur du fond (déjà privées de celles que cache le premier plan, facades.ts) ;
@@ -22,8 +23,18 @@ function FarLight({ win, lit, dim, farLight }: { win: FarWindow; lit: boolean; d
 
 const hex = (c: Rgb): string => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 
-// Fenêtre allumable et ce qu'il faut pour la dessiner : logement, étage (null : lucarne, socle), groupe du logement.
-type Slot = { win: FacadeWindow; home: Home; level: Level | null; group: string };
+// Fenêtre allumable et ce qu'il faut pour la dessiner : logement, étage (null : lucarne, socle), x de la façade (barreaux
+// des balcons filants), hauteur bornée de la lueur (`dMax`, undefined : lueur entière), groupe du logement.
+type Slot = { win: FacadeWindow; home: Home; level: Level | null; facadeX: number | undefined; dMax: number | undefined; group: string };
+
+// Plancher sous lequel la lueur ne retombe pas (sur le bandeau d'enseigne des boutiques) : étage le plus bas de la tour
+// (index 0 : juste au-dessus du rez-de-chaussée, ou l'entresol jamais allumé) ; haut du rez-de-chaussée sous le socle des
+// jumeaux (vitre centrée dans la bande de PODIUM_H − GROUND_FLOOR, podiumLayout). Ailleurs aucun : la lueur des étages
+// intermédiaires passe le bandeau (maquette).
+function floorOf(win: FacadeWindow, level: Level | null, podium: boolean): number | null {
+  if (podium) return win.y + win.h + (PODIUM_H - GROUND_FLOOR - win.h) / 2;
+  return win.level === 0 && level ? level.y + level.h : null;
+}
 
 function slotsOf(buildings: readonly Facade[]): Slot[] {
   const out: Slot[] = [];
@@ -34,7 +45,8 @@ function slotsOf(buildings: readonly Facade[]): Slot[] {
     b.lamps.forEach((win, j) => {
       if (win.home < 0) return;
       const level = j < tower && win.level >= 0 ? (b.layout!.levels[win.level] ?? null) : null;
-      out.push({ win, home: b.homes[win.home]!, level, group: `${i}:${win.home}` });
+      const dMax = glowBound(win.y, win.h, floorOf(win, level, j >= tower));
+      out.push({ win, home: b.homes[win.home]!, level, facadeX: b.layout?.x, dMax, group: `${i}:${win.home}` });
     });
   });
   return out;
@@ -44,10 +56,10 @@ function slotsOf(buildings: readonly Facade[]): Slot[] {
 export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, farLight, plan }: { buildings: Facade[]; minutes: number; day: WindowDay | undefined; daylight: number; gloom: boolean; dim: number; farLight: number; plan?: Pick<CityPaintPlan, 'buildings' | 'podiums'> | null }): ReactElement {
   const prefix = `w${useId().replace(/:/g, '')}`;
   const slots = useMemo(() => slotsOf(buildings), [buildings]);
-  // Une lueur par taille de fenêtre (arrondie au demi-pixel), partagée par <use>.
+  // Une lueur par taille de fenêtre (arrondie au demi-pixel) et hauteur bornée, partagée par <use>.
   const sizes = useMemo(() => {
-    const seen = new Map<string, { w: number; h: number }>();
-    for (const s of slots) seen.set(glowId('', s.win.w, s.win.h), glowSize(s.win.w, s.win.h));
+    const seen = new Map<string, { w: number; h: number; dMax?: number }>();
+    for (const s of slots) seen.set(glowId('', s.win.w, s.win.h, s.dMax), glowSize(s.win.w, s.win.h, s.dMax));
     return [...seen.values()];
   }, [slots]);
   const panes = useMemo(() => {
@@ -65,11 +77,11 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
       <GlowDefs prefix={prefix} sizes={sizes} />
       {buildings.map((b, i) => b.farWindows.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} />))}
       {panes.map((p) => <NightGlass key={p.key} layout={p.layout} wall={p.wall} opacity={glass} />)}
-      {slots.map(({ win, home, level, group }, k) => {
+      {slots.map(({ win, home, level, facadeX, dMax, group }, k) => {
         const lit = roomLit(win, minutes, day, daylight, gloom);
         return (
           <g key={k} data-lamp="" data-lit={lit ? 'true' : 'false'} data-home={group} data-main={win.main ? 'true' : 'false'} opacity={lit ? dim : 0} style={{ transition: FADE }}>
-            <LitWindow win={win} home={home} level={level} tone={roomTone(home, win.main, minutes)} glow={glowId(prefix, win.w, win.h)} />
+            <LitWindow win={win} home={home} level={level} facadeX={facadeX} tone={roomTone(home, win.main, minutes)} glow={glowId(prefix, win.w, win.h, dMax)} />
           </g>
         );
       })}
