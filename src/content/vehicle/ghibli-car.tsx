@@ -239,9 +239,10 @@ export function placeCar(fig: FigureRegistry, cars: CarRegistry, node: Element, 
 // scheduledCrew) rendus d'avance, mêmes palettes que leurs GhibliFigure (graine du siège, enfant) et poses du début du trajet
 // (regard devant ; conducteur : coup d'œil, passagers : tête tournée de part et d'autre).
 const PREWARM_HEADS: Readonly<Record<Seat['role'], readonly number[]>> = { driver: [0, 1], front: [0, 2, -2], rear: [0, 2, -2] };
-export function prewarmSeats(fig: FigureRegistry, seats: readonly Seat[], dir: 1 | -1, sky: Sky, rainy: boolean): void {
+// `lead` : secondes avant l'entrée du véhicule.
+export function prewarmSeats(fig: FigureRegistry, seats: readonly Seat[], dir: 1 | -1, sky: Sky, rainy: boolean, lead = Infinity): void {
   for (const s of seats) {
     const poses = PREWARM_HEADS[s.role].map((h) => ({ yaw: yawOf(dir), gait: gaitOf(s), phase: 0, head: h * dir, arms: armsOf(s) }));
-    prewarmCitizen(fig, { outfit: outfitOf(s), sky, rainy, umbrella: false, id: { citizen: s.outfitSeed, ...(s.child ? { kind: 'child' as const } : {}) } }, poses);
+    prewarmCitizen(fig, { outfit: outfitOf(s), sky, rainy, umbrella: false, id: { citizen: s.outfitSeed, ...(s.child ? { kind: 'child' as const } : {}) } }, poses, lead);
   }
 }

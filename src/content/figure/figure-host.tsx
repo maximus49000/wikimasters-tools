@@ -241,8 +241,13 @@ const CITIZEN_RETRY_MS = 30_000;
 // avant le pantin. Sinon elle n'y retourne jamais : l'image 3D la plus proche du même habitant est servie (nearest3D).
 export const HOLD_3D_FRAMES = 30;
 // Demandes d'avance (prewarm : habitant qui va sortir de sa porte, voyageur encore dans le bus) : gardées ce nombre d'images
-// sans être renouvelées, à la priorité 1 (avant les nouveaux cycles), sans perdre leur rang en vieillissant.
+// sans être renouvelées, sans perdre leur rang en vieillissant. Priorité 1 (avant les nouveaux cycles) seulement si l'habitant
+// paraît dans moins de PREWARM_SOON_S secondes ; sinon la plus basse (PRIO_WARM) : les premiers cycles des figures montrées en
+// pantin passent avant. Au plus PREWARM_PER_S habitants distincts admis par seconde (les demandes « bientôt » passent toujours).
 export const PREWARM_TTL = 120;
+export const PREWARM_SOON_S = 3;
+export const PREWARM_PER_S = 16;
+const PRIO_WARM = 5;
 // Orientations voisines d'un marcheur dont le cycle est complet : préparées à la plus basse priorité (4), redemandées toutes
 // les NEIGHBOR_EVERY images (sous STALE_CYCLE : la demande ne vieillit jamais tant que le marcheur est montré).
 const NEIGHBOR_EVERY = 10;
@@ -252,7 +257,7 @@ const NEIGHBOR_EVERY = 10;
 // en pantin). Le reste part du plus ancien au plus récent, d'abord les pantins des habitants montrés en 3D (ils ne servent plus)
 // et les images d'avance restées inutilisées PREWARM_TTL images. Mémoire bornée : au-delà de HARD_SHARE × plafond, les épinglés
 // partent aussi (les souvenirs en dernier) ; une image détenue par un nœud ne part jamais.
-const PIN_FRAMES = 30;
+export const PIN_FRAMES = 30;
 const KEEP_SHARE = 0.1;
 const HARD_SHARE = 1.5;
 // Demandes d'avance et orientations voisines : seulement si les images épinglées laissent de la place (moins de
@@ -320,7 +325,8 @@ const repKey = (key: FigureKey): FigureKey => {
 // orientation, nouveau geste) ou visage (une image seule par flush au plus), 1 = cycle commencé,
 // 2 = nouveau cycle, 3 = cycle déjà complet à un autre palier de lumière (servi en attendant).
 // `ttl` : images sans renouvellement avant l'abandon (demandes d'avance ; défaut : STALE_CYCLE / STALE_ONE), et pas de
-// perte de priorité en vieillissant. Priorité 4 : orientations voisines d'un marcheur (quand il ne reste rien d'autre).
+// perte de priorité en vieillissant. Priorité 4 : orientations voisines d'un marcheur (quand il ne reste rien d'autre) ;
+// 5 : demandes d'avance d'un habitant qui ne paraît pas avant PREWARM_SOON_S (1 s'il paraît plus tôt).
 type Job = { kind: 'cycle' | 'one'; pk: string; key: FigureKey; face: string; cid: string; at: number; prio: number; ttl?: number };
 // Sprite 3D rendu : son cycle, sa phase, sa clé « habitant + pose + visage » (index sans la lumière), l'habitant et la pose.
 // `standIn` : image reprise d'un autre registre (inherit) — servie en attendant, jamais comptée dans un cycle.
@@ -391,6 +397,13 @@ export class FigureRegistry {
   // Images sans travail 3D à venir (dette) : une étape de d ms en coûte ceil(d / RENDER_BUDGET_MS) − 1, pour que la moyenne
   // reste dans le budget même quand un habillage ou un rendu le dépasse.
   private debt = 0;
+  // Habitants admis par prewarm dans la seconde en cours (PREWARM_PER_S).
+  private warmSec = -1;
+  private readonly warmSeen = new Set<string>();
+  // Dernière passe d'éviction restée au-dessus du plafond (tout le reste détenu ou épinglé) : taille et image. Pas de nouveau
+  // parcours tant que le cache ne grossit pas et que PIN_FRAMES images ne sont pas passées (les épingles n'ont pas pu tomber).
+  private stuckSize = -1;
+  private stuckFrame = 0;
   // `label` : nom de l'affichage (repère au débogage).
   constructor(
     readonly label: string,
@@ -496,6 +509,11 @@ export class FigureRegistry {
     if (this.now() - c.failedAt < CITIZEN_RETRY_MS) return false;
     c.failedAt = undefined;
     return true;
+  }
+  // La 3D a déjà rendu dans ce registre et n'est pas hors service : les attentes de la 3D (véhicules retenus hors champ) en valent
+  // la peine. Faux tant que rien n'a été rendu (3D qui ne vient jamais : rien n'est retenu).
+  live3D(): boolean {
+    return this.everRendered && !this.dead();
   }
   // Une palette porte-t-elle un habitant 3D (et le rendu 3D peut-il venir maintenant) ?
   is3D(pk: string): boolean {
@@ -656,6 +674,25 @@ export class FigureRegistry {
   // souvenirs en dernier.
   private evict(): void {
     if (this.sprites.size <= this.max) return;
+    // Aucun habitant 3D : la boucle LRU d'avant, à l'identique (une clé détenue passe en fin de Map ; une passe complète sans
+    // retrait s'arrête).
+    if (this.citizens.size === 0) {
+      let skipped = 0;
+      while (this.sprites.size > this.max && skipped < this.sprites.size) {
+        const [sk, url] = this.sprites.entries().next().value as [string, string];
+        this.sprites.delete(sk);
+        if (this.counts.has(sk)) {
+          this.sprites.set(sk, url);
+          skipped++;
+          continue;
+        }
+        if (this.anchors3d.delete(sk)) this.forget3D(sk);
+        skipped = 0;
+      }
+      return;
+    }
+    if (this.stuckSize >= 0 && this.sprites.size <= this.stuckSize && this.frame - this.stuckFrame < PIN_FRAMES) return;
+    this.stuckSize = -1;
     const passes: [number, (sk: string) => boolean][] = [
       [this.max, (sk) => !this.pinned(sk) && this.cheap(sk)],
       [this.max, (sk) => !this.pinned(sk)],
@@ -669,6 +706,8 @@ export class FigureRegistry {
       }
       if (this.sprites.size <= this.max) return;
     }
+    this.stuckSize = this.sprites.size;
+    this.stuckFrame = this.frame;
   }
   private countShown(): void {
     let n = 0;
@@ -734,16 +773,27 @@ export class FigureRegistry {
     const url = now ? (this.hit(sk) ?? this.create(pk, key2D, sk)) : this.request2D(pk, key2D, sk);
     return url === null ? null : { sk, url };
   }
-  // Demande d'avance du cycle d'une pose (habitant qui va sortir de sa porte, voyageur dans le bus) : à la priorité 1, gardée
-  // `ttl` images sans renouvellement ; rien si le cycle est déjà complet ou sans 3D.
-  prewarm(pk: string, key2D: FigureKey, ttl = PREWARM_TTL): void {
+  // Demande d'avance du cycle d'une pose (habitant qui va sortir de sa porte, voyageur dans le bus), `lead` secondes avant qu'il
+  // paraisse : priorité 1 sous PREWARM_SOON_S, sinon la plus basse ; gardée `ttl` images sans renouvellement ; rien si le cycle est
+  // déjà complet, sans 3D, ou au-delà de PREWARM_PER_S habitants admis cette seconde. Le rig n'est pas tenu en réserve (touch)
+  // avant que la demande ne soit rendue (flush3D).
+  prewarm(pk: string, key2D: FigureKey, lead = Infinity, ttl = PREWARM_TTL): void {
     const c = this.citizenOf(pk);
     if (!c || this.c3d === null || this.dead() || !this.usable(c) || !this.headroom()) return;
-    this.touch(c);
     const key = repKey(key2D);
     const cid = this.cycleId(c, key);
     if (this.complete(cid, key)) return;
-    this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key, face: this.baseFace(c, key), cid, prio: 1, ttl });
+    const soon = lead < PREWARM_SOON_S;
+    const sec = Math.floor(this.now() / 1000);
+    if (sec !== this.warmSec) {
+      this.warmSec = sec;
+      this.warmSeen.clear();
+    }
+    if (!this.warmSeen.has(c.ck)) {
+      if (!soon && this.warmSeen.size >= PREWARM_PER_S) return;
+      this.warmSeen.add(c.ck);
+    }
+    this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key, face: this.baseFace(c, key), cid, prio: soon ? 1 : PRIO_WARM, ttl });
   }
   // Vue remplacée par une autre (bascule de la vue Dehors : autre résolution) : les images 3D de l'ancien registre sont reprises
   // comme images d'attente (ni cycles complets ni « dernier rendu ») : les figures montrées en 3D le restent, à leur pose,
@@ -943,6 +993,8 @@ export class FigureRegistry {
         // Habillage à part (le plus gros d'un premier rendu) : une image pour habiller, le rendu à une image suivante.
         if (R.hasRig && R.buildRig && !R.hasRig(c.desc)) {
           if (this.now() - t0 >= RENDER_BUDGET_MS) break jobs;
+          // Demande d'avance qui passe au rendu : son rig est désormais tenu en réserve.
+          if (job.ttl !== undefined) this.touch(c);
           const s = this.now();
           let ok: boolean;
           let why: 'engine' | 'citizen' | 'notReady' | null;
@@ -970,6 +1022,7 @@ export class FigureRegistry {
           if (this.now() - t0 >= RENDER_BUDGET_MS) break jobs;
           let out: CitizenSprite | null;
           let why: 'engine' | 'citizen' | 'notReady' | null;
+          if (job.ttl !== undefined) this.touch(c);
           const s = this.now();
           try {
             out = R.render(c.desc, k, Number.isFinite(light) ? light : 1, job.face);

@@ -4,7 +4,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import { BLANK_SPRITE, CLOSE_UP_SPRITES_MAX, FIGURE_SPRITES_MAX, FigureContext, FigureRegistry, HOLD_3D_FRAMES, figureAnchors, paletteKey, phaseSet, sharedCitizen3D, spriteKey, spriteKey3D, viewFigureOptions, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
+import { BLANK_SPRITE, CLOSE_UP_SPRITES_MAX, FIGURE_SPRITES_MAX, PIN_FRAMES, PREWARM_PER_S, FigureContext, FigureRegistry, HOLD_3D_FRAMES, figureAnchors, paletteKey, phaseSet, sharedCitizen3D, spriteKey, spriteKey3D, viewFigureOptions, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
 import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, hideFigure, poseFigure, prewarmCitizen, prewarmFigure, rainOutfit, setShown3DFitter, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
 import { CitizenRenderer } from '../../../src/content/citizens/citizen-renderer';
 import { RENDER_BUDGET_MS, WAIT3D_FALLBACK_MS } from '../../../src/content/figure/citizen-config';
@@ -13,7 +13,7 @@ import { PHASES } from '../../../src/core/library/figure/skeleton';
 import { shapeOf, signatureOf } from '../../../src/core/library/figure/dress';
 import { skyAt, sunTimes, type Sky } from '../../../src/core/library/sky';
 import { hashString } from '../../../src/core/library/scene-world';
-import { citizen, type CitizenDesc } from '../../../src/core/citizens/catalogue';
+import { citizen, citizenKey, type CitizenDesc } from '../../../src/core/citizens/catalogue';
 import type { Outfit, Top } from '../../../src/core/library/city/people';
 import { tone } from '../../../src/content/city-sprites';
 
@@ -906,7 +906,8 @@ describe('retours S26 : demandes d’avance (habitants qui sortent de leur porte
     fake.isReady = true;
     const others = OUTFITS.map((out) => mount(r, fig({ out: { ...out, topColor: '#abcdef' } })));
     const resident: Outfit = { ...o, topColor: '#3D9970' };
-    prewarmCitizen(r, { outfit: resident, sky, rainy: false, umbrella: false, id: { citizen: 77 } }, [POSE]);
+    // Il paraît dans 1 s (sous PREWARM_SOON_S) : avant les nouveaux cycles des figures montrées.
+    prewarmCitizen(r, { outfit: resident, sky, rainy: false, umbrella: false, id: { citizen: 77 } }, [POSE], 1);
     // 30 images sans renouveler la demande (les autres figures redemandent les leurs à chaque image).
     for (let i = 0; i < 30; i++) {
       for (const w of others) poseFigure(r, w.node, { ...POSE, phase: i % PHASES });
@@ -916,6 +917,70 @@ describe('retours S26 : demandes d’avance (habitants qui sortent de leur porte
     const w = mount(r, <GhibliFigure outfit={resident} sky={sky} rainy={false} umbrella={false} initial={POSE} citizen={77} />);
     expect(is3DKey(w.node)).toBe(true);
     for (const x of [...others, w]) x.unmount();
+  });
+  it('habitant qui paraît dans plus de 3 s : après les premiers cycles des figures montrées en pantin', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const who: string[] = [];
+    const render = fake.render.bind(fake);
+    fake.render = (d, k, l, f) => {
+      who.push(citizenKey(d));
+      return render(d, k, l, f);
+    };
+    const others = OUTFITS.map((out) => mount(r, fig({ out: { ...out, topColor: '#abcdef' } })));
+    prewarmCitizen(r, { outfit: { ...o, topColor: '#3D9970' }, sky, rainy: false, umbrella: false, id: { citizen: 77 } }, [POSE], 10);
+    let i = 0;
+    for (; i < 200 && !others.every((w) => is3DKey(w.node)); i++) {
+      for (const w of others) poseFigure(r, w.node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+    expect(others.every((w) => is3DKey(w.node))).toBe(true);
+    // Rien de l'habitant à venir tant que les figures montrées n'avaient pas leur cycle.
+    expect(new Set(who).size).toBe(OUTFITS.length);
+    // Ensuite, son tour vient (demande gardée PREWARM_TTL images).
+    for (let j = 0; j < 60; j++, i++) {
+      for (const w of others) poseFigure(r, w.node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+    expect(new Set(who).size).toBe(OUTFITS.length + 1);
+    for (const w of others) w.unmount();
+  });
+  it('au plus PREWARM_PER_S habitants distincts admis par seconde ; ceux qui paraissent bientôt passent toujours', () => {
+    const { r, fake, clock } = setup();
+    fake.isReady = true;
+    const who = new Set<string>();
+    const render = fake.render.bind(fake);
+    fake.render = (d, k, l, f) => {
+      who.add(citizenKey(d));
+      return render(d, k, l, f);
+    };
+    const look = (i: number) => ({ outfit: { ...o, topColor: `#${(0x102030 + i * 0x010101).toString(16)}` }, sky, rainy: false, umbrella: false, id: { citizen: 1000 + i } });
+    const N = PREWARM_PER_S + 4;
+    for (let i = 0; i < N; i++) prewarmCitizen(r, look(i), [POSE], 10);
+    for (let f = 0; f < 5; f++) r.flush();
+    expect(who.size).toBe(PREWARM_PER_S);
+    // Seconde suivante : les autres sont admis.
+    clock.t += 1000;
+    for (let i = 0; i < N; i++) prewarmCitizen(r, look(i), [POSE], 10);
+    for (let f = 0; f < 5; f++) r.flush();
+    expect(who.size).toBe(N);
+    // Dans la même seconde, N autres habitants qui paraissent dans 1 s : tous admis.
+    clock.t += 1000;
+    for (let i = N; i < 2 * N; i++) prewarmCitizen(r, look(i), [POSE], 10);
+    for (let i = N; i < 2 * N; i++) prewarmCitizen(r, look(i), [POSE], 1);
+    for (let f = 0; f < 5; f++) r.flush();
+    expect(who.size).toBe(2 * N);
+  });
+  it('demande d’avance : le rig n’est tenu en réserve (touch) qu’au moment de son rendu', () => {
+    const { r, fake } = setup();
+    fake.isReady = true;
+    const touch = vi.fn();
+    (fake as unknown as { touch: typeof touch }).touch = touch;
+    prewarmCitizen(r, { outfit: { ...o, topColor: '#3D9970' }, sky, rainy: false, umbrella: false, id: { citizen: 77 } }, [POSE], 10);
+    expect(touch).not.toHaveBeenCalled();
+    r.flush();
+    expect(fake.renders).toBeGreaterThan(0);
+    expect(touch).toHaveBeenCalled();
   });
   it('prewarmFigure : même chose depuis le nœud caché de la figure (palette et signature lues sur le nœud)', () => {
     const { r, fake } = setup();
@@ -981,6 +1046,58 @@ describe('retours S26 : plafond de sprites plein (cache des images 3D)', () => {
     expect(to2D).toBe(0);
     expect(lost).toBe(0);
     a.unmount();
+  });
+  it('éviction sans effet (tout est détenu ou épinglé) : pas de nouveau parcours avant que le cache grossisse ou PIN_FRAMES images', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: PHASES + 2 });
+    const a = mount(r, fig());
+    walk(r, a.node, PHASES);
+    expect(is3DKey(a.node)).toBe(true);
+    // Six pantins détenus (palette 2D) : le cache dépasse le plafond, rien ne peut partir (cycle montré épinglé).
+    const pk2 = r.addPalette(figurePalette({ ...o, topColor: '#405060' }, sky, false));
+    for (let p = 0; p < 6; p++) {
+      const k = keyOf(o, { ...POSE, phase: p });
+      r.ensure(pk2, k);
+      r.hold(document.createElementNS('http://www.w3.org/2000/svg', 'g'), spriteKey(pk2, k));
+    }
+    const pinned = vi.spyOn(r as unknown as { pinned: (sk: string) => boolean }, 'pinned');
+    let i = PHASES;
+    const step = (): void => {
+      poseFigure(r, a.node, { ...POSE, phase: i++ % PHASES });
+      r.flush();
+    };
+    step();
+    expect(r.size()).toBeGreaterThan(PHASES + 2);
+    expect(pinned).toHaveBeenCalled();
+    pinned.mockClear();
+    for (let f = 0; f < PIN_FRAMES - 2; f++) step();
+    expect(pinned).not.toHaveBeenCalled();
+    for (let f = 0; f < 3; f++) step();
+    expect(pinned).toHaveBeenCalled();
+    a.unmount();
+  });
+  it('flot d’habitants montrés (épinglés) : jamais plus de 1,5 × plafond + images détenues', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const max = 2 * PHASES;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max });
+    const walkers = Array.from({ length: 10 }, (_, j) => mount(r, fig({ out: { ...o, topColor: `#30${j}0${j}0` } })));
+    let worst = 0, shown = 0;
+    for (let i = 0; i < 300; i++) {
+      walkers.forEach((w, j) => poseFigure(r, w.node, { ...POSE, yaw: (j + Math.floor(i / 40)) % 4, phase: i % PHASES }));
+      r.flush();
+      const held = new Set(walkers.map((w) => w.node.getAttribute('data-key'))).size;
+      worst = Math.max(worst, r.size() - held);
+      shown = Math.max(shown, walkers.filter((w) => is3DKey(w.node)).length);
+    }
+    // Bien des habitants montrés en même temps (leurs cycles épinglés dépassent le plafond)…
+    expect(shown).toBeGreaterThan(2);
+    // … mais la mémoire reste bornée.
+    expect(worst).toBeLessThanOrEqual(Math.floor(1.5 * max));
+    for (const w of walkers) w.unmount();
   });
   it('cache occupé par les habitants montrés : plus de rendus d’avance (mémoire bornée)', () => {
     const clock = { t: 0 };

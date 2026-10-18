@@ -425,21 +425,22 @@ export function poseFigure(reg: FigureRegistry, node: Element | null, pose: Pose
 }
 
 // Demande d'avance des cycles 3D de poses à venir d'une figure (même cachée : sa palette et sa signature sont sur le nœud) :
-// un habitant qui va sortir de sa porte apparaît directement en 3D. À renouveler avant PREWARM_TTL images.
-export function prewarmFigure(reg: FigureRegistry, node: Element | null, poses: readonly PoseIn[]): void {
+// un habitant qui va sortir de sa porte apparaît directement en 3D. À renouveler avant PREWARM_TTL images. `lead` : secondes
+// avant qu'il paraisse (priorité, voir FigureRegistry.prewarm ; inconnu : la plus basse).
+export function prewarmFigure(reg: FigureRegistry, node: Element | null, poses: readonly PoseIn[], lead = Infinity): void {
   const sig = node?.getAttribute('data-sig');
   const pk = node?.getAttribute('data-palette');
   if (!CITIZENS_3D || !sig || pk === null || pk === undefined) return;
-  for (const p of poses) reg.prewarm(pk, keyOf(sig, p));
+  for (const p of poses) reg.prewarm(pk, keyOf(sig, p), lead);
 }
 // Même chose pour un personnage qui n'a pas encore de nœud (voyageur encore dans le bus) : sa palette est celle que
 // GhibliFigure calculera pour les mêmes réglages et la même identité.
-export function prewarmCitizen(reg: FigureRegistry, look: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean; work?: Work; id?: CitizenIdentity }, poses: readonly PoseIn[]): void {
+export function prewarmCitizen(reg: FigureRegistry, look: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean; work?: Work; id?: CitizenIdentity }, poses: readonly PoseIn[], lead = Infinity): void {
   if (!CITIZENS_3D) return;
   const work = look.work ?? 'none';
   const pk = reg.addPalette(citizenPalette(reg, look.outfit, look.sky, look.rainy, look.umbrella, work, look.id));
   const sig = signatureOf(shapeOf(look.outfit, look.umbrella, work));
-  for (const p of poses) reg.prewarm(pk, keyOf(sig, p));
+  for (const p of poses) reg.prewarm(pk, keyOf(sig, p), lead);
 }
 
 // Cache une figure (nœud devenu inactif) : <image> sans href, data-key effacé, clé libérée, objets tenus cachés. Idempotent.

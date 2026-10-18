@@ -386,7 +386,7 @@ function warmShop(st: ShopState, rt: ShopRt, n: number, sec: number, figures: Fi
       if (st.refused.has(party) || (!st.admitted.has(party) && (!rt.open || st.muted.has(party)))) continue;
       for (const w of warmPosesOf(track, rt, sc)) {
         const look = lookOf(st, rt, track, w.out, figures);
-        figures.prewarm(look.pk, { sig: look.sig, ...w.pose });
+        figures.prewarm(look.pk, { sig: look.sig, ...w.pose }, info.from - tIn);
       }
     }
   }

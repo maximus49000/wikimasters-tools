@@ -221,7 +221,7 @@ export function warmCustomers(nodes: ReadonlyMap<string, Element>, visits: Visit
     }
     for (const w of e.poses) {
       const id = w.node === 'street' ? v.id : w.node === 'door' ? doorId(v) : insideId(v);
-      prewarmFigure(figures, nodes.get(id)?.querySelector('[data-figure]') ?? null, [w.pose]);
+      prewarmFigure(figures, nodes.get(id)?.querySelector('[data-figure]') ?? null, [w.pose], e.at - t);
     }
   }
 }
