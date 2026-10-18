@@ -1,5 +1,5 @@
 import { doorsFor, DOOR_MARGIN, DOOR_WIDTH } from '../city/doors';
-import { PLASTERS, STONES as LAYOUT_STONES, TILES, ZINCS, type FacadeLayout, type Home, type Roof, type WindowKind } from '../city/facade-layout';
+import { PLASTERS, STONES as LAYOUT_STONES, TILES, ZINCS, type FacadeLayout, type Home, type PodiumLayout, type Roof, type WindowKind } from '../city/facade-layout';
 import { cityFacades, FAR_WINDOW, GROUND_FLOOR } from '../city/facades';
 import { cityMetrics } from '../city/metrics';
 import { shopSlotsFor } from '../city/shops/slots';
@@ -37,8 +37,9 @@ export type Look = {
 // égalent ceux de la 1re. `homes` : logements de la façade (index `home` des fenêtres de `layout`). `wins` du premier plan :
 // fenêtres d'étage de la mise en page (lucarnes exclues : peintes par le toit), rideau d'après le logement.
 export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; look: Look; podiumTop: number | null; layout: FacadeLayout | null; homes: Home[] };
-// Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumLayout`.
-export type PaintPodium = { id: number; x: number; w: number; top: number; stone: Rgb; wins: Win[] };
+// Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumLayout` (`layout` :
+// la mise en page de son étage, fenêtres et logements, pour les peindre comme celles des façades ; null hors du monde).
+export type PaintPodium = { id: number; x: number; w: number; top: number; stone: Rgb; wins: Win[]; layout: PodiumLayout | null };
 export type Tree = { id: number; x: number; base: number; cy: number; r: number };
 export type Span = { x0: number; x1: number };
 // Maison du fond : `row` 0 (le plus loin) à 2 ; `base` = sol du rang ; `s` échelle ; `haze` brume ; `top` = haut du toit.
@@ -314,7 +315,7 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     // Fenêtres de la mise en page du socle (podiumLayout), à leur taille et position ; rideau d'après le logement.
     const pl = f.podiumLayout;
     const wins: Win[] = (pl?.windows ?? []).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, dormer: false, curtain: !!pl!.homes[v.home]?.curtain }));
-    podiums.push({ id: p.id, x: p.x, w: p.w, top: m.ground - p.h, stone, wins });
+    podiums.push({ id: p.id, x: p.x, w: p.w, top: m.ground - p.h, stone, wins, layout: pl });
   }
   const blocked: Span[] = [
     ...doorsFor(width, height, seed).map((d) => ({ x0: d.x - DOOR_MARGIN, x1: d.x + DOOR_WIDTH + DOOR_MARGIN })),

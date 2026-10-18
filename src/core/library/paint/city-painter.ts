@@ -1,9 +1,9 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { cellRng, type Box } from './brush';
-import { INK, TAU, disc, fillRect, groundShadow, inkRect, light, poly, shade } from './cel';
+import { INK, TAU, disc, fillRect, groundShadow, inkRect, light, shade } from './cel';
 import { GROUND_FLOOR } from '../city/facades';
-import { HILL_ROWS, LEFT_GAP, leftOf, type CityPaintPlan, type Furniture, type HillHouse, type Landmark, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree, type Win } from './city-plan';
-import { paintFacade } from './facade-painter';
+import { HILL_ROWS, LEFT_GAP, leftOf, type CityPaintPlan, type Furniture, type HillHouse, type Landmark, type Look, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree } from './city-plan';
+import { paintDayWindow, paintFacade } from './facade-painter';
 import { paintParisRoof } from './roof-painter';
 import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
@@ -18,7 +18,6 @@ export const TILE = 360;
 export const PAINT_VERSION = 8;
 
 const LEAVES = ['#2A6A2E', '#52A23C', '#A8DC58'].map(hexRgb);
-const GLASS = hexRgb('#7FB4E0');
 const BARK = hexRgb('#9A8468');
 const SIDEWALK = hexRgb('#E6D4AE');
 const COBBLE = hexRgb('#B49E7A');
@@ -293,27 +292,17 @@ function paintFurniture(ctx: PaintCtx, plan: CityPaintPlan, f: Furniture): void 
   ctx.stroke();
 }
 
-// Fenêtre d'habitation (tour ou socle) : vitre, reflet, rideaux, trait et meneau.
-function paintPane(ctx: PaintCtx, win: Win): void {
-  fillRect(ctx, GLASS, win.x, win.y, win.w, win.h);
-  poly(ctx, 'rgba(255,255,255,0.75)', [[win.x, win.y + win.h * 0.55], [win.x + win.w * 0.55, win.y], [win.x + win.w, win.y], [win.x, win.y + win.h * 0.9]]);
-  fillRect(ctx, shade(GLASS, 0.45), win.x, win.y, win.w, 1.2);
-  if (win.curtain) {
-    fillRect(ctx, '#FFF4DC', win.x, win.y, 1.6, win.h);
-    fillRect(ctx, '#FFF4DC', win.x + win.w - 1.6, win.y, 1.6, win.h);
-  }
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 0.6;
-  ctx.strokeRect(win.x, win.y, win.w, win.h);
-  ctx.beginPath();
-  ctx.moveTo(win.x + win.w / 2, win.y);
-  ctx.lineTo(win.x + win.w / 2, win.y + win.h);
-  ctx.stroke();
+// Le socle tient lieu d'immeuble pour le peintre des fenêtres (mur = sa pierre, logements de son étage, sans mise en page de
+// façade : ni volets ni jardinières) ; l'allure ne sert pas.
+function podiumHost(p: PaintPodium): PaintBuilding {
+  const look: Look = { wall: p.stone, roof: p.stone, roofKind: 'zinc', roofH: 0, shutters: null, boxes: false, balconyRow: null, ivy: null, chimney: null, antenna: false, pipe: false, laundry: false };
+  return { id: p.id, x: p.x, w: p.w, top: p.top, far: false, wins: p.wins, look, podiumTop: null, layout: null, homes: p.layout?.homes ?? [] };
 }
 
 // Socle commun des jumeaux (maquette batiments-larges/rue.html) : pierre de taille claire d'un seul tenant sous les deux
 // tours, assises fines, corniche saillante à `p.top` (rehaut dessus, ombre nette dessous), rangée de fenêtres de l'étage
-// encadrées de pierre, bandeau au-dessus du rez-de-chaussée (les locaux et entrées sont peints par-dessus).
+// peintes comme celles des façades (encadrement, vitre de jour, rideaux du logement, appui), bandeau au-dessus du
+// rez-de-chaussée (les locaux et entrées sont peints par-dessus).
 export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium): void {
   const { x, w, top, stone } = p;
   const { ground } = plan;
@@ -334,13 +323,11 @@ export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium):
   ctx.stroke();
   fillRect(ctx, shade(stone, 0.3), x, band, w, 1);
   inkRect(ctx, x, top, w, h, 0.9);
-  // Ombre nette de la corniche, puis les fenêtres de l'étage (linteau et appui en pierre plus claire).
+  // Ombre nette de la corniche, puis les fenêtres de l'étage (celles de la mise en page du socle).
   fillRect(ctx, shade(stone, 0.42), x, top + CORNICE.h - CORNICE.up, w, CORNICE.drop);
-  for (const win of p.wins) {
-    fillRect(ctx, light(stone, 0.5), win.x - 1.2, win.y - 1, win.w + 2.4, 1);
-    paintPane(ctx, win);
-    fillRect(ctx, '#FFF6E0', win.x - 1.2, win.y + win.h, win.w + 2.4, 1);
-    fillRect(ctx, shade(stone, 0.4), win.x - 1.2, win.y + win.h + 1, win.w + 2.4, 1);
+  if (p.layout) {
+    const host = podiumHost(p);
+    for (const win of p.layout.windows) paintDayWindow(ctx, host, win);
   }
   // Corniche en débord : rehaut dessus, face à l'ombre légère, trait.
   const cx = x - CORNICE.over;

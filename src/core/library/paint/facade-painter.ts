@@ -7,17 +7,25 @@ import { hexRgb, rgba } from './color';
 import type { PaintCtx } from './paint-ctx';
 
 // Peintre des façades du premier plan (façades parisiennes, d'après la mise en page `PaintBuilding.layout`) : décor fixe de
-// jour, peint une fois par tranche ; la nuit vient du filtre et du calque SVG des fenêtres. Dessin provisoire (tâche 5) : mur,
-// vitres de jour à la taille de chaque fenêtre, balcons, et les décors gardés du peintre précédent ; le dessin cellulo de la
-// maquette (encadrements, bandeaux, garde-corps) remplacera les corps sans changer ces signatures.
+// jour, peint une fois par tranche ; la nuit vient du filtre et du calque SVG des fenêtres. Port du dessin cellulo de la
+// maquette (docs/superpowers/maquettes/facades-parisiennes) : mur de pierre à assises ou enduit, bandeaux d'étage, fenêtres
+// de jour encadrées (linteau clair, tableau à l'ombre, vitre reflet du ciel, rideaux du logement, menuiserie), volets
+// persiennés et jardinières du faubourg, balcons filants et balconnets en fer forgé. Le rez-de-chaussée (devantures,
+// entrées) et le toit (corniche, lucarnes) ont leurs propres peintres. Tout reste dans la boîte de l'immeuble.
 // Chaque immeuble a son propre générateur (`ghibli-building`, x du lot) : peint depuis deux tranches, il est identique.
 
 const CLOTH = ['#E8456B', '#FFFFFF', '#F6C62E', '#4E8ED8', '#6BB36B', '#F28CB4'].map(hexRgb);
 const FLOWERS = ['#3F8A3A', '#E8456B', '#F6C62E', '#FFFFFF', '#E070C0'].map(hexRgb);
 const IVY = ['#2A6A2E', '#4E9C3A', '#8CCB50'].map(hexRgb);
 export const GLASS_DAY = hexRgb('#7FB4E0');
+// Jardinière : bac en terre cuite, fleurs ; pot de fleurs d'un balcon filant haussmannien.
+const BOX = hexRgb('#8A4A2E');
+const POT = hexRgb('#A04A2E');
+const LEAF = hexRgb('#3F8A3A');
 
 const rngOf = (plan: CityPaintPlan, b: PaintBuilding) => mulberry32(plan.seed ^ hashString('ghibli-building') ^ Math.round(b.x * 8));
+// Fenêtre à volets ou balconnet : étage courant ou dernier étage (la porte-fenêtre, la cage et l'entresol n'en ont pas).
+const plain = (win: FacadeWindow): boolean => win.kind === 'std' || win.kind === 'top';
 
 export function paintFacade(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding): void {
   const rng = rngOf(plan, b);
@@ -28,31 +36,58 @@ export function paintFacade(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding
   const wall = look.wall;
   const faubourg = layout?.kind === 'faubourg';
   const left = leftOf(plan, b);
+  // Haut du rez-de-chaussée (ou du socle des jumeaux) : les assises s'arrêtent là.
+  const base = layout?.base ?? b.podiumTop ?? ground - GROUND_FLOOR;
   fillRect(ctx, wall, x, eave, w, h);
-  // Ton d'ombre : bande droite (côté opposé au soleil) + ombre portée du voisin de gauche, bords nets.
+  // Tout le décor du mur est rogné à la boîte de l'immeuble (rien ne dépasse chez le voisin ni au-dessus de la corniche).
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, eave, w, h);
   ctx.clip();
+  // Ton d'ombre : bande droite (côté opposé au soleil) + ombre portée du voisin de gauche, bords nets.
   fillRect(ctx, shade(wall, 0.28), x + w * 0.72, eave, w * 0.28, h);
   if (left && left.top < top) poly(ctx, shade(wall, 0.28), [[x, left.top], [x + (ground - left.top) * SHADOW_K, ground], [x, ground]]);
   // Rehaut : liseré clair côté soleil ; salissure du pied (pas sous une tour de jumeaux : le socle la couvrirait).
   fillRect(ctx, light(wall, 0.45), x, eave, 1.6, h);
   if (b.podiumTop === null) fillRect(ctx, shade(wall, 0.18), x, ground - 3, w, 3);
+  // Assises de pierre de taille (haussmann) : fines lignes horizontales dans le ton d'ombre léger.
+  if (layout?.kind === 'haussmann') {
+    ctx.strokeStyle = rgba(shade(wall, 0.22), 0.9);
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    for (let yy = eave + 6; yy < base - 2; yy += 4.5) {
+      ctx.moveTo(x, yy);
+      ctx.lineTo(x + w, yy);
+    }
+    ctx.stroke();
+  }
+  // Bandeaux : une ligne claire + ombre nette sous chaque plancher (l'entresol n'en a pas, le bandeau du rez-de-chaussée le borde).
+  if (layout) {
+    for (const lv of layout.levels) {
+      if (lv.level === 'mezz') continue;
+      const by = lv.y + lv.h;
+      fillRect(ctx, light(wall, 0.5), x, by - 1.2, w, 1.2);
+      fillRect(ctx, shade(wall, 0.38), x, by, w, 0.9);
+    }
+  }
   // Lierre : seulement sur une façade de faubourg.
   if (faubourg && look.ivy) paintIvy(ctx, rng, look.ivy === 'left' ? x - 2 : x + w * 0.55, w, eave, h);
-  ctx.restore();
   // Bandeau au-dessus du rez-de-chaussée (immeuble sans socle).
   if (b.podiumTop === null) fillRect(ctx, shade(wall, 0.3), x, ground - GROUND_FLOOR - 1, w, 1);
-  // Fenêtres d'étage (les lucarnes sont peintes par le toit).
-  if (layout) for (const win of layout.windows) if (win.kind !== 'dormer') paintDayWindow(ctx, b, win);
-  // Balcons de la mise en page : filants sur toute la largeur, balconnets sous les fenêtres standard.
+  // Fenêtres d'étage (les lucarnes sont peintes par le toit) ; jardinières des fenêtres qui en ont une (faubourg).
   if (layout) {
+    for (const win of layout.windows) {
+      if (win.kind === 'dormer') continue;
+      paintDayWindow(ctx, b, win);
+      if (win.box) paintFlowerBox(ctx, plan, win);
+    }
+    // Balcons : filants sur toute la largeur de l'étage, balconnets sous les fenêtres des étages qui en ont.
     for (const lv of layout.levels) if (lv.balcony === 'filant') paintBalcony(ctx, b, x + 1.5, lv.y + lv.h, w - 3, true);
-    for (const win of layout.windows) if (win.kind === 'std' && layout.levels[win.level]?.balcony === 'balconnet') paintBalcony(ctx, b, win.x - 1.2, win.y + win.h, win.w + 2.4, false);
+    for (const win of layout.windows) if (plain(win) && layout.levels[win.level]?.balcony === 'balconnet') paintBalcony(ctx, b, win.x - 1.2, win.y + win.h, win.w + 2.4, false);
   }
   // Linge tendu entre deux fenêtres d'un même étage : seulement sur une façade de faubourg.
   if (faubourg && look.laundry) paintLaundry(ctx, rng, b);
+  ctx.restore();
   // Gouttière à colliers.
   if (look.pipe) {
     const px = x + w - 1.6;
@@ -73,13 +108,17 @@ export function paintFacade(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding
   }
 }
 
-// Fenêtre éteinte de jour (provisoire) : vitre #7FB4E0 à la taille de la fenêtre, reflet, rideaux du logement, menuiserie,
-// volets et jardinière de la mise en page (faubourg), appui.
+// Fenêtre éteinte de jour : encadrement (linteau de pierre claire, tableau à l'ombre), vitre #7FB4E0 reflet du ciel (on voit
+// peu l'intérieur), rideaux du logement (teinte et style partagés par ses fenêtres), menuiserie (cadre, meneau, traverse),
+// volets persiennés de la mise en page (faubourg), appui (pas sous une porte-fenêtre). Sert aussi à l'étage du socle des
+// jumeaux. La jardinière est peinte à part (`paintFlowerBox`, tirée de la graine du plan).
 export function paintDayWindow(ctx: PaintCtx, b: PaintBuilding, win: FacadeWindow): void {
   const { x, y, w, h } = win;
   const wall = b.look.wall;
   const home = win.home >= 0 ? b.homes[win.home] : undefined;
   fillRect(ctx, light(wall, 0.5), x - 1.2, y - 1.2, w + 2.4, 1.2);
+  fillRect(ctx, shade(wall, 0.5), x - 0.9, y, 0.9, h);
+  fillRect(ctx, shade(wall, 0.5), x + w, y, 0.9, h);
   fillRect(ctx, GLASS_DAY, x, y, w, h);
   poly(ctx, 'rgba(255,255,255,0.72)', [[x, y + h * 0.55], [x + w * 0.5, y], [x + w * 0.7, y], [x, y + h * 0.95]]);
   fillRect(ctx, shade(GLASS_DAY, 0.45), x, y, w, 1);
@@ -97,9 +136,14 @@ export function paintDayWindow(ctx: PaintCtx, b: PaintBuilding, win: FacadeWindo
   ctx.beginPath();
   ctx.moveTo(x + w / 2, y);
   ctx.lineTo(x + w / 2, y + h);
+  if (h >= 8) {
+    ctx.moveTo(x, y + h * 0.33);
+    ctx.lineTo(x + w, y + h * 0.33);
+  }
   ctx.stroke();
+  // Volets (faubourg) : persiennes colorées de part et d'autre, lames dans le ton d'ombre ; jamais contre le bord du mur.
   const shutters = b.layout?.shutters ?? null;
-  if (shutters && win.kind === 'std' && x - 2.6 > b.x + 1 && x + w + 2.6 < b.x + b.w - 1) {
+  if (shutters && plain(win) && x - 2.6 > b.x + 1 && x + w + 2.6 < b.x + b.w - 1) {
     const sc = hexRgb(shutters);
     fillRect(ctx, light(sc, 0.2), x - 2.6, y, 2, h);
     fillRect(ctx, shade(sc, 0.3), x + w + 0.6, y, 2, h);
@@ -107,30 +151,58 @@ export function paintDayWindow(ctx: PaintCtx, b: PaintBuilding, win: FacadeWindo
     ctx.lineWidth = 0.45;
     ctx.strokeRect(x - 2.6, y, 2, h);
     ctx.strokeRect(x + w + 0.6, y, 2, h);
+    ctx.fillStyle = rgba(shade(sc, 0.5), 1);
+    for (let k = 1.5; k < h; k += 2) {
+      ctx.fillRect(x - 2.3, y + k, 1.4, 0.4);
+      ctx.fillRect(x + w + 0.9, y + k, 1.4, 0.4);
+    }
   }
+  // Appui : pierre claire + ombre nette.
   if (win.kind !== 'french') {
     fillRect(ctx, light(wall, 0.55), x - 1.2, y + h, w + 2.4, 1);
     fillRect(ctx, shade(wall, 0.4), x - 1.2, y + h + 1, w + 2.4, 0.9);
-    if (win.box) {
-      // Jardinière : fleurs tirées du x et du y de la fenêtre (générateur propre, identique d'une tranche à l'autre).
-      const r = mulberry32(Math.round(x * 7 + y * 3));
-      fillRect(ctx, '#8A4A2E', x - 0.4, y + h + 1, w + 0.8, 1.6);
-      inkRect(ctx, x - 0.4, y + h + 1, w + 0.8, 1.6, 0.4);
-      for (let k = 0; k < 6; k++) disc(ctx, pick(FLOWERS, r), x + 0.5 + r() * (w - 1), y + h + 0.4 + r() * 1.2, 0.7);
-    }
   }
 }
 
-// Balcon (provisoire) : dalle en débord (rehaut, ombre nette) et garde-corps à barreaux ; `filant` : sur toute la largeur.
+// Jardinière sur l'appui (fenêtres `box` de la mise en page, faubourg) : bac en terre cuite cerné, six fleurs tirées d'un
+// générateur propre (graine du plan, position de la fenêtre : identique d'une tranche à l'autre).
+function paintFlowerBox(ctx: PaintCtx, plan: CityPaintPlan, win: FacadeWindow): void {
+  const { x, y, w, h } = win;
+  const r = mulberry32(plan.seed ^ hashString('ghibli-box') ^ Math.round(x * 7 + y * 3));
+  fillRect(ctx, BOX, x - 0.4, y + h + 1, w + 0.8, 1.6);
+  inkRect(ctx, x - 0.4, y + h + 1, w + 0.8, 1.6, 0.4);
+  for (let k = 0; k < 6; k++) disc(ctx, pick(FLOWERS, r), x + 0.5 + r() * (w - 1), y + h + 0.4 + r() * 1.2, 0.7);
+}
+
+// Balcon : garde-corps en fer forgé (lisse, barreaux au pas de 1,5 ; filant : deux volutes par travée, pot de fleurs sur un
+// haussmannien) puis dalle en débord (rehaut dessus, ombre nette dessous, trait). `filant` : sur toute la largeur de l'étage.
 export function paintBalcony(ctx: PaintCtx, b: PaintBuilding, x: number, y: number, w: number, filant: boolean): void {
   const wall = b.look.wall;
   const rh = filant ? 5.5 : 4;
   ctx.fillStyle = INK;
   ctx.fillRect(x, y - rh, w, 0.7);
   for (let k = x + 0.8; k < x + w; k += 1.5) ctx.fillRect(k, y - rh, 0.45, rh);
+  if (filant && b.layout) {
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (const cx of b.layout.bays) {
+      if (cx - 3 < x || cx + 3 > x + w) continue;
+      ctx.moveTo(cx - 2.5, y - 1.2);
+      ctx.arc(cx - 1.2, y - rh * 0.55, 1.3, Math.PI * 0.7, Math.PI * 2.3);
+      // Volute droite en miroir : la maquette la trace en sens inverse (même arc, de 0,3 π à 0,7 π ; PaintCtx n'a pas le sens).
+      ctx.moveTo(cx + 2.5, y - 1.2);
+      ctx.arc(cx + 1.2, y - rh * 0.55, 1.3, Math.PI * 0.3, Math.PI * 0.7);
+    }
+    ctx.stroke();
+  }
   fillRect(ctx, light(wall, 0.5), x - 0.8, y - 0.4, w + 1.6, 1.4);
   fillRect(ctx, shade(wall, 0.45), x - 0.8, y + 1, w + 1.6, filant ? 2 : 1.4);
   inkRect(ctx, x - 0.8, y - 0.4, w + 1.6, filant ? 3.4 : 2.8, 0.6);
+  if (filant && b.layout?.kind === 'haussmann') {
+    disc(ctx, LEAF, x + 3.5, y - rh - 0.6, 1.5);
+    fillRect(ctx, POT, x + 2.3, y - rh - 0.2, 2.4, 1.4);
+  }
 }
 
 function paintIvy(ctx: PaintCtx, rng: () => number, side: number, w: number, eave: number, h: number): void {
