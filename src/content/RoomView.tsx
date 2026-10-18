@@ -191,11 +191,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const closeUp = CITIZENS_3D && outside;
   // Bascule de la vue dehors : le nouveau registre reprend les images 3D de l'ancien en attendant les siennes (autre
   // résolution) ; les figures montrées en 3D le restent, jamais de retour au pantin sous les yeux.
-  const lastFigures = useRef<FigureRegistry | null>(null);
+  // Seulement dans le même monde : un autre monde n'a pas les mêmes habitants.
+  const lastFigures = useRef<{ worldId: string; reg: FigureRegistry } | null>(null);
   const figures = useMemo(() => {
     const reg = new FigureRegistry(`${worldId}-fig`, viewFigureOptions(closeUp));
-    if (lastFigures.current) reg.inherit(lastFigures.current);
-    lastFigures.current = reg;
+    if (lastFigures.current && lastFigures.current.worldId === worldId) reg.inherit(lastFigures.current.reg);
+    lastFigures.current = { worldId, reg };
     return reg;
   }, [worldId, closeUp]);
   useEffect(() => () => figures.dispose(), [figures]);
