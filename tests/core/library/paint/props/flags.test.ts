@@ -54,6 +54,15 @@ describe('drapeaux animés', () => {
     inFrame('lamp-flag');
     inFrame('door-flag');
   });
+  it('cadres dérivés de FLAG_AMP : le haut garde le creux maximal de la vague + le trait (0,6) au-dessus du haut du tissu', () => {
+    const [, ly] = PROPS['lamp-flag']!.box({});
+    expect(ly).toBeLessThanOrEqual(-71 - 7 * FLAG_AMP - 0.6);
+    const [, dy] = PROPS['door-flag']!.box({});
+    expect(dy).toBeLessThanOrEqual(-45 - 5 * FLAG_AMP - 0.6);
+    // Bas : creux × 1,15 sous le tissu (le bas du cadre de la porte est déjà celui de la hampe).
+    const [, ly2, , lh] = PROPS['lamp-flag']!.box({});
+    expect(ly2 + lh).toBeGreaterThanOrEqual(-64 + 7 * FLAG_AMP * 1.15 + 0.6);
+  });
   it('mouvement réduit (still) : tissu plat identique à toutes les poses, différent du tissu qui ondule', () => {
     for (const id of ['lamp-flag', 'door-flag']) {
       const flat0 = paint(id, 0, { still: true });
