@@ -1,3 +1,4 @@
+import { hashString, mulberry32 } from '../scene-world';
 import { tripAt, tripHappens, type Trip } from './doors';
 import type { Passage } from './doorway';
 
@@ -29,3 +30,10 @@ export function seedHallTimers(trips: readonly Trip[], width: number, t: number,
 
 // Hall allumé : il fait sombre et la minuterie de sa porte court encore.
 export const hallLit = (until: ReadonlyMap<number, number>, doorX: number, t: number, dark: boolean): boolean => dark && (until.get(doorX) ?? -Infinity) > t;
+
+// Cage d'escalier : l'habitant qui a relancé la minuterie monte jusqu'à son étage (1..floors), que la minuterie de la cage
+// éclaire du rez-de-chaussée jusque-là. Le passage est identifié par la fin de sa minuterie : même tirage tant qu'elle court.
+export function stairFloorsLit(doorX: number, until: number, floors: number): number {
+  const r = mulberry32(hashString('stair') ^ Math.round(doorX * 8) ^ Math.floor(until * 2))();
+  return 1 + Math.floor(r * floors);
+}

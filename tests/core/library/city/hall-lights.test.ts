@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { doorsFor, tripAt, tripsFor, type Trip } from '../../../../src/core/library/city/doors';
-import { HALL_TIMER_S, crossingDoorX, hallLit, seedHallTimers } from '../../../../src/core/library/city/hall-lights';
+import { HALL_TIMER_S, crossingDoorX, hallLit, seedHallTimers, stairFloorsLit } from '../../../../src/core/library/city/hall-lights';
 
 const W = 1440;
 const trips = tripsFor(doorsFor(W, 340, 1), 1, W);
@@ -44,5 +44,23 @@ describe('minuterie des halls', () => {
     while (tripAt(trip, W, s)?.stage !== 'threshold') s += 0.5;
     expect(crossingDoorX(trip, tripAt(trip, W, leave)!)).toBe(trip.doorX);
     expect(crossingDoorX(trip, tripAt(trip, W, s)!)).toBe(trip.endDoorX);
+  });
+});
+
+describe('cage d’escalier : étage atteint', () => {
+  it('cage : étage atteint entre 1 et floors, déterministe', () => {
+    const seen = new Set<number>();
+    for (let i = 0; i < 400; i++) {
+      const doorX = 100 + (i % 20) * 37.5;
+      const until = 1000 + i * 3.5;
+      const f = stairFloorsLit(doorX, until, 6);
+      expect(Number.isInteger(f)).toBe(true);
+      expect(f).toBeGreaterThanOrEqual(1);
+      expect(f).toBeLessThanOrEqual(6);
+      expect(stairFloorsLit(doorX, until, 6)).toBe(f);
+      seen.add(f);
+    }
+    expect(seen.size).toBe(6);
+    expect(stairFloorsLit(250, 42, 1)).toBe(1);
   });
 });
