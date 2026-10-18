@@ -41,7 +41,7 @@ export type Attr = THREE.BufferAttribute | THREE.InterleavedBufferAttribute;
 export const comp = (a: Attr, i: number, k: number): number => (k === 0 ? a.getX(i) : k === 1 ? a.getY(i) : k === 2 ? a.getZ(i) : a.getW(i));
 
 // Noms d'os : `mixamorigHips` (glTF, deux-points retirés), `mixamorig:Hips` (FBX) ou `Hips`.
-const boneName = (n: string): string => n.replace(/^mixamorig:?/, '');
+export const boneName = (n: string): string => n.replace(/^mixamorig:?/, '');
 
 export function analyse(body: THREE.SkinnedMesh): BodyInfo {
   const g = body.geometry, sk = body.skeleton;
