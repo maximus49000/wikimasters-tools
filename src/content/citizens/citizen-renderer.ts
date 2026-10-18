@@ -63,8 +63,24 @@ const REF_METRES = 1.7;
 const RETRY_MS = 30_000;
 // Peau de repli quand ni la teinte demandée ni celle de la base ne se lisent (« beige » du catalogue).
 const SKIN_DEFAUT = '#E0AE88';
-/** Rigs habillés gardés (les moins récemment rendus partent). */
-export const RIGS_MAX = 48;
+/** Rigs habillés gardés (les moins récemment utilisés partent), au-delà de ceux des habitants en vue. */
+export const RIGS_MAX = 96;
+/** Plafond absolu : au-delà, même un rig utilisé récemment part (mémoire Android). */
+export const RIGS_HARD_MAX = 160;
+/** Un rig rendu ou demandé depuis moins de ce nombre d'images (tick) n'est jamais retiré sous RIGS_HARD_MAX. */
+export const RIG_KEEP_FRAMES = 120;
+
+/** Mesures légères du rendu (lisibles au téléphone par CDP : `__wmt3d.stats()`). */
+export type RendererStats = {
+  builds: number;
+  avgBuildMs: number;
+  maxBuildMs: number;
+  renders: number;
+  avgRenderMs: number;
+  maxRenderMs: number;
+  evictions: number;
+  rigs: number;
+};
 
 /** Hauteur du rig en unités du pantin. */
 export const rigHeight = (metres: number, child: boolean): number => (child ? ADULT_UNITS : (ADULT_UNITS * metres) / REF_METRES);
@@ -217,6 +233,8 @@ type Rig = {
   bodyMat: THREE.Material;
   unitsToRig: number;
   base: Base;
+  // Dernière image (tick) où l'habitant a été rendu ou demandé.
+  used: number;
 };
 
 // Point de repos du corps → scène, porté par un os (même transformation que le skinning).
@@ -231,13 +249,25 @@ const r2 = (v: number): number => Math.round(v * 100) / 100 || 0;
 const vA = new THREE.Vector3();
 const isUmbrella = (p: Piece): boolean => p.k === 'accessory' && p.what === 'parapluie';
 // Clé du rig : l'humeur ne change pas l'habillage (le visage est posé à chaque rendu).
-const rigKey = (d: CitizenDesc): string => citizenKey({ ...d, mood: 'neutre' });
+// Mémorisée par description : le registre la demande à chaque image pour chaque habitant en vue (touch).
+const rigKeys = new WeakMap<CitizenDesc, string>();
+const rigKey = (d: CitizenDesc): string => {
+  let k = rigKeys.get(d);
+  if (k === undefined) rigKeys.set(d, (k = citizenKey({ ...d, mood: 'neutre' })));
+  return k;
+};
 
 export type CitizenRendererOptions = {
   pxPerUnit: number;
   makeRenderer?: () => RendererLike;
   /** Chargement d'une base (par défaut : model-cache) ; injectable pour les tests et le banc. */
   loadBase?: (name: string) => Promise<BaseModel | null>;
+  /** Horloge des mesures (ms) ; par défaut performance.now. */
+  now?: () => number;
+  /** Réserve de rigs (tests) : défauts RIGS_MAX, RIGS_HARD_MAX, RIG_KEEP_FRAMES. */
+  rigsMax?: number;
+  rigsHardMax?: number;
+  keepFrames?: number;
 };
 
 export class CitizenRenderer {
@@ -261,6 +291,13 @@ export class CitizenRenderer {
   private readonly tones = new Map<string, THREE.Texture>();
   private disposed = false;
   private failure: RenderFailure | null = null;
+  private readonly clock: () => number;
+  private readonly rigsMax: number;
+  private readonly rigsHard: number;
+  private readonly keep: number;
+  // Numéro d'image (tick, avancé par les registres) : protège les rigs des habitants en vue.
+  private tickNo = 0;
+  private readonly st = { builds: 0, buildMs: 0, maxBuildMs: 0, renders: 0, renderMs: 0, maxRenderMs: 0, evictions: 0 };
 
   /** Cause du dernier `null` de render (null après un rendu réussi) : moteur (pas de WebGL, contexte perdu, rendu détruit),
    * habitant (habillage ou pose en échec : lui seul retombe en pantin) ou base pas encore chargée. */
@@ -272,6 +309,10 @@ export class CitizenRenderer {
     this.px = opts.pxPerUnit;
     this.make = opts.makeRenderer ?? (() => webglRenderer(this.px));
     this.load = opts.loadBase ?? ((n) => loadBaseParDefaut(n));
+    this.clock = opts.now ?? (() => performance.now());
+    this.rigsMax = opts.rigsMax ?? RIGS_MAX;
+    this.rigsHard = Math.max(this.rigsMax, opts.rigsHardMax ?? RIGS_HARD_MAX);
+    this.keep = opts.keepFrames ?? RIG_KEEP_FRAMES;
     this.sun.position.set(-2, 4, 3);
     this.scene.add(this.ambient, this.sun);
   }
@@ -296,6 +337,63 @@ export class CitizenRenderer {
       .finally(() => this.loading.delete(name));
   }
 
+  /** Image suivante (une fois par flush d'un registre) : les rigs rendus ou demandés récemment restent gardés. */
+  tick(): void {
+    this.tickNo++;
+  }
+
+  /** L'habitant est en vue (demandé par une figure) : son rig, s'il existe, n'est pas retiré. */
+  touch(desc: CitizenDesc): void {
+    const k = rigKey(desc);
+    const rig = this.rigs.get(k);
+    if (!rig || rig.used === this.tickNo) return;
+    rig.used = this.tickNo;
+    this.rigs.delete(k);
+    this.rigs.set(k, rig);
+  }
+
+  /** Rig de l'habitant déjà habillé : son rendu ne coûtera que la pose et l'image. */
+  hasRig(desc: CitizenDesc): boolean {
+    return this.rigs.has(rigKey(desc));
+  }
+
+  /** Habille le rig de l'habitant sans le rendre (clone, garde-robe, visage, peau : le plus gros du premier rendu), pour que
+   * le registre le compte comme un travail à part et rende à une image suivante ; false en échec (lastFailure dit pourquoi). */
+  buildRig(desc: CitizenDesc): boolean {
+    if (this.disposed) {
+      this.fail('engine');
+      return false;
+    }
+    this.prepare(desc);
+    const base = this.bases.get(desc.base);
+    if (!base) {
+      this.fail('notReady');
+      return false;
+    }
+    if (!this.rigOf(desc, base)) {
+      this.fail('citizen');
+      return false;
+    }
+    this.failure = null;
+    return true;
+  }
+
+  /** Mesures depuis la création (aucun journal : lues à la demande). */
+  stats(): RendererStats {
+    const s = this.st;
+    const r1 = (v: number): number => Math.round(v * 10) / 10;
+    return {
+      builds: s.builds,
+      avgBuildMs: s.builds ? r1(s.buildMs / s.builds) : 0,
+      maxBuildMs: r1(s.maxBuildMs),
+      renders: s.renders,
+      avgRenderMs: s.renders ? r1(s.renderMs / s.renders) : 0,
+      maxRenderMs: r1(s.maxRenderMs),
+      evictions: s.evictions,
+      rigs: this.rigs.size,
+    };
+  }
+
   render(desc: CitizenDesc, key: FigureKey, light: number, face: string): CitizenSprite | null {
     const out = this.draw(desc, key, light, face);
     if (out) this.failure = null;
@@ -317,6 +415,8 @@ export class CitizenRenderer {
     try {
       const rig = this.rigOf(desc, base);
       if (!rig) return this.fail('citizen');
+      // Temps du rendu seul (pose, image, data URL) : l'habillage est compté à part.
+      const t0 = this.clock();
       // Parapluie ouvert selon la clé (la pluie l'ouvre, comme pour le pantin 2D) ; sinon, celui de l'habitant reste fermé.
       const umbrella = shapeFromSignature(key.sig).umbrella;
       // Même pose que la cuisson 2D (bake.ts `poseOfKey`) : le 3D regarde du même côté que le pantin pour la même clé.
@@ -339,7 +439,12 @@ export class CitizenRenderer {
       }
       // Contexte perdu pendant le rendu : l'image serait vide.
       if (R.lost?.()) return this.fail('engine');
-      return { url: R.domElement.toDataURL('image/png'), anchors: this.anchors(rig) };
+      const out = { url: R.domElement.toDataURL('image/png'), anchors: this.anchors(rig) };
+      const d = this.clock() - t0;
+      this.st.renders++;
+      this.st.renderMs += d;
+      this.st.maxRenderMs = Math.max(this.st.maxRenderMs, d);
+      return out;
     } catch {
       return this.fail('citizen');
     }
@@ -377,6 +482,7 @@ export class CitizenRenderer {
     const k = rigKey(desc);
     const hit = this.rigs.get(k);
     if (hit) {
+      hit.used = this.tickNo;
       this.rigs.delete(k);
       this.rigs.set(k, hit);
       return hit;
@@ -384,20 +490,49 @@ export class CitizenRenderer {
     const t = this.rigFailed.get(k);
     if (t !== undefined && Date.now() - t < RETRY_MS) return null;
     let rig: Rig;
+    const t0 = this.clock();
     try {
       rig = this.build(desc, base);
     } catch {
       this.rigFailed.set(k, Date.now());
       return null;
     }
+    const d = this.clock() - t0;
+    this.st.builds++;
+    this.st.buildMs += d;
+    this.st.maxBuildMs = Math.max(this.st.maxBuildMs, d);
     this.rigFailed.delete(k);
     this.rigs.set(k, rig);
-    while (this.rigs.size > RIGS_MAX) {
-      const [old, r] = this.rigs.entries().next().value as [string, Rig];
-      this.rigs.delete(old);
-      this.free(r);
-    }
+    this.evict(k);
     return rig;
+  }
+
+  // Réserve : au-delà de rigsMax part le moins récemment utilisé des rigs qui ne sont plus en vue (ni rendus ni demandés depuis
+  // `keep` images). Tous en vue : ils restent jusqu'au plafond absolu (sinon des habitants à l'écran seraient rhabillés en
+  // boucle), au-delà duquel le moins récent part quand même. `fresh` : le rig qu'on vient d'habiller, jamais retiré.
+  private evict(fresh: string): void {
+    while (this.rigs.size > this.rigsMax) {
+      let victim: string | null = null;
+      for (const [k, r] of this.rigs) {
+        if (k !== fresh && this.tickNo - r.used >= this.keep) {
+          victim = k;
+          break;
+        }
+      }
+      if (victim === null && this.rigs.size > this.rigsHard) {
+        for (const k of this.rigs.keys()) {
+          if (k !== fresh) {
+            victim = k;
+            break;
+          }
+        }
+      }
+      if (victim === null) return;
+      const r = this.rigs.get(victim)!;
+      this.rigs.delete(victim);
+      this.free(r);
+      this.st.evictions++;
+    }
   }
 
   // Habille un clone de la base : corps recoloré (matériau propre au rig, texture partagée par base et peau),
@@ -437,7 +572,7 @@ export class CitizenRenderer {
     const own = desc.items.find((i) => i.what === 'parapluie');
     return {
       wrap, root, body: B, map: boneMap(B.skeleton), worn: [...worn, face], face, bodyMat, unitsToRig: 1 / scale, base,
-      umbrellaColor: own ? own.color : null, closed: null, open: null,
+      umbrellaColor: own ? own.color : null, closed: null, open: null, used: this.tickNo,
     };
   }
 

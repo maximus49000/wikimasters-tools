@@ -1,11 +1,11 @@
 // Rendu hors écran des habitants 3D : sans WebGL (node), un rendu simulé reçoit la scène ; on vérifie l'attente du
-// modèle, le cadrage (pieds à l'origine du sprite, élévation 12°), l'échelle, les accroches et la réserve de 48 rigs.
+// modèle, le cadrage (pieds à l'origine du sprite, élévation 12°), l'échelle, les accroches et la réserve de rigs.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { BaseModel } from '../../../src/content/citizens/model-cache';
-import { CitizenRenderer, lightColor, outlineThickness, rgbOf, rigHeight, spriteCamera, spritePixel, type RendererLike } from '../../../src/content/citizens/citizen-renderer';
+import { CitizenRenderer, RIG_KEEP_FRAMES, RIGS_HARD_MAX, RIGS_MAX, lightColor, outlineThickness, rgbOf, rigHeight, spriteCamera, spritePixel, type CitizenRendererOptions, type RendererLike } from '../../../src/content/citizens/citizen-renderer';
 import { NIGHT_LIGHT } from '../../../src/content/figure/citizen-config';
 import { tone } from '../../../src/content/city-sprites';
 import type { Sky } from '../../../src/core/library/sky';
@@ -50,9 +50,9 @@ function fakeRenderer(): Fake {
 const KEY: FigureKey = { sig: 'short.tee.pants.none.n.n', yaw: 4, gait: 'stand', phase: 0, head: 0, arms: 'swing', lean: 0 };
 const desc = (over: Partial<CitizenDesc> = {}): CitizenDesc => ({ ...citizen(7), base: 'homme-fort', height: 1.7, ...over });
 
-async function readyRenderer(d: CitizenDesc, opts: { px?: number; fake?: Fake } = {}): Promise<{ r: CitizenRenderer; fake: Fake }> {
+async function readyRenderer(d: CitizenDesc, opts: { px?: number; fake?: Fake; more?: Partial<CitizenRendererOptions> } = {}): Promise<{ r: CitizenRenderer; fake: Fake }> {
   const fake = opts.fake ?? fakeRenderer();
-  const r = new CitizenRenderer({ pxPerUnit: opts.px ?? 3, makeRenderer: () => fake, loadBase: async (n) => fakeBase(n) });
+  const r = new CitizenRenderer({ pxPerUnit: opts.px ?? 3, makeRenderer: () => fake, loadBase: async (n) => fakeBase(n), ...opts.more });
   r.prepare(d);
   await vi.waitFor(() => expect(r.ready(d)).toBe(true));
   return { r, fake };
@@ -169,13 +169,17 @@ describe('CitizenRenderer', () => {
     expect(fake.calls).toHaveLength(2);
   });
 
-  it('réserve de 48 rigs : le 49e libère le 1er', async () => {
-    const descs = Array.from({ length: 49 }, (_, i) => desc({ height: 1.5 + i * 0.01 }));
-    const { r } = await readyRenderer(descs[0]!);
-    for (const d of descs.slice(0, 48)) expect(r.render(d, KEY, 1, '')).not.toBeNull();
+  it('réserve : 96 rigs, plafond absolu 160, rigs en vue gardés 120 images', () => {
+    expect([RIGS_MAX, RIGS_HARD_MAX, RIG_KEEP_FRAMES]).toEqual([96, 160, 120]);
+  });
+
+  it('réserve pleine, aucun rig en vue : le suivant libère le moins récent', async () => {
+    const descs = Array.from({ length: 5 }, (_, i) => desc({ height: 1.5 + i * 0.01 }));
+    const { r } = await readyRenderer(descs[0]!, { more: { rigsMax: 4, keepFrames: 0 } });
+    for (const d of descs.slice(0, 4)) expect(r.render(d, KEY, 1, '')).not.toBeNull();
     expect(disposeRig).not.toHaveBeenCalled();
     const first = vi.mocked(dressRig).mock.results[0]!.value as THREE.Object3D[];
-    r.render(descs[48]!, KEY, 1, '');
+    r.render(descs[4]!, KEY, 1, '');
     expect(disposeRig).toHaveBeenCalledTimes(1);
     const freed = vi.mocked(disposeRig).mock.calls[0]![0];
     for (const o of first) expect(freed).toContain(o);
@@ -183,7 +187,51 @@ describe('CitizenRenderer', () => {
     const n = vi.mocked(dressRig).mock.calls.length;
     r.render(descs[0]!, KEY, 1, '');
     expect(vi.mocked(dressRig).mock.calls.length).toBe(n + 1);
-  }, 120_000);
+    expect(r.stats().evictions).toBe(2);
+  }, 60_000);
+
+  it('réserve : les habitants en vue ne sont jamais rhabillés en boucle ; un rig sorti de la vue part en premier', async () => {
+    const descs = Array.from({ length: 8 }, (_, i) => desc({ height: 1.5 + i * 0.01 }));
+    const { r } = await readyRenderer(descs[0]!, { more: { rigsMax: 4, rigsHardMax: 6, keepFrames: 3 } });
+    // 6 habitants à l'écran (au-delà de rigsMax, sous le plafond absolu), rendus ou demandés à chaque image.
+    const onScreen = descs.slice(0, 6);
+    for (let f = 0; f < 10; f++) {
+      r.tick();
+      // Première image : tous rendus ; ensuite, un sur deux seulement demandé (cycle déjà rendu).
+      onScreen.forEach((d, i) => (f > 0 && i % 2 ? r.touch(d) : r.render(d, KEY, 1, '')));
+    }
+    expect(r.stats().builds).toBe(6);
+    expect(r.stats().evictions).toBe(0);
+    // Le 6e sort de la vue ; 3 images plus tard, un nouvel habitant prend sa place sans toucher aux autres.
+    for (let f = 0; f < 3; f++) {
+      r.tick();
+      onScreen.slice(0, 5).forEach((d) => r.touch(d));
+    }
+    const fifthOut = vi.mocked(dressRig).mock.results[5]!.value as THREE.Object3D[];
+    r.render(descs[6]!, KEY, 1, '');
+    expect(r.stats().evictions).toBe(1);
+    expect(vi.mocked(disposeRig).mock.calls[0]![0]).toContain(fifthOut[0]);
+    for (const d of onScreen.slice(0, 5)) expect(r.hasRig(d)).toBe(true);
+    // Au-delà du plafond absolu (7 en vue pour 6) : le moins récent part quand même.
+    r.tick();
+    for (const d of [...onScreen.slice(0, 5), descs[6]!]) r.touch(d);
+    r.render(descs[7]!, KEY, 1, '');
+    expect(r.stats().rigs).toBeLessThanOrEqual(6);
+  }, 60_000);
+
+  it('habillage à part (buildRig) puis rendu ; mesures de temps de chaque étape', async () => {
+    const d = desc();
+    const clock = { t: 0 };
+    const { r, fake } = await readyRenderer(d, { more: { now: () => (clock.t += 5) } });
+    expect(r.hasRig(d)).toBe(false);
+    expect(r.buildRig(d)).toBe(true);
+    expect(r.hasRig(d)).toBe(true);
+    expect(fake.calls).toHaveLength(0);
+    expect(r.stats()).toMatchObject({ builds: 1, renders: 0, avgBuildMs: 5, maxBuildMs: 5 });
+    expect(r.render(d, KEY, 1, '')).not.toBeNull();
+    expect(dressRig).toHaveBeenCalledTimes(1);
+    expect(r.stats()).toMatchObject({ builds: 1, renders: 1, avgRenderMs: 5, maxRenderMs: 5, evictions: 0, rigs: 1 });
+  });
 
   it('visage : la clé d’état pose l’émotion et le clignement', async () => {
     const d = desc();
