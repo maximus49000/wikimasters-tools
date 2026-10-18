@@ -215,6 +215,15 @@ export function createSpotifyApi(deps: {
       return parse(coverTracksSchema, await response.json()).tracks.items[0]?.album?.images[0]?.url ?? null;
     },
 
+    // Pochettes des versions d'un album (rééditions, éditions de luxe…) pour « Changer la version » d'un CD de la pièce :
+    // la plus grande image de chaque album trouvé, dans l'ordre de pertinence de Spotify (albums sans image ignorés).
+    // Demandée par l'utilisateur (fenêtre ouverte) : niveau « page », même file et même pause de recherche que le reste.
+    async findCovers(title: string, performer?: string, limit = 8): Promise<string[]> {
+      const q = `album:"${title}"${performer ? ` artist:"${performer}"` : ''}`;
+      const response = await send('page', 'GET', '/search', { query: { q, type: 'album', limit: String(Math.min(limit, SEARCH_MAX)) } });
+      return parse(coverAlbumsSchema, await response.json()).albums.items.flatMap((item) => (item.images[0] ? [item.images[0].url] : []));
+    },
+
     // Photo d'un artiste, en dernier recours quand l'album n'a pas de pochette.
     async findArtistImage(name: string): Promise<string | null> {
       const response = await send('image', 'GET', '/search', { query: { q: `artist:"${name}"`, type: 'artist', limit: '1' } });

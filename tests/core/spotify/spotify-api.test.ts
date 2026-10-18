@@ -53,6 +53,20 @@ describe('createSpotifyApi', () => {
     expect(await api.findCover('album', 'Inconnu')).toBeNull();
   });
 
+  it("donne les pochettes des versions d'un album (la plus grande image de chacun, albums sans image ignorés)", async () => {
+    const { api, fetch } = setup([
+      json({ albums: { items: [{ images: [{ url: 'https://i.scdn.co/a' }, { url: 'https://i.scdn.co/a-small' }] }, { images: [] }, { images: [{ url: 'https://i.scdn.co/b' }] }] } }),
+      json({ albums: { items: [] } }),
+    ]);
+    expect(await api.findCovers('Abbey Road', 'The Beatles')).toEqual(['https://i.scdn.co/a', 'https://i.scdn.co/b']);
+    expect(call(fetch, 0).url.searchParams.get('type')).toBe('album');
+    expect(call(fetch, 0).url.searchParams.get('q')).toBe('album:"Abbey Road" artist:"The Beatles"');
+    expect(call(fetch, 0).url.searchParams.get('limit')).toBe('8');
+    expect(await api.findCovers('Inconnu', undefined, 50)).toEqual([]);
+    expect(call(fetch, 1).url.searchParams.get('q')).toBe('album:"Inconnu"');
+    expect(call(fetch, 1).url.searchParams.get('limit')).toBe('10');
+  });
+
   it("donne la photo d'un artiste", async () => {
     const { api, fetch } = setup([json({ artists: { items: [{ images: [{ url: 'https://i.scdn.co/a' }] }] } }), json({ artists: { items: [] } })]);
     expect(await api.findArtistImage('The Beatles')).toBe('https://i.scdn.co/a');

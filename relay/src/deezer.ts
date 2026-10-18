@@ -9,7 +9,12 @@ const FIELD_MAX = 200;
 
 // Cache par « artiste|titre » normalisés : seul l'identifiant de piste Deezer (ou null = aucune correspondance) est gardé.
 const cache = new Map<string, { at: number; id: number | null }>();
-export const resetDeezerCacheForTests = (): void => cache.clear();
+// Pochettes des versions d'un album (CD de la pièce), par « artiste|titre » normalisés : les adresses cover_xl sont stables.
+const coverCache = new Map<string, { at: number; covers: string[] }>();
+export const resetDeezerCacheForTests = (): void => {
+  cache.clear();
+  coverCache.clear();
+};
 
 const fold = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const alnum = (s: string): string => s.replace(/[^a-z0-9]+/g, ' ').trim();
@@ -93,4 +98,51 @@ export async function proxyDeezerPreview(url: URL, deps: { fetch: Fetcher; now: 
   const previewUrl = typeof body.preview === 'string' && body.preview !== '' ? body.preview : null;
   const deezerBpm = typeof body.bpm === 'number' && Number.isFinite(body.bpm) && body.bpm > 0 ? body.bpm : null;
   return json(previewUrl, deezerBpm);
+}
+
+// Pochettes Deezer des versions d'un album (spec disposition, « Changer la version ») : recours quand Spotify n'a rien ou
+// qu'aucun compte n'est lié. Titre obligatoire, artiste facultatif ; seuls les albums au titre (et à l'artiste) correspondants
+// gardent leur `cover_xl` (https, sans doublon, 12 au plus). Réponse vide comprise, mise en cache 30 jours.
+const COVERS_MAX = 12;
+type AlbumHit = { title: string; artist: string; cover: string | null };
+function toAlbum(raw: unknown): AlbumHit | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as { title?: unknown; artist?: { name?: unknown } | null; cover_xl?: unknown };
+  const name = r.artist?.name;
+  if (typeof r.title !== 'string' || typeof name !== 'string') return null;
+  return { title: r.title, artist: name, cover: typeof r.cover_xl === 'string' && r.cover_xl.startsWith('https://') ? r.cover_xl : null };
+}
+
+export async function proxyDeezerCovers(url: URL, deps: { fetch: Fetcher; now: () => number }): Promise<ProxyResult> {
+  const title = (url.searchParams.get('title') ?? '').trim();
+  const artist = (url.searchParams.get('artist') ?? '').trim();
+  if (title === '' || title.length > FIELD_MAX || artist.length > FIELD_MAX) return failure(400, 'bad-request');
+  const wantTitle = normTitle(title);
+  const wantArtist = artist === '' ? '' : normArtist(artist);
+  const key = `${wantArtist}|${wantTitle}`;
+  const cached = coverCache.get(key);
+  if (cached && deps.now() - cached.at < CACHE_MS) return { status: 200, body: JSON.stringify({ covers: cached.covers }) };
+
+  const query = new URLSearchParams({ q: `${artist} ${searchTitle(title)}`.trim(), limit: '25' });
+  const found = await forward(deps.fetch, `${BASE}/search/album?${query.toString()}`);
+  if (found.status !== 200) return found.status === 429 ? found : failure(502, 'upstream');
+  let data: unknown;
+  try {
+    const parsed = JSON.parse(found.body) as { data?: unknown; error?: unknown } | null;
+    if (typeof parsed !== 'object' || parsed === null || parsed.error !== undefined) return failure(502, 'upstream');
+    data = parsed.data;
+  } catch {
+    return failure(502, 'upstream');
+  }
+  if (!Array.isArray(data)) return failure(502, 'upstream');
+  const covers: string[] = [];
+  for (const hit of data.map(toAlbum)) {
+    if (!hit?.cover || covers.includes(hit.cover)) continue;
+    if (!related(normTitle(hit.title), wantTitle) || (wantArtist !== '' && !related(normArtist(hit.artist), wantArtist))) continue;
+    covers.push(hit.cover);
+    if (covers.length === COVERS_MAX) break;
+  }
+  if (coverCache.size >= CACHE_MAX) coverCache.clear();
+  coverCache.set(key, { at: deps.now(), covers });
+  return { status: 200, body: JSON.stringify({ covers }) };
 }

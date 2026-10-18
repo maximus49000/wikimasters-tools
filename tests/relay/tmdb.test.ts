@@ -22,8 +22,18 @@ describe('proxyTmdb', () => {
       expect(fetchFn).toHaveBeenCalledOnce();
     }
   });
+  it('accepte les affiches d’un film (/movie/<id>/images, langues fr,en,null seulement)', async () => {
+    const { fetchFn, result } = run('/tmdb/movie/603/images?language=fr-FR&include_image_language=fr,en,null');
+    expect((await result).status).toBe(200);
+    const upstream = new URL(fetchFn.mock.calls[0]?.[0] ?? '');
+    expect(upstream.pathname).toBe('/3/movie/603/images');
+    expect(upstream.searchParams.get('include_image_language')).toBe('fr,en,null');
+    const other = run('/tmdb/movie/603/images?include_image_language=de');
+    expect((await other.result).status).toBe(400);
+    expect(other.fetchFn).not.toHaveBeenCalled();
+  });
   it('refuse tout autre chemin sans appel amont', async () => {
-    for (const path of ['/tmdb/account', '/tmdb/movie/abc', '/tmdb/movie/1/credits', '/tmdb/../3/account', '/tmdb/authentication/token/new']) {
+    for (const path of ['/tmdb/movie/603/videos', '/tmdb/tv/1399/images', '/tmdb/account', '/tmdb/movie/abc', '/tmdb/movie/1/credits', '/tmdb/../3/account', '/tmdb/authentication/token/new']) {
       const { fetchFn, result } = run(path);
       expect((await result).status).toBe(404);
       expect(fetchFn).not.toHaveBeenCalled();
