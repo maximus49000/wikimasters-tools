@@ -5,10 +5,10 @@ import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { BaseModel } from '../../../src/content/citizens/model-cache';
-import { CitizenRenderer, rigHeight, spriteCamera, spritePixel, type RendererLike } from '../../../src/content/citizens/citizen-renderer';
+import { CitizenRenderer, outlineThickness, rgbOf, rigHeight, spriteCamera, spritePixel, type RendererLike } from '../../../src/content/citizens/citizen-renderer';
 import { SPRITE_BOX } from '../../../src/content/figure/figure-host';
 import { citizen, type CitizenDesc } from '../../../src/core/citizens/catalogue';
-import { dressRig, disposeRig } from '../../../src/core/citizens/wardrobe';
+import { dressRig, disposeRig, PARAPLUIE_DEFAUT } from '../../../src/core/citizens/wardrobe';
 import { anchorsOf, type FigureKey } from '../../../src/core/library/figure/bake';
 import { CAM_CA, CAM_SA } from '../../../src/core/library/figure/geometry';
 import { ManifestSchema } from '../../../src/core/citizens/manifest';
@@ -204,5 +204,156 @@ describe('CitizenRenderer', () => {
     r.dispose();
     expect(fake.dispose).toHaveBeenCalled();
     expect(r.render(d, KEY, 1, '')).toBeNull();
+  });
+
+  it('contour : épaisseur tirée des pixels (1,2 px vêtements, 0,7 px corps, sur les bords latéraux), quelle que soit la résolution', () => {
+    for (const px of [3, 6]) {
+      expect(outlineThickness(1.2, px) * ((SPRITE_BOX.w * px) / 2)).toBeCloseTo(1.2);
+      expect(outlineThickness(0.7, px) * ((SPRITE_BOX.w * px) / 2)).toBeCloseTo(0.7);
+    }
+  });
+
+  it('contour du corps à 0,7 px pour la résolution du rendu', async () => {
+    const d = desc();
+    let t: number | undefined;
+    const fake = fakeRenderer();
+    fake.render = (scene) => {
+      scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+        if ((o as THREE.SkinnedMesh).isSkinnedMesh && m?.userData.outlineParameters?.thickness) t = m.userData.outlineParameters.thickness as number;
+      });
+    };
+    const { r } = await readyRenderer(d, { px: 6, fake });
+    r.render(d, KEY, 1, '');
+    expect(t).toBeCloseTo(outlineThickness(0.7, 6));
+  });
+
+  it('contexte perdu pendant le rendu : null, pas de toDataURL', async () => {
+    const d = desc();
+    const fake = fakeRenderer();
+    let lost = false;
+    const toDataURL = vi.fn(() => 'data:x');
+    fake.domElement = { toDataURL };
+    fake.lost = () => lost;
+    fake.render = () => { lost = true; };
+    const { r } = await readyRenderer(d, { fake });
+    expect(r.render(d, KEY, 1, '')).toBeNull();
+    expect(toDataURL).not.toHaveBeenCalled();
+    lost = false;
+    fake.render = () => {};
+    expect(r.render(d, KEY, 1, '')?.url).toBe('data:x');
+  });
+
+  it('habillage en échec : null, pas de nouvel essai avant 30 s', async () => {
+    const d = desc({ height: 1.66 });
+    const { r } = await readyRenderer(d);
+    vi.mocked(dressRig).mockImplementationOnce(() => { throw new Error('pièce cassée'); });
+    const t0 = Date.now();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(t0);
+    try {
+      expect(r.render(d, KEY, 1, '')).toBeNull();
+      expect(r.render(d, KEY, 1, '')).toBeNull();
+      expect(dressRig).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(t0 + 31_000);
+      expect(r.render(d, KEY, 1, '')).not.toBeNull();
+      expect(dressRig).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('l’humeur ne change pas le rig', async () => {
+    const d = desc({ mood: 'neutre' });
+    const { r } = await readyRenderer(d);
+    r.render(d, KEY, 1, '');
+    r.render({ ...d, mood: 'triste' }, KEY, 1, 't');
+    expect(dressRig).toHaveBeenCalledTimes(1);
+  });
+
+  it('teinte : #rgb accepté, illisible → peau de la base (aucun NaN)', async () => {
+    expect(rgbOf('#abc')).toEqual([0xaa, 0xbb, 0xcc]);
+    expect(rgbOf('#A0B1C2')).toEqual([0xa0, 0xb1, 0xc2]);
+    expect(rgbOf('pas une couleur')).toBeNull();
+    expect(rgbOf('#12345')).toBeNull();
+    const d = desc({ skin: 'pas une couleur' });
+    let U: Record<string, { value: THREE.Color | number }> | undefined;
+    const fake = fakeRenderer();
+    fake.render = (scene) => { scene.traverse((o) => { if (o.userData.face) U = o.userData.face as typeof U; }); };
+    const { r } = await readyRenderer(d, { fake });
+    expect(r.render(d, KEY, 1, '')).not.toBeNull();
+    const c = U!.uLidL!.value as THREE.Color;
+    expect([c.r, c.g, c.b].every(Number.isFinite)).toBe(true);
+  });
+
+  describe('parapluie', () => {
+    const RAIN: FigureKey = { ...KEY, sig: 'short.tee.pants.none.u.n' };
+    type Seen = { open?: boolean; closed?: boolean; color?: string; dist?: number };
+    // Relève, pendant le rendu, l'état des deux parapluies et l'écart du manche ouvert à la main droite.
+    function watch(fake: Fake, out: Seen): void {
+      fake.render = (scene) => {
+        out.open = undefined; out.closed = undefined; out.dist = undefined;
+        let hand: THREE.Vector3 | null = null;
+        scene.traverse((o) => { if (o.name === 'mixamorigRightHand') hand = o.getWorldPosition(new THREE.Vector3()); });
+        scene.traverse((o) => {
+          if (o.name === 'parapluie-ouvert') {
+            out.open = o.visible;
+            const canopy = (o.children[1] as THREE.Mesh).material as THREE.MeshToonMaterial;
+            out.color = '#' + canopy.color.getHexString();
+            out.dist = o.getWorldPosition(new THREE.Vector3()).distanceTo(hand!);
+          }
+          if (o.name === 'parapluie-ferme') out.closed = (out.closed ?? false) || o.visible;
+        });
+      };
+    }
+    const withUmbrella = (color: string): CitizenDesc => {
+      const d = desc({ height: 1.71 });
+      return { ...d, items: [...d.items, { k: 'accessory', what: 'parapluie', color }] };
+    };
+
+    it('pluie (u dans la signature), sans parapluie à soi : ouvert, couleur par défaut, au poing, bras levé', async () => {
+      const d = desc();
+      const seen: Seen = {};
+      const fake = fakeRenderer();
+      watch(fake, seen);
+      const { r } = await readyRenderer(d, { fake });
+      const a = r.render(d, RAIN, 1, '')!.anchors;
+      expect(seen.open).toBe(true);
+      expect(seen.closed).toBeUndefined();
+      expect(seen.color).toBe(PARAPLUIE_DEFAUT.toLowerCase());
+      expect(seen.dist).toBeLessThan(1e-6);
+      expect(a.handR[1]).toBeLessThan(a.nape[1]); // main droite au-dessus du cou
+    });
+
+    it('pluie avec son parapluie : ouvert à sa couleur, le fermé caché', async () => {
+      const d = withUmbrella('#123456');
+      const seen: Seen = {};
+      const fake = fakeRenderer();
+      watch(fake, seen);
+      const { r } = await readyRenderer(d, { fake });
+      r.render(d, RAIN, 1, '');
+      expect(seen.open).toBe(true);
+      expect(seen.color).toBe('#123456');
+      expect(seen.closed).toBeUndefined(); // jamais construit
+      // Plus de pluie : le même rig montre le parapluie fermé, l'ouvert est caché, bras baissé.
+      const a = r.render(d, KEY, 1, '')!.anchors;
+      expect(seen.open).toBe(false);
+      expect(seen.closed).toBe(true);
+      expect(a.handR[1]).toBeGreaterThan(a.seat[1] - 4); // main vers le bassin
+      expect(dressRig).toHaveBeenCalledTimes(1);
+      // dressRig n'a pas reçu le parapluie (il est géré à part).
+      const pieces = vi.mocked(dressRig).mock.calls[0]![1];
+      expect(pieces.some((p) => p.k === 'accessory' && p.what === 'parapluie')).toBe(false);
+    });
+
+    it('sans pluie ni parapluie : aucun parapluie', async () => {
+      const d = desc();
+      const seen: Seen = {};
+      const fake = fakeRenderer();
+      watch(fake, seen);
+      const { r } = await readyRenderer(d, { fake });
+      r.render(d, KEY, 1, '');
+      expect(seen.open).toBeUndefined();
+      expect(seen.closed).toBeUndefined();
+    });
   });
 });

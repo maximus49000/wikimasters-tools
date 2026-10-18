@@ -55,6 +55,10 @@ type Rest = {
   thigh: Record<Side, number>;
   shin: Record<Side, number>;
   ankleY: number; // hauteur de cheville du modèle debout (la plus basse des deux)
+  // Colonne au repos : Hips → Spine → Spine1 → Spine2 → Neck (segments) et sa ligne Hips → Neck (unitaire). Les modèles
+  // ne sont pas droits au repos (cou ≈ 6° en arrière du bassin) : c'est cette ligne, pas l'axe y, qui suit le pantin.
+  spine: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3];
+  torso: THREE.Vector3;
 };
 
 // Passage du rig à l'espace du parent de Hips (nœuds « Armature » tournés, mis à l'échelle des glTF), calculé une fois
@@ -113,6 +117,8 @@ export function boneMap(skeleton: THREE.Skeleton): BoneMap {
     thigh: { Left: len('LeftUpLeg', 'LeftLeg'), Right: len('RightUpLeg', 'RightLeg') },
     shin: { Left: len('LeftLeg', 'LeftFoot'), Right: len('RightLeg', 'RightFoot') },
     ankleY: Math.min(pos.LeftFoot.y, pos.RightFoot.y),
+    spine: [pos.Spine.clone().sub(pos.Hips), pos.Spine1.clone().sub(pos.Spine), pos.Spine2.clone().sub(pos.Spine1), pos.Neck.clone().sub(pos.Spine2)],
+    torso: pos.Neck.clone().sub(pos.Hips).normalize(),
   };
   return { bones, rest, space: null, cur: rec(() => new THREE.Quaternion()) };
 }
@@ -136,6 +142,7 @@ const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), e3 = new THREE.Vector3
 const f1 = new THREE.Vector3(), f2 = new THREE.Vector3(), f3 = new THREE.Vector3();
 const M0 = new THREE.Matrix4(), M1 = new THREE.Matrix4();
 const qP = new THREE.Quaternion(), qC = new THREE.Quaternion(), qT = new THREE.Quaternion(), qI = new THREE.Quaternion();
+const qS = new THREE.Quaternion();
 const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), vD = new THREE.Vector3();
 const vUp = new THREE.Vector3(), vLat = new THREE.Vector3(), vFb = new THREE.Vector3(), vT = new THREE.Vector3(), vS = new THREE.Vector3();
 const lowRel = { Left: 0, Right: 0 };
@@ -200,7 +207,16 @@ export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRi
   // Bassin : haut = vertical, travers = hanche droite → hanche gauche (porte le pelvisTurn). Buste : haut = bassin → cou
   // (porte le lean), travers = épaule droite → épaule gauche (porte le shoulderTurn). La colonne se tord entre les deux.
   align(Y, X, vUp.set(0, 1, 0), diff(vLat, legR.hip, legL.hip), qP);
-  align(Y, X, diff(vUp, pose.pelvis, pose.neck), diff(vLat, armR.sh, armL.sh), qC);
+  // Buste : la ligne de repos Hips → Neck sur pelvis → neck du pantin. La colonne se tordant entre bassin et buste
+  // (Spine, Spine1 à 1/3 et 2/3), la ligne obtenue s'en écarte un peu : quatre corrections la ramènent sur la cible (à 0,2° près sur les modèles).
+  align(R.torso, X, diff(vUp, pose.pelvis, pose.neck), diff(vLat, armR.sh, armL.sh), qC);
+  for (let it = 0; it < 4; it++) {
+    vA.copy(R.spine[0]).applyQuaternion(qP);
+    vA.add(vB.copy(R.spine[1]).applyQuaternion(qS.slerpQuaternions(qP, qC, 1 / 3)));
+    vA.add(vB.copy(R.spine[2]).applyQuaternion(qS.slerpQuaternions(qP, qC, 2 / 3)));
+    vA.add(vB.copy(R.spine[3]).applyQuaternion(qC)).normalize();
+    qC.premultiply(qS.setFromUnitVectors(vA, vUp));
+  }
   W.Hips.multiplyQuaternions(qP, R.W.Hips);
   W.Spine.slerpQuaternions(qP, qC, 1 / 3).multiply(R.W.Spine);
   W.Spine1.slerpQuaternions(qP, qC, 2 / 3).multiply(R.W.Spine1);

@@ -10,13 +10,14 @@ import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadBase as loadBaseParDefaut, type BaseModel } from './model-cache';
 import { SPRITE_BOX } from '../figure/figure-host';
-import { citizenKey, expand, type CitizenDesc } from '../../core/citizens/catalogue';
-import { analyse, disposeRig, dressRig, skull, TOON_RAMP, type BodyInfo } from '../../core/citizens/wardrobe';
+import { citizenKey, expand, type CitizenDesc, type Piece } from '../../core/citizens/catalogue';
+import { accessory, analyse, disposeRig, dressRig, PARAPLUIE_DEFAUT, parapluieOuvert, skull, TOON_RAMP, type BodyInfo } from '../../core/citizens/wardrobe';
 import { faceLayer, parseFaceState } from '../../core/citizens/face';
 import { applyPose, boneMap, type BoneMap } from '../../core/citizens/retarget';
 import { poseOf } from '../../core/library/figure/skeleton';
 import { CAM_CA, CAM_SA } from '../../core/library/figure/geometry';
 import type { Anchor, FigureKey } from '../../core/library/figure/bake';
+import { shapeFromSignature } from '../../core/library/figure/dress';
 
 /** Ce dont le rendu a besoin d'un moteur (un faux en test : pas de WebGL sous node). */
 export type RendererLike = {
@@ -31,15 +32,25 @@ export type RendererLike = {
 export type SpriteAnchors = Record<Anchor | 'hands', readonly [number, number]>;
 export type CitizenSprite = { url: string; anchors: SpriteAnchors };
 
-// Réglages du banc (dress.html) : contour brun, plus fin sur le corps que sur les vêtements ; lumières.
-const OUTLINE = { defaultThickness: 0.0035, defaultColor: [0.2, 0.14, 0.12] };
-const BODY_OUTLINE = 0.0016;
+// Contour encré, plus fin sur le corps que sur les vêtements. L'épaisseur d'OutlineEffect est en espace de découpe : un
+// décalage t y fait t·W/2 px en largeur et t·H/2 px en hauteur. On la tire d'une épaisseur visée en pixels sur le côté
+// le plus étroit (la largeur : les bords gauche/droite de la silhouette), pour qu'elle ne dépende pas de la résolution
+// du sprite (les valeurs du banc, 0,0035 et 0,0016, ne faisaient que 0,2 à 0,4 px à 3 px/unité).
+// Couleur : l'encre du pantin 2D (#33241f). OutlineEffect la prend en linéaire (puis la convertit en sRGB) : le banc
+// passait ses composantes sRGB telles quelles, d'où un contour gris clair.
+const OUTLINE_COLOR = new THREE.Color('#33241f').toArray();
+const OUTLINE_PX = 1.2;
+const BODY_OUTLINE_PX = 0.7;
+/** Épaisseur OutlineEffect pour `targetPx` pixels sur les bords latéraux d'un canvas de SPRITE_BOX.w·px de large. */
+export const outlineThickness = (targetPx: number, px: number): number => targetPx / ((Math.min(SPRITE_BOX.w, SPRITE_BOX.h) * px) / 2);
 const AMBIENT = 1.6;
 const SUN = 1.6;
 // Taille à l'écran : adulte de 1,70 m = 37,5 unités du pantin ; enfant toujours 37,5 (les scènes le réduisent à 0,6).
 const ADULT_UNITS = 37.5;
 const REF_METRES = 1.7;
 const RETRY_MS = 30_000;
+// Peau de repli quand ni la teinte demandée ni celle de la base ne se lisent (« beige » du catalogue).
+const SKIN_DEFAUT = '#E0AE88';
 /** Rigs habillés gardés (les moins récemment rendus partent). */
 export const RIGS_MAX = 48;
 
@@ -47,21 +58,21 @@ export const RIGS_MAX = 48;
 export const rigHeight = (metres: number, child: boolean): number => (child ? ADULT_UNITS : (ADULT_UNITS * metres) / REF_METRES);
 
 /** Moteur par défaut : WebGL + contour, fond transparent, tampon conservé (toDataURL après le rendu). */
-function webglRenderer(): RendererLike {
+function webglRenderer(px: number): RendererLike {
   const R = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
   R.outputColorSpace = THREE.SRGBColorSpace;
   R.setPixelRatio(1);
   R.setClearColor(0x000000, 0);
-  const outline = new OutlineEffect(R, OUTLINE);
-  let lost = false;
-  R.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; });
-  R.domElement.addEventListener('webglcontextrestored', () => { lost = false; });
+  const outline = new OutlineEffect(R, { defaultThickness: outlineThickness(OUTLINE_PX, px), defaultColor: OUTLINE_COLOR });
+  // Laisse au navigateur la possibilité de restaurer le contexte ; l'état se lit directement (isContextLost).
+  R.domElement.addEventListener('webglcontextlost', (e) => e.preventDefault());
+  const gl = R.getContext();
   return {
     setSize: (w, h) => R.setSize(w, h, false),
     render: (s, c) => outline.render(s, c),
     domElement: R.domElement,
     dispose: () => R.dispose(),
-    lost: () => lost,
+    lost: () => gl.isContextLost(),
   };
 }
 
@@ -127,7 +138,13 @@ function pixelsOf(t: THREE.Texture): ImageData | null {
   }
 }
 const hexOf = (rgb: number[]): string => '#' + rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('');
-const rgbOf = (h: string): number[] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+/** « #rrggbb » ou « #rgb » → [r, g, b] (0–255) ; null si illisible (jamais de NaN). */
+export function rgbOf(h: string): number[] | null {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(h.trim());
+  if (!m) return null;
+  const x = m[1]!.length === 3 ? [...m[1]!].map((c) => c + c).join('') : m[1]!;
+  return [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16));
+}
 
 // Peau d'origine : moyenne de la texture sur les avant-bras (nus sur toutes les bases), un sommet sur cinq.
 function measureSkin(A: BodyInfo, tex: THREE.Texture, D: ImageData): string | null {
@@ -147,10 +164,12 @@ function measureSkin(A: BodyInfo, tex: THREE.Texture, D: ImageData): string | nu
 // Texture recolorée (banc `toneMaterial`) : les pixels de chair (ni gris, ni noirs, ni blancs ; teinte entre rouge et
 // jaune) passent de la peau d'origine à la peau voulue, en fondu sur les bords (anticrénelage avec le tee-shirt).
 function toneTexture(src: THREE.Texture, D: ImageData, baseHex: string, targetHex: string): THREE.Texture | null {
+  // Teinte illisible : pas de recoloration (l'appelant garde la peau d'origine).
+  const b = rgbOf(baseHex), t = rgbOf(targetHex);
+  if (!b || !t) return null;
   const s = surface(D.width, D.height);
   if (!s) return null;
   const im = new ImageData(new Uint8ClampedArray(D.data), D.width, D.height), P = im.data;
-  const b = rgbOf(baseHex), t = rgbOf(targetHex);
   for (let i = 0; i < P.length; i += 4) {
     const r = P[i]!, g = P[i + 1]!, bl = P[i + 2]!;
     const mx = Math.max(r, g, bl), mn = Math.min(r, g, bl);
@@ -177,8 +196,12 @@ type Rig = {
   root: THREE.Object3D; // espace de liaison (parent du corps)
   body: THREE.SkinnedMesh;
   map: BoneMap;
-  worn: THREE.Object3D[]; // garde-robe + visage
+  worn: THREE.Object3D[]; // garde-robe + visage (+ parapluies une fois construits)
   face: THREE.SkinnedMesh;
+  // Parapluie : fermé (tenu pointe en bas, si l'habitant en a un) ou ouvert (pluie), construits à la première demande.
+  umbrellaColor: string | null;
+  closed: THREE.Object3D[] | null;
+  open: THREE.Group | null;
   bodyMat: THREE.Material;
   unitsToRig: number;
   base: Base;
@@ -194,6 +217,9 @@ function carried(rig: Rig, bone: number, rest: THREE.Vector3, out: THREE.Vector3
 
 const r2 = (v: number): number => Math.round(v * 100) / 100 || 0;
 const vA = new THREE.Vector3();
+const isUmbrella = (p: Piece): boolean => p.k === 'accessory' && p.what === 'parapluie';
+// Clé du rig : l'humeur ne change pas l'habillage (le visage est posé à chaque rendu).
+const rigKey = (d: CitizenDesc): string => citizenKey({ ...d, mood: 'neutre' });
 
 export type CitizenRendererOptions = {
   pxPerUnit: number;
@@ -213,6 +239,8 @@ export class CitizenRenderer {
   private readonly sun = new THREE.DirectionalLight(0xffffff, SUN);
   private readonly bases = new Map<string, Base>();
   private readonly loading = new Set<string>();
+  // Habillages en échec (clé du rig → instant) : pas de nouvel essai avant RETRY_MS.
+  private readonly rigFailed = new Map<string, number>();
   // Échecs de chargement : pas de nouvelle tentative avant RETRY_MS (render appelle prepare à chaque image).
   private readonly failed = new Map<string, number>();
   // Rigs par clé d'habitant, dans l'ordre d'usage (le début de la Map part en premier).
@@ -223,7 +251,7 @@ export class CitizenRenderer {
 
   constructor(opts: CitizenRendererOptions) {
     this.px = opts.pxPerUnit;
-    this.make = opts.makeRenderer ?? webglRenderer;
+    this.make = opts.makeRenderer ?? (() => webglRenderer(this.px));
     this.load = opts.loadBase ?? ((n) => loadBaseParDefaut(n));
     this.sun.position.set(-2, 4, 3);
     this.scene.add(this.ambient, this.sun);
@@ -258,7 +286,9 @@ export class CitizenRenderer {
     if (!R || R.lost?.()) return null;
     try {
       const rig = this.rigOf(desc, base);
-      const umbrella = desc.items.some((i) => i.what === 'parapluie');
+      if (!rig) return null;
+      // Parapluie ouvert selon la clé (la pluie l'ouvre, comme pour le pantin 2D) ; sinon, celui de l'habitant reste fermé.
+      const umbrella = shapeFromSignature(key.sig).umbrella;
       // Même pose que la cuisson 2D (bake.ts `poseOfKey`) : le 3D regarde du même côté que le pantin pour la même clé.
       const pose = poseOf((key.yaw * Math.PI) / 8, (key.phase * 2 * Math.PI) / 12, key.gait, { headYaw: (key.head * Math.PI) / 8, umbrella, arms: key.arms, lean: key.lean });
       applyPose(rig.root, rig.map, pose, rig.unitsToRig, key.gait);
@@ -268,11 +298,14 @@ export class CitizenRenderer {
       this.sun.intensity = SUN * light;
       this.scene.add(rig.wrap);
       rig.wrap.updateMatrixWorld(true);
+      this.umbrella(rig, umbrella);
       try {
         R.render(this.scene, this.camera);
       } finally {
         this.scene.remove(rig.wrap);
       }
+      // Contexte perdu pendant le rendu : l'image serait vide.
+      if (R.lost?.()) return null;
       return { url: R.domElement.toDataURL('image/png'), anchors: this.anchors(rig) };
     } catch {
       return null;
@@ -307,15 +340,24 @@ export class CitizenRenderer {
     return this.renderer;
   }
 
-  private rigOf(desc: CitizenDesc, base: Base): Rig {
-    const k = citizenKey(desc);
+  private rigOf(desc: CitizenDesc, base: Base): Rig | null {
+    const k = rigKey(desc);
     const hit = this.rigs.get(k);
     if (hit) {
       this.rigs.delete(k);
       this.rigs.set(k, hit);
       return hit;
     }
-    const rig = this.build(desc, base);
+    const t = this.rigFailed.get(k);
+    if (t !== undefined && Date.now() - t < RETRY_MS) return null;
+    let rig: Rig;
+    try {
+      rig = this.build(desc, base);
+    } catch {
+      this.rigFailed.set(k, Date.now());
+      return null;
+    }
+    this.rigFailed.delete(k);
     this.rigs.set(k, rig);
     while (this.rigs.size > RIGS_MAX) {
       const [old, r] = this.rigs.entries().next().value as [string, Rig];
@@ -336,14 +378,17 @@ export class CitizenRenderer {
     const B: THREE.SkinnedMesh = body;
     const root = B.parent ?? clone;
     const baseSkin = this.baseSkin(base);
-    const bodyMat = new THREE.MeshToonMaterial({ map: this.tone(base, baseSkin, desc.skin), gradientMap: TOON_RAMP });
-    bodyMat.userData.outlineParameters = { thickness: BODY_OUTLINE };
+    // Teinte illisible : celle de la base (jamais de NaN dans les couleurs).
+    const skin = rgbOf(desc.skin) ? desc.skin : (baseSkin ?? SKIN_DEFAUT);
+    const bodyMat = new THREE.MeshToonMaterial({ map: this.tone(base, baseSkin, skin), gradientMap: TOON_RAMP });
+    bodyMat.userData.outlineParameters = { thickness: outlineThickness(BODY_OUTLINE_PX, this.px) };
     B.material = bodyMat;
     let worn: THREE.Object3D[] = [];
     let face: THREE.SkinnedMesh;
     try {
-      worn = dressRig(info, expand(desc), desc.skin, B);
-      face = faceLayer(info, model.face, desc.skin, baseSkin ?? desc.skin, B);
+      // Le parapluie de l'habitant est à part : fermé ou ouvert selon la clé de chaque rendu.
+      worn = dressRig(info, expand(desc).filter((p) => !isUmbrella(p)), skin, B);
+      face = faceLayer(info, model.face, skin, baseSkin ?? skin, B);
     } catch (e) {
       // Habillage impossible : rien ne doit rester alloué.
       disposeRig(worn);
@@ -356,7 +401,35 @@ export class CitizenRenderer {
     wrap.add(clone);
     const scale = rigHeight(desc.height, model.child) / info.H;
     wrap.scale.setScalar(scale);
-    return { wrap, root, body: B, map: boneMap(B.skeleton), worn: [...worn, face], face, bodyMat, unitsToRig: 1 / scale, base };
+    const own = desc.items.find((i) => i.what === 'parapluie');
+    return {
+      wrap, root, body: B, map: boneMap(B.skeleton), worn: [...worn, face], face, bodyMat, unitsToRig: 1 / scale, base,
+      umbrellaColor: own ? own.color : null, closed: null, open: null,
+    };
+  }
+
+  // Parapluie du rendu : ouvert (vertical, manche dans la main droite) si `up`, sinon celui de l'habitant fermé, pointe en
+  // bas (bras le long du corps, jamais levé). Chaque forme est construite une fois par rig, puis montrée ou cachée.
+  private umbrella(rig: Rig, up: boolean): void {
+    if (up && !rig.open) {
+      rig.open = parapluieOuvert(rig.base.info, rig.umbrellaColor ?? PARAPLUIE_DEFAUT);
+      rig.root.add(rig.open);
+      rig.worn.push(rig.open);
+    }
+    if (!up && rig.umbrellaColor && !rig.closed) {
+      rig.closed = accessory({ ...rig.base.info, body: rig.body }, 'parapluie', rig.umbrellaColor);
+      for (const o of rig.closed) { o.name = 'parapluie-ferme'; rig.root.add(o); }
+      rig.worn.push(...rig.closed);
+    }
+    for (const o of rig.closed ?? []) o.visible = !up;
+    if (rig.open) {
+      rig.open.visible = up;
+      if (up) {
+        // Au poing droit, droit dans le repère du rig (la scène n'y ajoute qu'une échelle).
+        rig.open.position.copy(rig.root.worldToLocal(rig.map.bones.RightHand.getWorldPosition(vA)));
+        rig.open.updateMatrixWorld(true);
+      }
+    }
   }
 
   private free(rig: Rig): void {

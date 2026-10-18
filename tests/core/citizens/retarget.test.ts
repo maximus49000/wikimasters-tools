@@ -6,6 +6,9 @@ import { applyPose, boneMap } from '../../../src/core/citizens/retarget';
 import { PERCH, poseOf, type ArmPose, type Gait, type Pose } from '../../../src/core/library/figure/skeleton';
 import type { V3 } from '../../../src/core/library/figure/geometry';
 import { makeHumanoid } from './fixtures/humanoid';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const GAITS: Gait[] = ['stand', 'step', 'walk', 'seated', 'climb', 'pedal', 'mount', 'crouch', 'perch'];
 const ARMS: ArmPose[] = ['swing', 'pay-card', 'pour', 'scissors-1', 'hold-child', 'handlebar', 'overhead'];
@@ -238,5 +241,33 @@ describe('applyPose', () => {
     const bad = makeHumanoid();
     bad.skeleton.bones.find((b) => b.name === 'mixamorigLeftForeArm')!.name = 'x';
     expect(() => boneMap(bad.skeleton)).toThrow(/LeftForeArm/);
+  });
+
+  // Les vrais modèles ne sont pas droits au repos (cou ≈ 6° en arrière du bassin) : le buste penchait en arrière.
+  it('vrais modèles : la ligne Hips → Neck suit pelvis → neck du pantin à moins de 3°', async () => {
+    for (const name of ['homme-fort', 'femme-frele', 'enfant']) {
+      const buf = readFileSync(resolve(__dirname, `../../../relay/public/persos/${name}.glb`));
+      const gltf = await new Promise<{ scene: THREE.Group }>((ok, ko) =>
+        new GLTFLoader().parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, '', ok, ko));
+      let body: THREE.SkinnedMesh | null = null;
+      gltf.scene.traverse((o) => { if (!body && (o as THREE.SkinnedMesh).isSkinnedMesh) body = o as THREE.SkinnedMesh; });
+      const mesh = body as unknown as THREE.SkinnedMesh;
+      const rigObj = mesh.parent!;
+      const map = boneMap(mesh.skeleton);
+      const w = (b: THREE.Object3D): THREE.Vector3 => b.getWorldPosition(new THREE.Vector3());
+      let worst = 0;
+      let where = '';
+      for (const g of ['walk', 'stand'] as const)
+        for (let y = 0; y < 16; y += 2)
+          for (let ph = 0; ph < 12; ph++)
+            for (const lean of [0, 2]) {
+              const p = poseOf(yawOf(y), phaseOf(ph), g, { lean });
+              applyPose(rigObj, map, p, 0.02, g);
+              gltf.scene.updateMatrixWorld(true);
+              const d = deg(w(map.bones.Neck).sub(w(map.bones.Hips)), v(p.neck).sub(v(p.pelvis)));
+              if (d > worst) { worst = d; where = `${name} ${g} yaw ${y} phase ${ph} lean ${lean}`; }
+            }
+      expect(worst, where).toBeLessThan(3);
+    }
   });
 });

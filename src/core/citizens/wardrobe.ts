@@ -16,7 +16,7 @@ export { toon, TOON_RAMP, type Band, type Motif } from './wardrobe/materials';
 export { garments, shell, skirt } from './wardrobe/shell';
 export { beard, bonnet, cap, hair, HAIR_STYLES, skull } from './wardrobe/hair';
 export { gilet, GILET_BANDE, tablier } from './wardrobe/work';
-export { accessory, ACCESSORIES, type AccessoryName } from './wardrobe/accessories';
+export { accessory, ACCESSORIES, PARAPLUIE_DEFAUT, parapluieOuvert, type AccessoryName } from './wardrobe/accessories';
 
 const flat = (m: THREE.SkinnedMesh | THREE.SkinnedMesh[]): THREE.SkinnedMesh[] => (Array.isArray(m) ? m : [m]);
 
@@ -51,7 +51,15 @@ const HEAD_PIECES = new Set<Piece['k']>(['hair', 'beard', 'cap', 'bonnet']);
 export function dressRig(info: BodyInfo, pieces: Piece[], skin: string, body: THREE.SkinnedMesh = info.body): THREE.Object3D[] {
   if (pieces.some((p) => HEAD_PIECES.has(p.k))) info.skull ??= skull(info);
   const A: BodyInfo = { ...info, body, skin };
-  return pieces.flatMap((p) => piece(A, p));
+  // Tout ou rien : si une pièce échoue, celles déjà construites sont libérées avant de propager l'erreur.
+  const out: THREE.Object3D[] = [];
+  try {
+    for (const p of pieces) out.push(...piece(A, p));
+  } catch (e) {
+    disposeRig(out);
+    throw e;
+  }
+  return out;
 }
 
 // Libère géométries et matériaux d'un habillage (la rampe toon, partagée par tous les matériaux, est gardée).

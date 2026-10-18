@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Piece } from '../../../src/core/citizens/catalogue';
-import { analyse, disposeRig, dressRig, garments, hair, skirt, type BodyInfo } from '../../../src/core/citizens/wardrobe';
+import { analyse, disposeRig, dressRig, garments, hair, parapluieOuvert, PARAPLUIE_DEFAUT, skirt, type BodyInfo } from '../../../src/core/citizens/wardrobe';
+import { vi } from 'vitest';
 import { makeHumanoid } from './fixtures/humanoid';
 
 const HAIRS = ['court', 'raie', 'degarni', 'couronne', 'carre', 'long', 'chignon', 'boucles', 'queue', 'couettes', 'rase', 'frise', 'afro', 'tresses', 'enfant'];
@@ -294,5 +295,33 @@ describe('habillage', () => {
     mat.gradientMap!.addEventListener('dispose', () => seen.push('grad'));
     disposeRig(ms);
     expect(seen.sort()).toEqual(['geo', 'mat']);
+  });
+
+  it('dressRig tout ou rien : une pièce en échec libère celles déjà construites', () => {
+    const spy = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
+    try {
+      const bad = { k: 'inconnue' } as unknown as Piece;
+      expect(() => dressRig(A, [{ k: 'top', sleeve: 0.45, color: '#FFFFFF' }, bad], '#C8906A')).toThrow();
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe('parapluie ouvert', () => {
+  it('manche vertical depuis le poing, toile en dôme au-dessus de la tête du pantin 2D', () => {
+    const g = parapluieOuvert(A, '#123456');
+    expect(g.children).toHaveLength(3);
+    const b = new THREE.Box3().setFromObject(g);
+    const k = A.H / 37.5;
+    // Toile de rayon 9,5 unités du pantin, sommet à 11 + 3,6 au-dessus du poing.
+    expect(b.max.x).toBeCloseTo(9.5 * k, 2);
+    expect(b.max.y).toBeCloseTo(14.6 * k, 1);
+    expect(b.min.y).toBeLessThan(0);
+    const colors = g.children.map((m) => '#' + ((m as THREE.Mesh).material as THREE.MeshToonMaterial).color.getHexString());
+    expect(colors).toContain('#123456');
+    expect(PARAPLUIE_DEFAUT).toMatch(/^#[0-9A-F]{6}$/i);
+    disposeRig([g]);
   });
 });

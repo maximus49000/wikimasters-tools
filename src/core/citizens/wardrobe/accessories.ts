@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { rigid, slab, type BodyInfo, type VertexInfo } from './body';
+import { toon } from './materials';
 
 export const ACCESSORIES = ['sac-a-dos', 'sac', 'mallette', 'ballon', 'echarpe', 'parapluie'] as const;
 export type AccessoryName = (typeof ACCESSORIES)[number];
@@ -148,6 +149,31 @@ function parapluie(A: BodyInfo, color: string): THREE.SkinnedMesh[] {
   crook.applyMatrix4(new THREE.Matrix4().set(0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1));
   crook.translate(xs, p.y, p.z + r);
   return [rigid(A, shaft, bone, '#3A3A3A'), rigid(A, canopy, bone, color), rigid(A, crook, bone, '#6B4A2E')];
+}
+
+/** Couleur de la toile quand l'habitant n'a pas de parapluie à lui (celle du pantin 2D). */
+export const PARAPLUIE_DEFAUT = '#C0392B';
+
+// Parapluie ouvert (pluie) : PAS lié au squelette — il reste vertical quel que soit le poignet, comme celui du pantin 2D
+// (manche de 11 unités au-dessus de la main, toile en dôme de rayon 9,5 pour 37,5 de haut). Origine = poing (bas du
+// manche), manche vers +y, en unités du modèle ; l'appelant le pose à la main droite à chaque image. Toile à 8 pans.
+export function parapluieOuvert(A: BodyInfo, color: string): THREE.Group {
+  const k = A.H / 37.5; // unités du pantin → unités du modèle
+  const top = 11 * k;
+  const g = new THREE.Group();
+  g.name = 'parapluie-ouvert';
+  const shaft = new THREE.CylinderGeometry(0.22 * k, 0.22 * k, top + 4.2 * k, 8);
+  shaft.translate(0, (top + 4.2 * k) / 2 - 0.6 * k, 0);
+  // Profil de la toile (rayon, hauteur au-dessus du haut du manche) : bord, mi-hauteur, haut, sommet — anneaux du 2D.
+  const prof = [[9.5, -1.2], [8.8, 0.3], [7.5, 1.6], [4, 3.0], [0.01, 3.6]].map(([r, y]) => new THREE.Vector2(r! * k, top + y! * k));
+  const canopy = new THREE.LatheGeometry(prof, 8);
+  // Crosse : demi-anneau sous le poing.
+  const r = 0.9 * k;
+  const crook = new THREE.TorusGeometry(r, 0.25 * k, 6, 12, Math.PI);
+  crook.rotateZ(Math.PI);
+  crook.translate(r, -0.6 * k, 0);
+  g.add(new THREE.Mesh(shaft, toon('#3A3A3A')), new THREE.Mesh(canopy, toon(color)), new THREE.Mesh(crook, toon('#6B4A2E')));
+  return g;
 }
 
 export function accessory(A: BodyInfo, what: string, color: string): THREE.SkinnedMesh[] {
