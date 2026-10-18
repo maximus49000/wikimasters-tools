@@ -1,6 +1,6 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { tripAt, tripHappens, type Trip } from './doors';
-import type { Passage } from './doorway';
+import { THRESHOLD_S, type Passage } from './doorway';
 
 // Lumière des halls d'immeuble : une minuterie, pas une lumière continue. Elle s'allume quand un habitant franchit la porte
 // (il sort, il rentre, ou il arrive d'une autre entrée) et s'éteint HALL_TIMER_S secondes après le dernier passage.
@@ -38,4 +38,18 @@ export function stairFloorsLit(doorX: number, until: number, floors: number): nu
   if (floors <= 0) return 0;
   const r = mulberry32(hashString('stair') ^ Math.round(doorX * 8) ^ Math.floor(until * 2))();
   return 1 + Math.floor(r * floors);
+}
+
+// Nouveau passage pour la cage : porte éteinte jusque-là, ou minuterie relancée après un trou de plus d'un seuil. Pendant
+// qu'un habitant reste sur le seuil, la boucle relance la minuterie à chaque image : même passage, même étage.
+export const stairNewPassage = (prev: number | undefined, next: number, t: number): boolean => prev === undefined || prev <= t || next - prev > THRESHOLD_S;
+
+// Étages des cages au montage, d'après les minuteries amorcées (un tirage par porte à cage).
+export function seedStairFloors(until: ReadonlyMap<number, number>, stairs: ReadonlyMap<number, readonly unknown[]>): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const [x, wins] of stairs) {
+    const u = until.get(x);
+    if (u !== undefined) out.set(x, stairFloorsLit(x, u, wins.length));
+  }
+  return out;
 }

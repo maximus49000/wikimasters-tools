@@ -460,6 +460,74 @@ describe('CityLifeLayer : minuterie des halls', () => {
     expect(day.querySelectorAll('[data-stair-light]').length).toBe([...stairs.values()].reduce((s, w) => s + w.length, 0));
   });
 
+  it('pendant le passage (seuil complet, image par image) : un seul étage tiré, une seule écriture par fenêtre', () => {
+    // Passages à une porte à cage (≥ 3 fenêtres) éteinte jusque-là ; plusieurs, pour que le tirage ne tombe pas juste par hasard.
+    const minutes = Math.round(night * 60);
+    const sky = skyAt(minutes, times);
+    const doors = doorsFor(720, 340, 1);
+    const city: CityContext = { minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: sky.daylight };
+    const flow = residentFlow(cityIntensity(city), minutes, doors.length, 720);
+    const trips = tripsFor(doors, 1, 720);
+    const gateOf = (trip: (typeof trips)[number]): number => (trip.kind === 'out' ? flow.out : flow.in);
+    const found: { t: number; door: number }[] = [];
+    for (let t = 1.8e9; t < 1.8e9 + 40000 && found.length < 4; t += 0.5) {
+      if (found.length && t - found.at(-1)!.t < 10) continue;
+      for (const trip of trips) {
+        const pos = tripAt(trip, 720, t);
+        if (pos?.stage !== 'threshold' || !tripHappens(trip, t, gateOf(trip))) continue;
+        const x = crossingDoorX(trip, pos);
+        if ((stairs.get(x)?.length ?? 0) < 3 || (seedHallTimers(trips, 720, t - 1, gateOf).get(x) ?? -Infinity) > t - 1) continue;
+        found.push({ t, door: x });
+        break;
+      }
+    }
+    expect(found.length).toBe(4);
+    // La boucle doit tourner : pas de mouvement réduit laissé par un test précédent (matchMedia simulé).
+    vi.unstubAllGlobals();
+    for (const { t, door } of found) {
+      let now = (t - 1) * 1000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      let pending: ((ms: number) => void)[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: (ms: number) => void) => {
+        pending.push(cb);
+        return pending.length;
+      });
+      vi.stubGlobal('cancelAnimationFrame', () => undefined);
+      const host = document.createElement('div');
+      document.body.append(host);
+      const root = createRoot(host);
+      mounted.push({ root, host });
+      act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={sky} seed={1} city={city} rainy={false} /></svg>));
+      const wins = [...host.querySelectorAll<SVGElement>(`[data-stair-light="${door}"]`)];
+      expect(stairLit(host, door).every((o) => o === '0')).toBe(true);
+      const writes = wins.map(() => 0);
+      wins.forEach((n, k) => {
+        const set = n.setAttribute.bind(n);
+        n.setAttribute = (name: string, value: string) => {
+          if (name === 'opacity') writes[k]!++;
+          set(name, value);
+        };
+      });
+      const floors = new Set<number>();
+      // Une image toutes les 1/30 s, de 1 s avant le seuil à 2 s après son début (seuil = 1 s).
+      for (let i = 1; i <= 90; i++) {
+        now += 1000 / 30;
+        const run = pending;
+        pending = [];
+        act(() => run.forEach((cb) => cb(i * 40)));
+        const lit = stairLit(host, door).filter((o) => o === '1').length;
+        if (lit > 0) floors.add(lit);
+      }
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+      expect(host.querySelector(`[data-hall-light="${door}"]`)!.getAttribute('data-lit')).toBe('true');
+      expect(floors.size, `porte ${door} à ${t}`).toBe(1);
+      const n = [...floors][0]!;
+      // Les n fenêtres du bas : une seule bascule (allumage) ; celles du dessus : aucune écriture.
+      expect(writes).toEqual(wins.map((_, k) => (k < n ? 1 : 0)));
+    }
+  });
+
   it('jamais allumée en continu : éteinte quand la minuterie des halls est échue', () => {
     const { t, door, trips, gateOf } = crossing((x) => stairs.has(x));
     // Premier instant après le passage où la minuterie de cette porte est échue (pas de nouveau passage depuis 2 min).
