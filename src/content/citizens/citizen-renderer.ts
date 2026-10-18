@@ -99,7 +99,12 @@ function webglRenderer(px: number): RendererLike {
     setSize: (w, h) => R.setSize(w, h, false),
     render: (s, c) => outline.render(s, c),
     domElement: R.domElement,
-    dispose: () => R.dispose(),
+    // dispose() libère les ressources mais garde le contexte WebGL vivant jusqu'au ramasse-miettes : on le rend tout de suite
+    // (les navigateurs plafonnent le nombre de contextes, et chaque passage par la vue « Dehors » en recrée un).
+    dispose: () => {
+      R.dispose();
+      R.forceContextLoss();
+    },
     lost: () => gl.isContextLost(),
   };
 }

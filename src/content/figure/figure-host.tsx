@@ -140,8 +140,10 @@ export type Citizen3DFactory = (pxPerUnit: number) => Citizen3D | Promise<Citize
 // Rendu partagé par résolution : un seul contexte WebGL pour tous les registres (RoomView en recrée un par monde ; les
 // navigateurs plafonnent le nombre de contextes), compté par registre : le dernier registre libéré (FigureRegistry.dispose,
 // ex. sortie de la vue dehors à 6 px) détruit le rendu (contexte WebGL, rigs, textures de peau) ; le suivant en refait un.
-export function sharedCitizen3D(create: (px: number) => Promise<Citizen3D | null>): Citizen3DFactory {
-  const pool = new Map<number, { p: Promise<Citizen3D | null>; users: number }>();
+// Le rendu libéré survit RELEASE_GRACE_MS : revenir vite dans la vue « Dehors » le réutilise (ni nouveau contexte, ni rigs à refaire).
+export const RELEASE_GRACE_MS = 10_000;
+export function sharedCitizen3D(create: (px: number) => Promise<Citizen3D | null>, graceMs = RELEASE_GRACE_MS): Citizen3DFactory {
+  const pool = new Map<number, { p: Promise<Citizen3D | null>; users: number; timer?: ReturnType<typeof setTimeout> }>();
   return (px) => {
     let e = pool.get(px);
     if (!e) {
@@ -149,6 +151,10 @@ export function sharedCitizen3D(create: (px: number) => Promise<Citizen3D | null
       pool.set(px, e);
     }
     const entry = e;
+    if (entry.timer !== undefined) {
+      clearTimeout(entry.timer);
+      entry.timer = undefined;
+    }
     entry.users++;
     let released = false;
     return entry.p.then((r): Citizen3D | null => {
@@ -157,8 +163,12 @@ export function sharedCitizen3D(create: (px: number) => Promise<Citizen3D | null
         if (released) return;
         released = true;
         if (--entry.users > 0) return;
-        if (pool.get(px) === entry) pool.delete(px);
-        r.dispose();
+        entry.timer = setTimeout(() => {
+          entry.timer = undefined;
+          if (entry.users > 0) return;
+          if (pool.get(px) === entry) pool.delete(px);
+          r.dispose();
+        }, graceMs);
       };
       // Poignée propre au registre : mêmes méthodes, `release` compte les utilisateurs.
       return {
@@ -711,7 +721,8 @@ export class FigureRegistry {
     const owed = this.debt > 0;
     if (owed) this.debt--;
     if (R && !owed && !this.dead() && this.queue3d.size > 0) {
-      const prio = (q: Job): number => (this.frame - q.at > PRIO_FRESH ? Math.max(q.prio, 2) : q.prio);
+      // Une figure cachée en attente de sa 3D (priorité < 0) garde sa priorité : sinon elle rate ses 4 s après une période de dette.
+      const prio = (q: Job): number => (q.prio >= 0 && this.frame - q.at > PRIO_FRESH ? Math.max(q.prio, 2) : q.prio);
       const jobs = [...this.queue3d].sort((a, b) => prio(a[1]) - prio(b[1]));
       // Images seules (visages) : une par flush au plus.
       let ones = 0;

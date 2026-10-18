@@ -615,7 +615,7 @@ describe('rendu partagé et vue rapprochée', () => {
   it('rendu partagé : détruit avec le dernier registre qui s’en sert, refait au suivant', async () => {
     const disposed = vi.fn();
     const create = vi.fn(async (): Promise<Citizen3D> => ({ ready: () => false, prepare() {}, render: () => null, dispose: disposed }));
-    const factory = sharedCitizen3D(create);
+    const factory = sharedCitizen3D(create, 0);
     const d = citizen(7);
     const a = new FigureRegistry('a', { citizens: factory, pxPerUnit: 6 });
     const b = new FigureRegistry('b', { citizens: factory, pxPerUnit: 6 });
@@ -624,15 +624,33 @@ describe('rendu partagé et vue rapprochée', () => {
     await new Promise((ok) => setTimeout(ok, 0));
     expect(create).toHaveBeenCalledTimes(1);
     a.dispose();
+    await new Promise((ok) => setTimeout(ok, 5));
     expect(disposed).not.toHaveBeenCalled();
     b.dispose();
-    expect(disposed).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(disposed).toHaveBeenCalledTimes(1));
     const c = new FigureRegistry('c', { citizens: factory, pxPerUnit: 6 });
     c.citizen(d, 1);
     expect(create).toHaveBeenCalledTimes(2);
     // Registre libéré avant l'arrivée du rendu : libéré à l'arrivée.
     c.dispose();
     await vi.waitFor(() => expect(disposed).toHaveBeenCalledTimes(2));
+  });
+  it('rendu partagé : revenir dans le délai de grâce réutilise le rendu (pas de nouveau contexte)', async () => {
+    const disposed = vi.fn();
+    const create = vi.fn(async (): Promise<Citizen3D> => ({ ready: () => false, prepare() {}, render: () => null, dispose: disposed }));
+    const factory = sharedCitizen3D(create, 60);
+    const d = citizen(7);
+    const a = new FigureRegistry('a', { citizens: factory, pxPerUnit: 6 });
+    a.citizen(d, 1);
+    await new Promise((ok) => setTimeout(ok, 0));
+    a.dispose();
+    const b = new FigureRegistry('b', { citizens: factory, pxPerUnit: 6 });
+    b.citizen(d, 1);
+    await new Promise((ok) => setTimeout(ok, 100));
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(disposed).not.toHaveBeenCalled();
+    b.dispose();
+    await vi.waitFor(() => expect(disposed).toHaveBeenCalledTimes(1));
   });
   it('réglages de la vue : rapprochée à 6 px avec visages ; interrupteur coupé : plafond d’avant dans les deux vues', async () => {
     expect(viewFigureOptions(true)).toEqual({ max: CLOSE_UP_SPRITES_MAX, pxPerUnit: 6, faces: true });
