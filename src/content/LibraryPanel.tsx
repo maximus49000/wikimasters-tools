@@ -101,6 +101,7 @@ import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
 import { applyBoxChanges, boxChanges, gameCoverUrl, localGameBox } from './game-box-content';
+import { imageOfPlaced } from './placed-image';
 import { getGameBoxService } from './game-box-registry';
 import { Btn, DisplayButtons, Icon, ICONS } from './library-ui';
 import { LibraryTopBar } from './library-topbar';
@@ -1141,6 +1142,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const id = nextFurnitureId(l);
     return 'hostId' in at ? poseCard(l, at.hostId, card.shape, card.slug, id, at.x, at.z) : storeCard(l, at.shelfId, at.level, at.order, card.shape, card.slug, id);
   });
+  // 🔄 Changer de carte dans la bulle : la même Collection que la réglette ＋.
+  const swapCards = { cards: roomCards.list, categoryOf: roomCards.categoryOf };
   const arrangeAddProps = (initial: AddCard | null) => ({ cards: roomCards.list, categoryOf: roomCards.categoryOf, initial, onAdd: addCardAt });
 
   // Agrandir à gauche décale les meubles : le défilement suit pour garder la même vue.
@@ -1571,6 +1574,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onTop={(id, hostId, x, z) => editLayout((l) => moveToTop(l, id, hostId, x, z))}
               onClose={arrange.close}
               onItemEdit={editArrangedItem}
+              swap={swapCards}
               onCardInfo={setViewing}
               onItemCity={(id) => setDecoDialog({ type: 'city', id })}
               bubbleBack={arrangeBubbleBack}
@@ -1589,6 +1593,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
               onClose={arrange.close}
               onItemEdit={editArrangedItem}
+              swap={swapCards}
               onCardInfo={setViewing}
               onItemCity={(id) => setDecoDialog({ type: 'city', id })}
               bubbleBack={arrangeBubbleBack}
@@ -1623,7 +1628,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onFlip={(flipped) => { if (flipped) setVideoShown(null); }}
               backRef={openedBackRef}
               card={card}
-              cover={imageOfCard(slug) ?? null}
+              cover={imageOfPlaced({ slug, ...(p.kind === 'stored' && p.cover ? { cover: p.cover } : {}) }, imageOfCard) ?? null}
               color={bookColor(slug)}
               state={opened}
               disc={disc}

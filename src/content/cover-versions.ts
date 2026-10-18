@@ -12,7 +12,8 @@ import type { GameBoxService } from './game-box-service';
 
 // Versions de pochette d'un objet posé dans la pièce (spec disposition, « Changer la version ») : la source dépend du FORMAT
 // de l'objet, pas de la nature de la carte (un film rangé en CD cherche des pochettes d'album).
-// CD : Spotify (compte lié) d'abord, Deezer par le relais seulement si Spotify n'a rien, est en erreur ou n'est pas lié.
+// CD : Spotify (compte lié) d'abord, Deezer par le relais seulement si Spotify n'a rien, est en erreur, n'est pas lié ou ne répond pas
+// dans son propre délai (8 s, plus court que le délai global de 15 s).
 // DVD : affiches TMDB (fr, en, sans langue). Jeu : jaquettes des versions TheGamesDB. Livre : couvertures Open Library des candidats.
 // Toute erreur, tout délai dépassé → [] (le bouton sera grisé) ; jamais d'adresse inventée : https seulement, sans doublon, 12 au plus.
 
@@ -30,6 +31,17 @@ export type CoverVersions = (card: VersionCard, shape: ShelfShape) => Promise<st
 
 const MAX_VERSIONS = 12;
 const TIMEOUT_MS = 15_000;
+// Spotify a son propre délai, plus court (sa file d'attente peut être occupée par la lecture) : Deezer a encore le temps de répondre.
+const SPOTIFY_TIMEOUT_MS = 8_000;
+
+// `[]` si `work` échoue ou n'a pas répondu dans `ms`.
+function within(work: Promise<string[]>, ms: number): Promise<string[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<string[]>((resolve) => {
+    timer = setTimeout(() => resolve([]), ms);
+  });
+  return Promise.race([work.catch((): string[] => []), late]).finally(() => clearTimeout(timer));
+}
 
 // Les guillemets casseraient la requête de recherche Spotify.
 const quoted = (text: string): string => text.replaceAll('"', '').trim();
@@ -43,9 +55,10 @@ function isHttps(url: string): boolean {
 }
 const clean = (urls: readonly unknown[]): string[] => [...new Set(urls.filter((url): url is string => typeof url === 'string' && isHttps(url)))].slice(0, MAX_VERSIONS);
 
-export function createCoverVersions(deps: { sources: CoverVersionSources; fetch: (url: string) => Promise<Response>; timeoutMs?: number }): CoverVersions {
+export function createCoverVersions(deps: { sources: CoverVersionSources; fetch: (url: string) => Promise<Response>; timeoutMs?: number; spotifyTimeoutMs?: number }): CoverVersions {
   const { sources } = deps;
   const timeoutMs = deps.timeoutMs ?? TIMEOUT_MS;
+  const spotifyTimeoutMs = deps.spotifyTimeoutMs ?? SPOTIFY_TIMEOUT_MS;
 
   // `undefined` : pas d'interprète connu (la recherche se fait sur le titre seul).
   async function performerOf(card: VersionCard): Promise<string | undefined> {
@@ -86,7 +99,7 @@ export function createCoverVersions(deps: { sources: CoverVersionSources; fetch:
     const title = cleanTitle(card.title);
     if (shape === 'cd') {
       const performer = await performerOf(card);
-      const spotify = await fromSpotify(title, performer);
+      const spotify = await within(fromSpotify(title, performer), spotifyTimeoutMs);
       return spotify.length > 0 ? spotify : fromDeezer(title, performer);
     }
     if (shape === 'dvd') return sources.tmdb ? clean(await sources.tmdb.posterVersions(title)) : [];
@@ -98,13 +111,7 @@ export function createCoverVersions(deps: { sources: CoverVersionSources; fetch:
     return clean(candidates.works.flatMap((work) => (work.coverId !== undefined ? [coverUrl(work.coverId)] : [])));
   }
 
-  return (card, shape) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<string[]>((resolve) => {
-      timer = setTimeout(() => resolve([]), timeoutMs);
-    });
-    return Promise.race([lookup(card, shape).catch((): string[] => []), late]).finally(() => clearTimeout(timer));
-  };
+  return (card, shape) => within(lookup(card, shape), timeoutMs);
 }
 
 // Créé une fois par la surcouche ; la pièce le lit ici. Rien d'enregistré : aucune version ([]).

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { setPlayerSource } from '../../src/content/music-registry';
 import type { PlayerSource } from '../../src/content/player-source';
 import { RoomView } from '../../src/content/RoomView';
+import { garnishOf } from '../../src/content/furniture-zoom';
+import { imageOfPlaced } from '../../src/content/placed-image';
 import { computerPlacement, placementRectPx, screenQuad, storedFrontQuad, storedPlacementsOf } from '../../src/core/library/carried-items';
 import { drawSize } from '../../src/core/library/footprint';
 import { FURNITURE_MODELS } from '../../src/core/library/furniture-models';
@@ -177,5 +179,26 @@ describe('cartes posées en 3D sur le plateau', () => {
     expect(c.querySelector('[data-furniture="posed"][data-id="cd"]')).toBeNull();
     expect(c.querySelector('[data-furniture="posed"][data-id="dv"]')).not.toBeNull();
     expect(c.querySelector('[data-hifi-sleeve="Daft_Punk"]')).not.toBeNull();
+  });
+});
+
+describe('pochette choisie pour un objet (cet objet seulement)', () => {
+  const COVER = 'https://img.example/version.jpg';
+  it('carte rangée et carte posée : la pièce dessine la pochette choisie ; les cartes (fiche, Collection) gardent leur image', () => {
+    const before = structuredClone(CARDS);
+    const layout: Layout = [shelf(), { ...items[0]!, cover: COVER } as Layout[number], { id: 'd', kind: 'desk', col: 2, row: 11, angle: 0 }, { id: 'p', kind: 'posed', shape: 'dvd', hostId: 'd', x: 4, z: 4, slug: 'Paris', cover: COVER }];
+    const c = mount(layout);
+    expect(c.querySelector('[data-card="Daft_Punk"] [data-item3d="cd"] image')!.getAttribute('href')).toBe(COVER);
+    expect(c.querySelector('[data-furniture="posed"][data-id="p"] [data-item3d="dvd"] image')!.getAttribute('href')).toBe(COVER);
+    expect(CARDS).toEqual(before);
+  });
+
+  it('le zoom d’un meuble (garnishOf) prend aussi la pochette choisie ; sans elle, l’image de la carte', () => {
+    const layout: Layout = [shelf(), { ...items[0]!, cover: COVER } as Layout[number], items[1]!];
+    const garnish = garnishOf(layout, layout[0]!, CARDS, (slug) => CARDS[slug as keyof typeof CARDS] && 'imageUrl' in CARDS[slug as keyof typeof CARDS] ? IMG : undefined, 'scandinave', undefined);
+    expect(garnish.find((g) => g.p.id === 'a')!.content.url).toBe(COVER);
+    expect(garnish.find((g) => g.p.id === 'b')!.content.url).toBeUndefined();
+    expect(imageOfPlaced({ slug: 'Daft_Punk' }, () => IMG)).toBe(IMG);
+    expect(imageOfPlaced({ slug: 'Daft_Punk', cover: COVER }, () => IMG)).toBe(COVER);
   });
 });

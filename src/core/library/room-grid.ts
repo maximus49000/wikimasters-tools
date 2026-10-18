@@ -782,6 +782,44 @@ export function setShapeOf(layout: Layout, id: string, shape: ShelfShape): Layou
   return layout.map((p) => (p.id === id ? next : p));
 }
 
+// Pochette choisie pour une carte rangée ou posée (cet objet seulement : la carte, sa fiche, la Collection n'en savent rien) ; null l'efface.
+// Null si l'objet n'est pas une carte rangée / posée ou si l'adresse n'est pas https ; la disposition elle-même si rien ne change.
+export function setCoverOf(layout: Layout, id: string, cover: string | null): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || (card.kind !== 'stored' && card.kind !== 'posed') || (cover !== null && !isHttpsUrl(cover))) return null;
+  if ((card.cover ?? null) === cover) return layout;
+  const { cover: _old, ...rest } = card;
+  const next = (cover === null ? rest : { ...rest, cover }) as Stored | Posed;
+  return layout.map((p) => (p.id === id ? next : p));
+}
+function isHttpsUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// Changer de carte : `slug` prend la place de la carte rangée ou posée `id` (même id, même place, même présentation ou pose) au format
+// `shape` (celui de l'objet par défaut) ; pochette, boîte et couleur de boîtier (propres à l'ancienne carte) effacées ; une présentation
+// qui ne convient pas au format (dos hors jeu) retombe sur le défaut. La carte remplacée sort simplement de la pièce.
+// Null si `slug` est déjà dans la pièce (elle-même comprise) ou si la nouvelle carte ne tient pas (mêmes règles que setShapeOf).
+export function replaceCard(layout: Layout, id: string, slug: string, shape?: ShelfShape): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || (card.kind !== 'stored' && card.kind !== 'posed') || !slug || placedSlugs(layout).has(slug)) return null;
+  const { cover: _c, box: _b, caseColor: _k, ...rest } = card;
+  const to = shape ?? card.shape;
+  if (card.kind === 'posed') {
+    const next: Posed = { ...(rest as Posed), shape: to, slug };
+    if (!canPutOnTop(layout, card.hostId, topThingOf(next), card.x, card.z, id)) return null;
+    return layout.map((p) => (p.id === id ? next : p));
+  }
+  const kept = card.display === 'back' && to !== 'game' ? undefined : card.display;
+  const next = withDisplay({ ...(rest as Stored), shape: to, slug }, kept);
+  if (!stillFits(layout, card, next)) return null;
+  return layout.map((p) => (p.id === id ? next : p));
+}
+
 // Déplace un objet rangé vers une tablette (la sienne ou une autre, sur cette étagère ou une autre) au rang `order` (règles de moveToBoard).
 export function moveStored(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
   return layout.find((p) => p.id === id)?.kind === 'stored' ? moveToBoard(layout, id, shelfId, level, order) : null;

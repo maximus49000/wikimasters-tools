@@ -10,6 +10,7 @@ import type { Layout, Placed, ShelfLevel, StyleId } from '../../core/library/lib
 import { layerFrame } from '../../core/library/opened-item';
 import { SHELF_GAP_CM, SHELF_INNER_CM, boardHeightCm, boardItems, boardUsedCm, boardWidthCm, displayOf, isLit, shelfLayoutIn, type BoardLike, type PxRect } from '../../core/library/room-grid';
 import { gameBoxContent } from '../game-box-content';
+import { imageOfPlaced } from '../placed-image';
 import { paletteOf } from '../../core/library/styles';
 import { topSize, topThingOf, type TopThing } from '../../core/library/surface';
 import { useDecoScene } from '../deco-live';
@@ -175,7 +176,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
     // une carte posée se montre de face.
     const display = heldItem.kind === 'stored' ? displayOf(heldItem) : 'cover';
     const box = card && display === 'back' ? gameBoxContent(card.shape, card.slug) : null;
-    const url = slug && display === 'cover' ? imageOf(slug) : display === 'back' ? box?.backUrl : undefined;
+    const url = card && display === 'cover' ? imageOfPlaced(card, imageOf) : display === 'back' ? box?.backUrl : undefined;
     const dark = card !== null && (card.shape === 'game' || display === 'back');
     return (
       <svg data-arrange-held={drag.id} data-ok={drag.ok ? 'true' : 'false'} data-display={display} width={layer.w} height={layer.h} viewBox={`0 0 ${layer.w} ${layer.h}`} aria-hidden="true"
@@ -308,6 +309,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
       {message}
       {bubble.item && bubbleAnchor && (
         <CardBubble item={bubble.item} anchor={bubbleAnchor} layer={layer} reserveRight={NAV_PX} message={bubble.message} canEdit={bubble.canEdit}
+          covers={bubble.covers} swap={bubble.swap} taken={bubble.taken}
           onMove={bubble.arm} onChange={bubble.change} onInfo={bubble.canInfo ? bubble.info : undefined} onCity={bubble.canCity ? bubble.city : undefined} onClose={bubble.close} />
       )}
       {chrome}

@@ -56,6 +56,23 @@ describe('coverVersions — CD', () => {
     expect(await never(card, 'cd')).toEqual([]);
   });
 
+  it('Spotify a son propre délai, plus court (file d’attente occupée) : Deezer est encore essayé avant le délai global', async () => {
+    vi.useFakeTimers();
+    try {
+      const sp = { api: { findCovers: vi.fn(() => new Promise<string[]>(() => {})) }, session: { isLinked: vi.fn(async () => true) } };
+      const fetchFn = deezerReply(['https://cdn-images.dzcdn.net/a.jpg']);
+      let out: string[] | null = null;
+      void createCoverVersions({ sources: { spotify: sp }, fetch: fetchFn })(card, 'cd').then((v) => { out = v; });
+      await vi.advanceTimersByTimeAsync(7_900);
+      expect(fetchFn).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect(out).toEqual(['https://cdn-images.dzcdn.net/a.jpg']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('jamais d’adresse inventée : https seulement, sans doublon, 12 au plus', async () => {
     const many = Array.from({ length: 15 }, (_, i) => `https://cdn-images.dzcdn.net/${i}.jpg`);
     const fetchFn = deezerReply(['http://x.test/a.jpg', 'javascript:alert(1)', 'pas une adresse', many[0]!, many[0]!, ...many]);
