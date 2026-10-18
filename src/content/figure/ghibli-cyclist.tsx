@@ -10,7 +10,8 @@ import { GhibliFigure, type PoseIn } from './ghibli-figure';
 // Cycliste Ghibli (G3c) : pantin à vélo (allure `pedal`, mains au guidon) posé sur la selle, dans le repère des véhicules
 // (roues à y = 0, regard vers +x). Le vélo est dessiné autour du pantin : pédalier au centre du cercle de ses chevilles,
 // guidon à ses mains. Le groupe du véhicule est retourné en miroir sur la file du fond (`dir` = −1) : le pantin y est retourné
-// une seconde fois et tourné vers la gauche (jamais de pantin en miroir, la lumière reste en haut à gauche).
+// une seconde fois et tourné vers la gauche (jamais de pantin en miroir, la lumière reste en haut à gauche). Habitant 3D :
+// sa selle (accroche `seat` du rendu) est épinglée sur celle du pantin (`pin`), le vélo reste dessiné autour du pantin.
 export const RIDER_SCALE = 0.7;
 // Hauteur du pédalier (repère du vélo) : au niveau des moyeux, un peu au-dessus.
 const CRANK_Y = -5.6;
@@ -49,7 +50,7 @@ export function GhibliRider({ outfit, sky, rainy, dir, phase, work = 'none', sea
   const g = seatY === undefined ? g0 : { ...g0, seat: [seatX, seatY] as const };
   return (
     <g data-bike-rider="" transform={`translate(${g.seat[0]} ${g.seat[1]}) scale(${dir * RIDER_SCALE} ${RIDER_SCALE}) translate(${-g.anchor[0]} ${-g.anchor[1]})`}>
-      <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={riderPose(dir, phase, stopped)} work={work} />
+      <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={riderPose(dir, phase, stopped)} work={work} pin="seat" />
     </g>
   );
 }

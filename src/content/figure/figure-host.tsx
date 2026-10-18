@@ -1,8 +1,11 @@
 // src/content/figure/figure-host.tsx
 import { createContext, useContext } from 'react';
-import { INK_WIDTH, bakeFigure, keyString, type FigureKey } from '../../core/library/figure/bake';
+import { INK_WIDTH, anchorsOf, bakeFigure, keyString, type Anchor, type FigureKey } from '../../core/library/figure/bake';
 import { shapeFromSignature } from '../../core/library/figure/dress';
-import { riding } from '../../core/library/figure/skeleton';
+import { riding, type ArmPose } from '../../core/library/figure/skeleton';
+import { citizenKey, type CitizenDesc, type Emotion } from '../../core/citizens/catalogue';
+import type { CitizenSprite } from '../citizens/citizen-renderer';
+import { CITIZENS_3D, RENDER_BUDGET_MS, WAIT3D_FALLBACK_MS } from './citizen-config';
 
 // Cache des sprites du pantin (G3) : chaque pose cuite (bake.ts) d'une palette est peinte UNE fois sur un canvas hors écran
 // puis gardée en PNG (data URL : la CSP de la page hôte refuse blob:) ; chaque humain n'est qu'une <image> dont la boucle
@@ -23,13 +26,18 @@ export const SPRITE_PX = 3;
 export const BLANK_SPRITE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=';
 // Cases de couleur du pantin ; `vest`, `band`, `apron` : tenues de travail (gilet, sa bande claire, tablier).
 export const FIGURE_SLOTS = ['skin', 'top', 'bottom', 'hair', 'hat', 'acc', 'shoe', 'umb', 'vest', 'band', 'apron'] as const;
-// Ordre fixe des cases : la clé ne dépend pas de l'ordre d'insertion de l'objet.
-const PALETTE_ORDER = ['f-ink', 'f-ground', ...FIGURE_SLOTS.flatMap((s) => [`f-${s}`, `fs-${s}`])];
+// Ordre fixe des cases : la clé ne dépend pas de l'ordre d'insertion de l'objet. Habitants 3D : clé de l'habitant (`c3d`) et
+// palier de lumière (`c3d-light`) en fin de liste, n'entrent dans la clé que s'ils sont là (palettes 2D : clés d'avant).
+const PALETTE_2D = ['f-ink', 'f-ground', ...FIGURE_SLOTS.flatMap((s) => [`f-${s}`, `fs-${s}`])];
+export const PALETTE_ORDER = [...PALETTE_2D, 'c3d', 'c3d-light'];
 // Palettes retenues (une par tenue et par teinte du ciel, renouvelée à chaque rendu React) : les plus anciennes partent.
 const MAX_PALETTES = 2048;
 
-export const paletteKey = (p: Palette): string => PALETTE_ORDER.map((k) => p[k] ?? '').join(',');
+export const paletteKey = (p: Palette): string => (p.c3d === undefined ? PALETTE_2D : PALETTE_ORDER).map((k) => p[k] ?? '').join(',');
 export const spriteKey = (pk: string, key: FigureKey): string => `${pk}#${keyString(key)}`;
+// Sprite 3D : clé du sprite pantin de même palette et pose + état du visage (un clignement = une autre image).
+export const spriteKey3D = (pk: string, key: FigureKey, face: string): string => `${spriteKey(pk, key)}@3d${face}`;
+export type SpriteAnchors = Record<Anchor | 'hands', readonly [number, number]>;
 
 // Canvas de rendu partagé (un seul, effacé à chaque sprite) ; null sans canvas 2D. Sous jsdom, pas même d'appel :
 // getContext y signale « Not implemented » à chaque fois. `willReadFrequently` : canvas en mémoire (pas sur le GPU) — sur
@@ -94,8 +102,68 @@ function paint(p: Palette, key: FigureKey): string {
 }
 
 // Plafond de sprites des vues de la bibliothèque (RoomView, ScenePanorama) : la rue Ghibli des commerces (G4b) dépasse
-// 1 500 poses en vue à midi.
+// 1 500 poses en vue à midi. Les sprites 3D (data URL de même cadre et même résolution) comptent dans le même plafond.
 export const FIGURE_SPRITES_MAX = 2400;
+
+// ── Habitants 3D ──────────────────────────────────────────────────────────────────────────────────────────────────
+// Ce dont le registre a besoin du rendu 3D (CitizenRenderer ; un faux en test).
+export type Citizen3D = {
+  ready(desc: CitizenDesc): boolean;
+  prepare(desc: CitizenDesc): void;
+  render(desc: CitizenDesc, key: FigureKey, light: number, face: string): CitizenSprite | null;
+  dispose(): void;
+  /** État du visage (face.ts : émotion du geste, clignement à l'instant t) ; absent : neutre, yeux ouverts. Fourni par le
+   * module chargé à la demande : face.ts embarque three.js, figure-host ne l'importe pas. */
+  faceOf?(arms: ArmPose, mood: Emotion, t: number, seed: number): string;
+};
+// Fabrique du rendu 3D : null = pas de 3D possible ici (su tout de suite : figures en pantin, palettes 2D d'avant), sinon le
+// rendu ou sa promesse (module chargé à la demande).
+export type Citizen3DFactory = (pxPerUnit: number) => Citizen3D | Promise<Citizen3D | null> | null;
+// Rendu partagé par résolution : un seul contexte WebGL pour tous les registres (RoomView en recrée un par monde ; les
+// navigateurs plafonnent le nombre de contextes). Module chargé par import() : avec CITIZENS_3D à false, c'est du code mort
+// que le bundle retire. Sans canvas (node, jsdom) : pas de 3D (et aucun appel réseau vers le relais).
+const shared3D = new Map<number, Promise<Citizen3D | null>>();
+const defaultCitizen3D: Citizen3DFactory = (px) => {
+  if (!CITIZENS_3D) return null;
+  if (typeof document === 'undefined' || (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom'))) return null;
+  let p = shared3D.get(px);
+  if (!p) {
+    p = Promise.all([import('../citizens/citizen-renderer'), import('../../core/citizens/face')])
+      .then(([m, f]): Citizen3D | null => {
+        const r = new m.CitizenRenderer({ pxPerUnit: px });
+        return {
+          ready: (d) => r.ready(d),
+          prepare: (d) => r.prepare(d),
+          render: (d, k, light, face) => r.render(d, k, light, face),
+          dispose: () => r.dispose(),
+          faceOf: (arms, mood, t, seed) => f.faceState(f.emotionFor(arms, mood), f.blinkLevel(f.blinkAt(t, seed))),
+        };
+      })
+      .catch(() => null);
+    shared3D.set(px, p);
+  }
+  return p;
+};
+// Habitant 3D connu du registre (clé `c3d` d'une palette) : description, graine (clignements), attente 3D (waitFor3D).
+type Citizen = { desc: CitizenDesc; seed: number; waitSince?: number; waitOver?: boolean };
+const MAX_CITIZENS = 2048;
+// Toutes les 30 images, les figures qui attendent une image 3D sont réexaminées même sans rendu (modèle arrivé entre-temps).
+const WATCH_EVERY = 30;
+// Demandes 3D non renouvelées depuis plus de 3 images : jetées (comme les demandes du pantin, une image de plus).
+const STALE_3D = 3;
+
+export type FigureRegistryOptions = {
+  max?: number;
+  perFrame?: number;
+  /** Résolution des sprites 3D (px par unité du pantin). */
+  pxPerUnit?: number;
+  /** Visages animés (clignement, émotion) : une image par état du visage. Sans : neutre, yeux ouverts. */
+  faces?: boolean;
+  /** Rendu 3D (tests) ; par défaut : CitizenRenderer partagé, chargé à la demande. */
+  citizens?: Citizen3DFactory;
+  /** Horloge en ms (budget des rendus 3D, attente 3D, clignements) ; par défaut performance.now. */
+  now?: () => number;
+};
 
 export class FigureRegistry {
   private readonly palettes = new Map<string, Palette>();
@@ -108,13 +176,133 @@ export class FigureRegistry {
   private frame = 0;
   private readonly max: number;
   private readonly perFrame: number;
+  // Habitants 3D : accroches des sprites 3D (présence = sprite 3D), habitants par clé, file des rendus 3D, figures qui
+  // attendent mieux que leur image (pantin de repli ou rien) avec leur mise à jour (true : plus rien à attendre).
+  private readonly anchors3d = new Map<string, SpriteAnchors>();
+  private readonly citizens = new Map<string, Citizen>();
+  private readonly queue3d = new Map<string, { pk: string; key: FigureKey; face: string; at: number }>();
+  private readonly watchers = new Map<Element, () => boolean>();
+  private readonly px: number;
+  private readonly faces: boolean;
+  private readonly now: () => number;
+  private readonly make3d: Citizen3DFactory;
+  // undefined : pas encore demandé ; null : pas de 3D (repli pantin partout).
+  private c3d: Citizen3D | null | undefined;
+  private c3dPending = false;
   // `label` : nom de l'affichage (repère au débogage).
   constructor(
     readonly label: string,
-    opts: { max?: number; perFrame?: number } = {},
+    opts: FigureRegistryOptions = {},
   ) {
     this.max = opts.max ?? 1500;
     this.perFrame = opts.perFrame ?? 8;
+    this.px = opts.pxPerUnit ?? SPRITE_PX;
+    this.faces = opts.faces ?? false;
+    this.now = opts.now ?? (() => performance.now());
+    this.make3d = opts.citizens ?? defaultCitizen3D;
+  }
+  // Rendu 3D demandé une fois (une promesse le pose à son arrivée) ; false si la 3D est exclue ici.
+  private start3D(): boolean {
+    if (!CITIZENS_3D || this.c3d === null) return false;
+    if (this.c3d !== undefined || this.c3dPending) return true;
+    let made: ReturnType<Citizen3DFactory>;
+    try {
+      made = this.make3d(this.px);
+    } catch {
+      made = null;
+    }
+    if (made === null) {
+      this.c3d = null;
+      return false;
+    }
+    if (made instanceof Promise) {
+      this.c3dPending = true;
+      made.then(
+        (r) => {
+          this.c3dPending = false;
+          this.c3d = r;
+        },
+        () => {
+          this.c3dPending = false;
+          this.c3d = null;
+        },
+      );
+    } else this.c3d = made;
+    return true;
+  }
+  // Retient un habitant 3D et rend sa clé (pour figurePalette) ; null sans 3D (interrupteur coupé, pas de rendu possible ici) :
+  // la figure garde sa palette 2D, exactement comme avant.
+  citizen(desc: CitizenDesc, seed: number): string | null {
+    if (!CITIZENS_3D || !this.start3D()) return null;
+    const ck = citizenKey(desc);
+    const c = this.citizens.get(ck);
+    if (c) {
+      this.citizens.delete(ck);
+      this.citizens.set(ck, c);
+    } else {
+      this.citizens.set(ck, { desc, seed });
+      if (this.citizens.size > MAX_CITIZENS) this.citizens.delete(this.citizens.keys().next().value as string);
+    }
+    this.c3d?.prepare(desc);
+    return ck;
+  }
+  // Accroches 3D d'un sprite (repère du sprite, comme anchorsOf) ; null pour un sprite pantin ou inconnu.
+  anchors(sk: string): SpriteAnchors | null {
+    return this.anchors3d.get(sk) ?? null;
+  }
+  // Habitant 3D d'une palette (clé `c3d`), sinon null (palette 2D).
+  private citizenOf(pk: string): Citizen | null {
+    const ck = this.palettes.get(pk)?.c3d;
+    return ck === undefined ? null : (this.citizens.get(ck) ?? null);
+  }
+  // Une palette porte-t-elle un habitant 3D (et le rendu 3D peut-il encore venir) ?
+  is3D(pk: string): boolean {
+    return this.c3d !== null && this.citizenOf(pk) !== null;
+  }
+  // État du visage d'une pose : '' sans l'option `faces` (ou avant l'arrivée du module 3D) ; sinon émotion du geste (ou
+  // humeur) et clignement de l'instant.
+  private faceOf(c: Citizen, key: FigureKey): string {
+    return this.faces && this.c3d?.faceOf ? this.c3d.faceOf(key.arms, c.desc.mood, this.now(), c.seed) : '';
+  }
+  // Attente 3D d'un habitant (waitFor3D) : vraie tant que WAIT3D_FALLBACK_MS ne sont pas écoulées depuis sa première demande ;
+  // au-delà, le pantin est servi (relais injoignable, modèle trop lent).
+  private waiting(c: Citizen): boolean {
+    if (c.waitOver) return false;
+    const t = this.now();
+    c.waitSince ??= t;
+    if (t - c.waitSince < WAIT3D_FALLBACK_MS) return true;
+    c.waitOver = true;
+    return false;
+  }
+  // Clé du sprite voulu pour (palette, pose) : 3D pour une palette 3D, sinon celle du pantin.
+  keyFor(pk: string, key: FigureKey): string {
+    const c = this.citizenOf(pk);
+    return c ? spriteKey3D(pk, key, this.faceOf(c, key)) : spriteKey(pk, key);
+  }
+  // Image à montrer pour (palette, pose) et sa clé. Palette 3D : sprite 3D s'il existe (sinon mis en file de rendu), à défaut
+  // le pantin (repli) ; `wait` (waitFor3D) : rien tant que l'attente court. Pantin : peint tout de suite si `now` (première
+  // apparition), sinon mis en file. Palette 2D : exactement ensure / request d'avant.
+  pick(pk: string, key: FigureKey, now: boolean, wait = false): { sk: string; url: string } | null {
+    const c = this.citizenOf(pk);
+    if (c) {
+      const face = this.faceOf(c, key);
+      const sk3 = spriteKey3D(pk, key, face);
+      const u3 = this.hit(sk3);
+      if (u3 !== null) return { sk: sk3, url: u3 };
+      this.queue3d.set(sk3, { pk, key, face, at: this.frame });
+      if (wait && this.waiting(c)) return null;
+    }
+    const sk = spriteKey(pk, key);
+    const url = now ? (this.hit(sk) ?? this.create(pk, key, sk)) : this.request2D(pk, key, sk);
+    return url === null ? null : { sk, url };
+  }
+  // Figure qui attend mieux que son image (pantin de repli, ou rien en waitFor3D) : `refresh` est rappelée après les flush
+  // utiles (rendu 3D fait, attente écoulée, ou toutes les WATCH_EVERY images) jusqu'à rendre true ; `unwatch` au masquage.
+  watch(node: Element, refresh: () => boolean): void {
+    this.watchers.set(node, refresh);
+  }
+  unwatch(node: Element): void {
+    this.watchers.delete(node);
   }
   size(): number {
     return this.sprites.size;
@@ -146,14 +334,16 @@ export class FigureRegistry {
     this.sprites.set(sk, url);
     return url;
   }
-  // Sprite tout de suite (peint hors budget au besoin) ; null si la palette est inconnue.
-  ensure(pk: string, key: FigureKey): string | null {
-    const sk = spriteKey(pk, key);
-    return this.hit(sk) ?? this.create(pk, key, sk);
+  // Sprite tout de suite (pantin peint hors budget au besoin ; palette 3D : son sprite 3D s'il existe) ; null si la palette est
+  // inconnue (ou attente 3D en cours).
+  ensure(pk: string, key: FigureKey, wait = false): string | null {
+    return this.pick(pk, key, true, wait)?.url ?? null;
   }
-  // Sprite s'il existe, sinon mis en file (peint par flush) et null.
-  request(pk: string, key: FigureKey): string | null {
-    const sk = spriteKey(pk, key);
+  // Sprite s'il existe (palette 3D : le 3D, sinon le pantin de repli), sinon mis en file (peint par flush) et null.
+  request(pk: string, key: FigureKey, wait = false): string | null {
+    return this.pick(pk, key, false, wait)?.url ?? null;
+  }
+  private request2D(pk: string, key: FigureKey, sk: string): string | null {
     const found = this.hit(sk);
     if (!found && this.palettes.has(pk)) this.queue.set(sk, { pk, key, at: this.frame });
     return found;
@@ -191,6 +381,7 @@ export class FigureRegistry {
       if (made >= this.perFrame) break;
       if (this.create(pk, key, sk) !== null) made++;
     }
+    if (this.citizens.size > 0) this.flush3D();
     // Plafond : retirer les moins récemment utilisés (début de la Map), jamais une clé détenue : elle passe en fin de Map. Une
     // passe complète sans retrait s'arrête (la taille peut alors dépasser le plafond).
     let skipped = 0;
@@ -202,9 +393,65 @@ export class FigureRegistry {
         skipped++;
         continue;
       }
+      this.anchors3d.delete(sk);
       skipped = 0;
     }
   }
+  // Rendus 3D au budget de temps (RENDER_BUDGET_MS, compté depuis le début de cette phase, après les pantins), puis mise à
+  // jour des figures qui attendent mieux que leur image. Base pas encore chargée : la demande reste en file sans coût ; rendu
+  // impossible (null) : la demande part, le pantin reste.
+  private flush3D(): void {
+    for (const [sk, q] of this.queue3d) if (this.frame - q.at > STALE_3D) this.queue3d.delete(sk);
+    const R = this.c3d;
+    let made = 0;
+    if (R && this.queue3d.size > 0) {
+      const t0 = this.now();
+      for (const [sk, { pk, key, face }] of [...this.queue3d]) {
+        if (this.now() - t0 >= RENDER_BUDGET_MS) break;
+        const c = this.citizenOf(pk);
+        if (!c) {
+          this.queue3d.delete(sk);
+          continue;
+        }
+        if (!R.ready(c.desc)) {
+          R.prepare(c.desc);
+          continue;
+        }
+        this.queue3d.delete(sk);
+        const light = Number(this.palettes.get(pk)?.['c3d-light']);
+        let out: CitizenSprite | null;
+        try {
+          out = R.render(c.desc, key, Number.isFinite(light) ? light : 1, face);
+        } catch {
+          out = null;
+        }
+        if (!out) continue;
+        this.sprites.set(sk, out.url);
+        this.anchors3d.set(sk, out.anchors);
+        made++;
+      }
+    }
+    if (this.watchers.size === 0) return;
+    // Attente écoulée pour un habitant attendu : ses figures passent au pantin.
+    let expired = false;
+    const t = this.now();
+    for (const c of this.citizens.values()) if (c.waitSince !== undefined && !c.waitOver && t - c.waitSince >= WAIT3D_FALLBACK_MS) expired = true;
+    if (made === 0 && !expired && this.frame % WATCH_EVERY !== 0) return;
+    for (const [node, refresh] of [...this.watchers]) {
+      let done: boolean;
+      try {
+        done = refresh();
+      } catch {
+        done = true;
+      }
+      if (done) this.watchers.delete(node);
+    }
+  }
+}
+
+// Accroches de la pose montrée par un sprite : celles du rendu 3D pour un sprite 3D, sinon celles du pantin.
+export function figureAnchors(reg: FigureRegistry, sk: string | null | undefined, key: FigureKey): SpriteAnchors | Record<Anchor, readonly [number, number]> {
+  return (sk ? reg.anchors(sk) : null) ?? anchorsOf(key);
 }
 
 let shared: FigureRegistry | null = null;
