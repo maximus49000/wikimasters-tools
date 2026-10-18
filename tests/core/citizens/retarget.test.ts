@@ -2,7 +2,7 @@
 // pantin (moins de 3°), genoux et coudes plient du bon côté, gauche et droite ne sont pas inversées, pieds au sol.
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { applyPose, boneMap } from '../../../src/core/citizens/retarget';
+import { applyPose, boneMap, walkKnee, walkPhase } from '../../../src/core/citizens/retarget';
 import { PERCH, poseOf, type ArmPose, type Gait, type Pose } from '../../../src/core/library/figure/skeleton';
 import type { V3 } from '../../../src/core/library/figure/geometry';
 import { makeHumanoid } from './fixtures/humanoid';
@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const GAITS: Gait[] = ['stand', 'step', 'walk', 'seated', 'climb', 'pedal', 'mount', 'crouch', 'perch'];
+const WALKS = new Set<Gait>(['walk', 'step']);
 const ARMS: ArmPose[] = ['swing', 'pay-card', 'pour', 'scissors-1', 'hold-child', 'handlebar', 'overhead'];
 // Indices comme le cuiseur des sprites : 16 orientations, 12 phases.
 const yawOf = (i: number): number => (i * Math.PI) / 8;
@@ -64,11 +65,40 @@ describe('applyPose', () => {
             applyPose(mesh, map, p, U, g);
             mesh.updateMatrixWorld(true);
             for (const [b0, b1, p0, p1] of segments(p)) {
+              // Marche : tibia et pied recalés en 3D (genou plié pendant le retour de la jambe, voir walkKnee).
+              if (WALKS.has(g) && /^(Left|Right)(Leg|Foot)$/.test(b0)) continue;
               const d = deg(at(b1).sub(at(b0)), p1.clone().sub(p0));
               if (d > worst) { worst = d; where = `${g} ${a} yaw ${y} phase ${ph} ${b0}`; }
             }
           }
     expect(worst, where).toBeLessThan(3);
+  });
+
+  it('marche : la phase est retrouvée dans la pose (toutes orientations, marche et petit pas)', () => {
+    for (const g of ['walk', 'step'] as Gait[])
+      for (let y = 0; y < 16; y++)
+        for (let ph = 0; ph < 48; ph++) {
+          const want = (ph * 2 * Math.PI) / 48;
+          const got = walkPhase(poseOf(yawOf(y), want, g), g)!;
+          const d = Math.atan2(Math.sin(got - want), Math.cos(got - want));
+          expect(Math.abs(d), `${g} yaw ${y} phase ${ph}`).toBeLessThan(1e-6);
+        }
+    expect(walkPhase(poseOf(0, 1, 'stand'), 'stand')).toBeNull();
+    expect(walkPhase(poseOf(0, 1, 'walk'), undefined)).toBeNull();
+  });
+
+  it('marche : genou plié au retour de la jambe, pied jamais botté en arrière', () => {
+    // De profil : flexion maximale quand la cuisse passe à la verticale (±10°), tibia jamais à plus de 50° derrière la
+    // cuisse ; le pantin plie au plus fort cuisse encore en arrière (−12°, tibia à −69° à la phase 11).
+    let best = -1, thAtBest = 0;
+    for (let i = 0; i < 360; i++) {
+      const ph = (i * Math.PI) / 180, th = 24 * Math.sin(ph);
+      const k = walkKnee(ph, 0, 1, th);
+      expect(th - k, `phase ${i}°`).toBeGreaterThanOrEqual(-50.0001);
+      if (k > best) { best = k; thAtBest = th; }
+    }
+    expect(Math.abs(thAtBest)).toBeLessThan(10);
+    expect(best).toBeGreaterThan(40);
   });
 
   it('la tête suit le repère de tête du pantin (tourne avec headYaw)', () => {
@@ -227,7 +257,7 @@ describe('applyPose', () => {
     const p = poseOf(yawOf(3), phaseOf(2), 'walk', { arms: 'pour' });
     applyPose(mesh, map2, p, U, 'walk');
     mesh.updateMatrixWorld(true);
-    for (const [b0, b1, p0, p1] of segments(p)) expect(deg(at(b1).sub(at(b0)), p1.clone().sub(p0)), b0).toBeLessThan(3);
+    for (const [b0, b1, p0, p1] of segments(p)) if (!/^(Left|Right)(Leg|Foot)$/.test(b0)) expect(deg(at(b1).sub(at(b0)), p1.clone().sub(p0)), b0).toBeLessThan(3);
     const low = Math.min(at('LeftFoot').y, at('RightFoot').y);
     expect(low).toBeCloseTo(ANKLE, 6);
   });

@@ -142,7 +142,10 @@ describe('sac en bandoulière', () => {
     const at = (m: Model, n: string): THREE.Bone => m.body.skeleton.bones.find((b) => b.name.replace(/^mixamorig:?/, '') === n)!;
     for (const name of NAMES) {
       const m = await model(name);
-      const { sac } = dressSac(m, 'tee');
+      const { cloth, sac } = dressSac(m, 'tee');
+      // Habillage posé sur le rig comme par le moteur de rendu : l'enveloppe du tronc (bras hors du corps) le mesure.
+      const worn = [...cloth, ...sac];
+      for (const o of worn) m.rig.add(o);
       const bag = restBox([sac[0]!]);
       const map = boneMap(m.body.skeleton);
       const H = m.A.H, hips = at(m, 'Hips'), hi = m.body.skeleton.bones.indexOf(hips);
@@ -166,6 +169,7 @@ describe('sac en bandoulière', () => {
       // Profondeur = entrée de l'axe du bras dans la boîte englobante de la poche + rayon du bras (0,02 H). L'axe peut au
       // plus effleurer la boîte (0,005 H : les bords arrondis de la poche sont bien en retrait de sa boîte) — la main qui
       // frôle le sac entre la hanche et la poche, jamais un bras qui le traverse.
+      for (const o of worn) m.rig.remove(o);
       expect(worst / H, `${name} ${where}`).toBeLessThan(0.025);
     }
   });
@@ -174,7 +178,10 @@ describe('sac en bandoulière', () => {
 describe('pas des passants', () => {
   const v = (p: V3): THREE.Vector3 => new THREE.Vector3(p[0], p[1], p[2]);
   const GAITS: Gait[] = ['walk', 'step', 'stand', 'crouch', 'climb', 'seated'];
-  it('genou jamais plus plié que le pantin de la même clé (+5°), pied libre pas plus haut (à proportion)', async () => {
+  // Marche et petit pas : genou recalé en 3D (retarget.ts walkKnee) — tibia jamais à plus de 50° (de profil) à 68°
+  // (de face) derrière la verticale, pied libre jamais plus haut que le plus haut du pantin sur le cycle. Autres allures :
+  // genou jamais plus plié que le pantin de la même clé (+5°).
+  it('genou : pas de pied botté en arrière à la marche, jamais plus plié que le pantin ailleurs', async () => {
     for (const name of NAMES) {
       const m = await model(name);
       const map = boneMap(m.body.skeleton);
@@ -187,18 +194,27 @@ describe('pas des passants', () => {
             const p = poseOf((y * Math.PI) / 8, (ph * Math.PI) / 6, g);
             applyPose(m.rig, map, p, H / 40, g);
             m.rig.updateMatrixWorld(true);
-            const low = Math.min(...p.legs.map((l) => l.ankle[1]));
+            const walk = g === 'walk' || g === 'step';
+            // Plus haut levé du pied libre du pantin sur tout le cycle à cette orientation (longueurs de jambe).
+            let liftMax = 0;
+            if (walk)
+              for (let q = 0; q < 12; q++) {
+                const pq = poseOf((y * Math.PI) / 8, (q * Math.PI) / 6, g), lo = Math.min(...pq.legs.map((l) => l.ankle[1]));
+                for (const l of pq.legs) liftMax = Math.max(liftMax, (l.ankle[1] - lo) / legP);
+              }
+            const f = Math.abs(Math.sin((y * Math.PI) / 8));
+            const F = new THREE.Vector3(p.fr.F[0], 0, p.fr.F[2]);
             for (const leg of p.legs) {
               const s = leg.l < 0 ? 'Left' : 'Right';
               const kp = (v(leg.knee).sub(v(leg.hip)).angleTo(v(leg.ankle).sub(v(leg.knee))) * 180) / Math.PI;
               const k3 = (bone(`${s}Leg`).sub(bone(`${s}UpLeg`)).angleTo(bone(`${s}Foot`).sub(bone(`${s}Leg`))) * 180) / Math.PI;
-              expect(k3, `${name} ${g} y${y} p${ph} ${s}`).toBeLessThan(kp + 5);
-              if (g === 'walk' || g === 'step') {
-                // Hauteur du pied libre au-dessus du pied d'appui, en longueurs de jambe.
-                const liftP = (leg.ankle[1] - low) / legP;
-                const lift3 = (bone(`${s}Foot`).y - Math.min(bone('LeftFoot').y, bone('RightFoot').y)) / legR;
-                expect(lift3, `${name} ${g} y${y} p${ph} ${s} pied`).toBeLessThan(liftP + 0.03);
-              }
+              if (!walk) { expect(k3, `${name} ${g} y${y} p${ph} ${s}`).toBeLessThan(kp + 5); continue; }
+              // Tibia dans le plan de marche : angle derrière la verticale.
+              const shin = bone(`${s}Foot`).sub(bone(`${s}Leg`));
+              const back = (Math.atan2(-shin.dot(F), -shin.y) * 180) / Math.PI;
+              expect(back, `${name} ${g} y${y} p${ph} ${s} tibia`).toBeLessThan(50 + 18 * f ** 3 + 3);
+              const lift3 = (bone(`${s}Foot`).y - Math.min(bone('LeftFoot').y, bone('RightFoot').y)) / legR;
+              expect(lift3, `${name} ${g} y${y} p${ph} ${s} pied`).toBeLessThan(liftMax + 0.03);
             }
           }
     }

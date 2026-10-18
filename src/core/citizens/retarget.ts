@@ -9,7 +9,7 @@
 // est W_parent⁻¹ · W. Seules les directions sont copiées : le modèle garde ses longueurs. Doigts et orteils intacts.
 // Rien n'est alloué par appel (vecteurs de travail du module) : la fonction tourne pour beaucoup d'habitants par image.
 import * as THREE from 'three';
-import { PERCH, type Gait, type Pose } from '../library/figure/skeleton';
+import { LIMB, PERCH, type Gait, type Leg, type Pose } from '../library/figure/skeleton';
 import type { V3 } from '../library/figure/geometry';
 import { boneName } from './wardrobe/body';
 
@@ -70,7 +70,23 @@ export type BoneMap = {
   rest: Rest;
   space: RigSpace | null;
   cur: Rec<THREE.Quaternion>; // rotations du monde de la pose en cours (travail)
+  // Enveloppe du tronc habillé (bras tenus hors du corps), mesurée au premier applyPose sur le rig ; null : rien à mesurer.
+  hull?: Hull | null;
 };
+
+// Enveloppe du tronc au repos (corps + vêtements liés au bassin, au buste ou au haut des cuisses + sac pendu au bassin) : rayon
+// horizontal maximal autour de l'axe vertical des hanches, par tranche de hauteur (NY + 1 rangées depuis y0, pas dy) et
+// par secteur d'angle (NA). Plus l'épaisseur du bras (manche comprise) de l'épaule au poignet (ARM_BINS cases) et de la
+// main, et les longueurs des segments du bras.
+export type Hull = {
+  y0: number; dy: number; NY: number; NA: number; cx: number; cz: number; r: Float32Array;
+  arm: Float32Array; hand: number; handLen: number;
+  up: Record<Side, number>; fore: Record<Side, number>;
+};
+const ARM_BINS = 8;
+const ARM_PRESS = 0.5;
+// Écart total au plus (radians) : au-delà, le bras traverserait plutôt un peu que de partir en croix.
+const ARM_MAX = 0.4;
 
 const X = new THREE.Vector3(1, 0, 0);
 const Y = new THREE.Vector3(0, 1, 0);
@@ -194,6 +210,231 @@ const FLOOR: Readonly<Record<Gait, number | null>> = {
   stand: 0, step: 0, walk: 0, crouch: 0, perch: PERCH.groundY, seated: null, climb: null, pedal: null, mount: null,
 };
 
+// ——— Pas de marche : flexion du genou recalée (3D seulement) ———
+// Le pantin plie le genou au plus fort quand la cuisse est encore en arrière (swing = cos(ph + 0,35)²) : phase 11 →
+// cuisse −12°, genou 57°, pied relevé derrière presque à l'horizontale. Avec des volumes (cuisse, chaussure), le pied
+// semble « botté » en arrière. En 3D, le genou plie surtout pendant que la jambe revient vers l'avant : pic quand la
+// cuisse passe à la verticale (cos(ph + 0,15)²), et le tibia ne part jamais plus de KNEE_CAP degrés en arrière de la
+// cuisse (un peu plus de face, où le pied relevé se lit sans se voir derrière). Cuisse, foulée et pied d'appui restent
+// ceux du pantin ; le pantin 2D n'est pas touché.
+// Amplitude du pas par allure (AMPLITUDE de skeleton.ts, recopiée : un test vérifie que la phase est bien retrouvée).
+const WALK_AMP: Partial<Record<Gait, number>> = { walk: 1, step: 0.35 };
+const DEG = Math.PI / 180;
+const KNEE_CAP = 50, KNEE_CAP_FRONT = 18;
+const swingOf = (ph: number, shift: number): number => Math.max(0, Math.cos(ph + shift)) ** 2;
+const ang = { th: 0, k: 0 };
+// Angles de la jambe du pantin dans son plan (degrés) : cuisse (devant > 0) et flexion du genou.
+function legAngles(leg: Leg, F: V3): typeof ang {
+  const tx = leg.knee[0] - leg.hip[0], ty = leg.knee[1] - leg.hip[1], tz = leg.knee[2] - leg.hip[2];
+  const sx = leg.ankle[0] - leg.knee[0], sy = leg.ankle[1] - leg.knee[1], sz = leg.ankle[2] - leg.knee[2];
+  ang.th = Math.atan2(tx * F[0] + tz * F[2], -ty) / DEG;
+  ang.k = ang.th - Math.atan2(sx * F[0] + sz * F[2], -sy) / DEG;
+  return ang;
+}
+// Phase de marche (radians) retrouvée dans la pose : sin(phase) par la rotation du bassin, cos(phase + 0,35) par le
+// genou de la jambe libre (une seule jambe est en l'air à la fois). null : allure sans pas.
+export function walkPhase(pose: Pose, gait: Gait | undefined): number | null {
+  const w = gait ? WALK_AMP[gait] : undefined;
+  if (!w) return null;
+  const F = pose.fr.F, f = Math.abs(F[2]);
+  const amp = w * (55 + 30 * f);
+  const sA = Math.max(0, legAngles(pose.legs[0], F).k - 4) / amp;
+  const sB = Math.max(0, legAngles(pose.legs[1], F).k - 4) / amp;
+  const c = sA >= sB ? Math.sqrt(Math.min(1, sA)) : -Math.sqrt(Math.min(1, sB));
+  const s = pose.pelvisTurn / (w * 6 * DEG);
+  const t = Math.acos(c);
+  const a = t - 0.35, b = -t - 0.35;
+  return Math.abs(Math.sin(a) - s) <= Math.abs(Math.sin(b) - s) ? a : b;
+}
+// Flexion du genou 3D (degrés) d'une jambe de phase `ph`, cuisse à `th` degrés, de face à `f` (0 profil, 1 face).
+export function walkKnee(ph: number, f: number, w: number, th: number): number {
+  const k = 4 + w * (55 + 30 * f) * swingOf(ph, 0.15);
+  return Math.max(0, Math.min(k, th + KNEE_CAP + KNEE_CAP_FRONT * f * f * f));
+}
+// Cheville et pointe recalculées (repère du pantin), par côté : écrites ici, sans allocation.
+const ankleW = { Left: [0, 0, 0] as [number, number, number], Right: [0, 0, 0] as [number, number, number] };
+const toeW = { Left: [0, 0, 0] as [number, number, number], Right: [0, 0, 0] as [number, number, number] };
+function retimeLeg(leg: Leg, ph: number, f: number, w: number, F: V3, s: Side): void {
+  const { th } = legAngles(leg, F);
+  const sa = (th - walkKnee(ph, f, w, th)) * DEG;
+  const a = ankleW[s], t = toeW[s];
+  a[0] = leg.knee[0] + LIMB.shin * Math.sin(sa) * F[0];
+  a[1] = leg.knee[1] - LIMB.shin * Math.cos(sa);
+  a[2] = leg.knee[2] + LIMB.shin * Math.sin(sa) * F[2];
+  const ta = sa * 0.6;
+  t[0] = a[0] + 3 * Math.cos(ta) * F[0];
+  t[1] = a[1] + 3 * Math.sin(ta) - 0.6;
+  t[2] = a[2] + 3 * Math.cos(ta) * F[2];
+}
+
+// ——— Bras hors du tronc ———
+// Les cibles de main du pantin supposent un buste mince : sur les bases larges (femme-forte, homme-fort, mamie), le bras
+// qui balance ou pend le long du corps entrait dans le ventre ou la hanche, et les mains des gestes (bras croisés,
+// menton…) dans la poitrine. Après le pantin, chaque bras tourne d'un bloc autour de l'épaule (coude gardé) juste assez
+// pour que coude, avant-bras, poignet et main restent hors de l'enveloppe du tronc habillé : vers l'extérieur sur les
+// flancs (le bras s'écarte), vers l'avant devant le ventre (la main se pose dessus au lieu d'y entrer).
+const TORSO = new Set(['Hips', 'Spine', 'Spine1', 'Spine2']);
+const THIGH = new Set(['LeftUpLeg', 'RightUpLeg']);
+const ARM_SIDE: Record<string, Side> = { LeftArm: 'Left', LeftForeArm: 'Left', LeftHand: 'Left', RightArm: 'Right', RightForeArm: 'Right', RightHand: 'Right' };
+
+function buildHull(m: BoneMap, rig: THREE.Object3D): Hull | null {
+  const P0 = m.rest.pos;
+  const torsoLen = P0.Neck.y - P0.Hips.y;
+  if (!(torsoLen > 0)) return null;
+  // Du milieu des cuisses (bout des doigts bras ballants) au cou.
+  const y0 = P0.Hips.y - 0.75 * torsoLen, y1 = P0.Neck.y, NY = 48, NA = 32, dy = (y1 - y0) / NY;
+  // Cuisses : seulement leur haut (hanches, fesses), qui bouge peu au pas.
+  const thighY = P0.Hips.y - 0.3 * torsoLen;
+  const cx = P0.Hips.x, cz = P0.Hips.z;
+  const r = new Float32Array((NY + 1) * NA), ra = new Float32Array((NY + 1) * NA), arm = new Float32Array(ARM_BINS), armN = new Float32Array(ARM_BINS);
+  let hand = 0, handN = 0, handLen = 0, n = 0;
+  const up = { Left: P0.LeftArm.distanceTo(P0.LeftForeArm), Right: P0.RightArm.distanceTo(P0.RightForeArm) };
+  const fore = { Left: P0.LeftForeArm.distanceTo(P0.LeftHand), Right: P0.RightForeArm.distanceTo(P0.RightHand) };
+  const d = new THREE.Vector3(), q = new THREE.Vector3();
+  rig.traverse((o) => {
+    const mesh = o as THREE.SkinnedMesh;
+    if (!mesh.isSkinnedMesh || !mesh.skeleton.bones.includes(m.bones.Hips)) return;
+    // Accessoires : seul ce qui pend au bassin compte (sac en bandoulière, à toute hauteur : le bras passe devant lui) ;
+    // sac à dos, sangles du buste, écharpe non (le bras passe à côté d'un sac à dos plus étroit que les épaules).
+    const acc = !!mesh.userData.accessory;
+    const g = mesh.geometry, P = g.attributes.position, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight;
+    if (!P || !SI || !SW) return;
+    const names = mesh.skeleton.bones.map((b) => boneName(b.name));
+    // Vêtements (garde-robe : attribut bindPos) : seulement au-dessus des hanches. Plus bas, jupes, pans de manteau et
+    // sacs s'évasent loin du corps : les éviter mettrait les bras en croix ; la main frôle le tissu comme en vrai.
+    const cloth = !!g.attributes.bindPos;
+    for (let i = 0; i < P.count; i++) {
+      let best = -1, bw = 0;
+      for (let k = 0; k < 4; k++) {
+        const w = k === 0 ? SW.getX(i) : k === 1 ? SW.getY(i) : k === 2 ? SW.getZ(i) : SW.getW(i);
+        if (w > bw) { bw = w; best = k === 0 ? SI.getX(i) : k === 1 ? SI.getY(i) : k === 2 ? SI.getZ(i) : SI.getW(i); }
+      }
+      const name = names[best] ?? '';
+      const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+      const side = ARM_SIDE[name];
+      if (side && !acc) {
+        // Épaisseur moyenne du bras (manche comprise) autour de l'axe épaule → main du repos ; main : au-delà du poignet.
+        const a = P0[`${side}Arm`], h = P0[`${side}Hand`];
+        d.subVectors(h, a);
+        const L = d.length();
+        d.divideScalar(L);
+        q.set(x, y, z).sub(a);
+        const t = q.dot(d) / L, dist = q.addScaledVector(d, -t * L).length();
+        if (/Hand/.test(name) || t > 1) {
+          hand += Math.min(dist, 0.15 * L);
+          handN++;
+          handLen = Math.max(handLen, Math.min((t - 1) * L, 0.5 * L));
+        } else if (t >= 0.25) {
+          const b = Math.min(ARM_BINS - 1, Math.floor(t * ARM_BINS));
+          arm[b] = arm[b]! + Math.min(dist, 0.2 * L);
+          armN[b] = armN[b]! + 1;
+        }
+        continue;
+      }
+      if (acc ? name !== 'Hips' || y < y0 || y > y1 : !(TORSO.has(name) || (THIGH.has(name) && y > thighY)) || y < y0 || y > y1 || (cloth && y < P0.Hips.y)) continue;
+      const dx = x - cx, dz = z - cz;
+      const ia = Math.floor(((Math.atan2(dx, dz) + Math.PI) / (2 * Math.PI)) * NA) % NA;
+      const j = Math.round((y - y0) / dy) * NA + ia;
+      const g = acc ? ra : r;
+      g[j] = Math.max(g[j]!, Math.hypot(dx, dz));
+      n++;
+    }
+  });
+  if (!n) return null;
+  // Cases vides (maillage lâche) : le plus grand des voisins.
+  for (let it = 0; it < 2; it++)
+    for (let iy = 0; iy <= NY; iy++)
+      for (let ia = 0; ia < NA; ia++) {
+        const j = iy * NA + ia;
+        if (r[j]) continue;
+        r[j] = Math.max(r[iy * NA + ((ia + 1) % NA)]!, r[iy * NA + ((ia + NA - 1) % NA)]!, iy > 0 ? r[j - NA]! : 0, iy < NY ? r[j + NA]! : 0);
+      }
+  for (let b = 0; b < ARM_BINS; b++) if (armN[b]) arm[b] = arm[b]! / armN[b]!;
+  for (let b = 1; b < ARM_BINS; b++) if (!arm[b]) arm[b] = arm[b - 1]!;
+  if (handN) hand /= handN;
+  // Sac : le bras ne s'y appuie pas comme sur le flanc, il passe devant (toute son épaisseur hors du sac).
+  let thick = 0;
+  for (let b = 0; b < ARM_BINS; b++) thick = Math.max(thick, arm[b]!);
+  for (let j = 0; j < r.length; j++) if (ra[j]) r[j] = Math.max(r[j]!, ra[j]! + (1 - ARM_PRESS) * thick);
+  return { y0, dy, NY, NA, cx, cz, r, arm, hand, handLen, up, fore };
+}
+
+// Rayon de l'enveloppe à la hauteur y (repos) dans la direction az : le plus large des secteurs voisins (0 hors tranche).
+function hullRadius(h: Hull, y: number, az: number): number {
+  const fy = (y - h.y0) / h.dy;
+  if (fy < -0.5 || fy > h.NY + 0.5) return 0;
+  const iy = Math.max(0, Math.min(h.NY, Math.round(fy)));
+  const ia = Math.floor(((az + Math.PI) / (2 * Math.PI)) * h.NA) % h.NA;
+  let r = 0;
+  for (let da = -1; da <= 1; da++) r = Math.max(r, h.r[iy * h.NA + ((ia + da + h.NA) % h.NA)]!);
+  return r;
+}
+
+// Travail des bras : directions (épaule → coude, coude → poignet) par côté, points du bras, repères.
+const armUp = { Left: new THREE.Vector3(), Right: new THREE.Vector3() };
+const armLow = { Left: new THREE.Vector3(), Right: new THREE.Vector3() };
+const sp2 = new THREE.Vector3(), shH = new THREE.Vector3(), pR = new THREE.Vector3(), pH = new THREE.Vector3();
+const lP = new THREE.Vector3(), lC = new THREE.Vector3(), axisV = new THREE.Vector3();
+const qPi = new THREE.Quaternion(), qCi = new THREE.Quaternion(), q13 = new THREE.Quaternion(), q23 = new THREE.Quaternion(), qR = new THREE.Quaternion();
+const hit = { depth: 0, lever: new THREE.Vector3(), n: new THREE.Vector3() };
+// Profondeur d'entrée du point `pt` (relatif à l'épaule, repère du rig) dans l'enveloppe, rayon `rad` compris. Le point
+// est ramené au repos dans le repère du bassin et dans celui du buste, mélangés selon la hauteur. Garde dans `hit` le
+// pire point (bras de levier, normale sortante dans le repère du rig).
+function probe(h: Hull, R: Rest, qP: THREE.Quaternion, qC: THREE.Quaternion, pt: THREE.Vector3, rad: number): void {
+  pH.copy(shH).add(pt);
+  lP.copy(pH).applyQuaternion(qPi).add(R.pos.Hips);
+  lC.copy(pH).sub(sp2).applyQuaternion(qCi).add(R.pos.Spine2);
+  const b = Math.max(0, Math.min(1, (lP.y - R.pos.Hips.y) / (R.pos.Spine2.y - R.pos.Hips.y)));
+  lP.lerp(lC, b);
+  const dx = lP.x - h.cx, dz = lP.z - h.cz, dist = Math.hypot(dx, dz);
+  const need = hullRadius(h, lP.y, Math.atan2(dx, dz));
+  if (!need || dist < 1e-6) return;
+  // Le bras s'appuie sur le flanc (chairs qui se touchent) : il peut y entrer de la moitié de son épaisseur, pas plus ;
+  // l'écarter davantage le mettait en pingouin sur les corps ronds.
+  const depth = need + ARM_PRESS * rad - dist;
+  if (depth <= hit.depth) return;
+  hit.depth = depth;
+  hit.lever.copy(pt);
+  hit.n.set(dx / dist, 0, dz / dist).applyQuaternion(qR.slerpQuaternions(qP, qC, b));
+}
+// Chaque bras tourne autour de l'épaule (rotation d'un bloc : le coude garde son angle) jusqu'à sortir de l'enveloppe,
+// ARM_MAX au plus.
+function clearArms(h: Hull, R: Rest, W: Rec<THREE.Quaternion>, qP: THREE.Quaternion, qC: THREE.Quaternion): void {
+  qPi.copy(qP).invert();
+  qCi.copy(qC).invert();
+  q13.slerpQuaternions(qP, qC, 1 / 3);
+  q23.slerpQuaternions(qP, qC, 2 / 3);
+  // Hanches → Spine2 posé (comme la colonne d'applyPose).
+  sp2.copy(R.spine[0]).applyQuaternion(qP).add(vA.copy(R.spine[1]).applyQuaternion(q13)).add(vA.copy(R.spine[2]).applyQuaternion(q23));
+  const binOf = (t: number): number => h.arm[Math.min(ARM_BINS - 1, Math.floor(t * ARM_BINS))]!;
+  for (const s of SIDES) {
+    const U = armUp[s], L = armLow[s], lu = h.up[s], lf = h.fore[s], tot = lu + lf;
+    shH.copy(R.pos[ARMS[s].up]).sub(R.pos.Spine2).applyQuaternion(qC).add(sp2);
+    let total = 0;
+    for (let it = 0; it < 4; it++) {
+      hit.depth = 0;
+      // Coude, milieu de l'avant-bras, poignet, paume, bout des doigts.
+      probe(h, R, qP, qC, pR.copy(U).multiplyScalar(lu), binOf(lu / tot));
+      probe(h, R, qP, qC, pR.copy(U).multiplyScalar(lu).addScaledVector(L, 0.5 * lf), binOf((lu + 0.5 * lf) / tot));
+      probe(h, R, qP, qC, pR.copy(U).multiplyScalar(lu).addScaledVector(L, lf), binOf(0.99));
+      probe(h, R, qP, qC, pR.copy(U).multiplyScalar(lu).addScaledVector(L, lf + 0.5 * h.handLen), h.hand);
+      probe(h, R, qP, qC, pR.copy(U).multiplyScalar(lu).addScaledVector(L, lf + h.handLen), 0.6 * h.hand);
+      if (hit.depth <= 0) break;
+      const lever = hit.lever.length();
+      axisV.crossVectors(hit.lever, hit.n);
+      if (axisV.lengthSq() < 1e-12 || lever < 1e-6) break;
+      const a = Math.min(ARM_MAX - total, Math.asin(Math.min(1, hit.depth / lever)) + 0.004);
+      if (a <= 0) break;
+      total += a;
+      qR.setFromAxisAngle(axisV.normalize(), a);
+      U.applyQuaternion(qR);
+      L.applyQuaternion(qR);
+      W[ARMS[s].up].premultiply(qR);
+      W[ARMS[s].low].premultiply(qR);
+    }
+  }
+}
+
 // `gait` : allure qui a produit la pose ; sans elle, le bassin est posé tel quel (pas de reprise d'appui au sol).
 export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRig: number, gait?: Gait): void {
   const R = m.rest;
@@ -232,12 +473,20 @@ export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRi
   // Jambes : cuisse et tibia dans le plan de flexion du pantin (genou devant), pied sur la cheville → pointe, sans
   // vrille par rapport au tibia. Hauteur relative de chaque cheville (pour poser les pieds au sol).
   vFb.copy(Z).applyQuaternion(qP);
+  // Marche : genou recalé (voir walkKnee), phase de chaque jambe retrouvée dans la pose (jambe 0 : ph, jambe 1 : ph + π).
+  const ph = walkPhase(pose, gait);
   for (const s of SIDES) {
     const leg = s === 'Left' ? legL : legR;
     const k = LEGS[s];
-    limb(R, W, k.up, k.leg, leg.hip, leg.knee, leg.ankle);
+    let ankle: V3 = leg.ankle, toe: V3 = leg.toe;
+    if (ph !== null) {
+      retimeLeg(leg, leg === pose.legs[0] ? ph : ph + Math.PI, Math.abs(pose.fr.F[2]), WALK_AMP[gait!]!, pose.fr.F, s);
+      ankle = ankleW[s];
+      toe = toeW[s];
+    }
+    limb(R, W, k.up, k.leg, leg.hip, leg.knee, ankle);
     vA.copy(X).applyQuaternion(qT);
-    align(R.dir[k.foot], X, diff(vB, leg.ankle, leg.toe), vA, qT);
+    align(R.dir[k.foot], X, diff(vB, ankle, toe), vA, qT);
     W[k.foot].multiplyQuaternions(qT, R.W[k.foot]);
     lowRel[s] = vA.copy(R.hipOff[s]).applyQuaternion(qP).y + vT.y * R.thigh[s] + vS.y * R.shin[s];
   }
@@ -246,7 +495,12 @@ export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRi
   for (const s of SIDES) {
     const arm = s === 'Left' ? armL : armR;
     limb(R, W, ARMS[s].up, ARMS[s].low, arm.sh, arm.elb, arm.hand);
+    armUp[s].copy(vT);
+    armLow[s].copy(vS);
   }
+  // Bras tenus hors du tronc habillé (enveloppe mesurée une fois par rig).
+  if (m.hull === undefined) m.hull = buildHull(m, rig);
+  if (m.hull) clearArms(m.hull, R, W, qP, qC);
 
   // Rotations locales, de la racine vers les extrémités (DRIVEN suit l'ordre parent avant enfant).
   for (const k of DRIVEN) {
