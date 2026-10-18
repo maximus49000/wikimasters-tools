@@ -24,7 +24,10 @@ export type LightBlob = { cx: number; cy: number; rx: number; ry: number; peak: 
 export const LANTERN = { dx: 9, dy: -77 } as const;
 
 // Lampadaire au pied `x`, bord du trottoir `curb`, échelle du sprite `k` : mur et air autour de la lanterne (modeste : pas
-// de brouillard), flaque du trottoir au pied du mât (la plus lumineuse, aplatie), chaussée (faible, rapide).
+// de brouillard), flaque du trottoir au pied du mât (la plus lumineuse, aplatie), chaussée (faible, rapide), et un cœur plus
+// serré autour de la lanterne (ajout après comparaison au banc, tâche 15 : sur les tranches de nuit de l'app, plus claires
+// que le multiply de la maquette, la seule lueur du mur se lisait à peine ; le cœur redonne l'îlot doré net de street-night).
+// Les taches se cumulent dans le masque (alpha composé).
 export function lampBlobs(x: number, curb: number, u: number, k: number): LightBlob[] {
   const gx = x + LANTERN.dx * k;
   const gy = curb + LANTERN.dy * k;
@@ -32,6 +35,7 @@ export function lampBlobs(x: number, curb: number, u: number, k: number): LightB
     { cx: gx, cy: gy + 12 * u, rx: 44 * u, ry: 40 * u, peak: 1 },
     { cx: x + 3 * u, cy: curb - 2 * u, rx: 56 * u, ry: 14 * u, peak: 1 },
     { cx: x + 3 * u, cy: curb + 9 * u, rx: 50 * u, ry: 10 * u, peak: 0.6 },
+    { cx: gx, cy: gy + 6 * u, rx: 34 * u, ry: 32 * u, peak: 1 },
   ];
 }
 

@@ -9,7 +9,8 @@ import type { Sky } from '../../core/library/sky';
 import { tone } from '../city-sprites';
 import type { InteriorSlices } from '../shop-interiors';
 import { EMPTY_WINDOW } from '../shop-sprites';
-import { layerBox, quantDay, useShopLayer, type ShopLook } from './shop-host';
+import type { LightBlob } from '../../core/library/city/night-light';
+import { layerBox, quantDay, useShopGlow, useShopLayer, type ShopLook } from './shop-host';
 
 // Devanture Ghibli d'un local (G4a) : fond de la vitrine (intérieur peint) dans le <svg> imbriqué de la vitrine, façade
 // percée par-dessus, et la nuit la flaque de lumière de la vitrine sur le trottoir et son reflet sur la chaussée (bords
@@ -38,12 +39,19 @@ export function shopLookOf(view: ShopView, frame: ShopFrame, sky: Sky, type: Sho
 // Origine du local dans le monde.
 export const shopOrigin = (frame: ShopFrame): { x: number; y: number } => ({ x: frame.sign.x, y: frame.sign.y - 2 });
 
-type Props = { view: ShopView; frame: ShopFrame; sky: Sky; curb: number; interior: ShopTypeId | null; slices?: InteriorSlices; children?: ReactNode };
+// `glow` : taches des lampadaires allumés qui touchent la façade (repère du monde) et opacité des lumières de la ville ; la
+// façade de jour teinte ambre est révélée par-dessus (useShopGlow), comme la découpe du décor (ghibli-night.tsx).
+type Glow = { blobs: readonly LightBlob[]; dim: number };
+type Props = { view: ShopView; frame: ShopFrame; sky: Sky; curb: number; interior: ShopTypeId | null; slices?: InteriorSlices; glow?: Glow | null; children?: ReactNode };
+const NO_BLOBS: readonly LightBlob[] = [];
 
-export function GhibliShopFront({ view, frame, sky, curb, interior, slices, children }: Props): ReactElement {
+export function GhibliShopFront({ view, frame, sky, curb, interior, slices, glow = null, children }: Props): ReactElement {
   const look = shopLookOf(view, frame, sky);
   const back: ShopLook = { ...look, type: interior };
   const facade = useShopLayer(look, 'facade');
+  const o0 = shopOrigin(frame);
+  const localBlobs = glow ? glow.blobs.map((b) => ({ ...b, cx: b.cx - o0.x, cy: b.cy - o0.y, ...(b.clipTop !== undefined ? { clipTop: b.clipTop - o0.y } : {}) })) : NO_BLOBS;
+  const glowUrl = useShopGlow(glow ? look : null, localBlobs);
   const backUrl = useShopLayer(interior ? back : null, 'back');
   // Boutique pas ouverte (fermée, déménagement, travaux) : le premier plan (comptoir, vitre) est dans le décor, comme le
   // classique ; ouverte, le calque animé le dessine devant le personnel (GhibliShopGlass).
@@ -72,6 +80,9 @@ export function GhibliShopFront({ view, frame, sky, curb, interior, slices, chil
         {hidden > 0 && <rect data-slices-cover="" x={slices!.doorRight ? win.w - cut : 0} y={0} width={cut} height={win.h} fill={empty} />}
       </svg>
       <image data-shop-layer="facade" href={facade} x={o.x + fb.x} y={o.y + fb.y} width={fb.w} height={fb.h} preserveAspectRatio="none" />
+      {glow && glowUrl !== null && (
+        <image data-shop-lamp-glow="" href={glowUrl} x={o.x + fb.x} y={o.y + fb.y} width={fb.w} height={fb.h} preserveAspectRatio="none" opacity={glow.dim} style={{ transition: 'opacity 4s ease' }} />
+      )}
       {pool && (
         <g data-shop-pool="" fill={pool}>
           <polygon points={`${win.x},${ground} ${win.x + win.w},${ground} ${win.x + win.w + 6},${curb} ${win.x - 6},${curb}`} opacity={family === 'F' ? 0.2 : 0.26} />

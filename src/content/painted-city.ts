@@ -136,7 +136,7 @@ function buffers(w: number, h: number): CanvasRenderingContext2D[] | null {
 }
 
 // Une tache dans le masque d'intensité (alpha = intensité), repère du monde.
-function maskBlob(m: CanvasRenderingContext2D, b: LightBlob): void {
+export function maskBlob(m: CanvasRenderingContext2D, b: LightBlob): void {
   m.save();
   if (b.flare !== undefined) {
     const g = m.createLinearGradient(0, b.cy, 0, b.cy + b.ry);

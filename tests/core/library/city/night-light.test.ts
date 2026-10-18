@@ -2,12 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { actorShadow, lampBlobs, nearestLamp, patchBox, shopBlobs, wetStrokes } from '../../../../src/core/library/city/night-light';
 
 describe('lumière de nuit', () => {
-  it('trois zones par lampadaire, flaque la plus forte au pied', () => {
+  it('quatre zones par lampadaire : mur, cœur du mur autour de la lanterne, flaque au pied, chaussée', () => {
     const b = lampBlobs(100, 300, 1, 0.85);
-    expect(b).toHaveLength(3);
+    expect(b).toHaveLength(4);
     expect(b[1]!.cy).toBeCloseTo(298);
     expect(b[1]!.rx).toBeCloseTo(56);
     expect(b[2]!.peak).toBeCloseTo(0.6);
+    // Cœur du mur : centré sur la lanterne (9, −77)·k, plus serré que la lueur du mur (îlot doré net, maquette street-night).
+    const core = b[3]!;
+    expect(core.cx).toBeCloseTo(100 + 9 * 0.85);
+    expect(Math.abs(core.cy - (300 - 77 * 0.85))).toBeLessThanOrEqual(8);
+    expect(core.rx).toBeLessThan(b[0]!.rx);
+    expect(core.peak).toBeGreaterThanOrEqual(0.8);
   });
   it('la découpe englobe toutes les zones', () => {
     const box = patchBox(lampBlobs(100, 300, 1, 0.85));
