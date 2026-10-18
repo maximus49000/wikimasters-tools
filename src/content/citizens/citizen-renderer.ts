@@ -12,6 +12,7 @@ import { loadBase as loadBaseParDefaut, type BaseModel } from './model-cache';
 import { SPRITE_BOX } from '../figure/figure-host';
 import { NIGHT_LIGHT } from '../figure/citizen-config';
 import { mixHex } from '../../core/library/sky';
+import { BASES } from '../../core/citizens/catalogue-data';
 import { citizenKey, expand, type CitizenDesc, type Piece } from '../../core/citizens/catalogue';
 import { accessory, analyse, disposeRig, dressRig, PARAPLUIE_DEFAUT, parapluieOuvert, skull, TOON_RAMP, type BodyInfo } from '../../core/citizens/wardrobe';
 import { faceLayer, parseFaceState } from '../../core/citizens/face';
@@ -289,7 +290,7 @@ export class CitizenRenderer {
     void this.load(name)
       .then((model) => {
         if (!model) throw new Error('base absente');
-        if (!this.disposed) this.bases.set(name, { model, info: analyse(model.body), pixels: undefined, skin: null });
+        if (!this.disposed) this.bases.set(name, { model, info: Object.assign(analyse(model.body), BASES[name]?.ease ? { ease: BASES[name]!.ease } : {}), pixels: undefined, skin: null });
       })
       .catch(() => { this.failed.set(name, Date.now()); })
       .finally(() => this.loading.delete(name));

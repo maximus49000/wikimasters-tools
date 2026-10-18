@@ -65,12 +65,13 @@ export const TYPES: Record<string, PermisBase> = {
 
 // Les bases : modèle, taille en mètres, poids du tirage, sexe (`f` = base femme : seule à porter jupe/robe parmi les adultes),
 // `aged` = ancien (cheveux gris, jamais de casquette), `child` = enfant. Les bases futures s'ajoutent ici.
-export type DefBase = { glb: string; metres: number; weight: number; sex: 'f' | 'm' | 'n'; aged?: true; child?: true };
+// `ease` = facteur d'aisance des vêtements (défaut 1) pour les corps dont les courbes dépassent la coque standard.
+export type DefBase = { glb: string; metres: number; weight: number; sex: 'f' | 'm' | 'n'; aged?: true; child?: true; ease?: number };
 export const BASES: Record<string, DefBase> = {
   'homme-fort': { glb: 'base-generique', metres: 1.7, weight: 14, sex: 'm' },
   'homme-maigre': { glb: 'base-homme-maigre', metres: 1.82, weight: 14, sex: 'm' },
   'femme-frele': { glb: 'base-femme-frele', metres: 1.62, weight: 10, sex: 'f' },
-  'femme-forte': { glb: 'base-femme-forte', metres: 1.65, weight: 8, sex: 'f' },
+  'femme-forte': { glb: 'base-femme-forte', metres: 1.65, weight: 8, sex: 'f', ease: 1.6 },
   'femme-grande': { glb: 'base-femme-grande', metres: 1.76, weight: 8, sex: 'f' },
   papy: { glb: 'base-papy', metres: 1.66, weight: 12, sex: 'm', aged: true },
   mamie: { glb: 'base-mamie', metres: 1.54, weight: 12, sex: 'f', aged: true },

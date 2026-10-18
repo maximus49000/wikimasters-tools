@@ -14,7 +14,8 @@ export function gilet(A: BodyInfo, color: string): THREE.SkinnedMesh {
   const nx = A.J.Neck.x, nz = A.J.Neck.z, r0 = 0.075 * A.H;
   const col = (v: VertexInfo) => Math.max(colY - v.y, Math.hypot(v.x - nx, v.z - nz) - r0);
   const chest = A.J.Spine2.y;
-  const off = (v: VertexInfo) => 0.022 + 0.008 * clamp01((chest - v.y) / (chest - hemY));
+  const e = A.ease ?? 1;
+  const off = (v: VertexInfo) => e * (0.022 + 0.008 * clamp01((chest - v.y) / (chest - hemY)));
   const mid = hemY + 0.45 * (chest - hemY), half = 0.013 * A.H;
   return shell(A, (v) => Math.min(v.y - hemY, col(v), (-0.02 - aT(v)) * 0.2, v.part === 'hand' || v.part === 'head' ? -1 : 1), off, color, {
     pattern: { kind: 'bande', color: GILET_BANDE, lo: mid - half, hi: mid + half },
@@ -28,14 +29,14 @@ export function tablier(A: BodyInfo, color: string): THREE.SkinnedMesh[] {
   const zc = A.J.Spine2.z, cx = A.J.Spine2.x;
   const chestY = A.J.Spine2.y + 0.35 * (A.J.Neck.y - A.J.Spine2.y), bibLow = A.waistY - 0.03 * A.H, halfW = 0.075 * A.H;
   const out = (v: VertexInfo) => v.part === 'hand' || v.part === 'head' || v.part === 'arm' || v.part === 'neck';
-  const bib = shell(A, (v) => (out(v) ? -1 : Math.min(v.z - zc, chestY - v.y, v.y - bibLow, halfW - Math.abs(v.x - cx))), 0.022, color);
-  const tie = shell(A, (v) => (out(v) ? -1 : Math.min(v.y - (A.waistY - 0.01 * A.H), A.waistY + 0.01 * A.H - v.y)), 0.026, color);
+  const bib = shell(A, (v) => (out(v) ? -1 : Math.min(v.z - zc, chestY - v.y, v.y - bibLow, halfW - Math.abs(v.x - cx))), 0.022 * (A.ease ?? 1), color);
+  const tie = shell(A, (v) => (out(v) ? -1 : Math.min(v.y - (A.waistY - 0.01 * A.H), A.waistY + 0.01 * A.H - v.y)), 0.026 * (A.ease ?? 1), color);
   return [bib, apronPanel(A, color), tie];
 }
 
 function apronPanel(A: BodyInfo, color: string): THREE.SkinnedMesh {
   const R = bodyRadius(A), c = A.J.Hips;
-  const top = A.waistY, hem = A.J.LeftLeg.y + 0.02 * A.H, off = 0.024 * A.H;
+  const top = A.waistY, hem = A.J.LeftLeg.y + 0.02 * A.H, off = 0.024 * (A.ease ?? 1) * A.H;
   const AZ = 1.25, NA = 24, NY = 16, pos: number[] = [], si: number[] = [], sw: number[] = [], ind: number[] = [];
   const H = A.idx.Hips, L = A.idx.LeftUpLeg, Rr = A.idx.RightUpLeg;
   // Rayon : celui du ventre en haut, puis le plus large du bassin et du haut des cuisses (le pan tombe sans coller).

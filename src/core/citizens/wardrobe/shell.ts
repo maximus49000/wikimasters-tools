@@ -97,7 +97,7 @@ export type SkirtOpts = { top?: number; len?: number; flare?: number; off?: numb
 
 // Jupe : du haut (yTop) jusqu'à la longueur `len` (fraction de la hauteur hanche→cheville), évasée de `flare`.
 export function skirt(A: BodyInfo, { top = A.waistY + 0.02 * A.H, len = 0.6, flare = 0.35, off = 0.012, color, folds = 0.006, pattern = null }: SkirtOpts): THREE.SkinnedMesh {
-  const R = bodyRadius(A), c = A.J.Hips;
+  const R = bodyRadius(A), c = A.J.Hips, e = A.ease ?? 1;
   const ankle = A.J.LeftFoot.y, hem = top - len * (A.J.LeftUpLeg.y - ankle);
   const NA = 64, NY = 24, pos: number[] = [], si: number[] = [], sw: number[] = [], ind: number[] = [];
   const H = A.idx.Hips, L = A.idx.LeftUpLeg, Rr = A.idx.RightUpLeg;
@@ -109,9 +109,9 @@ export function skirt(A: BodyInfo, { top = A.waistY + 0.02 * A.H, len = 0.6, fla
       const az = -Math.PI + (ia / NA) * 2 * Math.PI;
       let r0 = 0.02;
       for (let dy = -0.03; dy <= 0.03; dy += 0.01) r0 = Math.max(r0, R(top + dy * A.H, az));
-      r0 += off * A.H;
+      r0 += off * e * A.H;
       const fold = folds * A.H * Math.pow(t, 1.4) * (0.6 * Math.sin(az * 9 + 0.7) + 0.4 * Math.sin(az * 14 + 2.1));
-      const r = r0 + (base(az) + off * A.H - r0) * Math.min(1, t * 4) + flare * (top - hem) * t * t + fold;
+      const r = r0 + (base(az) + off * e * A.H - r0) * Math.min(1, t * 4) + flare * (top - hem) * t * t + fold;
       pos.push(c.x + Math.sin(az) * r, y, c.z + Math.cos(az) * r);
       const s = Math.sin(az);
       const wl = t * 0.8 * (0.5 + 0.5 * s), wr = t * 0.8 * (0.5 - 0.5 * s);
@@ -146,7 +146,8 @@ export const garments = {
     const nx = A.J.Neck.x, nz = A.J.Neck.z, r0 = neckR * A.H;
     const col = (v: VertexInfo) => Math.max(colY - v.y, Math.hypot(v.x - nx, v.z - nz) - r0);
     const chest = A.J.Spine2.y;
-    const offAt = (v: VertexInfo) => off + ease * (v.part === 'arm' ? clamp01(aT(v)) * 0.8 : clamp01((chest - v.y) / (chest - hemY)));
+    const e = A.ease ?? 1;
+    const offAt = (v: VertexInfo) => e * (off + ease * (v.part === 'arm' ? clamp01(aT(v)) * 0.8 : clamp01((chest - v.y) / (chest - hemY))));
     return shell(A, (v) => Math.min(v.y - hemY, col(v), (sleeve - aT(v)) * 0.2, v.part === 'hand' || v.part === 'head' ? -1 : 1), offAt, color, { pattern });
   },
   // Col de chemise : bande montante autour du cou.
@@ -157,7 +158,8 @@ export const garments = {
   // Bas : `cut` = longueur sur la jambe ; jambe droite (aisance croissante vers la cheville) sauf `slim`.
   bottom: (A: BodyInfo, { cut = 0.97, off = 0.006, color, rise = 0.01, slim = false, pattern = null }: BottomOpts) => {
     const top = A.waistY + rise * A.H;
-    const offAt = (v: VertexInfo) => off + (slim ? 0.003 : 0.012) * clamp01(lT(v));
+    const e = A.ease ?? 1;
+    const offAt = (v: VertexInfo) => e * (off + (slim ? 0.003 : 0.012) * clamp01(lT(v)));
     return shell(A, (v) => Math.min(top - v.y, (cut - lT(v)) * 0.3, v.part === 'arm' || v.part === 'hand' ? -1 : 1), offAt, color, { pattern });
   },
   socks: (A: BodyInfo, { from = 0.8, color }: { from?: number; color: string }) => shell(A, (v) => (lT(v) - from) * 0.3, 0.003, color),

@@ -30,6 +30,8 @@ export type BodyInfo = {
   /** Indice de chaque os dans `body.skeleton.bones`. */
   idx: Record<JointName, number> & Partial<Record<string, number>>;
   names: string[];
+  /** Facteur d'aisance des vêtements (défaut 1) : > 1 pour les corps aux courbes fortes, dont la peau ressortirait. */
+  ease?: number;
   /** Teinte de peau (bras nus posés sur le tee-shirt du corps de base). */
   skin?: string;
   /** Crâne mesuré, calculé à la première coiffure. */
