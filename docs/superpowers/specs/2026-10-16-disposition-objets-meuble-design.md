@@ -244,3 +244,12 @@ Choix de Claude (à relire) :
   choisi** à partir du titre de la carte ; rien trouvé → bouton grisé.
 - **Ordre des parties** : en partie 3, une carte lâchée sur le dessus d'étagère est refusée (rouge) ; la partie 4 l'autorise, pose
   par défaut **trépied**.
+
+### Décision du 2026-10-18 — bulles unifiées (remplace « un doigt sur un objet le saisit tout de suite »)
+
+Dans la vue Modifier, **toucher un objet posé** (carte ou petit objet, sur une tablette, un dessus ou un bureau) ouvre **sa
+bulle**, la même que pour le mobilier classique dans la pièce (même apparence, mêmes glyphes). Le déplacement se lance
+**seulement** par **✥ Déplacer** dans la bulle : l'objet est alors armé, on le glisse, il est posé **au lâcher** sur une place
+verte (rouge : il revient). Aucun objet ne bouge par un geste direct. La bulle d'une carte garde présentation / pose, format,
+ⓘ et 🗑 ; celle d'un petit objet reprend les actions de la pièce (🗑, allumer/éteindre une lampe, …). Au niveau « meuble
+entier », toucher zoome toujours sur la tablette. La bulle ne cache jamais l'objet qu'elle concerne.
