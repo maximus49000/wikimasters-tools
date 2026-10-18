@@ -8,8 +8,8 @@ import { mixHex, type Sky } from '../../core/library/sky';
 import { hashString } from '../../core/library/scene-world';
 import { citizenFromOutfit, type CitizenDesc, type CitizenKind, type Emotion } from '../../core/citizens/catalogue';
 import { tone } from '../city-sprites';
-import { CITIZENS_3D } from './citizen-config';
-import { SPRITE_BOX, spriteKey, useFigureRegistry, type FigureRegistry, type Palette, type SpriteAnchors } from './figure-host';
+import { CITIZENS_3D, NIGHT_LIGHT } from './citizen-config';
+import { HOLD_3D_FRAMES, SPRITE_BOX, spriteKey, useFigureRegistry, type FigureRegistry, type Palette, type SpriteAnchors } from './figure-host';
 
 // Humain au trait Ghibli (G3) : un <g data-figure> qui porte sa palette (couleurs de la tenue avec la teinte de nuit comme
 // le dessin classique, ombre violette, encre assombrie la nuit) et une <image> du sprite de la pose courante. Les boucles
@@ -27,9 +27,7 @@ const RAINCOAT = '#2E5E8A';
 const RAINCOAT_TOPS: ReadonlySet<Outfit['top']> = new Set(['jacket', 'sweater', 'tee', 'shirt']);
 export const wearsRaincoat = (o: Outfit, rainy: boolean): boolean => rainy && RAINCOAT_TOPS.has(o.top);
 export const rainOutfit = (o: Outfit, rainy: boolean): Outfit => (wearsRaincoat(o, rainy) ? { ...o, topColor: RAINCOAT } : o);
-// Lumière du rendu 3D (multiplie soleil et ambiance) : la nuit garde ≈ la moitié de la lumière, comme la teinte de nuit du
-// pantin (couleur mêlée à 55 % de bleu nuit).
-const NIGHT_LIGHT = 0.45;
+// Lumière du rendu 3D : NIGHT_LIGHT la nuit, 1 le jour ; le rendu en tire la teinte de nuit du pantin (lightColor).
 export const citizenLight = (sky: Sky): number => NIGHT_LIGHT + (1 - NIGHT_LIGHT) * sky.daylight;
 
 export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, c3d?: { key: string; light: number }): Palette {
@@ -133,8 +131,25 @@ function placed(reg: FigureRegistry, pin: Anchor | null, sk: string, key: Figure
   return { a: moved, off };
 }
 const pinOf = (node: Element): Anchor | null => node.getAttribute('data-pin') as Anchor | null;
-// Une figure qui montre déjà une image 3D la garde tant que la 3D de la nouvelle pose manque (pas d'aller-retour pantin ↔ 3D).
-const keeps3D = (reg: FigureRegistry, shown: string | null, got: { sk: string } | null): boolean => shown !== null && got !== null && reg.anchors(shown) !== null && reg.anchors(got.sk) === null;
+// Première image où une figure qui montrait de la 3D s'est vu servir un pantin (cycle 3D de la nouvelle pose incomplet).
+const missSince = new WeakMap<Element, number>();
+// Une figure qui montre de la 3D garde sa dernière image 3D au plus HOLD_3D_FRAMES images quand la nouvelle pose n'a qu'un
+// pantin (nouvelle orientation, nouveau geste), puis montre le pantin jusqu'à ce que le cycle 3D soit complet : jamais figée.
+function holdLast3D(reg: FigureRegistry, node: Element | null, shown: string | null, got: { sk: string } | null): boolean {
+  if (!node) return false;
+  if (shown === null || got === null || reg.anchors(shown) === null || reg.anchors(got.sk) !== null) {
+    missSince.delete(node);
+    return false;
+  }
+  const f = reg.frameNo();
+  const s = missSince.get(node);
+  if (s === undefined) {
+    missSince.set(node, f);
+    return true;
+  }
+  return f - s < HOLD_3D_FRAMES;
+}
+const shows3D = (reg: FigureRegistry, shown: string | null): boolean => shown !== null && reg.anchors(shown) !== null;
 const offTransform = (off: Pt | null | undefined): string | undefined => (off ? `translate(${off[0]} ${off[1]})` : undefined);
 
 // Montre l'image `sk` (déjà détenue par le nœud) : href, clé, pose, accroches, objets tenus visibles à leurs accroches.
@@ -162,28 +177,29 @@ function showSprite(reg: FigureRegistry, node: Element, sk: string, href: string
 }
 
 // Mise à jour d'une figure qui attend mieux que son image (rappelée par le registre après un flush utile) : true quand il n'y a
-// plus rien à attendre (image 3D montrée, figure cachée, plus de 3D).
+// plus rien à attendre (image 3D exacte montrée, figure cachée, plus de 3D) ; visages animés : suivie tant qu'elle est 3D.
 function refreshFigure(reg: FigureRegistry, node: Element): boolean {
   const key = wantedPoses.get(node);
   const pk = node.getAttribute('data-palette');
   if (!key || pk === null || node.getAttribute('data-sig') !== key.sig) return true;
   const shown = node.getAttribute('data-key');
   const want = reg.keyFor(pk, key);
-  if (shown === want) return true;
-  const got = reg.pick(pk, key, shown === null, node.hasAttribute('data-wait3d'));
-  if (!got) return !reg.is3D(pk);
-  if (keeps3D(reg, shown, got)) return false;
-  if (got.sk !== shown) {
-    const href = reg.hold(node, got.sk);
-    if (!href) return false;
-    showSprite(reg, node, got.sk, href, key);
+  if (shown !== want) {
+    const got = reg.pick(pk, key, shown === null, node.hasAttribute('data-wait3d'), shows3D(reg, shown));
+    if (!got) return !reg.is3D(pk);
+    if (got.sk !== shown && !holdLast3D(reg, node, shown, got)) {
+      const href = reg.hold(node, got.sk);
+      if (href) showSprite(reg, node, got.sk, href, key);
+    }
   }
-  return got.sk === want || !reg.is3D(pk);
+  if (!reg.is3D(pk)) return true;
+  return !reg.animatedFaces() && node.getAttribute('data-key') === want;
 }
-// Suivi d'une figure 3D tant qu'elle ne montre pas son image 3D (pantin de repli ou rien).
+// Suivi d'une figure 3D tant qu'elle ne montre pas son image 3D exacte (pantin de repli, rien, autre palier de lumière), ou
+// tout le temps avec les visages animés (clignements des figures fixes).
 function track(reg: FigureRegistry, node: Element, pk: string, key: FigureKey, want: string): void {
   wantedPoses.set(node, key);
-  if (reg.is3D(pk) && node.getAttribute('data-key') !== want) reg.watch(node, () => refreshFigure(reg, node));
+  if (reg.is3D(pk) && (reg.animatedFaces() || node.getAttribute('data-key') !== want)) reg.watch(node, () => refreshFigure(reg, node));
   else reg.unwatch(node);
 }
 
@@ -249,8 +265,8 @@ export function GhibliFigure({
     const prevKey = node?.getAttribute('data-key') ?? null;
     const prevHref = node?.firstElementChild?.getAttribute('href') ?? null;
     const fresh = prevKey === null || prevHref === null;
-    const got = reg.pick(pk, key, fresh, waitFor3D);
-    if (got && !keeps3D(reg, prevKey, got)) {
+    const got = reg.pick(pk, key, fresh, waitFor3D, shows3D(reg, prevKey));
+    if (got && !holdLast3D(reg, node, prevKey, got)) {
       shownKey = got.sk;
       href = got.url;
     } else if (!fresh) {
@@ -310,8 +326,8 @@ export function poseFigure(reg: FigureRegistry, node: Element | null, pose: Pose
   const want = reg.keyFor(pk, key);
   const shown = node.getAttribute('data-key');
   if (shown === want) return;
-  const got = reg.pick(pk, key, shown === null, node.hasAttribute('data-wait3d'));
-  if (got && got.sk !== shown && !keeps3D(reg, shown, got)) {
+  const got = reg.pick(pk, key, shown === null, node.hasAttribute('data-wait3d'), shows3D(reg, shown));
+  if (got && got.sk !== shown && !holdLast3D(reg, node, shown, got)) {
     const href = reg.hold(node, got.sk);
     if (href) showSprite(reg, node, got.sk, href, key);
   }

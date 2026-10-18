@@ -10,6 +10,8 @@ import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadBase as loadBaseParDefaut, type BaseModel } from './model-cache';
 import { SPRITE_BOX } from '../figure/figure-host';
+import { NIGHT_LIGHT } from '../figure/citizen-config';
+import { mixHex } from '../../core/library/sky';
 import { citizenKey, expand, type CitizenDesc, type Piece } from '../../core/citizens/catalogue';
 import { accessory, analyse, disposeRig, dressRig, PARAPLUIE_DEFAUT, parapluieOuvert, skull, TOON_RAMP, type BodyInfo } from '../../core/citizens/wardrobe';
 import { faceLayer, parseFaceState } from '../../core/citizens/face';
@@ -45,6 +47,14 @@ const BODY_OUTLINE_PX = 0.7;
 export const outlineThickness = (targetPx: number, px: number): number => targetPx / ((Math.min(SPRITE_BOX.w, SPRITE_BOX.h) * px) / 2);
 const AMBIENT = 1.6;
 const SUN = 1.6;
+// Teinte de nuit des lumières, comme `tone()` du pantin (city-sprites.tsx) : la couleur se mêle à 55 % de bleu nuit, puis
+// revient vers elle-même avec la clarté du jour. La clarté se relit dans `light` (citizenLight : NIGHT_LIGHT la nuit, 1 le jour).
+const NIGHT_BLUE = '#0B1030';
+/** Couleur (hex sRGB) des lumières pour une lumière `light` : blanc le jour, blanc mêlé de bleu nuit la nuit. */
+export function lightColor(light: number): string {
+  const day = Math.min(1, Math.max(0, (light - NIGHT_LIGHT) / (1 - NIGHT_LIGHT)));
+  return mixHex(mixHex('#ffffff', NIGHT_BLUE, 0.55), '#ffffff', day);
+}
 // Taille à l'écran : adulte de 1,70 m = 37,5 unités du pantin ; enfant toujours 37,5 (les scènes le réduisent à 0,6).
 const ADULT_UNITS = 37.5;
 const REF_METRES = 1.7;
@@ -294,8 +304,9 @@ export class CitizenRenderer {
       applyPose(rig.root, rig.map, pose, rig.unitsToRig, key.gait);
       const f = parseFaceState(face);
       (rig.face.userData.set as (e: string, b: number) => void)(f.emotion, f.blink);
-      this.ambient.intensity = AMBIENT * light;
-      this.sun.intensity = SUN * light;
+      const tint = lightColor(light);
+      this.ambient.color.set(tint);
+      this.sun.color.set(tint);
       this.scene.add(rig.wrap);
       rig.wrap.updateMatrixWorld(true);
       this.umbrella(rig, umbrella);

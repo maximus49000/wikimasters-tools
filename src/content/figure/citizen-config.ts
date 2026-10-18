@@ -14,3 +14,6 @@ export const RENDER_BUDGET_MS = 6;
 
 /** Attente maximale (ms) du chargement 3D avant de retomber sur le rendu 2D. */
 export const WAIT3D_FALLBACK_MS = 4000;
+
+/** Lumière des habitants 3D en pleine nuit (1 en plein jour) : la teinte de nuit du rendu 3D s'en déduit (comme le pantin). */
+export const NIGHT_LIGHT = 0.45;

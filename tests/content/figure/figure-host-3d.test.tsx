@@ -5,10 +5,11 @@ import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 import { BLANK_SPRITE, FigureContext, FigureRegistry, figureAnchors, paletteKey, spriteKey, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
-import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, poseFigure, rainOutfit, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
+import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, hideFigure, poseFigure, rainOutfit, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
 import { CitizenRenderer } from '../../../src/content/citizens/citizen-renderer';
 import { RENDER_BUDGET_MS, WAIT3D_FALLBACK_MS } from '../../../src/content/figure/citizen-config';
 import { keyString, type FigureKey } from '../../../src/core/library/figure/bake';
+import { PHASES } from '../../../src/core/library/figure/skeleton';
 import { shapeOf, signatureOf } from '../../../src/core/library/figure/dress';
 import { skyAt, sunTimes, type Sky } from '../../../src/core/library/sky';
 import { hashString } from '../../../src/core/library/scene-world';
@@ -128,7 +129,7 @@ describe('interrupteur coupé (CITIZENS_3D = false)', () => {
 });
 
 describe('repli pantin et passage en 3D', () => {
-  it('3D pas prête : le sprite pantin est servi ; prête : sprite 3D au flush suivant', () => {
+  it('3D pas prête : le sprite pantin est servi ; prête : sprite 3D dès que le cycle est rendu', () => {
     const { r, fake } = setup();
     const { node, unmount } = mount(r, fig());
     const pk = node.getAttribute('data-palette')!;
@@ -140,27 +141,82 @@ describe('repli pantin et passage en 3D', () => {
     expect(href(node)).toBe(BLANK_SPRITE);
     fake.isReady = true;
     r.flush();
-    expect(fake.renders).toBe(1);
+    // Rendu gratuit : les 12 phases du cycle dans le même flush, puis la figure passe en 3D.
+    expect(fake.renders).toBe(PHASES);
     expect(node.getAttribute('data-key')).toBe(`${spriteKey(pk, keyOf(o))}@3d`);
-    expect(href(node)!.startsWith('data:image/png;base64,3D1|')).toBe(true);
+    expect(href(node)!.startsWith('data:image/png;base64,3D')).toBe(true);
     unmount();
   });
-  it('une figure 3D en marche garde son image 3D tant que la 3D de la pose suivante manque (pas de va-et-vient)', () => {
-    const { r, fake } = setup();
+  it('passage en 3D seulement une fois les 12 phases du cycle rendues (rendu de 4 ms : 2 par image)', () => {
+    const { r, fake } = setup(4);
     fake.isReady = true;
     const { node, unmount } = mount(r, fig());
+    for (let i = 1; i < PHASES / 2; i++) {
+      r.flush();
+      expect(fake.renders).toBe(2 * i);
+      expect(node.getAttribute('data-key')!.includes('@3d')).toBe(false);
+    }
     r.flush();
-    const first = href(node);
-    expect(first!.includes('3D1')).toBe(true);
-    poseFigure(r, node, { ...POSE, phase: 1 });
-    expect(href(node)).toBe(first);
-    r.flush();
-    poseFigure(r, node, { ...POSE, phase: 1 });
-    expect(href(node)!.includes('3D2')).toBe(true);
+    expect(fake.renders).toBe(PHASES);
+    expect(node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
     unmount();
   });
+  it('6 marcheurs, rendu de 4 ms (2 par image) : jamais la même image plus de 2 changements de phase de suite (demi-tour en route)', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const outs = Array.from({ length: 6 }, (_, n) => ({ ...OUTFITS[n % 3]!, topColor: ['#C0463A', '#3B6FD6', '#2E8B6A', '#E0A21E', '#7A3B8C', '#E07A8C'][n]! }));
+    const ws = outs.map((out) => mount(r, fig({ out })));
+    // Une phase toutes les 2 images (le pantin manquant est peint au flush, montré à l'image suivante, comme avant).
+    const last = ws.map(() => '');
+    const same = ws.map(() => 0);
+    let max = 0;
+    let shown3D = 0;
+    for (let i = 0; i < 320; i++) {
+      // Demi-tour à l'image 160 : de nouveaux cycles (yaw 8) à rendre.
+      for (const w of ws) poseFigure(r, w.node, { ...POSE, yaw: i < 160 ? 0 : 8, phase: Math.floor(i / 2) % PHASES });
+      r.flush();
+      if (i % 2 === 0) continue;
+      // Image montrée à la fin de chaque phase.
+      ws.forEach((w, n) => {
+        const k = w.node.getAttribute('data-key')!;
+        same[n] = k === last[n] ? same[n]! + 1 : 0;
+        max = Math.max(max, same[n]!);
+        last[n] = k;
+        if (k.includes('@3d')) shown3D++;
+      });
+    }
+    expect(max).toBeLessThanOrEqual(2);
+    // Chaque marcheur finit en 3D, des deux côtés du demi-tour.
+    expect(shown3D).toBeGreaterThan(ws.length * 80);
+    for (const w of ws) expect(w.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    for (const w of ws) w.unmount();
+  });
+  it('palier de lumière changé (crépuscule) : la figure reste en 3D pendant que le nouveau palier se rend', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    const draw = (s: Sky): void => act(() => root.render(<FigureContext.Provider value={r}><svg>{fig({ s })}</svg></FigureContext.Provider>));
+    draw({ ...sky, daylight: 1 });
+    for (let i = 0; i < 6; i++) r.flush();
+    const node = host.querySelector('[data-figure]')!;
+    const day = node.getAttribute('data-key')!;
+    const dayPk = node.getAttribute('data-palette');
+    expect(r.anchors(day)).not.toBeNull();
+    draw({ ...sky, daylight: 0.5 });
+    // Nouvelle palette (autre palier) : l'image 3D du palier précédent reste montrée, aucun retour au pantin.
+    expect(node.getAttribute('data-palette')).not.toBe(dayPk);
+    expect(node.getAttribute('data-key')).toBe(day);
+    for (let i = 0; i < 8; i++) {
+      expect(r.anchors(node.getAttribute('data-key')!)).not.toBeNull();
+      r.flush();
+    }
+    // Le nouveau palier finit par être montré.
+    expect(node.getAttribute('data-key')).toBe(r.keyFor(node.getAttribute('data-palette')!, keyOf(o)));
+    act(() => root.unmount());
+  });
   it('waitFor3D : aucune image avant la 3D, pantin après 4 000 ms', () => {
-    const { r, fake, clock } = setup();
+    const { r, clock } = setup();
     const { node, unmount } = mount(r, fig({ waitFor3D: true }));
     expect(href(node)).toBeNull();
     expect(node.hasAttribute('data-key')).toBe(false);
@@ -174,10 +230,6 @@ describe('repli pantin et passage en 3D', () => {
     clock.t = WAIT3D_FALLBACK_MS;
     r.flush();
     expect(href(node)).toBe(BLANK_SPRITE);
-    // La 3D arrive ensuite : la figure y passe.
-    fake.isReady = true;
-    r.flush();
-    expect(href(node)!.includes('3D1')).toBe(true);
     unmount();
   });
   it('waitFor3D : la 3D prête à temps est la première image montrée', () => {
@@ -186,42 +238,122 @@ describe('repli pantin et passage en 3D', () => {
     const { node, unmount } = mount(r, fig({ waitFor3D: true }));
     expect(href(node)).toBeNull();
     r.flush();
-    expect(href(node)!.includes('3D1')).toBe(true);
+    expect(href(node)!.startsWith('data:image/png;base64,3D')).toBe(true);
+    unmount();
+  });
+  it('passant waitFor3D caché : après 4 000 ms, les figures suivies ne sont pas réexaminées à chaque image', () => {
+    const { r, clock } = setup();
+    const { node, unmount } = mount(r, fig({ waitFor3D: true }));
+    hideFigure(r, node);
+    const spy = vi.fn(() => false);
+    r.watch(document.createElementNS('http://www.w3.org/2000/svg', 'g'), spy);
+    clock.t = WAIT3D_FALLBACK_MS;
+    r.flush();
+    const atExpiry = spy.mock.calls.length;
+    expect(atExpiry).toBe(1);
+    for (let i = 0; i < 10; i++) r.flush();
+    expect(spy.mock.calls.length).toBe(atExpiry);
     unmount();
   });
 });
 
+describe('3D hors service', () => {
+  it('attente écoulée sans aucun rendu réussi : 3D hors service, plus de passant invisible ; nouvel essai après 30 s', () => {
+    const { r, fake, clock } = setup();
+    const a = mount(r, fig({ waitFor3D: true }));
+    clock.t = WAIT3D_FALLBACK_MS;
+    r.flush();
+    expect(href(a.node)).toBe(BLANK_SPRITE);
+    expect(r.is3D(a.node.getAttribute('data-palette')!)).toBe(false);
+    // Un nouveau passant en attente 3D se montre tout de suite en pantin.
+    const b = mount(r, fig({ out: OUTFITS[1], waitFor3D: true }));
+    expect(href(b.node)).toBe(BLANK_SPRITE);
+    // La 3D arrive : rien avant le nouvel essai (30 s), puis les figures passent en 3D.
+    fake.isReady = true;
+    r.flush();
+    poseFigure(r, b.node, { ...POSE, phase: 1 });
+    expect(fake.renders).toBe(0);
+    clock.t += 30_000;
+    poseFigure(r, b.node, { ...POSE, phase: 2 });
+    r.flush();
+    poseFigure(r, b.node, { ...POSE, phase: 3 });
+    // Les deux habitants (a encore en file) : leurs cycles complets.
+    expect(fake.renders).toBe(2 * PHASES);
+    expect(b.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    expect(r.is3D(b.node.getAttribute('data-palette')!)).toBe(true);
+    a.unmount();
+    b.unmount();
+  });
+  it('5 rendus nuls de suite avec une base prête : 3D hors service ; levé par un rendu réussi après 30 s', () => {
+    const { r, fake, clock } = setup();
+    fake.isReady = true;
+    const real = fake.render.bind(fake);
+    let fail = true;
+    fake.render = (...args: Parameters<Fake['render']>) => {
+      if (!fail) return real(...args);
+      fake.renders++;
+      return null as unknown as ReturnType<Fake['render']>;
+    };
+    const figs = OUTFITS.map((out) => mount(r, fig({ out })));
+    for (let i = 0; i < 4; i++) {
+      for (const f of figs) poseFigure(r, f.node, { ...POSE, phase: i });
+      r.flush();
+    }
+    const pk = figs[0]!.node.getAttribute('data-palette')!;
+    expect(fake.renders).toBeGreaterThanOrEqual(5);
+    expect(r.is3D(pk)).toBe(false);
+    const tried = fake.renders;
+    r.flush();
+    expect(fake.renders).toBe(tried);
+    fail = false;
+    clock.t += 30_000;
+    for (const f of figs) poseFigure(r, f.node, { ...POSE, phase: 5 });
+    r.flush();
+    expect(r.is3D(pk)).toBe(true);
+    poseFigure(r, figs[0]!.node, { ...POSE, phase: 6 });
+    expect(figs[0]!.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    for (const f of figs) f.unmount();
+  });
+});
+
 describe('visages', () => {
-  it('sans `faces` : visage neutre (aucun état dans la clé) ; avec : état du visage dans la clé du sprite 3D', () => {
+  it('sans `faces` : visage neutre (aucun état dans la clé) ; avec : état du visage dans la clé, figures fixes suivies', () => {
     const clock = { t: 0 };
-    const plain = new Fake(clock);
+    const plain = Object.assign(new Fake(clock), { faceOf: () => 'cb1' });
     plain.isReady = true;
     const withFaces = Object.assign(new Fake(clock), { faceOf: vi.fn(() => 'cb1') });
     withFaces.isReady = true;
-    const r1 = new FigureRegistry('t', { citizens: () => Object.assign(plain, { faceOf: () => 'cb1' }), now: () => clock.t });
+    const r1 = new FigureRegistry('t', { citizens: () => plain, now: () => clock.t });
     const a = mount(r1, fig());
     r1.flush();
     expect(a.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
     const r2 = new FigureRegistry('t', { citizens: () => withFaces, now: () => clock.t, faces: true });
     const b = mount(r2, fig());
     r2.flush();
+    // Cycle rendu au visage neutre ; l'état du visage est rendu ensuite et montré à la figure fixe.
+    expect(b.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    r2.flush();
     expect(b.node.getAttribute('data-key')!.endsWith('@3dcb1')).toBe(true);
     expect(withFaces.faceOf).toHaveBeenCalledWith('swing', 'neutre', 0, expect.any(Number));
+    // Clignement suivant : la figure fixe le suit.
+    withFaces.faceOf.mockReturnValue('');
+    r2.flush();
+    expect(b.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
     a.unmount();
     b.unmount();
   });
 });
 
 describe('budget de rendu 3D', () => {
-  it(`renderer simulé de 4 ms : au plus 2 rendus 3D par flush (budget ${RENDER_BUDGET_MS} ms)`, () => {
+  it(`renderer simulé de 4 ms : au plus 2 rendus 3D par flush (budget ${RENDER_BUDGET_MS} ms depuis le début de l'image)`, () => {
     const { r, fake } = setup(4);
     fake.isReady = true;
     const { node, unmount } = mount(r, fig());
     const pk = node.getAttribute('data-palette')!;
-    for (let p = 1; p < 6; p++) r.request(pk, keyOf(o, { ...POSE, phase: p }));
+    for (let y = 1; y < 6; y++) r.request(pk, keyOf(o, { ...POSE, yaw: y }));
     r.flush();
     expect(fake.renders).toBe(2);
-    for (let p = 1; p < 6; p++) r.request(pk, keyOf(o, { ...POSE, phase: p }));
+    for (let y = 1; y < 6; y++) r.request(pk, keyOf(o, { ...POSE, yaw: y }));
     r.flush();
     expect(fake.renders).toBe(4);
     unmount();

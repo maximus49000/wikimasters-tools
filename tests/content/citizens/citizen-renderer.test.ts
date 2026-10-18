@@ -5,7 +5,10 @@ import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { BaseModel } from '../../../src/content/citizens/model-cache';
-import { CitizenRenderer, outlineThickness, rgbOf, rigHeight, spriteCamera, spritePixel, type RendererLike } from '../../../src/content/citizens/citizen-renderer';
+import { CitizenRenderer, lightColor, outlineThickness, rgbOf, rigHeight, spriteCamera, spritePixel, type RendererLike } from '../../../src/content/citizens/citizen-renderer';
+import { NIGHT_LIGHT } from '../../../src/content/figure/citizen-config';
+import { tone } from '../../../src/content/city-sprites';
+import type { Sky } from '../../../src/core/library/sky';
 import { SPRITE_BOX } from '../../../src/content/figure/figure-host';
 import { citizen, type CitizenDesc } from '../../../src/core/citizens/catalogue';
 import { dressRig, disposeRig, PARAPLUIE_DEFAUT } from '../../../src/core/citizens/wardrobe';
@@ -192,14 +195,23 @@ describe('CitizenRenderer', () => {
     expect(U!.uLid!.value).toBe(0);
   });
 
-  it('lumière multipliée par `light`, scène vidée après le rendu', async () => {
+  it('teinte de nuit tirée de `light` comme le pantin (bleutée la nuit, blanche le jour), scène vidée après le rendu', async () => {
     const d = desc();
     const { r, fake } = await readyRenderer(d);
+    const lights = (): THREE.Light[] => { const l: THREE.Light[] = []; fake.calls[0]!.traverse((o) => { if ((o as THREE.Light).isLight) l.push(o as THREE.Light); }); return l; };
     r.render(d, KEY, 1, '');
-    const sum = (): number => { let s = 0; fake.calls[0]!.traverse((o) => { if ((o as THREE.Light).isLight) s += (o as THREE.Light).intensity; }); return s; };
-    const full = sum();
-    r.render(d, KEY, 0.5, '');
-    expect(sum()).toBeCloseTo(full / 2);
+    const day = lights().map((l) => [l.intensity, l.color.getHexString()]);
+    expect(day.every(([, c]) => c === 'ffffff')).toBe(true);
+    r.render(d, KEY, NIGHT_LIGHT, '');
+    for (const l of lights()) {
+      // Même intensité, couleur assombrie et bleutée (bleu > rouge), comme tone('#ffffff', nuit).
+      expect(l.color.b).toBeGreaterThan(l.color.r);
+      expect(l.color.r).toBeLessThan(0.5);
+    }
+    expect(lights().map((l) => l.intensity)).toEqual(day.map(([i]) => i));
+    expect(lightColor(NIGHT_LIGHT)).toBe(tone('#ffffff', { daylight: 0 } as Sky));
+    expect(lightColor(1)).toBe(tone('#ffffff', { daylight: 1 } as Sky));
+    expect(lightColor(NIGHT_LIGHT + (1 - NIGHT_LIGHT) / 2)).toBe(tone('#ffffff', { daylight: 0.5 } as Sky));
     expect(fake.calls[0]!.children.every((o) => (o as THREE.Light).isLight)).toBe(true);
     r.dispose();
     expect(fake.dispose).toHaveBeenCalled();
