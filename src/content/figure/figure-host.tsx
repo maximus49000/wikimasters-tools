@@ -221,7 +221,8 @@ const defaultCitizen3D: Citizen3DFactory = (px) => {
 };
 // Habitant 3D connu du registre (clé `c3d` d'une palette) : clé, description, graine (clignements), attente 3D (waitFor3D),
 // dernière image où une figure l'a demandé (`touched`).
-type Citizen = { ck: string; desc: CitizenDesc; seed: number; waitSince?: number; waitOver?: boolean; failedAt?: number; touched?: number };
+// `shown` : une figure l'a déjà montré en 3D (dès lors, plus jamais de pantin pour lui : image 3D la plus proche à défaut).
+type Citizen = { ck: string; desc: CitizenDesc; seed: number; waitSince?: number; waitOver?: boolean; failedAt?: number; touched?: number; shown?: boolean };
 const MAX_CITIZENS = 2048;
 // Toutes les 15 images, les figures qui attendent une image 3D sont réexaminées même sans rendu (modèle arrivé entre-temps).
 const WATCH_EVERY = 15;
@@ -234,8 +235,32 @@ const STALE_CYCLE = 15;
 const PRIO_FRESH = 2;
 // Habitant dont le rendu échoue (habillage, pose) : lui seul en pantin, nouvel essai après ce délai (comme CitizenRenderer).
 const CITIZEN_RETRY_MS = 30_000;
-// Une figure qui montre de la 3D ne passe au pantin d'une pose dont le cycle 3D manque qu'après ce nombre d'images.
-export const HOLD_3D_FRAMES = 2;
+// Une figure qui montre de la 3D et pour qui le registre n'a plus AUCUNE image 3D de son habitant (cas rare : autre registre
+// sans images reprises, tenue changée dont les anciennes images sont parties) garde sa dernière image ce nombre d'images
+// avant le pantin. Sinon elle n'y retourne jamais : l'image 3D la plus proche du même habitant est servie (nearest3D).
+export const HOLD_3D_FRAMES = 30;
+// Demandes d'avance (prewarm : habitant qui va sortir de sa porte, voyageur encore dans le bus) : gardées ce nombre d'images
+// sans être renouvelées, à la priorité 1 (avant les nouveaux cycles), sans perdre leur rang en vieillissant.
+export const PREWARM_TTL = 120;
+// Orientations voisines d'un marcheur dont le cycle est complet : préparées à la plus basse priorité (4), redemandées toutes
+// les NEIGHBOR_EVERY images (sous STALE_CYCLE : la demande ne vieillit jamais tant que le marcheur est montré).
+const NEIGHBOR_EVERY = 10;
+// Écart entre deux poses (choix de l'image 3D la plus proche) : même allure d'abord, puis même tenue (signature), même geste,
+// orientation la plus proche (16 directions), enfin phase la plus proche.
+const YAWS = 16;
+function poseGap(a: FigureKey, b: FigureKey): number {
+  const dy = Math.abs(a.yaw - b.yaw) % YAWS;
+  const dp = Math.abs(a.phase - b.phase) % PHASES;
+  return (
+    (a.gait !== b.gait ? 1000 : 0) +
+    (a.sig !== b.sig ? 300 : 0) +
+    (a.arms !== b.arms ? 100 : 0) +
+    20 * Math.min(dy, YAWS - dy) +
+    (a.head !== b.head ? 5 : 0) +
+    5 * Math.abs(a.lean - b.lean) +
+    Math.min(dp, PHASES - dp)
+  );
+}
 // 3D hors service (aucun rendu réussi à l'expiration d'une attente, ou DEAD_STREAK rendus nuls de suite avec une base prête) :
 // pantins partout, sans attente, nouvel essai après REPROBE_MS.
 const DEAD_STREAK = 5;
@@ -279,9 +304,12 @@ const repKey = (key: FigureKey): FigureKey => {
 // Priorité : −1 = figure cachée qui attend sa première image 3D (waitFor3D), 0 = figure qui montre déjà de la 3D (nouvelle
 // orientation, nouveau geste) ou visage (une image seule par flush au plus), 1 = cycle commencé,
 // 2 = nouveau cycle, 3 = cycle déjà complet à un autre palier de lumière (servi en attendant).
-type Job = { kind: 'cycle' | 'one'; pk: string; key: FigureKey; face: string; cid: string; at: number; prio: number };
-// Sprite 3D rendu : son cycle, sa phase, sa clé « habitant + pose + visage » (index sans la lumière).
-type Meta3D = { cid: string | null; phase: number; lk: string };
+// `ttl` : images sans renouvellement avant l'abandon (demandes d'avance ; défaut : STALE_CYCLE / STALE_ONE), et pas de
+// perte de priorité en vieillissant. Priorité 4 : orientations voisines d'un marcheur (quand il ne reste rien d'autre).
+type Job = { kind: 'cycle' | 'one'; pk: string; key: FigureKey; face: string; cid: string; at: number; prio: number; ttl?: number };
+// Sprite 3D rendu : son cycle, sa phase, sa clé « habitant + pose + visage » (index sans la lumière), l'habitant et la pose.
+// `standIn` : image reprise d'un autre registre (inherit) — servie en attendant, jamais comptée dans un cycle.
+type Meta3D = { cid: string | null; phase: number; lk: string; ck: string; key: FigureKey; standIn?: true };
 
 export type FigureRegistryOptions = {
   max?: number;
@@ -318,6 +346,8 @@ export class FigureRegistry {
   // Dernier sprite 3D rendu par « habitant + pose + visage » (sans la lumière) : servi pendant qu'un autre palier se rend.
   private readonly latest = new Map<string, string>();
   private readonly meta3d = new Map<string, Meta3D>();
+  // Images 3D par habitant (clé citizenKey) : recherche de l'image la plus proche (nearest3D).
+  private readonly byCitizen = new Map<string, Set<string>>();
   // Habitants dont l'attente 3D court (waitFor3D) : seuls examinés à chaque image.
   private readonly waitingSet = new Set<Citizen>();
   // Figures retirées du suivi pendant que la 3D est hors service : remises en suivi au nouvel essai.
@@ -522,15 +552,59 @@ export class FigureRegistry {
       q.at = this.frame;
       // Visage de fond arrivé avec le module 3D après la demande : le cycle se rend au visage d'aujourd'hui.
       q.face = job.face;
+      if (job.ttl !== undefined) q.ttl = Math.max(q.ttl ?? 0, job.ttl);
     } else this.queue3d.set(id, { ...job, at: this.frame });
   }
-  // Image à montrer pour (palette, pose) et sa clé. Palette 3D : sprite 3D seulement quand le cycle de la pose est complet
-  // (la lecture n'attend jamais un rendu), sinon cycle mis en file et pantin (repli) ; `wait` (waitFor3D) : rien tant que
-  // l'attente court (à la PREMIÈRE apparition seulement : les appelants ne la passent que pour une figure sans image, qu'on
-  // ne fige jamais) ; `from3D` : la figure montre déjà de la 3D (cycle prioritaire). Pantin : peint tout de suite si `now`
-  // (première apparition), sinon mis en file. Palette 2D : exactement ensure / request d'avant.
+  // Image 3D la plus proche de `key` parmi celles de l'habitant (sinon de l'habitant de l'image montrée `alt` : tenue changée,
+  // pluie), ou null s'il n'en a aucune dans ce registre.
+  private nearest3D(c: Citizen, key: FigureKey, alt: string | null): { sk: string; url: string } | null {
+    let best: string | null = null;
+    let gap = Infinity;
+    const scan = (set: Set<string> | undefined): void => {
+      if (!set) return;
+      for (const sk of set) {
+        const m = this.meta3d.get(sk);
+        if (!m) continue;
+        const g = poseGap(m.key, key);
+        if (g < gap) {
+          gap = g;
+          best = sk;
+        }
+      }
+    };
+    scan(this.byCitizen.get(c.ck));
+    if (best === null && alt !== null) {
+      const m = this.meta3d.get(alt);
+      if (m) scan(this.byCitizen.get(m.ck));
+    }
+    if (best === null) return null;
+    const url = this.hit(best);
+    return url === null ? null : { sk: best, url };
+  }
+  // Habitant montré en 3D : plus d'attente (waitFor3D) ni de pantin pour lui.
+  private markShown(c: Citizen): void {
+    if (c.shown) return;
+    c.shown = true;
+    c.waitOver = true;
+    this.waitingSet.delete(c);
+  }
+  // Marcheur montré en 3D (cycle complet) : ses orientations voisines (il tourne) sont préparées à la plus basse priorité.
+  private prefetchTurns(c: Citizen, pk: string, key: FigureKey): void {
+    if ((this.frame + c.seed) % NEIGHBOR_EVERY !== 0 || phaseSet(key).phases.length === 1) return;
+    for (const d of [-1, 1]) {
+      const k = { ...key, yaw: (key.yaw + d + YAWS) % YAWS };
+      const cid = this.cycleId(c, k);
+      if (!this.complete(cid, k)) this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key: k, face: this.baseFace(c, k), cid, prio: 4 });
+    }
+  }
+  // Image à montrer pour (palette, pose) et sa clé. Palette 3D : sprite 3D quand le cycle de la pose est complet (la lecture
+  // n'attend jamais un rendu) ; sinon cycle mis en file et, pour un habitant DÉJÀ montré en 3D (par cette figure : `shown`
+  // est une clé 3D, ou par une autre : porte puis rue, changement de calque), l'image 3D la plus proche du même habitant
+  // (jamais de retour au pantin) ; sinon le pantin (repli). `wait` (waitFor3D) : rien tant que l'attente court (à la PREMIÈRE
+  // apparition seulement : les appelants ne la passent que pour une figure sans image, qu'on ne fige jamais). Pantin : peint
+  // tout de suite si `now` (première apparition), sinon mis en file. Palette 2D : exactement ensure / request d'avant.
   // Cycles rendus au visage de fond (émotion, yeux ouverts) ; les clignements des poses immobiles en images seules.
-  pick(pk: string, key2D: FigureKey, now: boolean, wait = false, from3D = false): { sk: string; url: string } | null {
+  pick(pk: string, key2D: FigureKey, now: boolean, wait = false, shown: string | null = null): { sk: string; url: string } | null {
     const c = this.citizenOf(pk);
     if (c && this.c3d !== null && !this.dead() && this.usable(c)) {
       this.touch(c);
@@ -547,17 +621,59 @@ export class FigureRegistry {
             if (face !== base) this.enqueue3D(exact, { kind: 'one', pk, key, face, cid, prio: 0 });
             if (!this.sprites.has(spriteKey3D(pk, key, base))) this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key, face: base, cid, prio: 3 });
           }
+          this.markShown(c);
+          this.prefetchTurns(c, pk, key);
           return got;
         }
       }
       // Figure cachée qui attend sa première image 3D (waitFor3D) : avant tout le reste, pour tenir dans WAIT3D_FALLBACK_MS.
+      // Habitant déjà montré en 3D : son cycle passe aussi avant les autres (il montre une image approchée en attendant).
+      const from3D = shown !== null && shown.includes('@3d');
+      const keep = from3D || c.shown === true;
       const first = wait && !c.waitOver;
-      this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key, face: base, cid, prio: first ? -1 : from3D ? 0 : this.cycles.has(cid) ? 1 : 2 });
+      this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key, face: base, cid, prio: first ? -1 : keep ? 0 : this.cycles.has(cid) ? 1 : 2 });
+      if (keep) {
+        const near = this.nearest3D(c, key, from3D ? shown : null);
+        if (near) {
+          this.markShown(c);
+          return near;
+        }
+      }
       if (wait && this.waiting(c)) return null;
     }
     const sk = spriteKey(pk, key2D);
     const url = now ? (this.hit(sk) ?? this.create(pk, key2D, sk)) : this.request2D(pk, key2D, sk);
     return url === null ? null : { sk, url };
+  }
+  // Demande d'avance du cycle d'une pose (habitant qui va sortir de sa porte, voyageur dans le bus) : à la priorité 1, gardée
+  // `ttl` images sans renouvellement ; rien si le cycle est déjà complet ou sans 3D.
+  prewarm(pk: string, key2D: FigureKey, ttl = PREWARM_TTL): void {
+    const c = this.citizenOf(pk);
+    if (!c || this.c3d === null || this.dead() || !this.usable(c)) return;
+    this.touch(c);
+    const key = repKey(key2D);
+    const cid = this.cycleId(c, key);
+    if (this.complete(cid, key)) return;
+    this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key, face: this.baseFace(c, key), cid, prio: 1, ttl });
+  }
+  // Vue remplacée par une autre (bascule de la vue Dehors : autre résolution) : les images 3D de l'ancien registre sont reprises
+  // comme images d'attente (ni cycles complets ni « dernier rendu ») : les figures montrées en 3D le restent, à leur pose,
+  // pendant que leurs cycles se rendent à la nouvelle résolution. Elles partent avec le plafond comme les autres.
+  inherit(from: FigureRegistry): void {
+    for (const [sk, url] of from.sprites) {
+      const m = from.meta3d.get(sk);
+      const a = from.anchors3d.get(sk);
+      if (!m || !a || this.sprites.has(sk)) continue;
+      this.sprites.set(sk, url);
+      this.anchors3d.set(sk, a);
+      this.meta3d.set(sk, { cid: null, phase: m.phase, lk: '', ck: m.ck, key: m.key, standIn: true });
+      this.indexOf(m.ck).add(sk);
+    }
+  }
+  private indexOf(ck: string): Set<string> {
+    let set = this.byCitizen.get(ck);
+    if (!set) this.byCitizen.set(ck, (set = new Set()));
+    return set;
   }
   // Figure qui attend mieux que son image (pantin de repli, ou rien en waitFor3D) : `refresh` est rappelée après les flush
   // utiles (rendu 3D fait, attente écoulée, 3D hors service, visages animés, ou toutes les WATCH_EVERY images) jusqu'à rendre
@@ -671,6 +787,11 @@ export class FigureRegistry {
     const m = this.meta3d.get(sk);
     if (!m) return;
     this.meta3d.delete(sk);
+    const set = this.byCitizen.get(m.ck);
+    if (set) {
+      set.delete(sk);
+      if (set.size === 0) this.byCitizen.delete(m.ck);
+    }
     if (this.latest.get(m.lk) === sk) this.latest.delete(m.lk);
     const n = m.cid === null ? undefined : this.cycles.get(m.cid);
     if (n && n[m.phase]! > 0) {
@@ -689,7 +810,8 @@ export class FigureRegistry {
       if (!n) this.cycles.set(cycle, (n = new Uint16Array(PHASES)));
       n[key.phase % PHASES]!++;
     }
-    this.meta3d.set(sk, { cid: cycle, phase: key.phase % PHASES, lk });
+    this.meta3d.set(sk, { cid: cycle, phase: key.phase % PHASES, lk, ck: c.ck, key });
+    this.indexOf(c.ck).add(sk);
   }
   // Rendus 3D au budget de temps (RENDER_BUDGET_MS depuis le début de l'image), par priorité (Job), puis mise à jour des
   // figures qui attendent mieux que leur image. Base pas encore chargée : la demande reste en file sans coût ; rendu impossible
@@ -712,7 +834,7 @@ export class FigureRegistry {
     return true;
   }
   private flush3D(t0: number): void {
-    for (const [id, q] of this.queue3d) if (this.frame - q.at > (q.kind === 'cycle' ? STALE_CYCLE : STALE_ONE)) this.queue3d.delete(id);
+    for (const [id, q] of this.queue3d) if (this.frame - q.at > (q.ttl ?? (q.kind === 'cycle' ? STALE_CYCLE : STALE_ONE))) this.queue3d.delete(id);
     const R = this.c3d;
     R?.tick?.();
     let made = 0;
@@ -722,7 +844,8 @@ export class FigureRegistry {
     if (owed) this.debt--;
     if (R && !owed && !this.dead() && this.queue3d.size > 0) {
       // Une figure cachée en attente de sa 3D (priorité < 0) garde sa priorité : sinon elle rate ses 4 s après une période de dette.
-      const prio = (q: Job): number => (q.prio >= 0 && this.frame - q.at > PRIO_FRESH ? Math.max(q.prio, 2) : q.prio);
+      // Demande d'avance (ttl) : garde sa priorité jusqu'à son abandon.
+      const prio = (q: Job): number => (q.prio >= 0 && q.ttl === undefined && this.frame - q.at > PRIO_FRESH ? Math.max(q.prio, 2) : q.prio);
       const jobs = [...this.queue3d].sort((a, b) => prio(a[1]) - prio(b[1]));
       // Images seules (visages) : une par flush au plus.
       let ones = 0;
@@ -762,7 +885,8 @@ export class FigureRegistry {
         const keys = job.kind === 'one' ? [job.key] : ph.map((_, i) => ({ ...job.key, phase: ph[(from + i) % ph.length]! }));
         for (const k of keys) {
           const sk = spriteKey3D(job.pk, k, job.face);
-          if (this.sprites.has(sk)) continue;
+          // Image reprise d'un autre registre (standIn) : rendue quand même, à la résolution de ce registre.
+          if (this.sprites.has(sk) && !this.meta3d.get(sk)?.standIn) continue;
           if (this.now() - t0 >= RENDER_BUDGET_MS) break jobs;
           let out: CitizenSprite | null;
           let why: 'engine' | 'citizen' | 'notReady' | null;

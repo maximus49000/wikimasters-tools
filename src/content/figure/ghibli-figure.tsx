@@ -183,13 +183,15 @@ function shown3DChanged(node: Element): void {
     }
   }
 }
-// Première image où une figure qui montrait de la 3D s'est vu servir un pantin (cycle 3D de la nouvelle pose incomplet).
+// Première image où une figure qui montrait de la 3D s'est vu servir un pantin.
 const missSince = new WeakMap<Element, number>();
-// Une figure qui montre de la 3D garde sa dernière image 3D au plus HOLD_3D_FRAMES images quand la nouvelle pose n'a qu'un
-// pantin (nouvelle orientation, nouveau geste), puis montre le pantin jusqu'à ce que le cycle 3D soit complet : jamais figée.
+// Image 3D (clé spriteKey3D), quel que soit le registre qui l'a rendue.
+const is3DKey = (sk: string | null): boolean => sk !== null && sk.includes('@3d');
+// Une figure qui montre de la 3D ne reçoit un pantin que si le registre n'a plus aucune image 3D de son habitant (sinon il sert
+// la plus proche) : elle garde alors sa dernière image 3D au plus HOLD_3D_FRAMES images, puis montre le pantin.
 function holdLast3D(reg: FigureRegistry, node: Element | null, shown: string | null, got: { sk: string } | null): boolean {
   if (!node) return false;
-  if (shown === null || got === null || reg.anchors(shown) === null || reg.anchors(got.sk) !== null) {
+  if (shown === null || got === null || !is3DKey(shown) || reg.anchors(got.sk) !== null) {
     missSince.delete(node);
     return false;
   }
@@ -201,7 +203,6 @@ function holdLast3D(reg: FigureRegistry, node: Element | null, shown: string | n
   }
   return f - s < HOLD_3D_FRAMES;
 }
-const shows3D = (reg: FigureRegistry, shown: string | null): boolean => shown !== null && reg.anchors(shown) !== null;
 const offTransform = (off: Pt | null | undefined): string | undefined => (off ? `translate(${off[0]} ${off[1]})` : undefined);
 
 // Montre l'image `sk` (déjà détenue par le nœud) : href, clé, pose, accroches, objets tenus visibles à leurs accroches.
@@ -239,7 +240,7 @@ function refreshFigure(reg: FigureRegistry, node: Element): boolean {
   const shown = node.getAttribute('data-key');
   const want = reg.keyFor(pk, key);
   if (shown !== want) {
-    const got = reg.pick(pk, key, shown === null, shown === null && node.hasAttribute('data-wait3d'), shows3D(reg, shown));
+    const got = reg.pick(pk, key, shown === null, shown === null && node.hasAttribute('data-wait3d'), shown);
     if (!got) return !reg.is3D(pk);
     if (got.sk !== shown && !holdLast3D(reg, node, shown, got)) {
       const href = reg.hold(node, got.sk);
@@ -318,7 +319,7 @@ export function GhibliFigure({
     const prevHref = node?.firstElementChild?.getAttribute('href') ?? null;
     const fresh = prevKey === null || prevHref === null;
     // waitFor3D : seulement à la première apparition ; une figure déjà dessinée (demi-tour, nouveau registre) n'est jamais figée.
-    const got = reg.pick(pk, key, fresh, fresh && waitFor3D, shows3D(reg, prevKey));
+    const got = reg.pick(pk, key, fresh, fresh && waitFor3D, prevKey);
     if (got && !holdLast3D(reg, node, prevKey, got)) {
       shownKey = got.sk;
       href = got.url;
@@ -379,12 +380,30 @@ export function poseFigure(reg: FigureRegistry, node: Element | null, pose: Pose
   const want = reg.keyFor(pk, key);
   const shown = node.getAttribute('data-key');
   if (shown === want) return;
-  const got = reg.pick(pk, key, shown === null, shown === null && node.hasAttribute('data-wait3d'), shows3D(reg, shown));
+  const got = reg.pick(pk, key, shown === null, shown === null && node.hasAttribute('data-wait3d'), shown);
   if (got && got.sk !== shown && !holdLast3D(reg, node, shown, got)) {
     const href = reg.hold(node, got.sk);
     if (href) showSprite(reg, node, got.sk, href, key);
   }
   if (reg.wants3D(pk)) track(reg, node, pk, key, want);
+}
+
+// Demande d'avance des cycles 3D de poses à venir d'une figure (même cachée : sa palette et sa signature sont sur le nœud) :
+// un habitant qui va sortir de sa porte apparaît directement en 3D. À renouveler avant PREWARM_TTL images.
+export function prewarmFigure(reg: FigureRegistry, node: Element | null, poses: readonly PoseIn[]): void {
+  const sig = node?.getAttribute('data-sig');
+  const pk = node?.getAttribute('data-palette');
+  if (!CITIZENS_3D || !sig || pk === null || pk === undefined) return;
+  for (const p of poses) reg.prewarm(pk, keyOf(sig, p));
+}
+// Même chose pour un personnage qui n'a pas encore de nœud (voyageur encore dans le bus) : sa palette est celle que
+// GhibliFigure calculera pour les mêmes réglages et la même identité.
+export function prewarmCitizen(reg: FigureRegistry, look: { outfit: Outfit; sky: Sky; rainy: boolean; umbrella: boolean; work?: Work; id?: CitizenIdentity }, poses: readonly PoseIn[]): void {
+  if (!CITIZENS_3D) return;
+  const work = look.work ?? 'none';
+  const pk = reg.addPalette(citizenPalette(reg, look.outfit, look.sky, look.rainy, look.umbrella, work, look.id));
+  const sig = signatureOf(shapeOf(look.outfit, look.umbrella, work));
+  for (const p of poses) reg.prewarm(pk, keyOf(sig, p));
 }
 
 // Cache une figure (nœud devenu inactif) : <image> sans href, data-key effacé, clé libérée, objets tenus cachés. Idempotent.
