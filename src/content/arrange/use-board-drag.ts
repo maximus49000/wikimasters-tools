@@ -42,6 +42,8 @@ type Options = {
   onBoard(id: string, shelfId: string, level: ShelfLevel, order: number): Promise<unknown> | void;
   onTop(id: string, hostId: string, x: number, z: number): Promise<unknown> | void;
   onLevel(level: ArrangeLevel): void;
+  // Toucher sans glisser (moins de SLOP_PX) : la bulle de la carte (l'appelant écarte ce qui n'en a pas, et le meuble entier qui zoome).
+  onTap?(id: string): void;
 };
 
 // Place d'un objet dans la disposition, en clair : l'attente d'un objet lâché tombe quand elle change (ou qu'il disparaît).
@@ -68,7 +70,7 @@ export function neighbourLevel(level: ArrangeLevel, zone: 'up' | 'down'): Arrang
   return next === -1 ? (level === 0 ? 'top' : null) : isShelfLevel(next) ? next : null;
 }
 
-export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel }: Options): {
+export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel, onTap }: Options): {
   drag: BoardDrag | null; pending: BoardPending[]; applied: Layout; preview: Layout; grab(id: string, e: ReactPointerEvent): void; wasDrag(): boolean;
 } {
   const [drag, setDrag] = useState<BoardDrag | null>(null);
@@ -80,8 +82,8 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
   const held = useRef<Held | null>(null);
   const dragRef = useRef<BoardDrag | null>(null);
   const moved = useRef(false);
-  const live = useRef({ layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel });
-  live.current = { layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel };
+  const live = useRef({ layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel, onTap });
+  live.current = { layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel, onTap };
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
   const forget = useCallback((w: BoardPending): void => setPending((list) => (list.includes(w) ? list.filter((q) => q !== w) : list)), []);
@@ -162,7 +164,11 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
     const up = (ev: PointerEvent): void => {
       if (!mine(ev)) return;
       const r = end();
-      if (!r || !r.d || !r.h.moving || !r.d.ok || !r.d.aim) return;
+      if (r && !r.h.moving) {
+        live.current.onTap?.(r.h.id);
+        return;
+      }
+      if (!r || !r.d || !r.d.ok || !r.d.aim) return;
       const { id: did, order } = r.d;
       const aim: BoardAim = r.d.aim;
       const apply = aim.kind === 'board' ? (l: Layout) => moveToBoard(l, did, aim.shelfId, aim.level, order ?? 0) : (l: Layout) => moveToTop(l, did, aim.hostId, aim.x, aim.z);

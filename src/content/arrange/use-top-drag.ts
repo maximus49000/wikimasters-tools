@@ -40,6 +40,8 @@ type Options = {
   rotated: boolean;
   // Intention de déplacement ; rend la promesse de l'écriture (ou rien) : l'attente de l'objet lâché tombe quand elle se termine.
   onMove(id: string, x: number, z: number): Promise<unknown> | void;
+  // Toucher sans glisser (moins de SLOP_PX) : la bulle de la carte (l'appelant écarte ce qui n'en a pas).
+  onTap?(id: string): void;
 };
 
 // Un objet en attente est « réglé » quand la disposition reçue l'a changé de place (visée ou autre) ou retiré.
@@ -48,7 +50,7 @@ const settledIn = (layout: Layout, w: TopPending): boolean => {
   return !p || !('x' in p) || p.x !== w.from.x || p.z !== w.from.z;
 };
 
-export function useTopDrag({ layout, hostIds, frame, rotated, onMove }: Options): { drag: TopDrag | null; pending: TopPending[]; axes: TopAxes; grab(id: string, e: ReactPointerEvent): void } {
+export function useTopDrag({ layout, hostIds, frame, rotated, onMove, onTap }: Options): { drag: TopDrag | null; pending: TopPending[]; axes: TopAxes; grab(id: string, e: ReactPointerEvent): void } {
   const [drag, setDrag] = useState<TopDrag | null>(null);
   // Un objet en attente par id : lâcher B pendant que A attend ne fait pas revenir A.
   const [pendingState, setPending] = useState<TopPending[]>([]);
@@ -61,8 +63,8 @@ export function useTopDrag({ layout, hostIds, frame, rotated, onMove }: Options)
   // Disposition avec les déplacements en attente appliqués : un glissé ne passe pas au vert sur la place qu'un autre objet vient de prendre.
   const applied = useMemo(() => pending.reduce((l, w) => moveOnTop(l, w.id, w.x, w.z) ?? l, layout), [layout, pending]);
   // Relus par les écouteurs de la fenêtre (posés une fois par saisie).
-  const live = useRef({ layout: applied, hostIds, axes, rotated, onMove, pending });
-  live.current = { layout: applied, hostIds, axes, rotated, onMove, pending };
+  const live = useRef({ layout: applied, hostIds, axes, rotated, onMove, onTap, pending });
+  live.current = { layout: applied, hostIds, axes, rotated, onMove, onTap, pending };
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
   const forget = useCallback((w: TopPending): void => setPending((list) => (list.includes(w) ? list.filter((q) => q !== w) : list)), []);
@@ -103,7 +105,11 @@ export function useTopDrag({ layout, hostIds, frame, rotated, onMove }: Options)
     const up = (ev: PointerEvent): void => {
       if (!mine(ev)) return;
       const r = end();
-      if (!r || !r.d || !r.h.moving || !r.d.ok) return;
+      if (r && !r.h.moving) {
+        live.current.onTap?.(r.h.id);
+        return;
+      }
+      if (!r || !r.d || !r.d.ok) return;
       const { h, d } = r;
       const w: TopPending = { id: d.id, x: d.x, z: d.z, tx: d.tx, ty: d.ty, from: { x: h.x0, z: h.z0 } };
       setPending((list) => [...list, w]);

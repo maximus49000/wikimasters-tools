@@ -21,12 +21,14 @@ import type { SceneView } from '../RoomView';
 import { axesOf, topPx, useTopDrag, type TopAxes } from './use-top-drag';
 import { HALO, HaloFilter, KO_HALO, PendingChrome } from './arrange-chrome';
 import { PENDING_ID, pendingAtOf, usePendingCard, type AddProps } from './use-pending-card';
+import { CardBubble } from './CardBubble';
+import { useCardBubble, type CardBubbleProps, type CardBubbleState } from './use-card-bubble';
 
 // Vue du dessus d'une étagère (ArrangeShelf) : la vue ne fait que dessiner ; la saisie passe par le glissé de l'étagère (use-board-drag,
 // qui peut changer de niveau), l'objet tenu est estompé, la carte en attente et le bandeau du haut sont ceux de l'étagère.
 export type ArrangeExternal = { grab(id: string, e: ReactPointerEvent): void; held: string | null; pending: string | null; blocked?: boolean };
 
-type Props = {
+type Props = CardBubbleProps & {
   layout: Layout;
   room: { style: StyleId };
   hostId: string;
@@ -45,6 +47,8 @@ type Props = {
   sceneView?: SceneView;
   // Image de la carte affichée par un écran.
   imageOf?(slug: string): string | undefined;
+  // Bulle d'une carte tenue par l'appelant (dessus d'une étagère : ArrangeShelf reçoit les touchers) ; absente : la vue tient la sienne.
+  cardBubble?: CardBubbleState;
 };
 
 const PAD = 16;
@@ -115,19 +119,28 @@ const SHADOW_INSET = 0.12;
 const SHADOW_SHIFT_CM = 0.5;
 const shadowRect = (r: TopRect): TopRect => ({ x: r.x + r.w * SHADOW_INSET + SHADOW_SHIFT_CM, z: r.z + r.d * SHADOW_INSET + SHADOW_SHIFT_CM, w: r.w * (1 - 2 * SHADOW_INSET), d: r.d * (1 - 2 * SHADOW_INSET) });
 
-export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, external, onClose, onEscape, sceneView, imageOf }: Props): ReactElement | null {
+export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, external, onClose, onEscape, sceneView, imageOf, cardBubble, ...bubbleProps }: Props): ReactElement | null {
   const [screen, setScreen] = useState(screenSize);
   useEffect(() => {
     const onResize = () => setScreen(screenSize());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+  const ownBubble = useCardBubble(layout, bubbleProps);
+  const bubble = cardBubble ?? ownBubble;
+  // Échap ferme d'abord la bulle d'une carte.
   const escape = onEscape ?? onClose;
+  const bubbleOpen = bubble.card !== null;
+  const closeBubble = bubble.close;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') escape(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (bubbleOpen) closeBubble();
+      else escape();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [escape]);
+  }, [escape, bubbleOpen, closeBubble]);
 
   const ids = useMemo(() => hostIds ?? [hostId], [hostIds, hostId]);
   const host = layout.find((p) => p.id === ids[0]);
@@ -139,7 +152,7 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
   const pend = usePendingCard({ layout, ids, add, enabled: mode === 'add' && !external });
   const shownLayout = pend.view;
   const moves = pend.wrap({ onMove });
-  const { drag, pending, axes, grab: ownGrab } = useTopDrag({ layout: shownLayout, hostIds: ids, frame, rotated: layer.rotated, onMove: moves.onMove });
+  const { drag, pending, axes, grab: ownGrab } = useTopDrag({ layout: shownLayout, hostIds: ids, frame, rotated: layer.rotated, onMove: moves.onMove, onTap: bubble.open });
   const grab = external ? external.grab : ownGrab;
   const pendingId = external ? external.pending : pend.shown ? PENDING_ID : null;
   // Carte en attente dont la place ne tient plus (disposition reçue) : cerclée de rouge, ✓ refusé.
@@ -177,9 +190,19 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
     ? { top: 0, left: screen.w, width: layer.w, height: layer.h, transformOrigin: '0 0', transform: 'rotate(90deg)' }
     : { inset: 0 };
   const floorY = Math.min(layer.h, Math.max(0, fit.floorY));
+  // Bulle ancrée sous l'empreinte de la carte (son rectangle écran).
+  const bubbleItem = bubble.card ? items.find((i) => i.placed.id === bubble.card!.id) : undefined;
+  const bubbleAnchor = bubbleItem ? (() => {
+    const a = axesAt[bubbleItem.host] ?? axes;
+    const r = bubbleItem.rect;
+    const pts = [[r.x, r.z], [r.x + r.w, r.z], [r.x + r.w, r.z + r.d], [r.x, r.z + r.d]].map(([x, z]) => topPx(a, x!, z!));
+    const xs = pts.map((p) => p[0]);
+    const ys = pts.map((p) => p[1]);
+    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+  })() : null;
 
   return (
-    <div data-arrange-view={ids.join('+')} data-arrange-mode={mode} style={{ position: 'absolute', zIndex: 40, overflow: 'hidden', background: palette.wall, touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', ...geometry }}>
+    <div data-arrange-view={ids.join('+')} data-arrange-mode={mode} onPointerDown={bubbleOpen ? closeBubble : undefined} style={{ position: 'absolute', zIndex: 40, overflow: 'hidden', background: palette.wall, touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', ...geometry }}>
       <svg width={layer.w} height={layer.h} viewBox={`0 0 ${layer.w} ${layer.h}`} style={{ display: 'block', touchAction: 'none' }} aria-hidden="true">
         {pendingItem && <HaloFilter id={haloId} />}
         {/* Mur, plinthe et sol de la pièce, en aplats. */}
@@ -212,6 +235,9 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
           );
         })}
       </svg>
+      {bubble.card && bubbleAnchor && (
+        <CardBubble card={bubble.card} anchor={bubbleAnchor} layer={layer} message={bubble.message} onChange={bubble.change} onInfo={bubble.info} onClose={bubble.close} />
+      )}
       {!external && (
         <PendingChrome mode={mode} add={add} layout={layout} pend={pend} onClose={onClose} />
       )}

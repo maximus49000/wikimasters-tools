@@ -2290,6 +2290,27 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'bibliotheque-v36',
+    theme: 'collection',
+    glyph: '🃏',
+    title: 'La bulle d’une carte dans la vue Modifier',
+    summary: 'Touchez une carte sans la glisser dans la vue Modifier : sa bulle change sa présentation, sa pose ou son format, ouvre sa fiche ou la retire',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Toucher une carte ouvre sa bulle',
+        text: 'Dans la vue Modifier (✋ ou ＋) d’un bureau ou d’une étagère, touchez une carte sans la glisser : une petite bulle s’ouvre sous elle. Sur une tablette, elle propose de la présenter de face, sur la tranche ou, pour un jeu, de dos ; sur un bureau ou le dessus d’une étagère, de la poser sur un trépied ou à plat. En dessous, 💿 CD, 📀 DVD, 🎮 jeu vidéo et 📖 livre changent son format ; ⓘ ouvre sa fiche, 🗑 la retire de la pièce, ✕ ferme la bulle.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À régler une carte là où on la voit, sans quitter la vue : montrer la pochette d’un album, coucher un film sur le bureau, ou ranger un livre en coffret de DVD si c’est ainsi que vous l’avez.' },
+          { label: 'D’où viennent les données', text: 'La présentation, la pose et le format sont enregistrés dans votre pièce, sur l’appareil, dès que vous touchez le bouton ; la fiche ⓘ est celle de la carte dans votre Collection.' },
+          { label: 'Comment ça marche', text: 'Glisser une carte la déplace toujours, la toucher ouvre la bulle ; toucher un petit objet (lampe, plante) n’ouvre rien. Au niveau du meuble entier, toucher une carte zoome d’abord sur sa tablette : la bulle s’ouvre dans le zoom, sur le dessus et sur un bureau. Le bouton allumé est le réglage actuel. Si le changement ne tient plus à sa place (tablette pleine, trop haut, chevauchement sur un plateau), il est refusé avec le message habituel et la carte ne bouge pas. Toucher ailleurs, ✕, Échap ou le retour Android ferment la bulle (le retour la ferme avant de dézoomer).' },
+          { label: 'Limites', text: 'La carte en attente du mode ＋ n’a pas de bulle : posez-la d’abord avec ✓. Changer de format remet la pochette et la boîte par défaut du nouveau format. Le choix de la version de la pochette (autres éditions d’un album, autres affiches d’un film, boîte d’un jeu, édition d’un livre) arrive avec la prochaine mise à jour.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'horloges-meteo-panneaux-2026-10',
     theme: 'collection',
     glyph: '🕰️',
