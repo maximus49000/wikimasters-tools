@@ -118,7 +118,7 @@ export const FAMILLES: Famille[] = [
     lourde: true,
     fichiers: [
       ...c(
-        'ghibli-city.*', 'ghibli-g3c.*', 'ghibli-night.*', 'scene-panorama.*', 'room-window*', 'room-backdrop.*', 'room-outside.*',
+        'ghibli-city.*', 'ghibli-g3c.*', 'ghibli-night.*', 'ghibli-windows.*', 'scene-panorama.*', 'room-window*', 'room-backdrop.*', 'room-outside.*',
         'library-outside.*', 'library-city-epoch.*', 'outside/**', 'hall-lights.*',
       ),
       ...lib(

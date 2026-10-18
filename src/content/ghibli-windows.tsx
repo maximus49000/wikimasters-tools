@@ -1,49 +1,78 @@
-import type { ReactElement } from 'react';
-import { windowLit, type WindowDay } from '../core/library/city/window-lights';
+import { useId, useMemo, type ReactElement } from 'react';
+import { nightness, roomLit, roomTone, windowLit, type WindowDay } from '../core/library/city/window-lights';
 import { FAR_WINDOW, type Facade, type FarWindow } from '../core/library/city/facades';
-import type { Lamp } from '../core/library/scene-world';
+import type { FacadeWindow, Home, Level } from '../core/library/city/facade-layout';
+import type { CityPaintPlan } from '../core/library/paint/city-plan';
+import type { Rgb } from '../core/library/paint/color';
+import { GlowDefs, LitWindow, NightGlass, glowId, glowSize } from './ghibli-window-art';
 
-// Fenêtres allumées de la ville peinte (vague Ghibli, décor cellulo), hors filtre d'étalonnage : teinte variée par fenêtre
-// (bleu froid, jaune, orange, crème), halo débordant à bord net, rideau en contre-jour, silhouette sombre dans certaines,
-// trait encré et meneau. Mêmes positions et même logique d'allumage que la ville classique (city/window-lights.ts).
-const INK = '#2A1A18';
-
-export const windowTone = (lamp: Pick<Lamp, 'u' | 'blue'>): string => (lamp.blue ? '#9CC4FF' : lamp.u < 0.38 ? '#FFD86A' : lamp.u < 0.7 ? '#FFB048' : '#FFF0C0');
-// Silhouette (tête + buste) dans ~12 % des fenêtres ; rideau dans la moitié des autres (tirages indépendants de l'allumage).
-export const windowFigure = (lamp: Pick<Lamp, 'u'>): boolean => (lamp.u * 17) % 1 < 0.12;
-export const windowCurtain = (lamp: Pick<Lamp, 'u'>): boolean => (lamp.u * 31) % 1 < 0.5;
-
-function NearWindow({ lamp, lit, dim }: { lamp: Lamp; lit: boolean; dim: number }): ReactElement {
-  const tone = windowTone(lamp);
-  const { x, y } = lamp;
-  return (
-    <g data-lamp="" data-lit={lit ? 'true' : 'false'} opacity={lit ? dim : 0} style={{ transition: 'opacity 4s ease' }}>
-      <rect x={x - 2.5} y={y - 2.5} width={10} height={12} fill={tone} opacity={0.22} />
-      <rect x={x} y={y} width={5} height={7} fill={tone} />
-      {windowFigure(lamp) && (
-        <g data-figure="" fill="#3A2018">
-          <circle cx={x + 2.5} cy={y + 3.2} r={1.1} />
-          <rect x={x + 1.2} y={y + 4.2} width={2.8} height={2.8} />
-        </g>
-      )}
-      {windowCurtain(lamp) && <rect x={x} y={y} width={1.8} height={7} fill="#FFE8B8" />}
-      <path d={`M${x} ${y}h5v7h-5zM${x + 2.5} ${y}v7`} fill="none" stroke={INK} strokeWidth={0.6} />
-    </g>
-  );
-}
+// Calque des fenêtres de la ville peinte (vague Ghibli), hors filtre d'étalonnage, au-dessus des tranches du décor. Ordre :
+// 1. lumières du mur du fond (déjà privées de celles que cache le premier plan, facades.ts) ;
+// 2. vitres éteintes de nuit, un groupe par immeuble proche puis par socle de jumeaux (opacité = obscurité du ciel, jamais
+//    le mauvais temps : un ciel couvert à midi ne bleuit pas les vitres) ;
+// 3. fenêtres allumables (logements), une par fenêtre : allumées par logement (seuil commun), pièce principale seule selon
+//    l'heure (city/window-lights.ts), teinte du logement et télé le soir.
+// Rien n'apparaît ni ne disparaît sur place : tous les nœuds restent montés, seule l'opacité bascule (fondu de 4 s). La cage
+// d'escalier (minuterie des halls) est dans le calque des halls ; l'entresol ne s'allume jamais.
+const FADE = 'opacity 4s ease';
 
 function FarLight({ win, lit, dim, farLight }: { win: FarWindow; lit: boolean; dim: number; farLight: number }): ReactElement {
-  return <rect data-far-lamp="" data-lit={lit ? 'true' : 'false'} x={win.x} y={win.y} width={FAR_WINDOW.w} height={FAR_WINDOW.h} fill={win.blue ? '#C4D8FF' : '#FFDFA0'} opacity={lit ? dim * farLight : 0} style={{ transition: 'opacity 4s ease' }} />;
+  return <rect data-far-lamp="" data-lit={lit ? 'true' : 'false'} x={win.x} y={win.y} width={FAR_WINDOW.w} height={FAR_WINDOW.h} fill={win.blue ? '#C4D8FF' : '#FFDFA0'} opacity={lit ? dim * farLight : 0} style={{ transition: FADE }} />;
 }
 
-export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, farLight }: { buildings: Facade[]; minutes: number; day: WindowDay | undefined; daylight: number; gloom: boolean; dim: number; farLight: number }): ReactElement {
+const hex = (c: Rgb): string => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+
+// Fenêtre allumable et ce qu'il faut pour la dessiner : logement, étage (null : lucarne, socle), groupe du logement.
+type Slot = { win: FacadeWindow; home: Home; level: Level | null; group: string };
+
+function slotsOf(buildings: readonly Facade[]): Slot[] {
+  const out: Slot[] = [];
+  buildings.forEach((b, i) => {
+    if (b.far) return;
+    // Les fenêtres du socle suivent celles de la tour dans `lamps` ; leur `level` est celui du socle, pas de la tour.
+    const tower = b.layout?.windows.length ?? 0;
+    b.lamps.forEach((win, j) => {
+      if (win.home < 0) return;
+      const level = j < tower && win.level >= 0 ? (b.layout!.levels[win.level] ?? null) : null;
+      out.push({ win, home: b.homes[win.home]!, level, group: `${i}:${win.home}` });
+    });
+  });
+  return out;
+}
+
+// `plan` : plan peint de la ville (mur recoloré de la 2e tour d'un socle, pierre du socle) ; sans plan, mur de la mise en page.
+export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, farLight, plan }: { buildings: Facade[]; minutes: number; day: WindowDay | undefined; daylight: number; gloom: boolean; dim: number; farLight: number; plan?: Pick<CityPaintPlan, 'buildings' | 'podiums'> | null }): ReactElement {
+  const prefix = `w${useId().replace(/:/g, '')}`;
+  const slots = useMemo(() => slotsOf(buildings), [buildings]);
+  // Une lueur par taille de fenêtre (arrondie au demi-pixel), partagée par <use>.
+  const sizes = useMemo(() => {
+    const seen = new Map<string, { w: number; h: number }>();
+    for (const s of slots) seen.set(glowId('', s.win.w, s.win.h), glowSize(s.win.w, s.win.h));
+    return [...seen.values()];
+  }, [slots]);
+  const panes = useMemo(() => {
+    const towers = buildings.flatMap((b, i) => (b.far || !b.layout ? [] : [{ key: `g${i}`, layout: b.layout, wall: plan?.buildings[i]?.layout?.wall ?? b.layout.wall }]));
+    const podiums = buildings.flatMap((b) => {
+      if (b.far || !b.podiumLayout || !b.podium) return [];
+      const stone = plan?.podiums.find((p) => p.id === b.podium!.id)?.stone;
+      return [{ key: `p${b.podium.id}`, layout: { windows: b.podiumLayout.windows, dormers: [] }, wall: stone ? hex(stone) : (b.layout?.wall ?? '#EDE2C8') }];
+    });
+    return [...towers, ...podiums];
+  }, [buildings, plan]);
+  const glass = Number(nightness(daylight).toFixed(3));
   return (
     <g data-ghibli-windows="">
-      {buildings.map((b, i) =>
-        b.far
-          ? b.farWindows.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} />)
-          : b.lamps.map((lamp, j) => <NearWindow key={`n${i}-${j}`} lamp={lamp} lit={windowLit(lamp.u, minutes, day, daylight, gloom)} dim={dim} />),
-      )}
+      <GlowDefs prefix={prefix} sizes={sizes} />
+      {buildings.map((b, i) => b.farWindows.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} />))}
+      {panes.map((p) => <NightGlass key={p.key} layout={p.layout} wall={p.wall} opacity={glass} />)}
+      {slots.map(({ win, home, level, group }, k) => {
+        const lit = roomLit(win, minutes, day, daylight, gloom);
+        return (
+          <g key={k} data-lamp="" data-lit={lit ? 'true' : 'false'} data-home={group} data-main={win.main ? 'true' : 'false'} opacity={lit ? dim : 0} style={{ transition: FADE }}>
+            <LitWindow win={win} home={home} level={level} tone={roomTone(home, win.main, minutes)} glow={glowId(prefix, win.w, win.h)} />
+          </g>
+        );
+      })}
     </g>
   );
 }
