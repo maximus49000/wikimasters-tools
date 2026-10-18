@@ -29,7 +29,8 @@ const roofRgb = (b: PaintBuilding): Rgb => {
 };
 
 // Contour du toit : celui de la mise en page ; sans mise en page, toit simple à faîtage à 42 % dans la hauteur `look.roofH`.
-function outlineOf(b: PaintBuilding): [number, number][] {
+// Exporté pour la neige (snow-painter.ts : même ligne de toit).
+export function roofOutlineOf(b: PaintBuilding): [number, number][] {
   if (b.layout) return roofOutline(b.layout);
   const eave = b.top + b.look.roofH;
   return [[b.x - 2, eave], [b.x + 0.42 * b.w, b.top + 0.5], [b.x + b.w + 2, eave]];
@@ -55,7 +56,7 @@ export function paintParisRoof(ctx: PaintCtx, _plan: CityPaintPlan, b: PaintBuil
   const eave = top + look.roofH;
   const wall = look.wall;
   const rc = roofRgb(b);
-  const pts = outlineOf(b);
+  const pts = roofOutlineOf(b);
   const roof = layout?.roof;
   if (layout && layout.roof.kind === 'mansard') {
     const bt = top + layout.roof.terrasson;

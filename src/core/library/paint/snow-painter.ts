@@ -1,64 +1,108 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { DAB_SPREAD, cellRng, dab } from './brush';
 import { TILE, tileItems } from './city-painter';
+import { heightOn, type Dormer, type FacadeWindow, type Level } from '../city/facade-layout';
 import { hillCrestY, type CityPaintPlan, type HillHouse, type PaintBuilding } from './city-plan';
 import { hexRgb, jitter, rgba } from './color';
 import type { PaintCtx } from './paint-ctx';
+import { roofOutlineOf } from './roof-painter';
 
 // Neige posée (vague Ghibli, G2) : une tranche de TILE px du monde, en coordonnées du monde, à superposer à la ville peinte.
 // Toits (sous la ligne de toit, jamais au-dessus), cheminées, rebords de fenêtres, trottoirs et rue, crête de la colline et
 // toits des maisons du fond (décor cellulo). Chaque immeuble et chaque case du sol a son propre générateur : deux tranches
 // voisines peignent la même chose sur leur bord commun.
-export const SNOW_VERSION = 3;
+export const SNOW_VERSION = 4;
 
 const SNOW = hexRgb('#F4F8FC');
 const SNOW_SHADE = hexRgb('#D8E2EE');
+// Débord du toit du premier plan (contour de la mise en page ±1,5 ou ±2, corniche ±1,5) : borne de recherche.
 const OVERHANG = 2;
-// Toit zinc : débord de 1 px, plat à top + 1.
-const ZINC_OVERHANG = 1;
 // Touches de toit : rayon ≤ 0,8, allongement 1,8 → portée ≤ 0,8 × 1,8 × DAB_SPREAD ≈ 1,66 ; centre posé sous la ligne de toit.
 const ROOF_R = 0.8;
 const ROOF_REACH = ROOF_R * 1.8 * DAB_SPREAD;
 const CELL = 40;
 
-// Haut du toit peint en x (mêmes tracés que city-painter.ts : débord de 2 px au premier plan, aucun au fond).
-export function roofLineY(b: PaintBuilding, x: number): number {
+// Corniche du premier plan (roof-painter.ts) : haut à eave − 0,8, de x − 1,5 à x + w + 1,5, peinte par-dessus le toit.
+const CORNICE_UP = 0.8;
+const CORNICE_OVER = 1.5;
+
+// Haut du toit peint du fond en x (mêmes tracés que city-painter.ts, sans débord).
+function farRoofLineY(b: PaintBuilding, x: number): number {
   const eave = b.top + b.look.roofH;
   if (b.look.roofKind === 'gable') {
-    const o = b.far ? 0 : OVERHANG;
-    const half = b.w / 2 + o;
+    const half = b.w / 2;
     const t = Math.min(1, Math.abs(x - (b.x + b.w / 2)) / half);
     return b.top + (eave - b.top) * t;
   }
-  if (b.look.roofKind === 'zinc') return x >= b.x - ZINC_OVERHANG && x <= b.x + b.w + ZINC_OVERHANG ? b.top + 1 : eave;
+  // Zinc : débord de 1 px, plat à top + 1.
+  if (b.look.roofKind === 'zinc') return x >= b.x - 1 && x <= b.x + b.w + 1 ? b.top + 1 : eave;
   const flat = b.top + 1;
-  // Mansarde : plat entre x + 1,5 et x + w − 1,5 au fond, x + 2 et x + w − 2 au premier plan.
-  const k = b.far ? 1.5 : 2;
+  // Mansarde : plat entre x + 1,5 et x + w − 1,5.
+  const k = 1.5;
   if (x >= b.x + k && x <= b.x + b.w - k) return flat;
-  const o = b.far ? 0 : OVERHANG;
-  const t = x < b.x + k ? Math.min(1, (b.x + k - x) / (k + o)) : Math.min(1, (x - (b.x + b.w - k)) / (k + o));
+  const t = x < b.x + k ? Math.min(1, (b.x + k - x) / k) : Math.min(1, (x - (b.x + b.w - k)) / k);
   return flat + (eave - flat) * t;
+}
+
+// Haut du toit peint en x. Premier plan : contour `roofOutline` de la mise en page (celui que roof-painter.ts encre : terrasson
+// et brisis de la mansarde, toit simple à faîtage à 42 %), relevé par la corniche là où elle dépasse ; fond : tracés de city-painter.ts.
+export function roofLineY(b: PaintBuilding, x: number): number {
+  if (b.far) return farRoofLineY(b, x);
+  const y = heightOn(roofOutlineOf(b), x);
+  return x >= b.x - CORNICE_OVER && x <= b.x + b.w + CORNICE_OVER ? Math.min(y, b.top + b.look.roofH - CORNICE_UP) : y;
 }
 
 // Emprise horizontale du toit peint (débord compris) : hors de là, l'immeuble ne touche pas le ciel.
 export function roofSpan(b: PaintBuilding): { x0: number; x1: number } {
-  const o = b.far ? 0 : b.look.roofKind === 'zinc' ? ZINC_OVERHANG : OVERHANG;
-  return { x0: b.x - o, x1: b.x + b.w + o };
+  if (b.far) return { x0: b.x, x1: b.x + b.w };
+  const pts = roofOutlineOf(b);
+  return { x0: Math.min(pts[0]![0], b.x - CORNICE_OVER), x1: Math.max(pts.at(-1)![0], b.x + b.w + CORNICE_OVER) };
 }
 
-// Cassures de la ligne de toit (murs, faîte, coins) : la ligne est affine entre deux cassures.
+// Cassures de la ligne de toit (murs, faîte, coins, bouts de la corniche et croisements du contour avec elle) : la ligne est
+// affine entre deux cassures.
 export function roofCuts(b: PaintBuilding): number[] {
-  const o = b.far ? 0 : OVERHANG;
-  if (b.look.roofKind === 'zinc') return [b.x - ZINC_OVERHANG, b.x + b.w + ZINC_OVERHANG];
-  if (b.look.roofKind === 'gable') return [b.x - o, b.x + b.w / 2, b.x + b.w + o];
-  const k = b.far ? 1.5 : 2;
-  return [b.x - o, b.x + k, b.x + b.w - k, b.x + b.w + o];
+  if (b.far) {
+    if (b.look.roofKind === 'zinc') return [b.x - 1, b.x + b.w + 1];
+    if (b.look.roofKind === 'gable') return [b.x, b.x + b.w / 2, b.x + b.w];
+    return [b.x, b.x + 1.5, b.x + b.w - 1.5, b.x + b.w];
+  }
+  const pts = roofOutlineOf(b);
+  const c = b.top + b.look.roofH - CORNICE_UP;
+  const cuts = [...pts.map(([x]) => x), b.x - CORNICE_OVER, b.x + b.w + CORNICE_OVER];
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1]!;
+    const [x1, y1] = pts[i]!;
+    if ((y0 - c) * (y1 - c) < 0) cuts.push(x0 + ((c - y0) * (x1 - x0)) / (y1 - y0));
+  }
+  return cuts.sort((p, q) => p - q);
 }
 
-export function chimneyBox(plan: CityPaintPlan, b: PaintBuilding): { x0: number; x1: number; y0: number } | null {
-  if (b.far || b.look.chimney === null) return null;
-  const cx = b.x + b.w * b.look.chimney;
-  return { x0: cx - 0.5, x1: cx + 4 * plan.unit, y0: b.top + 1 };
+// Couronnement des souches de la mise en page (roof-painter.ts : de x − 0,6 à x + 4,6, haut à `top`) : la neige s'y pose.
+export function chimneyBoxes(_plan: CityPaintPlan, b: PaintBuilding): { x0: number; x1: number; y0: number }[] {
+  if (b.far || !b.layout) return [];
+  return b.layout.chimneys.map((c) => ({ x0: c.x - 0.6, x1: c.x + 4.6, y0: c.top }));
+}
+
+// Haut du petit toit d'une lucarne en x (mêmes tracés que roof-painter.ts), null hors de lui : fronton triangulaire (pointe
+// 3,6 px au-dessus, débord de 2,2), fronton cintré (demi-disque de rayon w/2 + 2), capucine (trois pans, plat 2,8 px au-dessus).
+// L'œil-de-bœuf et la tabatière n'en ont pas (la tabatière est couchée sur le toit, sous sa neige).
+export function dormerTopY(d: Dormer, x: number): number | null {
+  const dx = Math.abs(x - d.cx);
+  if (d.type === 'fronton-tri') {
+    const half = d.w / 2 + 2.2;
+    return dx <= half ? d.y - 3.6 * (1 - dx / half) : null;
+  }
+  if (d.type === 'fronton-cintre') {
+    const r = d.w / 2 + 2;
+    return dx <= r ? d.y - Math.sqrt(r * r - dx * dx) : null;
+  }
+  if (d.type === 'capucine') {
+    const flat = d.w / 2 + 0.5;
+    if (dx <= flat) return d.y - 2.8;
+    return dx <= flat + 2 ? d.y - 2.8 * (1 - (dx - flat) / 2) : null;
+  }
+  return null;
 }
 
 // Contexte muet : une touche cachée consomme ses tirages sans rien peindre (le dessin reste le même d'une tranche à l'autre).
@@ -84,32 +128,106 @@ function hiddenByNear(near: readonly PaintBuilding[], x: number, y: number): boo
 
 function paintRoofSnow(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding, near: readonly PaintBuilding[] = []): void {
   const rng = mulberry32(plan.seed ^ hashString('ghibli-snow-roof') ^ Math.round(b.x * 8));
-  const o = b.far ? 0 : OVERHANG;
+  const { x0, x1 } = roofSpan(b);
+  const eave = b.top + b.look.roofH;
+  const layout = b.far ? null : b.layout;
+  const mansard = layout?.roof.kind === 'mansard';
+  const dormers = layout?.dormers ?? [];
   // Pente locale la plus forte autour de x (5 échantillons sur la portée d'une touche).
   const slopeAt = (x: number): number => (roofLineY(b, x + 0.25) - roofLineY(b, x - 0.25)) / 0.5;
   const steepest = (x: number): number => Math.max(...[-1, -0.5, 0, 0.5, 1].map((k) => Math.abs(slopeAt(x + k * ROOF_REACH))));
-  // Deux rangs de touches qui suivent la pente, posés sous la ligne de toit. Une touche de portée R centrée à
-  // R × √(1 + s²) sous la ligne ne la dépasse jamais sur une pente s ; rien sur les flancs trop raides (s > 1,5).
-  for (const extra of [0.05, 1.2]) {
-    for (let x = b.x - o + ROOF_REACH; x <= b.x + b.w + o - ROOF_REACH; x += 0.9) {
+  // Touche (centre x, y) qui couvrirait la façade d'une lucarne (fronton, capucine : la vitre reste visible) ; tirée quand même.
+  const onDormer = (x: number, y: number): boolean => dormers.some((d) => d.type !== 'tabatiere' && Math.abs(x - d.cx) < d.w / 2 + 2.5 + ROOF_REACH && y + ROOF_REACH > d.y - 0.5 && y - ROOF_REACH < d.y + d.h + 1);
+  // Rangs de touches qui suivent la ligne de toit, posés dessous. Une touche de portée R centrée à R × √(1 + s²) sous la
+  // ligne ne la dépasse jamais sur une pente s ; rien sur les flancs trop raides (s > 1,5). Fond et mansarde (terrasson) :
+  // deux rangs ; toit simple du premier plan, à faible pente : quatre, de plus en plus clairsemés vers l'égout.
+  const rows = b.far || mansard ? [[0.05, 1], [1.2, 1]] : [[0.05, 1], [1.2, 1], [2.6, 0.7], [4, 0.4]];
+  for (const [extra, cover] of rows) {
+    for (let x = x0 + ROOF_REACH; x <= x1 - ROOF_REACH; x += 0.9) {
       const s = steepest(x);
       const jitterY = rng() * 0.3;
       const size = ROOF_R * (0.7 + rng() * 0.3);
-      if (s > 1.5) continue;
-      const y = roofLineY(b, x) + ROOF_REACH * Math.sqrt(1 + s * s) + extra + jitterY;
+      const keep = rng() < cover!;
+      if (s > 1.5 || !keep) continue;
+      const y = roofLineY(b, x) + ROOF_REACH * Math.sqrt(1 + s * s) + extra! + jitterY;
+      // Premier plan : la neige du toit s'arrête au-dessus de la corniche (son rebord a sa propre couche), pas sur les lucarnes.
+      if (!b.far && (y > eave - CORNICE_UP - ROOF_REACH * 0.5 || onDormer(x, y))) continue;
       // Toit du fond : touche tirée puis peinte « à vide » si un immeuble du premier plan la cache.
       const ink = b.far && hiddenByNear(near, x, y) ? NO_INK : ctx;
-      dab(ink, rng, x, y, size, jitter(extra > 1 ? SNOW_SHADE : SNOW, 4, rng), 0.9, 1.8, Math.atan(slopeAt(x)));
+      dab(ink, rng, x, y, size, jitter(extra! > 1 ? SNOW_SHADE : SNOW, 4, rng), 0.9, 1.8, Math.atan(slopeAt(x)));
     }
   }
-  const c = chimneyBox(plan, b);
-  if (c) {
+  for (const c of chimneyBoxes(plan, b)) {
     for (let x = c.x0 + ROOF_REACH; x <= c.x1 - ROOF_REACH; x += 0.8) dab(ctx, rng, x, c.y0 + ROOF_REACH + 0.05, ROOF_R, SNOW, 0.95, 1.8, 0);
   }
   if (b.far) return;
-  // Rebords de fenêtres (pas les lucarnes, déjà dans le toit).
-  for (const w of b.wins) {
-    if (w.dormer) continue;
+  if (layout && mansard) paintBrisisSnow(ctx, rng, b, onDormer);
+  // Rebord de la corniche, sur toute la largeur (peinte par-dessus le toit : son haut est un appui, comme ceux des fenêtres).
+  // Touches couchées de rayon ≤ 0,5 : portée 0,5 × DAB_SPREAD en hauteur, × 1,8 en largeur (rentrées d'autant aux bouts).
+  const cy = eave - CORNICE_UP + 0.1 + 0.5 * DAB_SPREAD;
+  const cx = 0.5 * 1.8 * DAB_SPREAD;
+  for (let x = b.x - CORNICE_OVER + cx; x <= b.x + b.w + CORNICE_OVER - cx; x += 0.7) dab(ctx, rng, x, cy, 0.4 + rng() * 0.1, SNOW, 0.9, 1.8, 0);
+  if (!layout) return;
+  for (const d of dormers) paintDormerSnow(ctx, rng, d);
+  paintLedgeSnow(ctx, rng, b, layout.levels, layout.windows);
+}
+
+// Brisis de la mansarde : pente presque verticale, la neige n'y tient qu'en plaques clairsemées entre le terrasson et la
+// corniche, plus rares vers le bas, jamais sur les lucarnes. Touches couchées (rot 0) dans le trapèze rentré de leur portée.
+function paintBrisisSnow(ctx: PaintCtx, rng: () => number, b: PaintBuilding, onDormer: (x: number, y: number) => boolean): void {
+  const eave = b.top + b.look.roofH;
+  const bt = b.top + 4;
+  const r = 0.75;
+  const reachX = r * 1.8 * DAB_SPREAD;
+  const reachY = r * DAB_SPREAD;
+  const bottom = eave - CORNICE_UP - reachY;
+  for (let y = bt + reachY + 0.4; y <= bottom; y += 2.2) {
+    // Bords du brisis à cette hauteur : de (x − 1,5, égout) à (x + 2,5, haut du brisis).
+    const t = (eave - y) / (eave - bt);
+    const xl = b.x - 1.5 + 4 * t + reachX;
+    const xr = b.x + b.w + 1.5 - 4 * t - reachX;
+    const cover = 0.5 - 0.3 * (1 - t);
+    for (let x = xl; x <= xr; x += 1.1) {
+      const dx = rng() * 0.6;
+      const size = r * (0.7 + rng() * 0.3);
+      const keep = rng() < cover;
+      if (!keep || x + dx > xr || onDormer(x + dx, y)) continue;
+      dab(ctx, rng, x + dx, y, size, jitter(rng() < 0.6 ? SNOW : SNOW_SHADE, 4, rng), 0.85, 1.8, 0);
+    }
+  }
+}
+
+// Petit toit d'une lucarne (fronton triangulaire ou cintré, capucine) : un rang de touches posé dessous, comme sur le grand toit.
+// Sur la courbe du fronton cintré, le centre est pris sous le plus bas des points de la portée (la courbe ne passe jamais dessus).
+function paintDormerSnow(ctx: PaintCtx, rng: () => number, d: Dormer): void {
+  const half = d.type === 'fronton-tri' ? d.w / 2 + 2.2 : d.type === 'fronton-cintre' ? d.w / 2 + 2 : d.type === 'capucine' ? d.w / 2 + 2.5 : 0;
+  if (half === 0) return;
+  const top = (x: number): number => dormerTopY(d, x) ?? Infinity;
+  for (let x = d.cx - half + ROOF_REACH; x <= d.cx + half - ROOF_REACH; x += 0.7) {
+    const ks = [-1, -0.5, 0, 0.5, 1].map((k) => x + k * ROOF_REACH);
+    const s = Math.max(...ks.map((k) => Math.abs((top(k + 0.2) - top(k - 0.2)) / 0.4)));
+    const size = ROOF_R * (0.7 + rng() * 0.3);
+    if (!(s <= 1.5)) continue;
+    const y = Math.max(...ks.map(top)) + ROOF_REACH * Math.sqrt(1 + s * s) + 0.05;
+    dab(ctx, rng, x, y, size, SNOW, 0.95, 1.8, Math.atan((top(x + 0.2) - top(x - 0.2)) / 0.4));
+  }
+}
+
+// Rebords : appuis des fenêtres d'étage (courantes, dernier étage, entresol, cage), dalles des balcons filants (toute la
+// largeur de l'étage) et des balconnets (sous leur fenêtre, à la place de l'appui). La porte-fenêtre n'a que la dalle du filant.
+function paintLedgeSnow(ctx: PaintCtx, rng: () => number, b: PaintBuilding, levels: readonly Level[], windows: readonly FacadeWindow[]): void {
+  // Dalle (facade-painter.ts, paintBalcony) : de x − 0,8 à x + w + 0,8, haut à y − 0,4 ; touche de rayon ≤ 0,5 posée dessus.
+  const slab = (x: number, y: number, w: number): void => {
+    const sy = y - 0.4 + 0.1 + 0.5 * DAB_SPREAD;
+    for (let k = x - 0.8 + 0.6; k <= x + w + 0.8 - 0.6; k += 0.7) dab(ctx, rng, k, sy, 0.4 + rng() * 0.1, SNOW, 0.9, 1.8, 0);
+  };
+  for (const lv of levels) if (lv.balcony === 'filant') slab(b.x + 1.5, lv.y + lv.h, b.w - 3);
+  for (const w of windows) {
+    if (w.kind === 'french' || w.kind === 'dormer') continue;
+    if ((w.kind === 'std' || w.kind === 'top') && levels[w.level]?.balcony === 'balconnet') {
+      slab(w.x - 1.2, w.y + w.h, w.w + 2.4);
+      continue;
+    }
     const y = w.y + w.h + 0.2 + 0.5 * 1.8 * DAB_SPREAD;
     for (let x = w.x + 0.6; x <= w.x + w.w - 0.6; x += 0.7) dab(ctx, rng, x, y, 0.4 + rng() * 0.1, SNOW, 0.85, 1.8, 0);
   }
