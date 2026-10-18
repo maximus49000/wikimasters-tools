@@ -1,0 +1,145 @@
+// Glissé au cm d'un objet sur le plateau (vue Modifier) : le doigt saisit l'objet armé par ✥ Déplacer (ou la carte en attente du mode ＋)
+// — sur un autre objet, un toucher sans glisser appelle `onTap` (sa bulle) et rien ne bouge —, l'empreinte dit vert/rouge, le relâcher
+// demande le déplacement (`onMove`, une intention : l'appelant l'applique à la disposition du moment, jamais à un instantané) ou rend
+// l'objet à sa place (rouge). Pendant le glissé, seul l'objet tenu bouge (translation px). L'écriture est asynchrone (dépôt, puis
+// notification) : jusqu'à ce que la disposition reçue change pour cet objet ou que l'écriture se termine, l'objet reste dessiné là où on
+// l'a lâché (`pending`, un par objet), il ne saute pas ; les glissés suivants se valident contre la disposition avec ces attentes appliquées.
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { dropOnTop, moveOnTop, topToScreen, type ArrangeFrame } from '../../core/library/arrange';
+import type { Layout } from '../../core/library/library-types';
+
+// Un toucher qui bouge de moins de 4 px n'est pas un glissé.
+const SLOP_PX = 4;
+
+// Projection affine du plateau pour un cadre : origine et images écran (px) des axes x et z, calculées une fois par cadre
+// (le glissé et les ombres ne refont aucune projection).
+export type TopAxes = { o: [number, number]; ex: [number, number]; ez: [number, number] };
+export function axesOf(f: ArrangeFrame): TopAxes {
+  const o = topToScreen(f, 0, 0);
+  const x = topToScreen(f, 1, 0);
+  const z = topToScreen(f, 0, 1);
+  return { o, ex: [x[0] - o[0], x[1] - o[1]], ez: [z[0] - o[0], z[1] - o[1]] };
+}
+export const topPx = (a: TopAxes, x: number, z: number): [number, number] => [a.o[0] + x * a.ex[0] + z * a.ez[0], a.o[1] + x * a.ex[1] + z * a.ez[1]];
+
+// Objet tenu : place visée (cm, coin avant gauche, arrondie au cm), validité, et translation px depuis sa place d'origine.
+export type TopDrag = { id: string; x: number; z: number; ok: boolean; tx: number; ty: number };
+// Objet lâché en vert, en attente de la disposition écrite : même translation, tenue jusqu'à ce que `layout` change pour cet objet
+// (à la place visée ou ailleurs : une autre modification) ou que l'écriture se termine (refusée ou sans effet). `from` : sa place au lâcher.
+export type TopPending = { id: string; x: number; z: number; tx: number; ty: number; from: { x: number; z: number } };
+
+// `pointerId` : seul ce doigt compte (un second doigt ou la paume n'ont pas de prise).
+type Held = { id: string; x0: number; z0: number; sx: number; sy: number; moving: boolean; pointerId: number; tapOnly: boolean };
+
+type Options = {
+  layout: Layout;
+  // Plateaux de la vue (un bureau, ou deux bibliothèques liées) : un objet se déplace sur son propre plateau.
+  hostIds: string[];
+  // Cadre du premier plateau ; les suivants ont les mêmes images des axes (seule l'origine change, sans effet sur les translations).
+  frame: ArrangeFrame;
+  // Calque tourné de 90° (écran en hauteur) : un déplacement écran (dX, dY) vaut (dY, −dX) dans le calque.
+  rotated: boolean;
+  // Intention de déplacement ; rend la promesse de l'écriture (ou rien) : l'attente de l'objet lâché tombe quand elle se termine.
+  onMove(id: string, x: number, z: number): Promise<unknown> | void;
+  // Toucher sans glisser (moins de SLOP_PX) : la bulle de la carte (l'appelant écarte ce qui n'en a pas).
+  onTap?(id: string): void;
+  // Objet qui se glisse (armé par ✥ Déplacer, ou la carte en attente du mode ＋) ; les autres ne font que se toucher. Absent : tous.
+  canDrag?(id: string): boolean;
+  // Glissé lâché (vert ou rouge) : l'objet est désarmé.
+  onRelease?(id: string): void;
+};
+
+// Un objet en attente est « réglé » quand la disposition reçue l'a changé de place (visée ou autre) ou retiré.
+const settledIn = (layout: Layout, w: TopPending): boolean => {
+  const p = layout.find((q) => q.id === w.id);
+  return !p || !('x' in p) || p.x !== w.from.x || p.z !== w.from.z;
+};
+
+export function useTopDrag({ layout, hostIds, frame, rotated, onMove, onTap, canDrag, onRelease }: Options): { drag: TopDrag | null; pending: TopPending[]; axes: TopAxes; grab(id: string, e: ReactPointerEvent): void } {
+  const [drag, setDrag] = useState<TopDrag | null>(null);
+  // Un objet en attente par id : lâcher B pendant que A attend ne fait pas revenir A.
+  const [pendingState, setPending] = useState<TopPending[]>([]);
+  // Attentes réglées retirées AU RENDU (pas après la peinture) : aucune image ne montre la nouvelle place plus l'ancienne translation.
+  const pending = pendingState.some((w) => settledIn(layout, w)) ? pendingState.filter((w) => !settledIn(layout, w)) : pendingState;
+  if (pending !== pendingState) setPending(pending);
+  const held = useRef<Held | null>(null);
+  const dragRef = useRef<TopDrag | null>(null);
+  const axes = useMemo(() => axesOf(frame), [frame]);
+  // Disposition avec les déplacements en attente appliqués : un glissé ne passe pas au vert sur la place qu'un autre objet vient de prendre.
+  const applied = useMemo(() => pending.reduce((l, w) => moveOnTop(l, w.id, w.x, w.z) ?? l, layout), [layout, pending]);
+  // Relus par les écouteurs de la fenêtre (posés une fois par saisie).
+  const live = useRef({ layout: applied, hostIds, axes, rotated, onMove, onTap, canDrag, onRelease, pending });
+  live.current = { layout: applied, hostIds, axes, rotated, onMove, onTap, canDrag, onRelease, pending };
+  const stop = useRef<(() => void) | null>(null);
+  useEffect(() => () => stop.current?.(), []);
+  const forget = useCallback((w: TopPending): void => setPending((list) => (list.includes(w) ? list.filter((q) => q !== w) : list)), []);
+
+  const grab = useCallback((id: string, e: ReactPointerEvent): void => {
+    const p = live.current.layout.find((q) => q.id === id);
+    // Objet en attente d'écriture : pas de nouvelle prise avant que sa place soit enregistrée.
+    if (held.current || live.current.pending.some((w) => w.id === id) || !p || (p.kind !== 'small' && p.kind !== 'posed') || !('x' in p) || !live.current.hostIds.includes(p.hostId)) return;
+    e.preventDefault();
+    const hostId = p.hostId;
+    held.current = { id, x0: p.x, z0: p.z, sx: e.clientX, sy: e.clientY, moving: false, pointerId: e.pointerId, tapOnly: live.current.canDrag ? !live.current.canDrag(id) : false };
+    const mine = (ev: PointerEvent): boolean => held.current !== null && ev.pointerId === held.current.pointerId;
+    const move = (ev: PointerEvent): void => {
+      const h = held.current;
+      if (!h || !mine(ev)) return;
+      const { axes: a, rotated: rot } = live.current;
+      const [dX, dY] = rot ? [ev.clientY - h.sy, -(ev.clientX - h.sx)] : [ev.clientX - h.sx, ev.clientY - h.sy];
+      if (!h.moving && Math.hypot(dX, dY) < SLOP_PX) return;
+      h.moving = true;
+      // Objet pas armé : le doigt a bougé, ce n'est plus un toucher, et rien ne se déplace.
+      if (h.tapOnly) return;
+      // Déplacement écran → cm sur le plan du plateau (système 2 × 2 des axes).
+      const det = a.ex[0] * a.ez[1] - a.ez[0] * a.ex[1];
+      const x = Math.round(h.x0 + (dX * a.ez[1] - a.ez[0] * dY) / det);
+      const z = Math.round(h.z0 + (a.ex[0] * dY - a.ex[1] * dX) / det);
+      const ok = dropOnTop(live.current.layout, hostId, h.id, x, z).ok;
+      // L'objet se pose sur la place visée (au cm), pas sous le doigt au px près : l'empreinte et l'objet coïncident.
+      const [cx, cz] = [x - h.x0, z - h.z0];
+      dragRef.current = { id: h.id, x, z, ok, tx: cx * a.ex[0] + cz * a.ez[0], ty: cx * a.ex[1] + cz * a.ez[1] };
+      setDrag(dragRef.current);
+    };
+    const end = (): { h: Held; d: TopDrag | null } | null => {
+      const h = held.current;
+      const d = dragRef.current;
+      stop.current?.();
+      dragRef.current = null;
+      setDrag(null);
+      return h ? { h, d } : null;
+    };
+    const up = (ev: PointerEvent): void => {
+      if (!mine(ev)) return;
+      const r = end();
+      if (r && !r.h.moving) {
+        live.current.onTap?.(r.h.id);
+        return;
+      }
+      if (!r || r.h.tapOnly) return;
+      live.current.onRelease?.(r.h.id);
+      if (!r.d || !r.d.ok) return;
+      const { h, d } = r;
+      const w: TopPending = { id: d.id, x: d.x, z: d.z, tx: d.tx, ty: d.ty, from: { x: h.x0, z: h.z0 } };
+      setPending((list) => [...list, w]);
+      // Écriture terminée (acceptée, refusée ou sans effet) : l'attente tombe ; la disposition, si elle a changé, est déjà arrivée (notifiée
+      // avant). Sans promesse rendue, seule la disposition reçue lève l'attente.
+      let done: Promise<unknown> | void;
+      try { done = live.current.onMove(d.id, d.x, d.z); } catch { done = undefined; }
+      if (done && typeof done.then === 'function') done.then(() => forget(w), () => forget(w));
+    };
+    // Glissé interrompu (appel, geste du système, perte du pointeur) : rien n'est demandé, l'objet revient.
+    const cancel = (ev: PointerEvent): void => { if (mine(ev)) end(); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    stop.current = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      held.current = null;
+      stop.current = null;
+    };
+  }, [forget]);
+  return { drag, pending, axes, grab };
+}

@@ -5,9 +5,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer } from '../../src/content/city-life';
-import { ShopCustomers, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectWorkers, countShopSprites, customerState, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeWorkers, staffCast } from '../../src/content/city-shops-life';
+import { ShopCustomers, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectWorkers, countShopSprites, customerState, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeWorkers, staffCast, warmCustomers, type CustomerWarmCache } from '../../src/content/city-shops-life';
 import { ghibliGesture } from '../../src/content/shop-gesture-sprites';
-import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content/figure/figure-host';
 import { THRESHOLD_S } from '../../src/core/library/city/doorway';
 import { TURN_S } from '../../src/core/library/figure/gait';
 import { DOOR_SILL_HALF, DOOR_SILL_TOP, sillBox } from '../../src/content/door-passage';
@@ -764,5 +764,42 @@ describe('G3b : personnel, clients et chantier en pantins', () => {
     const classic = render(works('climb', 0.5, false));
     expect(classic.querySelector('[data-figure]')).toBeNull();
     expect(classic.querySelectorAll('[data-worker]')).toHaveLength(2);
+  });
+});
+
+describe('habitants 3D : clients des commerces préparés d’avance', () => {
+  const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+  const fake3D = (): Citizen3D => ({ ready: () => true, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} });
+  // Premières images de chaque nœud du client (rue, seuil, vitrine) le long de sa visite, avec ou sans demandes d'avance.
+  const firstKeys = (warm: boolean): string[] => {
+    const figures = new FigureRegistry(warm ? 'tw1' : 'tw0', { perFrame: 50, citizens: fake3D, now: () => 0 });
+    const frames = new Map(slots.map((s) => [s.id, shopFrame(s, metrics.ground)]));
+    const v = visitsFor(slots, frames, SEED, () => 'bakery')[0]!;
+    const gates = new Map([[v.slotId, 1]]);
+    let at = 0;
+    while (customerState(v, 1, W, at).on || !customerState(v, 1, W, at + 20).on) at += 1;
+    const c = render(<FigureContext.Provider value={figures}><svg><ShopCustomers visits={[v]} frames={frames} views={[]} gates={gates} width={W} metrics={metrics} t0={at} sky={skyAt(600, times)} rainy={false} umbrella={false} ghibli /></svg></FigureContext.Provider>);
+    const nodes = new Map([...c.querySelectorAll('[data-life-id]')].map((n) => [n.getAttribute('data-life-id')!, n]));
+    const cache: CustomerWarmCache = new Map();
+    const firsts = new Map<Element, string>();
+    const lock: VisitLock = new Map();
+    for (let i = 0; i <= 200; i++) {
+      const t = at + i * 0.25;
+      if (warm && i % 4 === 0) warmCustomers(nodes, [v], gates, W, metrics, t, figures, cache, new Set(), lock);
+      placeCustomers(nodes, [v], gates, W, metrics, t, i === 0, new Set(), { lock, ghibli: true, figures });
+      for (const n of nodes.values()) {
+        const k = n.querySelector('[data-figure]')?.getAttribute('data-key');
+        if (k && !firsts.has(n)) firsts.set(n, k);
+      }
+      figures.flush();
+    }
+    return [...firsts.values()];
+  };
+  it('le client arrive dans la rue, passe le seuil et entre : chaque nœud paraît d’emblée en 3D (sans demande d’avance : pantin)', () => {
+    const cold = firstKeys(false);
+    expect(cold.some((k) => !k.includes('@3d'))).toBe(true);
+    const keys = firstKeys(true);
+    expect(keys.length).toBeGreaterThanOrEqual(2);
+    expect(keys.filter((k) => !k.includes('@3d'))).toEqual([]);
   });
 });

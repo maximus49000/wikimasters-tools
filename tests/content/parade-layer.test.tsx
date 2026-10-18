@@ -11,7 +11,8 @@ import { HORSE_CYCLE_S } from '../../src/core/library/paint/props/parade';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { dayContext, type YMD } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
-import type { ParadeKind } from '../../src/core/library/city/parade';
+import { paradeUnits, paradeX, type ParadeKind } from '../../src/core/library/city/parade';
+import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content/figure/figure-host';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -339,6 +340,41 @@ describe('cortège du 14 juillet en cellulo (G5)', () => {
     for (const kind of ['cavalry', 'band', 'flags', 'infantry', 'jeeps'] as const) {
       const c = render(<svg><ParadeUnitSprite unit={unit(kind)} sky={sky} still={false} /></svg>);
       expect(count(c, 'image, [data-prop-cycle], [data-horse]'), kind).toBe(0);
+    }
+  });
+});
+
+// Habitants 3D : une unité du défilé est montée avant d'entrer dans le champ ; hors champ, cachée tant qu'un de ses personnages
+// attend sa 3D (pas de pantin qui change de modèle sous les yeux) ; dans le champ, toujours entière (pantin de repli).
+describe('défilé et habitants 3D', () => {
+  it('unité qui va entrer : montée hors champ, cachée, personnages en attente de leur 3D ; unités dans le champ : personnages dessinés', () => {
+    const minutes = 630;
+    const base = 1_790_000_040;
+    const dayStart = Math.floor(base / 60) * 60 - minutes * 60;
+    const units = paradeUnits(1, 720, dayStart).filter((u) => u.lane === 'near');
+    // Instant (dans la minute de `base`) où une unité est à moins de 6 s de son entrée.
+    let t = base;
+    while (t < base + 59 && !units.some((u) => paradeX(u, 720, t) === null && paradeX(u, 720, t + 4) !== null)) t += 0.5;
+    const coming = units.find((u) => paradeX(u, 720, t) === null && paradeX(u, 720, t + 4) !== null);
+    expect(coming).toBeDefined();
+    vi.spyOn(Date, 'now').mockReturnValue(t * 1000);
+    const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+    const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
+    const figures = new FigureRegistry('tparade', { citizens: () => fake, now: () => 0 });
+    const sky = skyAt(minutes, times);
+    const c = render(<FigureContext.Provider value={figures}><svg><ParadeLayer width={720} seed={1} sky={sky} still={false} dayFests={['bastille']} minutes={minutes} metrics={cityMetrics(340)} lane="near" ghibli /></svg></FigureContext.Provider>);
+    const node = c.querySelector(`[data-parade-id="${coming!.id}"]`);
+    expect(node).not.toBeNull();
+    expect(node!.getAttribute('visibility')).toBe('hidden');
+    const figs = [...node!.querySelectorAll('[data-figure]')];
+    expect(figs.length).toBeGreaterThan(0);
+    for (const f of figs) expect(f.firstElementChild!.getAttribute('href')).toBeNull();
+    for (const u of units) {
+      if (paradeX(u, 720, t) === null) continue;
+      const n = c.querySelector(`[data-parade-id="${u.id}"]`);
+      if (!n) continue;
+      expect(n.getAttribute('visibility')).not.toBe('hidden');
+      for (const f of n.querySelectorAll('[data-figure]')) expect(f.firstElementChild!.getAttribute('href')).not.toBeNull();
     }
   });
 });

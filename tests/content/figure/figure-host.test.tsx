@@ -37,7 +37,7 @@ describe('palette', () => {
     expect(r.addPalette({ ...pal })).toBe(r.addPalette(pal));
   });
   it('père Noël : cases de la tenue (barbe, fourrure, ceinture, boucle, gants, nez, joues) et bottes noires', () => {
-    const p = figurePalette(o, sky, false, true);
+    const p = figurePalette(o, sky, false, undefined, { santa: true });
     for (const s of ['beard', 'fur', 'belt', 'buckle', 'glove', 'nose', 'cheek']) {
       expect(p[`f-${s}`]).toBeTruthy();
       expect(p[`fs-${s}`]).toBeTruthy();
@@ -163,6 +163,23 @@ describe('éviction et détenteurs', () => {
     r.flush();
     expect(r.has(spriteKey(pk, { ...key, phase: 0 }))).toBe(true);
     expect(r.has(spriteKey(pk, { ...key, phase: 1 }))).toBe(false);
+  });
+  it('sans habitant 3D : l’éviction d’avant (une clé détenue rencontrée repasse en fin d’ordre d’usage)', () => {
+    const { r, pk } = reg({ max: 2 });
+    const n = fig();
+    const k = (p: number): string => spriteKey(pk, { ...key, phase: p });
+    r.ensure(pk, { ...key, phase: 0 });
+    r.hold(n, k(0));
+    r.ensure(pk, { ...key, phase: 1 });
+    r.ensure(pk, { ...key, phase: 2 });
+    r.flush();
+    // k0 détenue, passée après k2 ; k1 retirée.
+    expect([r.has(k(0)), r.has(k(1)), r.has(k(2))]).toEqual([true, false, true]);
+    r.hold(n, null);
+    r.ensure(pk, { ...key, phase: 3 });
+    r.flush();
+    // k2 est désormais la plus ancienne : elle part, k0 reste.
+    expect([r.has(k(0)), r.has(k(2)), r.has(k(3))]).toEqual([true, false, true]);
   });
 });
 

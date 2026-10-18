@@ -11,6 +11,7 @@ import { dayNumber } from '../core/library/city/shops/hours';
 import { phaseIndexOf } from '../core/library/figure/gait';
 import type { ArmPose } from '../core/library/figure/skeleton';
 import type { Sky } from '../core/library/sky';
+import { citizenSeed } from '../core/citizens/identity';
 import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { useFigureRegistry, type FigureRegistry } from './figure/figure-host';
@@ -189,7 +190,7 @@ const Fan = memo(function Fan({ s, dance, sky, still, rainy, m, ghibli }: { s: M
       <g>
         {bounce && <animateTransform attributeName="transform" type="translate" values="0 0;0 -2.2;0 0" dur={`${dur.toFixed(2)}s`} begin={`-${(s.phase * dur).toFixed(2)}s`} repeatCount="indefinite" />}
         {ghibli ? (
-          <GhibliFigure outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} initial={standPose(s, dance, 0, true)} held={s.beer ? cupHeld(sky) : undefined} />
+          <GhibliFigure outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} initial={standPose(s, dance, 0, true)} held={s.beer ? cupHeld(sky) : undefined} citizen={citizenSeed(s.id)} />
         ) : (
           <>
             <PersonSprite outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} />
@@ -206,7 +207,7 @@ function Walker({ s, p, sky, rainy, m, ghibli }: { s: MusicSpectator; p: MusicCr
   return (
     <Mover attrs={{ 'data-music-spectator': '', 'data-fan-id': s.id, 'data-zone': s.zone, 'data-mode': 'walking' }} p={p} m={m} ghibli={ghibli}>
       {ghibli ? (
-        <GhibliFigure outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} initial={stepPose(p, m, s.beer ? 'cup' : 'swing')} held={s.beer ? cupHeld(sky) : undefined} />
+        <GhibliFigure outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} initial={stepPose(p, m, s.beer ? 'cup' : 'swing')} held={s.beer ? cupHeld(sky) : undefined} citizen={citizenSeed(s.id)} />
       ) : (
         <>
           <PersonSprite outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} stride={s.phase} />
@@ -233,6 +234,8 @@ function Server({ v, st, sky, rainy, still, m, ghibli, gesture }: { v: BeerServe
           rainy={rainy}
           umbrella={false}
           work="apron"
+          citizen={citizenSeed(v.id)}
+          kind="adult"
           initial={stepPose(st, m, arms)}
           held={[{ anchor: 'handR', node: <g data-server-cup="" visibility={arms === 'hold' ? undefined : 'hidden'}><HeldCup sky={sky} /></g> }]}
         />
@@ -261,7 +264,7 @@ function Customer({ c, st, sky, rainy, still, m, ghibli, a }: { c: BeerCustomer;
   return (
     <Mover attrs={{ 'data-queue-person': c.id, 'data-mode': st.mode, 'data-rank': st.rank ?? undefined }} p={st} m={m} ghibli={ghibli}>
       {ghibli ? (
-        <GhibliFigure outfit={c.outfit} sky={sky} rainy={rainy} umbrella={false} initial={stepPose(st, m, customerArms(c, st, a))} held={st.drinking ? cupHeld(sky) : undefined} />
+        <GhibliFigure outfit={c.outfit} sky={sky} rainy={rainy} umbrella={false} initial={stepPose(st, m, customerArms(c, st, a))} held={st.drinking ? cupHeld(sky) : undefined} citizen={citizenSeed(c.id)} />
       ) : (
         <>
           <PersonSprite outfit={c.outfit} sky={sky} rainy={rainy} umbrella={false} stride={walking ? phase : null} />

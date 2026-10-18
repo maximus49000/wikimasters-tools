@@ -101,6 +101,11 @@ const searchSchema = z.object({
   ),
 });
 
+const imagesSchema = z.object({ posters: z.array(z.object({ file_path: z.string(), iso_639_1: z.string().nullish() })) });
+// Ordre des affiches proposées comme versions d'un DVD : françaises, anglaises, puis sans texte (aucune autre langue n'est demandée).
+const POSTER_LANGUAGES = ['fr', 'en', null] as const;
+const IMAGE_LANGUAGES = 'fr,en,null';
+
 const yearOf = (date: string | undefined): number | undefined => (date && /^\d{4}/.test(date) ? Number(date.slice(0, 4)) : undefined);
 const roundRating = (value: number): number => Math.round(value * 10) / 10;
 const normalize = (text: string): string => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -224,6 +229,16 @@ export function createTmdbApi(deps: { fetch: TmdbFetch }) {
       const data = await get('/search/multi', { query }, searchSchema);
       const found = data.results.find((result) => (result.media_type === 'movie' || result.media_type === 'tv') && result.poster_path);
       return found?.poster_path ? `${TMDB_POSTER_BASE}${found.poster_path}` : null;
+    },
+
+    // Versions d'affiche d'un film (« Changer la version » d'un DVD de la pièce) : film au titre exact, puis toutes ses affiches
+    // fr, en et sans langue, dans cet ordre (ordre de TMDB gardé dans chaque langue), sans doublon. Aucun film : liste vide.
+    async posterVersions(query: string): Promise<string[]> {
+      const found = await findExact('/search/movie', query);
+      if (!found) return [];
+      const data = await get(`/movie/${found.id}/images`, { include_image_language: IMAGE_LANGUAGES }, imagesSchema);
+      const paths = POSTER_LANGUAGES.flatMap((language) => data.posters.filter((poster) => (poster.iso_639_1 ?? null) === language).map((poster) => poster.file_path));
+      return [...new Set(paths)].map((path) => `${TMDB_POSTER_BASE}${path}`);
     },
 
     // Affiche d'un film ou d'une série trouvé par son titre exact ; null sinon.

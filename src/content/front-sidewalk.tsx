@@ -5,6 +5,7 @@ import { EDGE_PAD, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } f
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import { hashString, loopX } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { citizenSeed, kindOfProfile } from '../core/citizens/identity';
 import { PersonSprite } from './city-sprites';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
@@ -97,7 +98,7 @@ export function FrontSidewalk({ width, seed, metrics, sky, rainy, still, ghibli,
         const on = shown.current.get(p.id) ?? wanted(p);
         return (
           <g key={p.id} data-front-ped={p.id} visibility={on ? 'visible' : 'hidden'} transform={transform(p, t0)}>
-            {ghibli ? <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pose(p, t0)} hidden={!on} /> : <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} />}
+            {ghibli ? <GhibliFigure outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={pose(p, t0)} hidden={!on} citizen={citizenSeed(`front:${p.id}`)} kind={kindOfProfile(p.profile)} waitFor3D /> : <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} />}
           </g>
         );
       })}

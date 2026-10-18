@@ -26,7 +26,7 @@ export const FAMILLES: Famille[] = [
       ...c(
         'Book*', 'book-service.*', 'Game*', 'game-service.*', 'game-box-service.*', 'Writer*', 'WatchProviders.*', 'HlsTrailerPlayer.*', 'fullscreen.*',
         'documentary-*', 'screen-*', 'platform-service.*', 'use-platform.*', 'work-list.*', 'orientation-lock.*',
-        'card-art.*', 'card-frame.*', 'card-preview-dom.*', 'card-popup-position.*', 'card-thumb.*', 'media-art.*', 'image-probe.*',
+        'card-art.*', 'card-frame.*', 'card-preview-dom.*', 'card-popup-position.*', 'card-thumb.*', 'media-art.*', 'image-probe.*', 'cover-cache.*', 'cover-versions.*',
       ),
       'tests/core/{book,game,documentary,screen,images,birth,geo}/**',
     ],
@@ -85,10 +85,10 @@ export const FAMILLES: Famille[] = [
     lourde: true,
     fichiers: [
       ...c(
-        'furniture-drag*', 'placement.*', 'placement-bar.*', 'library-placement.*', 'library-sims-ui.*', 'furniture-thumb.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
+        'furniture-drag*', 'arrange-view.*', 'card-bubble.*', 'arrange-shelf.*', 'arrange-add.*', 'placement.*', 'placement-bar.*', 'library-placement.*', 'library-sims-ui.*', 'furniture-thumb.*', 'library-cards.*', 'library-drag.*', 'library-furniture*', 'library-panel.*', 'library-steampunk-furniture.*',
         'library-window-furniture.*', 'room-card-dialog.*', 'card-picker-dialog.*', 'room-steampunk-decor.*', 'room-depth.*', 'window-gaps.*', 'window-art.*', 'model3d-art.*', 'item3d-art.*', 'room-angle.*', 'room-carried*', 'furniture-zoom.*', 'library-zoom.*', 'shelf-board-zoom.*', 'deco-art.*', 'deco-fonts.*', 'library-deco*', 'item-case.*', 'opened-item-hook.*', 'opened-item-layer.*', 'selectors.*', 'hifi*', 'disc-flight.*', 'game-box-content.*', 'game-spine.*', 'game-outside.*', 'back-magnifier.*',
       ),
-      ...lib('room-grid*', 'surface.*', 'library-migration-v6.*', 'library-migration-v7.*', 'library-migration-v8.*', 'library-migration-v9.*', 'furniture-catalog.*', 'footprint.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*', 'zoom-target.*', 'shelf-link.*', 'furniture-render3d.*', 'furniture-models.*', 'item-models.*', 'carried-items.*', 'clock-cities.*', 'text-fit.*', 'opened-item.*', 'hifi.*'),
+      ...lib('room-grid*', 'board-mixed.*', 'surface.*', 'arrange.*', 'library-migration-v6.*', 'library-migration-v7.*', 'library-migration-v8.*', 'library-migration-v9.*', 'library-migration-v10.*', 'posed-cards.*', 'card-edit.*', 'furniture-catalog.*', 'footprint.*', 'library-book*', 'library-migration.*', 'library-repo.*', 'library-style.*', 'shape-suggest.*', 'zoom-target.*', 'shelf-link.*', 'furniture-render3d.*', 'furniture-models.*', 'item-models.*', 'carried-items.*', 'clock-cities.*', 'text-fit.*', 'opened-item.*', 'hifi.*'),
       'tests/core/picker-filter.test.ts',
     ],
   },
@@ -137,7 +137,13 @@ export const FAMILLES: Famille[] = [
     // Piétons et pantins : squelette, démarche, passants, sprites des gens.
     nom: 'scene-pietons',
     lourde: true,
-    fichiers: [...c('figure/**', 'city-life.*', 'city-life-ghibli.*', 'city-sprites.*'), ...lib('figure/**', 'figure-g4b-poses.*', 'city-people.*')],
+    fichiers: [...c('figure/figure-host.*', 'city-life.*', 'city-life-ghibli.*', 'city-sprites.*'), ...lib('figure/**', 'figure-g4b-poses.*', 'city-people.*')],
+  },
+  {
+    // Habitants 3D : interrupteur, garde-robe, catalogue, visages, hôte three.js des figures.
+    nom: 'scene-habitants3d',
+    lourde: true,
+    fichiers: [...c('citizens/**', 'figure/figure-host-3d.*'), 'tests/core/citizens/**'],
   },
   {
     // Commerces : boutiques, employés, clients, terrasses, metteur en scène, déménagements de boutiques.

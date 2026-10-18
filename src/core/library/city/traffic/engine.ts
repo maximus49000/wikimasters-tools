@@ -35,6 +35,8 @@ export const lightPoleX = (lightX: number, track: Track, unit: number): number =
 const HIST = 20; // 2 s d'historique
 export const MARGIN = 90; // px hors champ de chaque côté (× unit)
 const WARM_S = 120;
+// Habitants 3D : un véhicule dont un personnage attend sa 3D est retenu juste avant le bord du champ, HOLD_MAX_S au plus.
+export const HOLD_MAX_S = 3;
 const MAX_CATCHUP_S = 120;
 
 // Demi-longueur dessinée (repère du sprite) et vitesse de base (px/s à unit = 1) par genre.
@@ -78,6 +80,10 @@ export type Agent = {
   ppitch: number;
   lean: number; // inertie des occupants (> 0 : penchés en avant)
   plean: number;
+  // Habitants 3D (advance, `wait3D`) : début de la retenue hors champ (s du monde) ; `entered` : retenue finie (entré dans le
+  // champ, ou attente maximale écoulée), jamais plus retenu.
+  heldSince?: number;
+  entered?: boolean;
 };
 
 // `line` (bus à horaires) : rang de la ligne du bus parmi celles de la pièce (modulo leur nombre), pour que le panneau
@@ -101,6 +107,10 @@ export type TrafficEnv = {
   // Bus à horaires (bus-timetable.ts) : ils n'entrent que par `arrivals` (plus de bus tirés au hasard) et les voyageurs ne
   // viennent attendre que si un bus passe bientôt. Absent : ancien comportement (bus tirés dans la circulation).
   timetable?: boolean;
+  // Habitants 3D : occupants des arrivées planifiées (bus, tram…) tirés de leur clé, connue d'avance (scheduledCrew), pour
+  // préparer leur 3D avant l'entrée. Seule la graine du modèle (sièges, tenues) change ; graine, caractère et marche de
+  // l'agent restent ceux d'avant. Absent : comportement d'avant.
+  keyedCrews?: boolean;
 };
 
 export type NextBus = { in: number; line: BusLine };
@@ -338,6 +348,7 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
     const half = e.half !== undefined ? e.half * VEHICLE_SCALE * (e.track === 'far' ? FAR_SHRINK : 1) : undefined;
     if (!entryFree(w, e.track, (half ?? KIND_HALF[e.kind] * VEHICLE_SCALE) * w.unit)) continue;
     const a = newAgent(w, e.kind, e.track, { event: e.key, ...(half !== undefined ? { half } : {}) });
+    if (env.keyedCrews && a.special) a.special = { ...a.special, seed: crewSeed(w, e.key) };
     if (e.kind === 'bus') { a.stops = [sOfX(w, e.track, w.busStop[e.track === 'far' ? 'far' : 'near'])]; a.stopFor = [8, 14]; }
     if (e.kind === 'bus' && e.line !== undefined && a.special) a.special = { ...a.special, line: lineOf(w, e.line, e.track) };
     if (e.kind === 'garbage-truck') {
@@ -381,6 +392,16 @@ function spawn(w: TrafficWorld, env: TrafficEnv, t: number): void {
   }
 }
 
+// Habitants 3D (env.keyedCrews) : graine du modèle d'une arrivée planifiée, tirée de sa clé. `scheduledCrew` : modèle dont
+// les sièges (places, tenues) seront ceux du véhicule, connu avant son entrée (ligne et girouette omises : sans effet sur
+// les sièges) ; null pour un événement sans modèle (vélo livreur).
+const crewSeed = (w: TrafficWorld, key: string): number => (hashString(`crew:${key}`) ^ w.seed) >>> 0;
+const CREW_MODEL: Partial<Record<AgentKind, SpecialId>> = { bus: 'bus', 'school-bus': 'school-bus', tram: 'tram', ambulance: 'ambulance', 'garbage-truck': 'garbage' };
+export function scheduledCrew(w: TrafficWorld, e: ScheduledArrival): SpecialSpec | null {
+  const id = CREW_MODEL[e.kind];
+  return id ? { id, seed: crewSeed(w, e.key) } : null;
+}
+
 // Ce que `me` perçoit de `lead` : sa position et sa vitesse il y a me.h.react s, jamais plus loin qu'il n'est.
 function perceived(me: Agent, lead: Agent): { s: number; v: number } {
   const back = Math.min(HIST - 1, Math.round(me.h.react / DT));
@@ -421,7 +442,7 @@ function roomAhead(w: TrafficWorld, lead: Agent, u: number): number {
   return front > stopS ? Infinity : stopS - front;
 }
 
-function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
+function stepOnce(w: TrafficWorld, env: TrafficEnv, wait3D?: ReadonlySet<string>): void {
   const t = w.t + DT;
   const u = w.unit;
   spawn(w, env, t);
@@ -481,6 +502,19 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
           if (canStop && g < gap) { gap = g; vLead = 0; }
         }
       }
+      // Habitants 3D : un personnage du véhicule attend sa 3D → retenu juste avant le bord du champ (obstacle immobile, comme
+      // un feu : la file se forme derrière, rien ne le traverse), HOLD_MAX_S au plus ; jamais retenu une fois entré.
+      const edge = MARGIN * u - 1 * u;
+      let held = false;
+      if (wait3D && !me.entered) {
+        if (me.s + me.half > edge || (me.heldSince !== undefined && t - me.heldSince >= HOLD_MAX_S)) me.entered = true;
+        else if (wait3D.has(me.id)) {
+          me.heldSince ??= t;
+          held = true;
+          const g = edge + me.h.s0 * u - (me.s + me.half); // IDM s'arrête à s0 de l'obstacle : au ras du bord
+          if (g < gap) { gap = Math.max(g, 0); vLead = 0; }
+        }
+      }
       let target: number;
       if (me.stop !== null) {
         target = -me.h.b * u * 2;
@@ -506,6 +540,7 @@ function stepOnce(w: TrafficWorld, env: TrafficEnv): void {
         const limit = lead.s - lead.half - me.half - 1 * u;
         if (next > limit) { next = Math.max(me.s, limit); me.v = Math.min(me.v, lead.v); }
       }
+      if (held && next + me.half > edge) { next = Math.max(me.s, edge - me.half); me.v = 0; }
       me.dist += next - me.s;
       me.s = next;
       if (me.v < 0.5 * u && me.cmd < 0) me.cmd = 0;
@@ -613,9 +648,11 @@ function stepCrossing(w: TrafficWorld, env: TrafficEnv, t: number): void {
 
 // Fait avancer le monde jusqu'à `toS` (pas fixes). Un retard de plus de MAX_CATCHUP_S (onglet en arrière-plan) est rattrapé
 // sur les dernières MAX_CATCHUP_S seulement.
-export function advance(w: TrafficWorld, toS: number, env: TrafficEnv): void {
+// `wait3D` (habitants 3D) : ids des véhicules dont un personnage attend sa 3D, retenus hors champ (HOLD_MAX_S au plus).
+// Absent (interrupteur à false, mouvement réduit) : aucune retenue, moteur d'avant.
+export function advance(w: TrafficWorld, toS: number, env: TrafficEnv, wait3D?: ReadonlySet<string>): void {
   if (toS - w.t > MAX_CATCHUP_S) w.t = Math.floor((toS - MAX_CATCHUP_S) / DT) * DT;
-  while (w.t + DT <= toS + 1e-9) stepOnce(w, env);
+  while (w.t + DT <= toS + 1e-9) stepOnce(w, env, wait3D);
 }
 
 // Monde déjà vivant à l'instant `startS` (démarrage à chaud de WARM_S s).

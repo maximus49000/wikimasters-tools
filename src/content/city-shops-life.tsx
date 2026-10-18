@@ -19,10 +19,11 @@ import { TURN_S, YAW_BACK, YAW_FRONT, YAW_RIGHT, facingYaw, phaseIndexOf, turnYa
 import type { Work } from '../core/library/figure/dress';
 import type { ArmPose } from '../core/library/figure/skeleton';
 import type { Sky } from '../core/library/sky';
+import { citizenSeed } from '../core/citizens/identity';
 import { PersonSprite } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import type { FigureRegistry } from './figure/figure-host';
-import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { GhibliFigure, hideFigure, poseFigure, prewarmFigure, shopIdentity, type PoseIn } from './figure/ghibli-figure';
 import { AccessorySprite, GhibliPosed, LIFTING, PosedPerson, STANDING, applyGhibliPose, applyPose, ghibliHandles, ghibliPoseOf, poseHandles, showCarry, type GhibliPoseHandles, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
 import { NightclubDoor } from './shop-queue';
@@ -183,6 +184,48 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
   }
 }
 
+// Habitants 3D : un client qui paraît dans moins de CUSTOMER_WARM_S secondes fait rendre d'avance les cycles de ses poses des
+// CUSTOMER_SPAN_S premières secondes (rue, seuil, vitrine ; relevées tous les quarts de seconde), sur le nœud (caché) qui les
+// montrera : il arrive directement en 3D, sans pantin ni changement de modèle sous les yeux. Ensuite, montré en 3D, il n'y revient
+// jamais (image 3D la plus proche, figure-host). À appeler une fois par seconde par la boucle (Ghibli seulement).
+export const CUSTOMER_WARM_S = 12;
+const CUSTOMER_SPAN_S = 8;
+const WARM_STEP_S = 0.25;
+type WarmNode = 'street' | 'door' | 'inside';
+export type CustomerWarmCache = Map<string, { at: number; poses: { node: WarmNode; pose: FigurePose }[] }>;
+export function warmCustomers(nodes: ReadonlyMap<string, Element>, visits: Visit[], gates: Map<string, number>, width: number, m: CityMetrics, t: number, figures: FigureRegistry, cache: CustomerWarmCache, muted: ReadonlySet<string> = NO_MUTED, lock?: VisitLock): void {
+  const stateAt = (v: Visit, gate: number, at: number): CustomerState => customerState(v, gate, width, at, lock, false);
+  for (const v of visits) {
+    const gate = muted.has(v.id) ? 0 : (gates.get(v.slotId) ?? 0);
+    // Déjà en route : rien à préparer (sa première image a déjà été montrée).
+    if (gate <= 0 || stateAt(v, gate, t).on) continue;
+    let at = -1;
+    for (let dt = WARM_STEP_S; dt <= CUSTOMER_WARM_S && at < 0; dt += WARM_STEP_S) if (stateAt(v, gate, t + dt).on) at = t + dt;
+    if (at < 0) continue;
+    let e = cache.get(v.id);
+    if (!e || Math.abs(e.at - at) > 1) {
+      const seen = new Map<string, { node: WarmNode; pose: FigurePose }>();
+      for (let tau = at; tau <= at + CUSTOMER_SPAN_S; tau += WARM_STEP_S) {
+        const s = stateAt(v, gate, tau);
+        const where = whereOf(s);
+        let w: { node: WarmNode; pose: FigurePose } | null = null;
+        if ((where === 'street' || where === 'door') && s.passage) w = { node: where, pose: passagePose(v, s.passage, m) };
+        else if (where === 'inside' && s.inner) w = { node: 'inside', pose: atSeat(s.inner) && s.gesture ? ghibliPoseOf(s.gesture, s.inner.yaw, s.inner.gait === 'seated') : innerPose(v, s.inner) };
+        if (!w) continue;
+        const k = `${w.node}|${w.pose.yaw}|${w.pose.gait}|${w.pose.head}|${w.pose.arms ?? ''}|${w.pose.lean ?? 0}`;
+        if (!seen.has(k)) seen.set(k, w);
+      }
+      e = { at, poses: [...seen.values()] };
+      cache.set(v.id, e);
+      if (cache.size > 4096) cache.delete(cache.keys().next().value as string);
+    }
+    for (const w of e.poses) {
+      const id = w.node === 'street' ? v.id : w.node === 'door' ? doorId(v) : insideId(v);
+      prewarmFigure(figures, nodes.get(id)?.querySelector('[data-figure]') ?? null, [w.pose], e.at - t);
+    }
+  }
+}
+
 type CustomersProps = {
   visits: Visit[];
   frames: Map<string, ShopFrame>;
@@ -247,6 +290,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
                       gesture={seat ? s.gesture : null}
                       seated={inner.gait === 'seated'}
                       hidden={!on}
+                      who={shopIdentity(v.outfit, v.id)}
                     />
                   ) : (
                     <>
@@ -284,6 +328,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
               umbrella={withUmbrella}
               initial={p}
               hidden={!on}
+              {...shopIdentity(v.outfit, v.id)}
               held={takes ? [{ anchor: withUmbrella ? 'handL' : 'handR', node: <g data-item-carry="" display={on && s.carry ? 'inline' : 'none'}><AccessorySprite id={ACCESSORY[v.type!]} sky={sky} ghibli /></g> }] : undefined}
             />
           ) : (
@@ -454,7 +499,7 @@ export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, sti
             style={{ transform: `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px)`, transition: move }}
           >
             <g transform={ghibli ? `scale(${k.toFixed(3)})` : `scale(${(c.dir * k).toFixed(3)} ${k.toFixed(3)})`}>
-              {ghibli ? <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} work="vest" initial={workerPose(w, since)} /> : <PersonSprite outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} />}
+              {ghibli ? <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} work="vest" initial={workerPose(w, since)} citizen={citizenSeed(`${id}-crew-${i}`)} kind="adult" /> : <PersonSprite outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} />}
             </g>
             {item(c.holds, c)}
           </g>
@@ -749,7 +794,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
                   transform={`translate(${x.toFixed(2)} ${win.h - 1}) scale(${(ghibli ? 1 : dir) * STAFF_SCALE} ${STAFF_SCALE})`}
                 >
                   {ghibli ? (
-                    <GhibliPosed outfit={outfits.get(s.id)!} sky={inSky} rainy={false} accessory={ACCESSORY[type]} figure={ghibliPoseOf(pose, yaw, false)} gesture={pose} work={workOf(type)} />
+                    <GhibliPosed outfit={outfits.get(s.id)!} sky={inSky} rainy={false} accessory={ACCESSORY[type]} figure={ghibliPoseOf(pose, yaw, false)} gesture={pose} work={workOf(type)} who={shopIdentity(outfits.get(s.id)!, undefined, 'adult')} />
                   ) : (
                     <PosedPerson outfit={outfits.get(s.id)!} sky={inSky} rainy={false} umbrella={false} accessory={ACCESSORY[type]} pose={pose} />
                   )}
@@ -780,7 +825,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
           const dPos: Passage = atSill?.passage ?? { stage: 'threshold', x: doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
           const { clip, dark } = sillBox(atSill?.rect ?? door, dPos.depth, metrics, k);
           const withUmbrella = umbrella && !lifting;
-          const fig = (p: FigurePose, on: boolean): ReactElement => <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} work={workOf(type)} initial={p} hidden={!on} />;
+          const fig = (p: FigurePose, on: boolean): ReactElement => <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} work={workOf(type)} initial={p} hidden={!on} {...shopIdentity(outfit, undefined, 'adult')} />;
           return (
             <g key={s.id} data-staff-member={s.id} data-staff-where={state.where} data-active={visible ? 'true' : 'false'} {...(walk ? { 'data-walk': JSON.stringify(walk) } : {})}>
               <g data-staff-street="" transform={staffStreetT(onStreet ? onStreet.x : x, metrics.doorY, k)} visibility={onStreet ? 'visible' : 'hidden'}>

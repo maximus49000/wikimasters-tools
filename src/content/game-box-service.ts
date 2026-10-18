@@ -52,6 +52,10 @@ const studioOf = (detail: GameDetail): { studio?: string } => (detail.developers
 const printedTitle = (title: string, detail: GameDetail): string => cleanTitle(title) || detail.title;
 
 const RETRY_AFTER_FAILURE_MS = 60_000;
+// Boîte calculée gardée sur l'appareil : au lancement suivant, ni fiche, ni TheGamesDB, ni mesure de la jaquette.
+const SAVED_TTL_MS = 30 * 24 * 3_600_000;
+const savedKey = (slug: string): string => `game-box-${slug}`;
+type Saved = { box: GameBox | null; at: number } | null;
 const FOUND_TTL_MS = 365 * 24 * 3_600_000;
 const EMPTY_TTL_MS = 7 * 24 * 3_600_000;
 const SPACING_MS = 1_100;
@@ -240,6 +244,26 @@ export function createGameBoxService(deps: GameBoxDeps) {
     return { box: version ? await fromVersion(version, title, detail, slug, urgent) : fallback(detail, title, true), failed: false };
   }
 
+  // Cartes dont la boîte mémorisée est périmée pendant cette session (version ou jeu changé) : recalculées.
+  const stale = new Set<string>();
+
+  // Boîte mémorisée (30 jours) si elle existe, sinon calculée puis mémorisée ; une panne n'est jamais mémorisée.
+  async function remembered(slug: string, title: string, urgent: boolean): Promise<BoxOutcome> {
+    const gen = generationOf(slug);
+    if (!stale.has(slug)) {
+      const saved = await store.get<Saved>(savedKey(slug)).catch((): undefined => undefined);
+      // Version sans captures ni logo : revérifiée comme « aucune image » (7 jours).
+      const bare = saved?.box?.tgdbId !== undefined && saved.box.shots.length === 0 && !saved.box.logoUrl;
+      if (saved && saved.at <= now() && now() - saved.at < (bare ? EMPTY_TTL_MS : SAVED_TTL_MS)) return { box: saved.box, failed: false };
+    }
+    const out = await compute(slug, title, urgent);
+    if (!out.failed && generationOf(slug) === gen) {
+      stale.delete(slug);
+      await store.set<Saved>(savedKey(slug), { box: out.box, at: now() }).catch(() => undefined);
+    }
+    return out;
+  }
+
   // Un seul calcul à la fois par carte (box, request et outcome partagent le même) ; un calcul lancé avant un
   // changement de version ne peut pas écraser le résultat plus récent. Une demande urgente faite pendant un calcul
   // de fond fait passer les appels restants de cette carte devant la file.
@@ -249,7 +273,7 @@ export function createGameBoxService(deps: GameBoxDeps) {
     if (existing) return existing;
     lastTitle.set(slug, title);
     const gen = generationOf(slug);
-    const promise: Promise<BoxOutcome> = compute(slug, title, urgent)
+    const promise: Promise<BoxOutcome> = remembered(slug, title, urgent)
       .then((out) => {
         if (generationOf(slug) !== gen) return out;
         known.set(slug, { box: out.box, ...(out.failed ? { failedAt: now() } : {}) });
@@ -270,6 +294,8 @@ export function createGameBoxService(deps: GameBoxDeps) {
   // Recalcule aussitôt la boîte d'une carte dont la version vient de changer.
   function restart(slug: string): void {
     generation.set(slug, generationOf(slug) + 1);
+    stale.add(slug);
+    void store.set<Saved>(savedKey(slug), null).catch(() => undefined);
     known.delete(slug);
     running.delete(slug);
     onChanged?.(slug);
@@ -312,6 +338,9 @@ export function createGameBoxService(deps: GameBoxDeps) {
         return [];
       }
     },
+
+    // Le jeu de la carte a changé (autre jeu, « aucun jeu ») : la boîte mémorisée est oubliée et recalculée.
+    forget: (slug: string): void => restart(slug),
 
     async chooseVersion(slug: string, tgdbId: number): Promise<void> {
       await choices.save(slug, { tgdbId });

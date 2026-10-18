@@ -3,7 +3,8 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content/figure/figure-host';
+import { PAL } from '../../src/core/citizens/catalogue';
 import { SANTA_K, SANTA_OUTFIT, SantaLayer } from '../../src/content/santa-layer';
 import { cityFacades } from '../../src/core/library/city/facades';
 import { cityMetrics } from '../../src/core/library/city/metrics';
@@ -46,10 +47,10 @@ const found = ((): { pass: ReturnType<typeof santaPassFor>; roof: NonNullable<Re
 })();
 const { pass, roof } = found;
 const at = (p: number): number => pass.start + p * SANTA_WINDOW_S;
-const mount = (T: number, ghibli: boolean): HTMLDivElement => {
+const mount = (T: number, ghibli: boolean, reg = new FigureRegistry('t9s', { perFrame: 200 })): HTMLDivElement => {
   vi.spyOn(Date, 'now').mockReturnValue(T * 1000);
   return render(
-    <FigureContext.Provider value={new FigureRegistry('t9s', { perFrame: 200 })}>
+    <FigureContext.Provider value={reg}>
       <svg>
         <SantaLayer width={W} height={H} seed={SEED} sky={night} facades={facades} ground={ground} fests={['christmas-eve']} daylight={0} still={false} frozenT={T} ghibli={ghibli} />
       </svg>
@@ -163,6 +164,16 @@ const hAt = (p: number): number => hillFound.pass.start + p * SANTA_WINDOW_S;
 const displayed = (n: Element | null): boolean => n !== null && n.getAttribute('display') !== 'none';
 
 describe('père Noël Ghibli', () => {
+  it('habitants 3D : le père Noël reste le pantin Ghibli (pas de base 3D), aucun habitant demandé au registre', () => {
+    const fake: Citizen3D = { ready: () => true, prepare() {}, render: () => null, dispose() {} };
+    const reg = new FigureRegistry('t9s3d', { citizens: () => fake });
+    const spy = vi.spyOn(reg, 'citizen');
+    const c = mount(at(0.1), true, reg);
+    expect(spy).not.toHaveBeenCalled();
+    const figs = [...c.querySelectorAll('[data-santa-figure] [data-figure]')];
+    expect(figs.length).toBeGreaterThan(0);
+    for (const f of figs) expect(f.getAttribute('data-key') ?? '').not.toContain('@3d');
+  });
   it('tenue rouge, bonnet rouge ; échelle des passants', () => {
     expect(SANTA_OUTFIT).toMatchObject({ topColor: '#C0302B', bottomColor: '#C0302B', hair: 'beanie', hatColor: '#C0302B' });
     expect(SANTA_K).toBe(0.55);

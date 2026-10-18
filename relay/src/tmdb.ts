@@ -2,8 +2,8 @@
 import { failure, forward, type Fetcher, type ProxyResult } from './proxy';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
-// Les seules routes TMDB que l'appli utilise (fiche, filmographie, recherches).
-const PATHS = [/^\/movie\/\d{1,9}$/, /^\/tv\/\d{1,9}$/, /^\/person\/\d{1,9}\/combined_credits$/, /^\/search\/(?:movie|tv|person|multi)$/];
+// Les seules routes TMDB que l'appli utilise (fiche, filmographie, recherches, affiches d'un film pour les versions de DVD).
+const PATHS = [/^\/movie\/\d{1,9}$/, /^\/movie\/\d{1,9}\/images$/, /^\/tv\/\d{1,9}$/, /^\/person\/\d{1,9}\/combined_credits$/, /^\/search\/(?:movie|tv|person|multi)$/];
 // Les seuls paramètres transmis, chacun avec sa forme ; tout autre paramètre est ignoré.
 const PARAMS = new Map<string, (value: string) => boolean>([
   ['language', (value) => /^[a-z]{2}(?:-[A-Z]{2})?$/.test(value)],
@@ -11,6 +11,7 @@ const PARAMS = new Map<string, (value: string) => boolean>([
   // Valeurs exactes envoyées par le client (tmdb-api.ts) : rien d'autre ne passe.
   ['append_to_response', (value) => value === 'videos,watch/providers'],
   ['include_video_language', (value) => value === 'fr,en,null'],
+  ['include_image_language', (value) => value === 'fr,en,null'],
 ]);
 
 export async function proxyTmdb(url: URL, deps: { fetch: Fetcher; apiKey: string | undefined }): Promise<ProxyResult> {

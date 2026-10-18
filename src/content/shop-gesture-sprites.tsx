@@ -6,7 +6,7 @@ import type { ArmPose } from '../core/library/figure/skeleton';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, SEAT_DROP, tone } from './city-sprites';
 import type { FigureRegistry } from './figure/figure-host';
-import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { GhibliFigure, poseFigure, type CitizenIdentity, type PoseIn } from './figure/ghibli-figure';
 import '../core/library/paint/props/terrace';
 import { PropImage } from './prop/prop-host';
 
@@ -231,8 +231,9 @@ const show = (on: boolean): string => (on ? 'inline' : 'none');
 // `handR`, montré pendant un geste « hand ») et le même accessoire posé (comptoir, table), dans un groupe balancé (`sway`).
 // `gesture` null (il marche) : rien à la main ni posé. Objets montrés par `display` (pas `visibility` : la figure cachée cache
 // ses objets tenus par `visibility`, qu'un enfant « visible » contredirait).
-type GhibliPosedProps = { outfit: Outfit; sky: Sky; rainy: boolean; accessory: string | null; figure: PoseIn; gesture: Pose | null; seated?: boolean; work?: Work; hidden?: boolean };
-export function GhibliPosed({ outfit, sky, rainy, accessory, figure, gesture, seated = false, work = 'none', hidden = false }: GhibliPosedProps): ReactElement {
+// `who` : identité 3D (graine, type de corps, humeur : shopIdentity).
+type GhibliPosedProps = { outfit: Outfit; sky: Sky; rainy: boolean; accessory: string | null; figure: PoseIn; gesture: Pose | null; seated?: boolean; work?: Work; hidden?: boolean; who?: CitizenIdentity };
+export function GhibliPosed({ outfit, sky, rainy, accessory, figure, gesture, seated = false, work = 'none', hidden = false, who }: GhibliPosedProps): ReactElement {
   const item = accessory ? <AccessorySprite id={accessory} sky={sky} ghibli /> : null;
   const placed = gesture ? placedTransform(gesture.item, facingOfYaw(figure.yaw), seated) : null;
   return (
@@ -245,6 +246,7 @@ export function GhibliPosed({ outfit, sky, rainy, accessory, figure, gesture, se
         initial={figure}
         hidden={hidden}
         work={work}
+        {...who}
         held={item ? [{ anchor: 'handR', node: <g data-item-hand="" display={show(gesture?.item === 'hand')}>{item}</g> }] : undefined}
       />
       {item && (

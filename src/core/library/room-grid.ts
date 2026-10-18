@@ -2,10 +2,10 @@ import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf,
 import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
 import { MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN, decoDefaultSize, isPanel, type CityTime, type DecoKind, type NeonColor } from './deco';
 import { STANDING_KINDS } from './library-types';
-import { isOnBoard, type DecoPlaced, type Depth, type Layout, type Orientation, type Placed, type ShelfLevel, type ShelfShape, type SmallItem, type SmallOnBoard, type SmallOnTop, type StandDepth, type StandingKind, type StoredDisplay, type VinylColor, type WallShape } from './library-types';
-import { HOST_TOP, computerTopRect, firstFreeTopSpot, topRectsOf, topsApart, type TopRect } from './surface';
+import { isOnBoard, type DecoPlaced, type Depth, type Layout, type Orientation, type Placed, type Pose, type Posed, type ShelfLevel, type ShelfShape, type SmallItem, type SmallOnBoard, type SmallOnTop, type StandDepth, type StandingKind, type StoredDisplay, type VinylColor, type WallShape } from './library-types';
+import { HOST_TOP, canPutOnTop, computerTopRect, firstFreeTopSpot, topRectsOf, topThingOf, topsApart, type TopRect } from './surface';
 import type { BoxFormat } from '../game/platform-boxes';
-import { itemFootprintCm, storedModel } from './item-models';
+import { ITEM_MODELS, itemFootprintCm, storedModel } from './item-models';
 import { FURNITURE_MODELS } from './furniture-models';
 import { overhangOf, projectOf } from './furniture-render3d';
 
@@ -522,16 +522,45 @@ export const isShelfLevel = (v: unknown): v is ShelfLevel => v === 0 || v === 1 
 export const displayOf = (p: StoredLike): StoredDisplay => p.display ?? (p.shape === 'book' ? 'spine' : 'cover');
 export const storedWidthCm = (p: StoredLike): number => itemFootprintCm(p.shape, displayOf(p), p.box);
 
-// Objets d'une tablette, de gauche à droite (rang) ; `ignoreId` : l'objet qu'on déplace.
-export function boardItems(layout: Layout, shelfId: string, level: ShelfLevel, ignoreId?: string): Stored[] {
-  return layout.filter((p): p is Stored => p.kind === 'stored' && p.shelfId === shelfId && p.level === level && p.id !== ignoreId).sort((a, b) => a.order - b.order);
+// Une tablette mêle objets rangés (cartes) et petits objets de tablette (`hostId` = l'étagère) : mêmes rangs, même rangement de gauche
+// à droite. `BoardLike` : ce qu'il faut savoir d'un objet pour le placer sur une tablette (une carte, ou un petit objet).
+export type BoardItem = Stored | SmallOnBoard;
+export type BoardLike = StoredLike | { id?: string; item: SmallItem };
+const isSmallLike = (p: BoardLike): p is { id?: string; item: SmallItem } => 'item' in p;
+// Largeur occupée (cm, sans l'écart) et hauteur d'un objet sur une tablette : petit objet = son modèle ; carte = sa présentation, sa boîte.
+export const boardWidthCm = (p: BoardLike): number => (isSmallLike(p) ? ITEM_MODELS[`small-${p.item}`].w : storedWidthCm(p));
+export const boardHeightCm = (p: BoardLike): number => (isSmallLike(p) ? ITEM_MODELS[`small-${p.item}`].h : storedModel(p.shape, p.box).h);
+// Hauteur libre (cm) de chaque tablette, du dessus de sa planche au dessous de la planche du dessus (modèle de l'étagère ; arrondie au
+// millionième : les fractions de faceLevels laissent des restes de calcul flottant).
+const BOARD_CLEAR_CM: readonly number[] = faceLevels('shelf').slice(0, SHELF_LEVELS.length).map(([top, bottom]) => Math.round((bottom - top) * SHELF_FACE_H_CM * 1e6) / 1e6);
+export const boardClearCm = (level: ShelfLevel): number => BOARD_CLEAR_CM[level]!;
+const fitsHeight = (level: ShelfLevel, item: BoardLike): boolean => boardHeightCm(item) <= boardClearCm(level) + 1e-9;
+// La chaîne hi-fi ne va que sur un bureau : jamais sur une tablette.
+const boardAccepts = (item: BoardLike): boolean => !isSmallLike(item) || canHostSmall('shelf', item.item);
+
+// Objets d'une tablette (cartes et petits objets), de gauche à droite (rang) ; `ignoreId` : l'objet qu'on déplace.
+export function boardItems(layout: Layout, shelfId: string, level: ShelfLevel, ignoreId?: string): BoardItem[] {
+  return layout
+    .flatMap((p) => {
+      const b = onBoard(p);
+      return b && boardShelfOf(b) === shelfId && b.level === level && b.id !== ignoreId ? [b] : [];
+    })
+    .sort((a, b) => a.order - b.order);
 }
+// Étagère qui porte un objet de tablette.
+export const boardShelfOf = (p: BoardItem): string => (p.kind === 'stored' ? p.shelfId : p.hostId);
 // Largeur occupée (cm) : Σ largeurs + un écart entre deux objets voisins (n − 1 écarts).
-export const boardUsedCm = (items: readonly StoredLike[]): number =>
-  items.reduce((sum, p) => sum + storedWidthCm(p), 0) + Math.max(0, items.length - 1) * SHELF_GAP_CM;
+export const boardUsedCm = (items: readonly BoardLike[]): number =>
+  items.reduce((sum, p) => sum + boardWidthCm(p), 0) + Math.max(0, items.length - 1) * SHELF_GAP_CM;
 // `item` tient-il à la suite de `others` (un écart de plus s'il n'est pas seul) ?
-const fits = (others: readonly StoredLike[], item: StoredLike): boolean =>
-  boardUsedCm(others) + (others.length > 0 ? SHELF_GAP_CM : 0) + storedWidthCm(item) <= SHELF_INNER_CM + 1e-9;
+const fits = (others: readonly BoardLike[], item: BoardLike): boolean =>
+  boardUsedCm(others) + (others.length > 0 ? SHELF_GAP_CM : 0) + boardWidthCm(item) <= SHELF_INNER_CM + 1e-9;
+// L'objet `id` est-il déjà sur la tablette `level` de `shelfId` ? (il peut toujours y changer de rang, même si elle déborde)
+function onThisBoard(layout: Layout, id: string | undefined, shelfId: string, level: ShelfLevel): boolean {
+  const self = id === undefined ? undefined : layout.find((p) => p.id === id);
+  const item = self ? onBoard(self) : null;
+  return !!item && boardShelfOf(item) === shelfId && item.level === level;
+}
 
 // Une tablette sur la face projetée : `local` dans le repère de la face (vue de face, px ; du haut du niveau au dessus de sa planche),
 // `m` la matrice vers l'écran, `quad` ses 4 coins à l'écran (parallélogramme en ¾) ; x, y, w, h : son rectangle englobant.
@@ -571,8 +600,8 @@ export function shelfLayoutIn(frame: FaceFrame, layout: Layout, shelfId: string)
   return shelfBoardsIn(frame).flatMap((board) => {
     let x0 = 0;
     return boardItems(layout, shelfId, board.level).map((p, order) => {
-      const wCm = storedWidthCm(p);
-      const h = Math.min(storedModel(p.shape, p.box).h * sy, board.local.h);
+      const wCm = boardWidthCm(p);
+      const h = Math.min(boardHeightCm(p) * sy, board.local.h);
       const local = { x: x0 * sx, y: board.local.y + board.local.h - h, w: wCm * sx, h };
       const box: ShelfItemBox = { id: p.id, level: board.level, order, x0Cm: x0, wCm, local, m: frame.m, ...onScreen(frame.m, local) };
       x0 += wCm + SHELF_GAP_CM;
@@ -615,24 +644,26 @@ export function boardAt(layout: Layout, x: number, y: number): { shelfId: string
   return null;
 }
 
-export type ShelfDrop = { ok: true; order: number } | { ok: false; reason: 'shelf-full' | 'not-shelf'; message: string };
+export type ShelfDrop = { ok: true; order: number } | { ok: false; reason: 'shelf-full' | 'not-shelf' | 'too-high'; message: string };
+export const SHELF_TOO_HIGH_MESSAGE = 'Trop haut pour cette tablette.';
 
-// Lâcher `item` sur la tablette `level` de l'étagère `shelfId`, au point `xCm` de la face : rang d'insertion (avant le premier objet dont
-// le centre est à droite du point), ou refus si la place manque. Un objet déjà sur cette tablette peut toujours y changer de rang
-// (une tablette convertie qui déborde reste utilisable).
-export function dropOnShelf(layout: Layout, shelfId: string, level: ShelfLevel, xCm: number, item: StoredLike): ShelfDrop {
+// Lâcher `item` (carte ou petit objet) sur la tablette `level` de l'étagère `shelfId`, au point `xCm` de la face : rang d'insertion (avant
+// le premier objet dont le centre est à droite du point), ou refus : chaîne hi-fi (bureau seulement), objet plus haut que la hauteur libre,
+// place qui manque. Un objet déjà sur cette tablette peut toujours y changer de rang (une tablette convertie qui déborde reste utilisable).
+export function dropOnShelf(layout: Layout, shelfId: string, level: ShelfLevel, xCm: number, item: BoardLike): ShelfDrop {
   const shelf = layout.find((p) => p.id === shelfId);
   if (!shelf || shelf.kind !== 'shelf' || !isShelfLevel(level)) return { ok: false, reason: 'not-shelf', message: 'Déposez l’objet sur une tablette de l’étagère.' };
+  if (!boardAccepts(item)) return { ok: false, reason: 'not-shelf', message: 'La chaîne hi-fi se pose sur un bureau.' };
   const others = boardItems(layout, shelfId, level, item.id);
-  const self = item.id === undefined ? undefined : layout.find((p) => p.id === item.id);
-  const already = self?.kind === 'stored' && self.shelfId === shelfId && self.level === level;
+  const already = onThisBoard(layout, item.id, shelfId, level);
+  if (!already && !fitsHeight(level, item)) return { ok: false, reason: 'too-high', message: SHELF_TOO_HIGH_MESSAGE };
   if (!already && !fits(others, item)) return { ok: false, reason: 'shelf-full', message: SHELF_FULL_MESSAGE };
   // Les centres sont lus aux places qu'on voit : un objet déjà sur cette tablette y garde la sienne pendant qu'on le vise
   // (sinon le simple fait de le saisir le ferait passer après un voisin plus étroit).
   let x0 = 0;
   let order = 0;
   for (const p of already ? boardItems(layout, shelfId, level) : others) {
-    const w = storedWidthCm(p);
+    const w = boardWidthCm(p);
     if (p.id !== item.id && x0 + w / 2 > xCm) break;
     x0 += w + SHELF_GAP_CM;
     if (p.id !== item.id) order++;
@@ -640,24 +671,27 @@ export function dropOnShelf(layout: Layout, shelfId: string, level: ShelfLevel, 
   return { ok: true, order };
 }
 
-// Première tablette (du haut) où `item` tient, à la suite de ses objets ; null si l'étagère est pleine pour lui.
-export function firstFreeBoard(layout: Layout, shelfId: string, item: StoredLike): { level: ShelfLevel; order: number } | null {
+// Première tablette (du haut) où `item` tient (largeur et hauteur), à la suite de ses objets ; null si l'étagère est pleine pour lui.
+export function firstFreeBoard(layout: Layout, shelfId: string, item: BoardLike): { level: ShelfLevel; order: number } | null {
+  if (!boardAccepts(item)) return null;
   for (const level of SHELF_LEVELS) {
     const others = boardItems(layout, shelfId, level, item.id);
-    if (fits(others, item)) return { level, order: others.length };
+    if (fitsHeight(level, item) && fits(others, item)) return { level, order: others.length };
   }
   return null;
 }
 
 // Rangs recompactés 0..n−1 sur chaque tablette (rang actuel, puis ordre du plan), sans rien retirer : objets rangés et petits objets de
 // tablette partagent les rangs.
-const onBoard = (p: Placed): Stored | SmallOnBoard | null => (p.kind === 'stored' || (p.kind === 'small' && isOnBoard(p)) ? p : null);
+function onBoard(p: Placed): BoardItem | null {
+  return p.kind === 'stored' || (p.kind === 'small' && isOnBoard(p)) ? p : null;
+}
 export function compactShelves(layout: Layout): Layout {
-  const boards = new Map<string, (Stored | SmallOnBoard)[]>();
+  const boards = new Map<string, BoardItem[]>();
   for (const p of layout) {
     const item = onBoard(p);
     if (!item) continue;
-    const key = `${item.kind === 'stored' ? item.shelfId : item.hostId}:${item.level}`;
+    const key = `${boardShelfOf(item)}:${item.level}`;
     boards.set(key, [...(boards.get(key) ?? []), item]);
   }
   const orders = new Map<string, number>();
@@ -668,13 +702,14 @@ export function compactShelves(layout: Layout): Layout {
   });
 }
 
-// Insère `item` au rang `order` (borné à la fin) de sa tablette : les suivants se décalent d'un rang ; l'ancienne tablette se recompacte.
-function insertStored(layout: Layout, item: Stored, order: number): Layout {
+// Insère `item` (carte ou petit objet) au rang `order` (borné à la fin) de sa tablette : les suivants se décalent d'un rang ; l'ancienne
+// tablette se recompacte.
+function insertOnBoard(layout: Layout, item: BoardItem, order: number): Layout {
   const rest = layout.filter((p) => p.id !== item.id);
-  const others = boardItems(rest, item.shelfId, item.level);
+  const others = boardItems(rest, boardShelfOf(item), item.level);
   const at = Math.max(0, Math.min(Math.floor(order), others.length));
   const ranks = new Map<string, number>(others.map((p, i) => [p.id, i < at ? i : i + 1]));
-  const placed = rest.map((p) => (ranks.has(p.id) ? { ...(p as Stored), order: ranks.get(p.id)! } : p));
+  const placed = rest.map((p) => (ranks.has(p.id) ? { ...(p as BoardItem), order: ranks.get(p.id)! } : p));
   // L'objet garde sa position dans le plan quand il est déjà rangé (ordre de dessin stable), sinon il s'ajoute à la fin.
   const index = layout.findIndex((p) => p.id === item.id);
   const moved = { ...item, order: at };
@@ -688,31 +723,166 @@ export function storeCard(layout: Layout, shelfId: string, level: ShelfLevel, or
   if (!shelf || shelf.kind !== 'shelf' || !isShelfLevel(level) || !Number.isFinite(order)) return null;
   if (placedSlugs(layout).has(slug)) return null;
   const item: Stored = { id, kind: 'stored', shape, shelfId, level, order: 0, ...(display && { display }), slug };
-  if (!fits(boardItems(layout, shelfId, level), item)) return null;
-  return insertStored(layout, item, order);
+  if (!fitsHeight(level, item) || !fits(boardItems(layout, shelfId, level), item)) return null;
+  return insertOnBoard(layout, item, order);
 }
 
-// Format de boîte d'un jeu rangé (et couleur propre du boîtier de la console) : ne déplace rien, même si la tablette déborde ensuite
+// Format de boîte d'un jeu rangé ou posé (et couleur propre du boîtier de la console) : ne déplace rien, même si la tablette déborde ensuite
 // (une tablette qui déborde garde ses objets). Sans effet sur un objet inconnu ou qui n'est pas un jeu.
 export function setStoredBox(layout: Layout, id: string, box: BoxFormat, caseColor?: string): Layout {
   const item = layout.find((p) => p.id === id);
-  if (!item || item.kind !== 'stored' || item.shape !== 'game') return layout;
+  if (!item || (item.kind !== 'stored' && item.kind !== 'posed') || item.shape !== 'game') return layout;
   return layout.map((p) => {
-    if (p.id !== id || p.kind !== 'stored') return p;
+    if (p.id !== id || (p.kind !== 'stored' && p.kind !== 'posed')) return p;
     const { caseColor: _old, ...rest } = p;
     return { ...rest, box, ...(caseColor && { caseColor }) };
   });
 }
 
-// Déplace un objet rangé vers une tablette (la sienne ou une autre, sur cette étagère ou une autre) au rang `order`.
-// Refusé si la place manque (jamais dans sa propre tablette).
+// Une carte rangée change de présentation / de format sans jamais bouger seule : le changement ne doit pas la rendre plus large sur une
+// tablette qui ne peut plus la porter (les autres objets + elle > SHELF_INNER_CM), ni plus haute que la hauteur libre ; une tablette qui
+// débordait déjà est tolérée tant que la carte ne grandit pas.
+function stillFits(layout: Layout, before: Stored, after: Stored): boolean {
+  const heightOk = fitsHeight(after.level, after) || boardHeightCm(after) <= boardHeightCm(before) + 1e-9;
+  const widthOk = boardWidthCm(after) <= boardWidthCm(before) + 1e-9 || fits(boardItems(layout, after.shelfId, after.level, after.id), after);
+  return heightOk && widthOk;
+}
+// Présentation écrite seulement si elle diffère du défaut du format (comme partout ailleurs).
+function withDisplay(item: Stored, display: StoredDisplay | undefined): Stored {
+  const { display: _old, ...rest } = item;
+  const next: Stored = display ? { ...rest, display } : rest;
+  return displayOf(next) === displayOf({ shape: next.shape }) ? rest : next;
+}
+
+// Présentation d'une carte rangée (face, tranche, dos : le dos seulement pour un jeu) ; null si elle n'y tient plus (tablette pleine) ou si
+// la présentation ne convient pas au format. Le plan reste inchangé en cas de refus.
+export function setDisplayOf(layout: Layout, id: string, display: StoredDisplay): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || card.kind !== 'stored' || (display === 'back' && card.shape !== 'game')) return null;
+  const next = withDisplay(card, display);
+  if (!stillFits(layout, card, next)) return null;
+  return layout.map((p) => (p.id === id ? next : p));
+}
+
+// Format d'une carte rangée ou posée (CD, DVD, jeu, livre) ; efface pochette, boîte et couleur de boîtier (propres à l'ancien format) ;
+// une présentation qui ne convient pas au nouveau format (dos hors jeu) retombe sur le défaut du format. Null si la carte n'y tient plus.
+export function setShapeOf(layout: Layout, id: string, shape: ShelfShape): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || (card.kind !== 'stored' && card.kind !== 'posed')) return null;
+  if (card.shape === shape) return layout;
+  const { cover: _c, box: _b, caseColor: _k, ...rest } = card;
+  if (card.kind === 'posed') {
+    const next: Posed = { ...(rest as Posed), shape };
+    if (!canPutOnTop(layout, card.hostId, topThingOf(next), card.x, card.z, id)) return null;
+    return layout.map((p) => (p.id === id ? next : p));
+  }
+  const kept = card.display === 'back' && shape !== 'game' ? undefined : card.display;
+  const next = withDisplay({ ...(rest as Stored), shape }, kept);
+  if (!stillFits(layout, card, next)) return null;
+  return layout.map((p) => (p.id === id ? next : p));
+}
+
+// Pochette choisie pour une carte rangée ou posée (cet objet seulement : la carte, sa fiche, la Collection n'en savent rien) ; null l'efface.
+// Null si l'objet n'est pas une carte rangée / posée ou si l'adresse n'est pas https ; la disposition elle-même si rien ne change.
+export function setCoverOf(layout: Layout, id: string, cover: string | null): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || (card.kind !== 'stored' && card.kind !== 'posed') || (cover !== null && !isHttpsUrl(cover))) return null;
+  if ((card.cover ?? null) === cover) return layout;
+  const { cover: _old, ...rest } = card;
+  const next = (cover === null ? rest : { ...rest, cover }) as Stored | Posed;
+  return layout.map((p) => (p.id === id ? next : p));
+}
+function isHttpsUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// Changer de carte : `slug` prend la place de la carte rangée ou posée `id` (même id, même place, même présentation ou pose) au format
+// `shape` (celui de l'objet par défaut) ; pochette, boîte et couleur de boîtier (propres à l'ancienne carte) effacées ; une présentation
+// qui ne convient pas au format (dos hors jeu) retombe sur le défaut. La carte remplacée sort simplement de la pièce.
+// Null si `slug` est déjà dans la pièce (elle-même comprise) ou si la nouvelle carte ne tient pas (mêmes règles que setShapeOf).
+export function replaceCard(layout: Layout, id: string, slug: string, shape?: ShelfShape): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || (card.kind !== 'stored' && card.kind !== 'posed') || !slug || placedSlugs(layout).has(slug)) return null;
+  const { cover: _c, box: _b, caseColor: _k, ...rest } = card;
+  const to = shape ?? card.shape;
+  if (card.kind === 'posed') {
+    const next: Posed = { ...(rest as Posed), shape: to, slug };
+    if (!canPutOnTop(layout, card.hostId, topThingOf(next), card.x, card.z, id)) return null;
+    return layout.map((p) => (p.id === id ? next : p));
+  }
+  const kept = card.display === 'back' && to !== 'game' ? undefined : card.display;
+  const next = withDisplay({ ...(rest as Stored), shape: to, slug }, kept);
+  if (!stillFits(layout, card, next)) return null;
+  return layout.map((p) => (p.id === id ? next : p));
+}
+
+// Déplace un objet rangé vers une tablette (la sienne ou une autre, sur cette étagère ou une autre) au rang `order` (règles de moveToBoard).
 export function moveStored(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
+  return layout.find((p) => p.id === id)?.kind === 'stored' ? moveToBoard(layout, id, shelfId, level, order) : null;
+}
+
+// Pose sur la tablette `level` de l'étagère `shelfId`, au rang `order` : une carte rangée, un petit objet de tablette, un petit objet du
+// dessus (il perd x/z, garde lit/city) ou une carte posée (elle devient rangée : même slug, forme, boîte, couleur, pochette ; présentation par
+// défaut, pose oubliée).
+// Refusé : chaîne hi-fi, objet trop haut ou place qui manque (jamais dans sa propre tablette, même si elle déborde).
+export function moveToBoard(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
+  const moved = asBoardItem(layout, id, shelfId, level);
+  if (!moved || !Number.isFinite(order) || !boardAccepts(moved)) return null;
+  if (!onThisBoard(layout, id, shelfId, level) && (!fitsHeight(level, moved) || !fits(boardItems(layout, shelfId, level, id), moved))) return null;
+  return insertOnBoard(layout, moved, order);
+}
+// L'objet `id` tel qu'il serait sur la tablette `level` de `shelfId` (rang à fixer) ; null si l'un ou l'autre n'existe pas ou ne s'y range pas.
+function asBoardItem(layout: Layout, id: string, shelfId: string, level: ShelfLevel): BoardItem | null {
   const item = layout.find((p) => p.id === id);
   const shelf = layout.find((p) => p.id === shelfId);
-  if (!item || item.kind !== 'stored' || !shelf || shelf.kind !== 'shelf' || !isShelfLevel(level) || !Number.isFinite(order)) return null;
-  const same = item.shelfId === shelfId && item.level === level;
-  if (!same && !fits(boardItems(layout, shelfId, level, id), item)) return null;
-  return insertStored(layout, { ...item, shelfId, level }, order);
+  if (!item || !shelf || shelf.kind !== 'shelf' || !isShelfLevel(level)) return null;
+  if (item.kind === 'stored') return { ...item, shelfId, level };
+  if (item.kind === 'posed') return { id, kind: 'stored', shape: item.shape, shelfId, level, order: 0, ...(item.box && { box: item.box }), ...(item.box && item.caseColor && { caseColor: item.caseColor }), slug: item.slug, ...(item.cover && { cover: item.cover }) };
+  if (item.kind === 'small') return { id, kind: 'small', item: item.item, hostId: shelfId, level, order: 0, ...(item.lit !== undefined && { lit: item.lit }), ...(item.city && { city: item.city }) };
+  return null;
+}
+// Pose de force (fantôme d'un dépôt refusé) : même rangement que moveToBoard, sans vérifier la place ni la hauteur ; la tablette déborde.
+export function forceOnBoard(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
+  const moved = asBoardItem(layout, id, shelfId, level);
+  return moved && Number.isFinite(order) ? insertOnBoard(layout, moved, order) : null;
+}
+
+// Pose sur le dessus du bureau ou de l'étagère `hostId`, en (x, z) cm (canPutOnTop) : un petit objet (du dessus ou de tablette), une carte
+// posée (elle garde sa pose) ou une carte rangée (elle devient posée sur trépied : même slug, forme, boîte, couleur, pochette ; présentation
+// oubliée). Une tablette quittée se recompacte.
+export function moveToTop(layout: Layout, id: string, hostId: string, x: number, z: number): Layout | null {
+  const item = layout.find((p) => p.id === id);
+  if (!item || !Number.isFinite(x) || !Number.isFinite(z)) return null;
+  const moved: SmallOnTop | Posed | null =
+    item.kind === 'small' ? { id, kind: 'small', item: item.item, hostId, ...(item.lit !== undefined && { lit: item.lit }), ...(item.city && { city: item.city }), x, z }
+    : item.kind === 'posed' ? { ...item, hostId, x, z }
+    : item.kind === 'stored' ? { id, kind: 'posed', shape: item.shape, hostId, x, z, ...(item.box && { box: item.box }), ...(item.box && item.caseColor && { caseColor: item.caseColor }), slug: item.slug, ...(item.cover && { cover: item.cover }) }
+    : null;
+  if (!moved || !canPutOnTop(layout, hostId, topThingOf(moved), x, z, id)) return null;
+  const next = layout.map((p) => (p.id === id ? moved : p));
+  return item.kind === 'stored' || (item.kind === 'small' && isOnBoard(item)) ? compactShelves(next) : next;
+}
+
+// Pose une carte sur le dessus du bureau ou de l'étagère `hostId`, en (x, z) cm, dans la pose `pose` (trépied par défaut) ; refusée si la
+// carte est déjà posée ailleurs (slug) ou si la place est prise.
+export function poseCard(layout: Layout, hostId: string, shape: ShelfShape, slug: string, id: string, x: number, z: number, pose: Pose = 'stand'): Layout | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z) || placedSlugs(layout).has(slug)) return null;
+  const card: Posed = { id, kind: 'posed', shape, hostId, x, z, ...(pose === 'flat' && { pose }), slug };
+  return canPutOnTop(layout, hostId, topThingOf(card), x, z) ? [...layout, card] : null;
+}
+
+// Change la pose d'une carte posée, à la même place (coin avant gauche) ; refusé (null) si elle n'y tient plus : elle ne bouge jamais seule.
+export function setPose(layout: Layout, id: string, pose: Pose): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || card.kind !== 'posed') return null;
+  const { pose: _old, ...rest } = card;
+  const next: Posed = { ...rest, ...(pose === 'flat' && { pose }) };
+  if (!canPutOnTop(layout, card.hostId, topThingOf(next), card.x, card.z, id)) return null;
+  return layout.map((p) => (p.id === id ? next : p));
 }
 
 export function setScreenCard(layout: Layout, computerId: string, slug: string | null): Layout | null {

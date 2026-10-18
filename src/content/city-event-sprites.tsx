@@ -11,11 +11,13 @@ import { DOG_CYCLE_S, collarOf, dogOf } from '../core/library/paint/props/dog';
 import { BALLOON_CYCLE_S, BANNER_CYCLE_S, BELLS_CYCLE_S, DRONE_CYCLE_S, FEST_BALLOONS_CYCLE_S, HELI_CYCLE_S, KITE_CYCLE_S } from '../core/library/paint/props/sky';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { citizenSeed } from '../core/citizens/identity';
 import { Contrail, GhibliFireworks, craneSideAt } from './city-event-art';
 import { PersonSprite, tone } from './city-sprites';
 import type { FigureRegistry } from './figure/figure-host';
+import { CITIZENS_3D } from './figure/citizen-config';
 import { GhibliRider } from './figure/ghibli-cyclist';
-import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { GhibliFigure, poseFigure, shown3DAnchors, type PoseIn } from './figure/ghibli-figure';
 import { CycledInMirror, PropInMirror, type PropSpec } from './prop/prop-host';
 
 // Dessins des événements de la ville (maquette validée du 2026-10-09). Petites animations en SMIL, jamais en mouvement
@@ -47,14 +49,33 @@ export function poseEventFigures(reg: FigureRegistry, node: Element, e: CityEven
     }));
     walkersOf.set(node, list);
   }
-  for (const h of list) poseFigure(reg, h.fig, eventWalkPose(e, walked + h.offset, still, h.arms));
+  for (const h of list) {
+    poseFigure(reg, h.fig, eventWalkPose(e, walked + h.offset, still, h.arms));
+    if (CITIZENS_3D) fitLeash(h.fig, e.dir);
+  }
+}
+// Laisse d'un promeneur montré en 3D : redessinée de sa main 3D (image montrée, épingle comprise) jusqu'au collier ; revenu au
+// pantin, le tracé du rendu (gardé dans data-d0) revient.
+function fitLeash(fig: Element | null, dir: 1 | -1): void {
+  const held = fig?.querySelector(':scope > [data-held]');
+  const path = held?.querySelector('[data-leash]');
+  if (!held || !path) return;
+  if (!path.hasAttribute('data-d0')) path.setAttribute('data-d0', path.getAttribute('d') ?? '');
+  const a3 = shown3DAnchors(fig);
+  const hand = held.getAttribute('data-held') as 'handR' | 'handL';
+  const collar = (path.getAttribute('data-collar') ?? '22 -9').split(' ').map(Number) as [number, number];
+  const d = a3 ? leashPath(a3[hand], dir, collar) : path.getAttribute('data-d0')!;
+  if (path.getAttribute('d') !== d) path.setAttribute('d', d);
 }
 // Décalage des pas d'un marcheur au suivant dans un groupe (unités).
 const WALKER_OFFSET = 7;
 // Laisse tenue à la main (accroche du pantin) jusqu'au collier du chien `collar` (repère du sprite) : la main est lue sur la
 // pose debout, la laisse suit ensuite la main pendant la marche (le bout bouge d'une unité au plus).
+// Habitant 3D : la boucle la redessine depuis la main 3D montrée (fitLeash ; collier relu dans data-collar).
 function leashFrom(o: Outfit, umbrella: boolean, dir: 1 | -1, hand: 'handR' | 'handL', collar: readonly [number, number]): string {
-  const a = anchorsOf({ sig: signatureOf(shapeOf(o, umbrella)), yaw: facingYaw(dir), gait: 'stand', phase: 0, head: 0, arms: 'hold', lean: 0 })[hand];
+  return leashPath(anchorsOf({ sig: signatureOf(shapeOf(o, umbrella)), yaw: facingYaw(dir), gait: 'stand', phase: 0, head: 0, arms: 'hold', lean: 0 })[hand], dir, collar);
+}
+function leashPath(a: readonly [number, number], dir: 1 | -1, collar: readonly [number, number]): string {
   // Repère du pantin : x multiplié par `dir` (retournement annulé).
   const dx = collar[0] * dir - a[0];
   const dy = collar[1] - a[1];
@@ -272,6 +293,8 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
                       umbrella={false}
                       work="vest"
                       initial={{ yaw: facingYaw(e.dir), gait: 'stand', phase: 0, head: 0, arms: 'reach' }}
+                      citizen={citizenSeed(`${e.key}:0`)}
+                      kind="adult"
                     />
                   </g>
                 </g>
@@ -360,7 +383,8 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
                   rainy={rainy}
                   umbrella={rainy}
                   initial={eventWalkPose(e, walked, still, 'hold')}
-                  held={[{ anchor: hand, node: <path data-leash="" d={leashFrom(walker!, rainy, e.dir, hand, [26 + collar[0], collar[1]])} stroke="#C0463A" fill="none" strokeWidth={0.8} /> }]}
+                  citizen={citizenSeed(`${e.key}:0`)}
+                  held={[{ anchor: hand, node: <path data-leash="" data-collar={`${26 + collar[0]} ${collar[1]}`} d={leashFrom(walker!, rainy, e.dir, hand, [26 + collar[0], collar[1]])} stroke="#C0463A" fill="none" strokeWidth={0.8} /> }]}
                 />
               </g>
             ) : (
@@ -379,7 +403,7 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
             {outfitsOf(e.key, 'ordinary', 3).map((o, i) =>
               ghibli ? (
                 <g key={i} data-walker={i * WALKER_OFFSET} data-arms="swing" transform={`translate(${-16 * i} 0) scale(${e.dir} 1)`}>
-                  <GhibliFigure outfit={o} sky={sky} rainy umbrella initial={eventWalkPose(e, walked + i * WALKER_OFFSET, still)} />
+                  <GhibliFigure outfit={o} sky={sky} rainy umbrella initial={eventWalkPose(e, walked + i * WALKER_OFFSET, still)} citizen={citizenSeed(`${e.key}:${i}`)} />
                 </g>
               ) : (
                 <g key={i} transform={`translate(${-16 * i} 0)`}>

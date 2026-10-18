@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { deskAtCell, dropTargetFor, hostAtCell, hostAtSurface, pointerToCell } from '../../src/content/furniture-drag';
 import { firstFreeTopSpot } from '../../src/core/library/surface';
+import { ITEM_MODELS } from '../../src/core/library/item-models';
 import type { Layout } from '../../src/core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, boardAt, pxRect, rectOf, shelfBoardsOf, shelfLayoutOf, topRectOn } from '../../src/core/library/room-grid';
 
@@ -76,6 +77,26 @@ describe('dropTargetFor', () => {
     const last = shelfLayoutOf(layout, 'f1').find((b) => b.id === 'g4')!;
     expect(full.ghostPx!.x).toBeGreaterThanOrEqual(last.x + last.w - 1e-6);
     expect(dropTargetFor(layout, COLS, 'f2', 20, 4, 20 * CELL_W, 4 * CELL_H)).toMatchObject({ ok: false, reason: 'not-slot' });
+  });
+
+  it('un objet rangé trop haut pour la tablette : raison « too-high » (son message dans la pièce), fantôme au bout de la tablette', () => {
+    const layout: Layout = [
+      { id: 'f1', kind: 'shelf', col: 0, row: 7 },
+      { id: 'f2', kind: 'stored', shape: 'dvd', shelfId: 'f1', level: 0, order: 0, slug: 'A' },
+      { id: 'g0', kind: 'stored', shape: 'cd', shelfId: 'f1', level: 2, order: 0, slug: 'G0' },
+    ];
+    const dvdH = ITEM_MODELS.dvd.h;
+    ITEM_MODELS.dvd.h = 55; // plus que les 50 cm libres de la tablette du bas
+    try {
+      const boards = shelfBoardsOf(layout[0]!);
+      const low = dropTargetFor(layout, COLS, 'f2', 0, 7, boards[2]!.x + boards[2]!.w / 2, boards[2]!.y + boards[2]!.h / 2);
+      expect(low).toMatchObject({ ok: false, reason: 'too-high', shelfId: 'f1', level: 2 });
+      expect(low.ghostPx).toBeDefined();
+      const last = shelfLayoutOf(layout, 'f1').find((b) => b.id === 'g0')!;
+      expect(low.ghostPx!.x).toBeGreaterThanOrEqual(last.x + last.w - 1e-6);
+    } finally {
+      ITEM_MODELS.dvd.h = dvdH;
+    }
   });
 
   it('meuble debout : la case visée est le bas à gauche', () => {
@@ -159,5 +180,14 @@ describe('porteurs superposés : le lâcher vise celui de devant', () => {
     const shelves: Layout = [{ id: 'wall', kind: 'shelf', col: 0, row: 7 }, { id: 'front', kind: 'shelf', col: 0, row: 7, depth: 2 }];
     const board = shelfBoardsOf(shelves[0]!)[0]!;
     expect(boardAt(shelves, board.x + 2, board.y + 2)).toMatchObject({ shelfId: 'front', level: 0 });
+  });
+});
+
+describe('carte posée', () => {
+  it('refusée avec une raison (pas encore déplaçable dans la pièce)', () => {
+    const layout: Layout = [desk('d', 4, 10), { id: 'p', kind: 'posed', shape: 'cd', hostId: 'd', x: 0, z: 0, slug: 'S' }];
+    const t = dropTargetFor(layout, COLS, 'p', 4, 10);
+    expect(t.ok).toBe(false);
+    expect(t.reason).toBe('posed-locked');
   });
 });

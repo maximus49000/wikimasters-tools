@@ -4,10 +4,10 @@
 // est affine) : sa géométrie est calculée une fois par (forme, présentation, angle), quelle que soit sa place.
 import { drawSize, type Angle } from './footprint';
 import { FURNITURE_MODELS } from './furniture-models';
-import { CELL_H, CELL_W, levelsOf, localPointOf, pieceBounds, projectOf, type V3t } from './furniture-render3d';
+import { CELL_H, CELL_W, FACE_CAMERA, cameraKey, levelsOf, localPointOf, pieceBounds, projectOf, type Camera, type V3t } from './furniture-render3d';
 import { ITEM_MODELS, bookColor, itemModel, itemPieces, storedFrontCorners, type ItemPlacement, type ItemShape } from './item-models';
-import { isOnBoard, type Layout, type Placed, type Posed, type ShelfLevel, type SmallItem } from './library-types';
-import { SHELF_GAP_CM, boardItems, displayOf, storedWidthCm, type HostKind, type PxRect, type Stored } from './room-grid';
+import { isOnBoard, poseOf, type Layout, type Placed, type Posed, type ShelfLevel, type SmallItem } from './library-types';
+import { SHELF_GAP_CM, boardItems, boardWidthCm, displayOf, type BoardItem, type HostKind, type PxRect, type Stored } from './room-grid';
 import { SLEEVE_ZONE_CM } from './surface';
 
 const SHELF = FURNITURE_MODELS.shelf;
@@ -39,14 +39,20 @@ export function storedPlacement(item: Stored, x0Cm: number): ItemPlacement {
   };
 }
 
-// Objets rangés d'une étagère posés à leur place (même rangement que shelfLayoutIn : largeur réelle + 1 cm entre deux objets).
+// Objet d'une tablette à `x0Cm` du bord gauche de la face : une carte rangée, ou un petit objet posé sur la planche, près du bord avant.
+export function boardPlacement(item: BoardItem, x0Cm: number): ItemPlacement {
+  return item.kind === 'stored' ? storedPlacement(item, x0Cm) : { key: item.id, shape: SMALL_SHAPE[item.item], x: SHELF.face!.x + x0Cm, y: boardTopCm(item.level), z: FRONT_CM };
+}
+
+// Objets des tablettes d'une étagère (cartes et petits objets) posés à leur place (même rangement que shelfLayoutIn : largeur réelle
+// + 1 cm entre deux objets).
 export function storedPlacementsOf(layout: Layout, shelfId: string): Map<string, ItemPlacement> {
   const out = new Map<string, ItemPlacement>();
   for (const level of [0, 1, 2] as const) {
     let x0 = 0;
     for (const p of boardItems(layout, shelfId, level)) {
-      out.set(p.id, storedPlacement(p, x0));
-      x0 += storedWidthCm(p) + SHELF_GAP_CM;
+      out.set(p.id, boardPlacement(p, x0));
+      x0 += boardWidthCm(p) + SHELF_GAP_CM;
     }
   }
   return out;
@@ -65,27 +71,28 @@ export function smallPlacement(id: string, item: SmallItem, hostKind: HostKind, 
   return { key: id, shape, x, y: FURNITURE_MODELS[hostKind].h, z: item === 'hifi' ? z + SLEEVE_ZONE_CM : z };
 }
 
-// Carte posée sur le plateau de son porteur : de face, à (x, z) cm (coin avant gauche de son empreinte) ; un livre prend la couleur de
-// dos de sa carte, un jeu son format et sa couleur de boîtier (comme rangé).
+// Carte posée sur le plateau de son porteur, à (x, z) cm (coin avant gauche de son empreinte) : de face sur son trépied, ou couchée
+// (couverture vers le haut) selon sa pose ; un livre prend la couleur de dos de sa carte, un jeu son format et sa couleur de boîtier (comme rangé).
 export function posedPlacement(p: Posed, hostKind: HostKind): ItemPlacement {
   return {
     key: p.id, shape: p.shape, display: 'cover', x: p.x, y: FURNITURE_MODELS[hostKind].h, z: p.z,
+    ...(poseOf(p) === 'flat' && { flat: true as const }),
     ...(p.shape === 'book' && { color: bookColor(p.slug) }),
     ...(p.box && { box: p.box }),
     ...(p.box && p.caseColor && { color: p.caseColor }),
   };
 }
 
-// Porteur et pose d'un objet porté ; null pour un autre objet ou un porteur absent. Un objet rangé est posé d'après ses voisins de tablette.
+// Porteur et pose d'un objet porté ; null pour un autre objet ou un porteur absent. Un objet de tablette (carte rangée, petit objet) est posé
+// d'après ses voisins de tablette.
 export function carriedPlacementOf(layout: Layout, p: Placed): { hostId: string; hostKind: HostKind; placement: ItemPlacement } | null {
   const hostId = p.kind === 'computer' ? p.deskId : p.kind === 'small' || p.kind === 'posed' ? p.hostId : p.kind === 'stored' ? p.shelfId : null;
   const host = hostId ? layout.find((x) => x.id === hostId) : undefined;
   if (!host || (host.kind !== 'desk' && host.kind !== 'shelf')) return null;
   if (p.kind === 'computer') return host.kind === 'desk' ? { hostId: host.id, hostKind: 'desk', placement: computerPlacement(p.id) } : null;
-  // Petit objet de tablette : posé avec les objets rangés (pas encore dessiné).
-  if (p.kind === 'small') return isOnBoard(p) ? null : { hostId: host.id, hostKind: host.kind, placement: smallPlacement(p.id, p.item, host.kind, p.x, p.z) };
+  if (p.kind === 'small' && !isOnBoard(p)) return { hostId: host.id, hostKind: host.kind, placement: smallPlacement(p.id, p.item, host.kind, p.x, p.z) };
   if (p.kind === 'posed') return { hostId: host.id, hostKind: host.kind, placement: posedPlacement(p, host.kind) };
-  if (p.kind === 'stored' && host.kind === 'shelf') {
+  if ((p.kind === 'stored' || p.kind === 'small') && host.kind === 'shelf') {
     const placement = storedPlacementsOf(layout, host.id).get(p.id);
     return placement ? { hostId: host.id, hostKind: 'shelf', placement } : null;
   }
@@ -95,14 +102,14 @@ export function carriedPlacementOf(layout: Layout, p: Placed): { hostId: string;
 // Projection du porteur (affine) mise en cache par (porteur, angle) : origine et images des trois axes, en px de son dessin non mis à l'échelle.
 const affineCache = new Map<string, [number, number][]>();
 // Point du repère du porteur (cm) → px de son dessin à l'échelle 1 (repère du Model3DArt avant mise à l'échelle).
-export function hostNativePx(hostKind: HostKind, angle: Angle, p: V3t): [number, number] {
-  const key = `${hostKind}:${angle}`;
+export function hostNativePx(hostKind: HostKind, angle: Angle, p: V3t, cam: Camera = FACE_CAMERA): [number, number] {
+  const key = `${hostKind}:${angle}${cameraKey(cam)}`;
   let a = affineCache.get(key);
   if (!a) {
     const m = FURNITURE_MODELS[hostKind];
-    const o = projectOf(m, angle, [0, 0, 0]);
+    const o = projectOf(m, angle, [0, 0, 0], cam);
     const axis = (v: V3t): [number, number] => {
-      const q = projectOf(m, angle, v);
+      const q = projectOf(m, angle, v, cam);
       return [q[0] - o[0], q[1] - o[1]];
     };
     a = [o, axis([1, 0, 0]), axis([0, 1, 0]), axis([0, 0, 1])];
@@ -113,9 +120,9 @@ export function hostNativePx(hostKind: HostKind, angle: Angle, p: V3t): [number,
 }
 
 // Point du repère du porteur (cm) → px de la pièce, dans le rectangle `rect` du porteur tourné (même projection et même échelle que son dessin).
-export function hostPointPx(hostKind: HostKind, angle: Angle, rect: PxRect, p: V3t): [number, number] {
-  const { w, h } = drawSize(hostKind, angle);
-  const [x, y] = hostNativePx(hostKind, angle, p);
+export function hostPointPx(hostKind: HostKind, angle: Angle, rect: PxRect, p: V3t, cam: Camera = FACE_CAMERA): [number, number] {
+  const { w, h } = drawSize(hostKind, angle, cam);
+  const [x, y] = hostNativePx(hostKind, angle, p, cam);
   return [rect.x + (x * rect.w) / (w * CELL_W), rect.y + (y * rect.h) / (h * CELL_H)];
 }
 

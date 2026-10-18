@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
-import { extendRoom, updateLayout } from '../../src/core/library/library-book';
+import { addRoom, extendRoom, updateLayout } from '../../src/core/library/library-book';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 import { setGameBoxService } from '../../src/content/game-box-registry';
 import type { GameBox, GameBoxService } from '../../src/content/game-box-service';
@@ -481,25 +481,79 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
     expect(subscribe).toHaveBeenCalled();
   });
 
-  it('ouvrir un objet ferme la bulle du poste', async () => {
-    const view: PlayerView = { linked: true, hidden: false, enabled: true, card: null, track: null };
-    setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
-    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 }, { id: 'w2', kind: 'wall', shape: 'vinyl', col: 4, row: 4, slug: 'Abbey_Road' }]);
+  const PLAYING: PlayerView = { linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Daft Punk' }, track: { uri: 'u', title: 'Aerodynamic', artist: 'Daft Punk', imageUrl: null, playing: true } };
+  const STATION: Layout = [{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 }, ...SHELF];
+  const setCard = vi.fn();
+  const listen = (view: PlayerView) => setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard } as unknown as PlayerSource);
+
+  it('toucher le poste en mode Visiter ouvre le zoom de la chaîne (plus de bulle), ✕ le ferme', async () => {
+    listen(PLAYING);
+    await seed(STATION);
+    const before: unknown = history.state;
     await click('[data-id="h"]');
-    expect(q('[data-hifi-bubble]')).not.toBeNull();
-    await click('[data-card="Abbey_Road"]');
-    expect(q('[data-opened-item="w2"]')).not.toBeNull();
     expect(q('[data-hifi-bubble]')).toBeNull();
+    expect(q('[data-hifi-zoom="h"]')?.textContent).toContain('Aerodynamic');
+    expect(q('[data-hifi-zoom] [data-hifi-disc]')?.getAttribute('data-spinning')).toBe('true');
+    expect(history.state?.wmtHifiZoom).toBeTruthy();
+    const backSpy = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    await click('[data-hifi-zoom] [data-action="close"]');
+    expect(q('[data-hifi-zoom]')).toBeNull();
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    backSpy.mockRestore();
+    history.replaceState(before, '');
   });
 
-  it('toucher le poste en mode Visiter ouvre la bulle En lecture, ✕ la ferme', async () => {
-    const view: PlayerView = { linked: true, hidden: false, enabled: true, card: { slug: 'Daft_Punk', title: 'Daft Punk' }, track: { uri: 'u', title: 'Aerodynamic', artist: 'Daft Punk', imageUrl: null, playing: true } };
-    setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle: async () => undefined, setCard: () => undefined } as unknown as PlayerSource);
-    await seed([{ id: 'd', kind: 'desk', col: 12, row: 10 }, { id: 'h', kind: 'small', item: 'hifi', hostId: 'd', x: 2, z: 2.5 }]);
+  it('⏏ éjecte le disque et ferme le zoom', async () => {
+    listen(PLAYING);
+    setCard.mockClear();
+    await seed(STATION);
     await click('[data-id="h"]');
-    expect(q('[data-hifi-bubble]')?.textContent).toContain('Aerodynamic');
-    await click('[data-hifi-bubble] [data-action="close"]');
-    expect(q('[data-hifi-bubble]')).toBeNull();
+    await click('[data-hifi-zoom] [data-action="eject"]');
+    expect(setCard).toHaveBeenCalledWith(null);
+    expect(q('[data-hifi-zoom]')).toBeNull();
+  });
+
+  it('ⓘ ouvre la fiche de la carte par-dessus ; le retour Android la ferme d’abord, puis le zoom', async () => {
+    listen(PLAYING);
+    await seed(STATION);
+    const before: unknown = history.state;
+    await click('[data-id="h"]');
+    const zoomState: unknown = history.state;
+    await click('[data-hifi-zoom] [data-action="info"]');
+    expect(doc('[data-room-card]')).not.toBeNull();
+    await back(before);
+    await settle();
+    expect(doc('[data-room-card]')).toBeNull();
+    expect(q('[data-hifi-zoom]')).not.toBeNull();
+    expect((history.state as { wmtHifiZoom?: string } | null)?.wmtHifiZoom).toBe((zoomState as { wmtHifiZoom: string }).wmtHifiZoom);
+    await back(before);
+    await settle();
+    expect(q('[data-hifi-zoom]')).toBeNull();
+  });
+
+  it('pièce active changée ailleurs : le zoom se ferme avec son entrée d’historique et le lecteur n’est plus écouté', async () => {
+    const unsubscribe = vi.fn();
+    setPlayerSource({ current: () => PLAYING, subscribe: () => unsubscribe, toggle: async () => undefined, setCard } as unknown as PlayerSource);
+    await seed(STATION);
+    await click('[data-id="h"]');
+    expect(q('[data-hifi-zoom]')).not.toBeNull();
+    const backSpy = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    await act(async () => { await repo.update((st) => addRoom(st)); });
+    await settle();
+    expect(repo.current()?.activeRoomId).not.toBe('r1');
+    expect(q('[data-hifi-zoom]')).toBeNull();
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalled();
+    backSpy.mockRestore();
+  });
+
+  it('en Aménager, toucher le poste ouvre la bulle d’actions, pas le zoom', async () => {
+    listen(PLAYING);
+    await seed(STATION);
+    await click('[data-action="edit"]');
+    await click('[data-id="h"]');
+    expect(q('[data-hifi-zoom]')).toBeNull();
+    expect(q('[data-action-bubble]')).not.toBeNull();
   });
 
   it('second zoom : toucher un CD ouvre son boîtier, pas la fiche', async () => {

@@ -3,17 +3,19 @@ import { useEffect, useId, useMemo, useState, type ReactElement } from 'react';
 import { drawSize, faceFrame, type Angle } from '../core/library/footprint';
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
 import { openingOf } from '../core/library/furniture-render3d';
-import type { Placed, Room, ShelfLevel } from '../core/library/library-types';
+import { isOnBoard, type Placed, type Room, type ShelfLevel } from '../core/library/library-types';
 import { boxOfQuad, cardQuad, carriedPlacementOf, placementDepth, placementRectPx, storedDrawOrder, storedPlacementsOf } from '../core/library/carried-items';
 import type { ItemPlacement } from '../core/library/item-models';
 import { CELL_H, CELL_W, angleOf, isLit, shelfBoardsIn, shelfFreeIn, type PxRect } from '../core/library/room-grid';
-import { paletteOf } from '../core/library/styles';
+import { paletteOf, type Palette } from '../core/library/styles';
 import { zoomIdsOf, zoomRectOf, type Box, type ZoomTarget } from '../core/library/zoom-target';
 import { CarriedItem3D, Model3DArt, type ItemContent } from './model3d-art';
 import { Icon, ICONS } from './library-ui';
 import { reducedMotion } from './ghibli-sky';
 import { ShelfBoardZoom } from './shelf-board-zoom';
-import { gameBoxContent } from './game-box-content';
+import { placedBoxContent } from './placed-image';
+import { useCoverCache } from './cover-cache';
+import { useImageProbe } from './image-probe';
 import { isTableClock, tableFaceContent, useDecoScene, type DecoScene } from './deco-live';
 import type { SceneView } from './RoomView';
 
@@ -37,7 +39,10 @@ type Props = {
   onLevel: (level: ShelfLevel) => void;
   onBack: () => void;
 };
-type Garnish = { p: Placed; pl: ItemPlacement; content: ItemContent };
+export type Garnish = { p: Placed; pl: ItemPlacement; content: ItemContent };
+export type ZoomCards = Cards;
+// Objet d'une tablette (carte rangée ou petit objet de tablette) : dessiné dans l'ouverture de l'étagère, dans l'ordre des tablettes.
+export const onShelfBoard = (p: Placed): p is Placed & { level: ShelfLevel; order: number } => p.kind === 'stored' || (p.kind === 'small' && isOnBoard(p));
 
 // Durées : 500 ms (moitié pour se refermer de profil, moitié pour s'ouvrir de face) ; 150 ms en mouvement réduit.
 export const ZOOM_MS = 500;
@@ -45,7 +50,7 @@ export const ZOOM_REDUCED_MS = 150;
 
 // Objets portés posés en 3D dans le repère du meuble (cartes rangées, écran, petits objets) et leur contenu, comme dans la pièce.
 // Réveil, pendulette, station : la même face que dans la pièce (vivante, à la seconde partagée).
-function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf: (slug: string) => string | undefined, style: Room['style'], scene: DecoScene | undefined): Garnish[] {
+export function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf: (slug: string) => string | undefined, style: Room['style'], scene: DecoScene | undefined): Garnish[] {
   const out: Garnish[] = [];
   const shelved = item.kind === 'shelf' ? storedPlacementsOf(layout, item.id) : new Map<string, ItemPlacement>();
   for (const p of layout) {
@@ -54,11 +59,39 @@ function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf: (slug:
     const slug = p.kind === 'stored' || p.kind === 'computer' || p.kind === 'posed' ? p.slug : undefined;
     const info = slug ? cards[slug] : undefined;
     const small = p.kind === 'small' ? (isTableClock(p.item) && scene ? tableFaceContent(p.item, p.city, style, scene) : { lit: isLit(p) }) : undefined;
-    const url = info && slug ? imageOf(slug) : undefined;
-    const box = p.kind === 'stored' || p.kind === 'posed' ? gameBoxContent(p.shape, p.slug, url) : {};
-    out.push({ p, pl, content: small ?? (info && slug ? { url, title: info.title, ...box } : {}) });
+    // Carte rangée ou posée : sa pochette choisie, sinon l'image de la carte (et la jaquette d'une boîte de jeu connue) ; écran : la carte.
+    const cover = p.kind === 'stored' || p.kind === 'posed' ? placedBoxContent(p, imageOf) : { url: slug ? imageOf(slug) : undefined };
+    out.push({ p, pl, content: small ?? (info && slug ? { title: info.title, ...cover } : {}) });
   }
   return out;
+}
+
+type PieceProps = { host: 'desk' | 'shelf'; angle: Angle; rect: PxRect; garnish: Garnish[]; palette: Palette; steampunk: boolean; clipId: string; faded?: string | null };
+// Le meuble sous l'angle `a` dans `rect`, garni de ses objets : les objets de tablette (cartes, petits objets) découpés à l'ouverture de
+// l'étagère dans l'ordre des tablettes, puis ceux du dessus du plus loin au plus proche. `faded` : objet dessiné en transparence (tenu
+// dans la vue Modifier). Partagé par le zoom et la vue Modifier : même dessin.
+export function GarnishedPiece({ host, angle: a, rect, garnish, palette, steampunk, clipId, faded }: PieceProps): ReactElement {
+  const opening = host === 'shelf' ? openingOf(FURNITURE_MODELS.shelf, a) : null;
+  const { w: cw, h: ch } = drawSize(host, a);
+  const draw = ({ p, pl, content }: Garnish) => {
+    const art = <CarriedItem3D key={p.id} host={host} angle={a} rect={rect} placement={pl} palette={palette} steampunk={steampunk} content={content} />;
+    return faded === p.id ? <g key={p.id} data-faded={p.id} opacity={0.35}>{art}</g> : art;
+  };
+  const shelved = storedDrawOrder(garnish.filter((g): g is Garnish & { p: Placed & { level: ShelfLevel; order: number } } => onShelfBoard(g.p)).map((g) => ({ ...g, level: g.p.level, order: g.p.order })), a);
+  const depth = new Map(garnish.map((g) => [g.p.id, placementDepth(host, a, g.pl, steampunk)]));
+  const onTop = garnish.filter((g) => !onShelfBoard(g.p)).sort((x, y) => depth.get(y.p.id)! - depth.get(x.p.id)!);
+  return (
+    <g>
+      <Model3DArt kind={host} angle={a} rect={rect} palette={palette} steampunk={steampunk} />
+      {opening && shelved.length > 0 && (
+        <>
+          <clipPath id={clipId}><polygon points={opening.map(([x, y]) => `${rect.x + (x * rect.w) / (cw * CELL_W)},${rect.y + (y * rect.h) / (ch * CELL_H)}`).join(' ')} /></clipPath>
+          <g clipPath={`url(#${clipId})`}>{shelved.map(draw)}</g>
+        </>
+      )}
+      {onTop.map(draw)}
+    </g>
+  );
 }
 
 export function FurnitureZoom({ target, room, cards, imageOf, sceneView, phase, from, stage, level, onCard, onLevel, onBack }: Props): ReactElement | null {
@@ -91,7 +124,10 @@ export function FurnitureZoom({ target, room, cards, imageOf, sceneView, phase, 
   // Objets de chaque bibliothèque (ou du bureau) ; indexé sur `key` : les mêmes ids donnent les mêmes meubles dans `room.layout`.
   const hasFace = room.layout.some((p) => p.kind === 'small' && isTableClock(p.item));
   const decoScene = useDecoScene(sceneView, false, hasFace);
-  const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf, room.style, decoScene)), [room.layout, key, cards, imageOf, room.style, decoScene]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Une image qui échoue (pochette choisie → image de la carte) ou arrive sur l'appareil redessine les garnitures.
+  const probed = useImageProbe();
+  const cached = useCoverCache();
+  const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf, room.style, decoScene)), [room.layout, key, cards, imageOf, room.style, decoScene, probed, cached]); // eslint-disable-line react-hooks/exhaustive-deps
   const clipId = `wm-zoom-open-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   if (!item || (item.kind !== 'shelf' && item.kind !== 'desk')) return null;
 
@@ -100,7 +136,7 @@ export function FurnitureZoom({ target, room, cards, imageOf, sceneView, phase, 
   const { w, h } = drawSize(host, 0);
   const art: PxRect = { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H };
   // Écran et petits objets dépassent du dessus du meuble : le cadre monte jusqu'au plus haut d'entre eux.
-  const tops = garnishes.flat().filter(({ p }) => p.kind !== 'stored').map(({ pl }) => placementRectPx(host, 0, art, pl, steampunk).y);
+  const tops = garnishes.flat().filter(({ p }) => !onShelfBoard(p)).map(({ pl }) => placementRectPx(host, 0, art, pl, steampunk).y);
   const pad = tops.length > 0 ? Math.max(0, art.y - Math.min(...tops)) + 8 : 0;
   // Bibliothèques liées : côte à côte, chacune dans sa largeur.
   const view = { x: 0, y: -pad, w: art.w * n, h: art.h + pad };
@@ -131,26 +167,8 @@ export function FurnitureZoom({ target, room, cards, imageOf, sceneView, phase, 
   };
 
   // Le meuble sous l'angle `a` dans `rect`, garni de ses objets.
-  const garnished = (a: Angle, rect: PxRect, garnish: Garnish[], tag: string): ReactElement => {
-    const opening = host === 'shelf' ? openingOf(FURNITURE_MODELS.shelf, a) : null;
-    const { w: cw, h: ch } = drawSize(host, a);
-    const draw = ({ p, pl, content }: Garnish) => <CarriedItem3D key={p.id} host={host} angle={a} rect={rect} placement={pl} palette={palette} steampunk={steampunk} content={content} />;
-    const shelved = storedDrawOrder(garnish.filter((g): g is Garnish & { p: Extract<Placed, { kind: 'stored' }> } => g.p.kind === 'stored').map((g) => ({ ...g, level: g.p.level, order: g.p.order })), a);
-    const depth = new Map(garnish.map((g) => [g.p.id, placementDepth(host, a, g.pl, steampunk)]));
-    const onTop = garnish.filter((g) => g.p.kind !== 'stored').sort((x, y) => depth.get(y.p.id)! - depth.get(x.p.id)!);
-    return (
-      <g>
-        <Model3DArt kind={host} angle={a} rect={rect} palette={palette} steampunk={steampunk} />
-        {opening && shelved.length > 0 && (
-          <>
-            <clipPath id={`${clipId}-${tag}-${a}`}><polygon points={opening.map(([x, y]) => `${rect.x + (x * rect.w) / (cw * CELL_W)},${rect.y + (y * rect.h) / (ch * CELL_H)}`).join(' ')} /></clipPath>
-            <g clipPath={`url(#${clipId}-${tag}-${a})`}>{shelved.map(draw)}</g>
-          </>
-        )}
-        {onTop.map(draw)}
-      </g>
-    );
-  };
+  const garnished = (a: Angle, rect: PxRect, garnish: Garnish[], tag: string): ReactElement =>
+    <GarnishedPiece host={host} angle={a} rect={rect} garnish={garnish} palette={palette} steampunk={steampunk} clipId={`${clipId}-${tag}-${a}`} />;
 
   const frontArt = (
     <g>

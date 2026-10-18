@@ -5,9 +5,17 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../../src/content/art-setting';
 import { CityLifeLayer } from '../../../src/content/city-life';
-import { FigureContext, FigureRegistry } from '../../../src/content/figure/figure-host';
+import { FigureContext, FigureRegistry, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
+import { blinkAt, blinkLevel, emotionFor, faceState } from '../../../src/core/citizens/face';
+import { citizenSeed } from '../../../src/core/citizens/identity';
+import { moodOf } from '../../../src/core/citizens/emotion';
+import type { CitizenDesc } from '../../../src/core/citizens/catalogue';
+import { anchorsOf, type FigureKey } from '../../../src/core/library/figure/bake';
+import { GhibliFigure } from '../../../src/content/figure/ghibli-figure';
+import type { ArmPose } from '../../../src/core/library/figure/skeleton';
+import { shapeOf, signatureOf } from '../../../src/core/library/figure/dress';
 import { ShopScene, collectScene, forgetScenes, muteScene, placeScene, sceneBudget, sceneParties } from '../../../src/content/shop/shop-scene';
-import { infoOf, runtimes } from '../../../src/content/shop/scene-read';
+import { anchorAt, infoOf, runtimes } from '../../../src/content/shop/scene-read';
 import { sidewalkAt } from '../../../src/core/library/city/shops/scene/sidewalk';
 import type { Score } from '../../../src/core/library/city/shops/scene/types';
 import { GHIBLI_SHOP_SPRITE_CAP, spriteBudget } from '../../../src/core/library/city/shops/sprite-budget';
@@ -444,5 +452,114 @@ describe('branchement dans la Ville', () => {
       expect(c.querySelector(`svg[data-shop-window="${id}"]:not([data-scene]) [data-customer-inside]`)).toBeNull();
       expect(c.querySelector(`[data-shop-staff="${id}"] [data-posed="staff"]`)).toBeNull();
     }
+  });
+});
+
+// ---------- Habitants 3D (Task 10) ----------
+// Faux rendu 3D : base toujours prête, image et accroches fixes ; avec `faces`, l'état du visage du vrai face.ts.
+const ANCH: SpriteAnchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] };
+const fake3D = (faces: boolean): Citizen3D => ({
+  ready: () => true,
+  prepare() {},
+  render: (_d: CitizenDesc, _k: FigureKey, _l: number, face: string) => ({ url: `data:image/png;base64,3D|${face}`, anchors: ANCH }),
+  dispose() {},
+  ...(faces ? { faceOf: (arms: ArmPose, mood: CitizenDesc['mood'], t: number, seed: number) => faceState(emotionFor(arms, mood), blinkLevel(blinkAt(t, seed))) } : {}),
+});
+// Premier instant (s du jour) où un client de la partition vérifie `ok` dans la vitrine.
+function customerMoment(ok: (a: ReturnType<typeof actorsAt>[number], sc: Score) => boolean): { sec: number; id: string } {
+  const plan = planOf(shop, env);
+  const from = slotIndexAt('bakery', 9 * 3600);
+  for (let i = from; i < from + 80; i++) {
+    const sc = makeScore(plan, i, 1);
+    for (let t = 5; t < SLOT_S('bakery') - 5; t += 1) {
+      const a = actorsAt(sc, t).find((x) => x.role === 'customer' && x.where === 'inside' && ok(x, sc));
+      if (a) return { sec: slotStart('bakery', i) + t, id: a.id };
+    }
+  }
+  throw new Error('aucun client');
+}
+
+describe('ShopScene : habitants 3D', () => {
+  it('un enfant de parti parent-enfant a un corps d’enfant ; chaque client a la graine de son id', () => {
+    const isChild = (id: string, sc: Score): boolean => sc.tracks.some((t) => t.id === id && t.child === true);
+    const { sec, id } = customerMoment((a, sc) => isChild(a.id, sc));
+    const figures = new FigureRegistry('t3d', { perFrame: 50, citizens: () => fake3D(false) });
+    const spy = vi.spyOn(figures, 'citizen');
+    const { draw } = mount();
+    draw(scene(sec, false, figures));
+    const bySeed = new Map(spy.mock.calls.map(([d, seed]) => [seed, d] as const));
+    expect(bySeed.get(citizenSeed(id))?.base).toBe('enfant');
+    // Les adultes du même parti (meneur `:0`) : jamais un corps d'enfant.
+    const lead = `${id.slice(0, id.lastIndexOf(':'))}:0`;
+    expect(bySeed.get(citizenSeed(lead))).toBeDefined();
+    expect(bySeed.get(citizenSeed(lead))!.base).not.toBe('enfant');
+  });
+
+  it('caisse : au geste pay-card, le visage du client est « content » (registre à visages)', () => {
+    // Client d'humeur de fond neutre : le « content » vient du geste, pas de l'humeur.
+    const { sec, id } = customerMoment((a) => a.arms === 'pay-card' && moodOf(citizenSeed(a.id)) === 'neutre');
+    const figures = new FigureRegistry('t3d-faces', { perFrame: 50, faces: true, citizens: () => fake3D(true), now: () => 0 });
+    const { host, draw } = mount();
+    draw(scene(sec, false, figures));
+    const fig = (): Element => host.querySelector(`[data-scene-actor][data-actor="${id}"] [data-figure]`)!;
+    expect(fig()).not.toBeNull();
+    // Premier rendu : pantin de repli (cycle 3D pas encore rendu) ; flush : le cycle (visage neutre), posé par la boucle ;
+    // flush suivant : la variante du visage de ce geste.
+    const nodes = collectScene(host.querySelector('[data-shop-scene]')!);
+    for (let i = 0; i < 2; i++) {
+      figures.flush();
+      placeScene(nodes, T0, figures, []);
+    }
+    const sk = fig().getAttribute('data-key')!;
+    expect(sk.split('#').pop()!.split('|')[5]).toBe('pay-card');
+    expect(sk).toMatch(/@3dc(b5|b1)?$/);
+    // Le même client, bras le long du corps (geste sans émotion) : visage neutre (pas de « c »).
+    const parts = sk.split('#').pop()!.split('@')[0]!.split('|');
+    const key: FigureKey = { sig: parts[0]!, yaw: Number(parts[1]), gait: parts[2] as FigureKey['gait'], phase: Number(parts[3]), head: Number(parts[4]), arms: 'down', lean: Number(parts[6]) };
+    expect(figures.keyFor(fig().getAttribute('data-palette')!, key)).toMatch(/@3d(b5|b1)?$/);
+  });
+
+  it('objet en main : accroche de l’image 3D montrée par la figure, sinon celle du pantin', () => {
+    const figures = new FigureRegistry('t3d-anch', { citizens: () => fake3D(false) });
+    const outfit = outfitFor('ordinary', mulberry32(1));
+    const key: FigureKey = { sig: signatureOf(shapeOf(outfit, false)), yaw: 4, gait: 'stand', phase: 0, head: 0, arms: 'down', lean: 0 };
+    const { host, draw } = mount();
+    draw(
+      <FigureContext.Provider value={figures}>
+        <svg><GhibliFigure outfit={outfit} sky={skyAt(720, times)} rainy={false} umbrella={false} initial={key} /></svg>
+      </FigureContext.Provider>,
+    );
+    const node = host.querySelector('[data-figure]')!;
+    const p = anchorsOf(key).handR;
+    expect(anchorAt(key, 'handR', 10, 100, 2, node)).toEqual([10 + p[0] * 2, 100 + p[1] * 2]);
+    act(() => figures.flush());
+    expect(node.getAttribute('data-key')).toMatch(/@3d$/);
+    expect(anchorAt(key, 'handR', 10, 100, 2, node)).toEqual([10 + ANCH.handR[0] * 2, 100 + ANCH.handR[1] * 2]);
+  });
+
+  it('client qui entre en scène (rue, seuil, vitrine) : directement en 3D (rendu d’avance), jamais le pantin à son apparition', () => {
+    const figures = new FigureRegistry('t3d-warm', { perFrame: 50, citizens: () => fake3D(false), now: () => 0 });
+    const start = slotStart('bakery', slotIndexAt('bakery', 10 * 3600)) + 5;
+    const { host, draw } = mount();
+    draw(scene(start, false, figures));
+    const nodes = collectScene(host.querySelector('[data-shop-scene]')!);
+    const figs = (): Element[] => [...host.querySelectorAll('[data-scene-street] [data-figure], [data-scene-door] [data-figure], [data-scene-actor] [data-figure]')];
+    const last = new Map<Element, string | null>(figs().map((n) => [n, n.getAttribute('data-key')]));
+    let shown = 0;
+    const puppets: string[] = [];
+    for (let i = 1; i <= 400; i++) {
+      placeScene(nodes, T0 + i * 0.25, figures, []);
+      for (const n of figs()) {
+        const k = n.getAttribute('data-key');
+        if (k !== null && (last.get(n) ?? null) === null) {
+          shown++;
+          if (!k.includes('@3d')) puppets.push(`${i}:${k.slice(-40)}`);
+        }
+        last.set(n, k);
+      }
+      figures.flush();
+    }
+    expect(shown).toBeGreaterThan(0);
+    expect(puppets).toEqual([]);
   });
 });
