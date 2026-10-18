@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest';
+import type { Layout } from '../../../src/core/library/library-types';
+import { boardWidthCm, setDisplayOf, setShapeOf } from '../../../src/core/library/room-grid';
+
+const shelf = { id: 'sh', kind: 'shelf', col: 8, row: 6 } as const;
+const desk = { id: 'd', kind: 'desk', col: 0, row: 10 } as const;
+const stored = (id: string, shape: 'cd' | 'dvd' | 'game' | 'book', order: number, extra: object = {}): Layout[number] =>
+  ({ id, kind: 'stored', shape, shelfId: 'sh', level: 1, order, slug: id, ...extra }) as Layout[number];
+// Tablette pleine de CD de face (5 × 14 + 4 = 74 cm), le dernier est « c4 ».
+const fullOfCds = (): Layout => [shelf, ...[0, 1, 2, 3, 4].map((i) => stored(`c${i}`, 'cd', i))];
+
+describe('changements d’une carte (présentation, format)', () => {
+  it('format plus épais sur une tablette pleine → null, plan inchangé (30 DVD sur la tranche = 74 cm ; livre sur la tranche = 3 cm)', () => {
+    const layout: Layout = [shelf, ...Array.from({ length: 30 }, (_, i) => stored(`d${i}`, 'dvd', i, { display: 'spine' }))];
+    const copy = structuredClone(layout);
+    expect(setShapeOf(layout, 'd29', 'book')).toBeNull();
+    expect(layout).toEqual(copy);
+    // Un format plus mince passe toujours (CD sur la tranche : 1 cm).
+    expect(setShapeOf(layout, 'd29', 'cd')![30]).toMatchObject({ shape: 'cd', display: 'spine' });
+  });
+
+  it('CD → livre sur une tablette qui a la place → livre, présentation par défaut (tranche)', () => {
+    const layout: Layout = [shelf, stored('c', 'cd', 0, { cover: 'https://img.example/a.jpg' })];
+    const next = setShapeOf(layout, 'c', 'book')!;
+    expect(next[1]).toEqual({ id: 'c', kind: 'stored', shape: 'book', shelfId: 'sh', level: 1, order: 0, slug: 'c' });
+  });
+
+  it('jeu en présentation dos → CD : face (défaut) ; boîte et couleur effacées', () => {
+    const layout: Layout = [shelf, stored('g', 'game', 0, { display: 'back', box: 'gamecube', caseColor: '#123456' })];
+    const next = setShapeOf(layout, 'g', 'cd')!;
+    expect(next[1]).toEqual({ id: 'g', kind: 'stored', shape: 'cd', shelfId: 'sh', level: 1, order: 0, slug: 'g' });
+  });
+
+  it('une carte avec pochette changée de format perd sa pochette', () => {
+    const layout: Layout = [shelf, stored('c', 'cd', 0, { cover: 'https://img.example/a.jpg' })];
+    expect((setShapeOf(layout, 'c', 'dvd')![1] as { cover?: string }).cover).toBeUndefined();
+  });
+
+  it('carte posée changée de format : null si elle chevauche un voisin, sinon elle garde sa place', () => {
+    const layout: Layout = [desk,
+      { id: 'p', kind: 'posed', shape: 'cd', hostId: 'd', x: 0, z: 0, pose: 'flat', slug: 'p' },
+      { id: 'q', kind: 'posed', shape: 'cd', hostId: 'd', x: 14.5, z: 0, slug: 'q' }];
+    const copy = structuredClone(layout);
+    expect(setShapeOf(layout, 'p', 'book')).toBeNull();
+    expect(layout).toEqual(copy);
+    expect(setShapeOf(layout, 'q', 'dvd')![2]).toMatchObject({ shape: 'dvd', x: 14.5, z: 0 });
+  });
+
+  it('setDisplayOf : tranche d’un CD (plus étroit) passe, retour à la face = champ absent ; dos refusé hors jeu', () => {
+    const layout = fullOfCds();
+    const slim = setDisplayOf(layout, 'c4', 'spine')!;
+    expect(slim[5]).toMatchObject({ id: 'c4', display: 'spine' });
+    expect(setDisplayOf(layout, 'c4', 'back')).toBeNull();
+    expect((setDisplayOf(slim, 'c4', 'cover')![5] as { display?: string }).display).toBeUndefined();
+  });
+
+  it('setDisplayOf : un livre qui passe de la tranche à la face sur une tablette pleine → null', () => {
+    // 4 livres de face (4 × 15 + 3 = 63 cm) + un livre sur la tranche : le dernier ne peut plus passer de face (79 cm).
+    const layout: Layout = [shelf, ...[0, 1, 2, 3].map((i) => stored(`b${i}`, 'book', i, { display: 'cover' })), stored('b4', 'book', 4)];
+    const copy = structuredClone(layout);
+    expect(setDisplayOf(layout, 'b4', 'cover')).toBeNull();
+    expect(layout).toEqual(copy);
+    // Une face qui repasse sur la tranche (plus étroit) passe toujours.
+    expect(setDisplayOf(layout, 'b3', 'spine')![4]).toEqual(stored('b3', 'book', 3));
+  });
+
+  it('un jeu accepte le dos', () => {
+    const layout: Layout = [shelf, stored('g', 'game', 0)];
+    expect(setDisplayOf(layout, 'g', 'back')![1]).toMatchObject({ display: 'back' });
+  });
+});
