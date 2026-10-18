@@ -5,7 +5,7 @@ import { drawOrder } from '../core/library/depth-order';
 import { drawSize, faceFrame, frontFaceRect, groundTrace, type Angle } from '../core/library/footprint';
 import { boxesOf, lampsOf, signatureOf } from '../core/library/light/occluders';
 import { decorOf, paletteOf } from '../core/library/styles';
-import { boxOfQuad, cardQuad, computerPlacement, hostPointPx, placementDepth, placementRectPx, smallPlacement, storedDrawOrder, storedPlacementsOf } from '../core/library/carried-items';
+import { boxOfQuad, cardQuad, computerPlacement, hostPointPx, placementDepth, placementRectPx, posedPlacement, smallPlacement, storedDrawOrder, storedPlacementsOf } from '../core/library/carried-items';
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
 import { localPointOf, openingOf } from '../core/library/furniture-render3d';
 import { bookColor, type ItemPlacement } from '../core/library/item-models';
@@ -133,7 +133,7 @@ type Props = {
 function hifiDiscKindOf(placed: Placed, sleeve: SleeveKind): DiscKind {
   if (sleeve === 'vinyl') return 'vinyl';
   if (sleeve !== 'game') return 'cd';
-  return gameDiscKind(placed.kind === 'stored' ? placed.box : undefined);
+  return gameDiscKind(placed.kind === 'stored' || placed.kind === 'posed' ? placed.box : undefined);
 }
 
 // Matrice du repère d'une face (footprint.faceFrame) en attribut SVG.
@@ -148,6 +148,10 @@ function topPlacementIn(hosts: ReadonlyMap<string, Host>, placed: Placed): { hos
   if (placed.kind === 'computer') {
     const host = hosts.get(placed.deskId);
     return host?.kind === 'desk' ? { host, pl: computerPlacement(placed.id) } : null;
+  }
+  if (placed.kind === 'posed') {
+    const host = hosts.get(placed.hostId);
+    return host ? { host, pl: posedPlacement(placed, host.kind) } : null;
   }
   if (placed.kind !== 'small' || isOnBoard(placed)) return null;
   const host = hosts.get(placed.hostId);
@@ -329,7 +333,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   // `liftedArt` : dessin de la copie soulevée quand il diffère (la fenêtre emporte sa vue).
   // `part` : pour un meuble à socle (lampadaire arc), seulement le socle et la tige ('base') ou seulement l'arc et le dôme ('overhang').
   function artOf(placed: Placed, part?: ModelPart): { rect: PxRect; art: ReactElement; liftedArt?: ReactElement } | null {
-    if (placed.kind === 'computer' || placed.kind === 'small') {
+    if (placed.kind === 'computer' || placed.kind === 'small' || placed.kind === 'posed') {
+      // Objet dont le disque est au poste : sa place d'origine reste vide.
+      if (placed.kind === 'posed' && awayFromHome.has(placed.id)) return null;
       // Écran (machine analytique dans une pièce Steampunk) ou petit objet : modèle 3D posé sur le dessus du porteur tourné, avec lui
       // (de dos, l'écran montre son dos, sans image). Son rectangle (zone touchable, contour) est celui de son dessin : l'écran dépasse du bureau.
       // Petit objet de tablette : posé sur sa planche d'après ses voisins (même rangement que les cartes) ; étagère de profil ou de dos : caché.
@@ -344,7 +350,12 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       const { host, pl } = at;
       const rect = placementRectPx(host.kind, host.angle, host.rect, pl, steampunk);
       let content: ItemContent;
-      if (placed.kind === 'computer') content = { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined };
+      // Carte posée : sa vraie boîte sur trépied ou à plat, l'image de la carte sur la couverture (comme une carte rangée).
+      if (placed.kind === 'posed') {
+        const info = cards[placed.slug];
+        const url = info ? imageOf(placed.slug) : undefined;
+        content = info ? { url, title: info.title, ...gameBoxContent(placed.shape, placed.slug, url) } : {};
+      } else if (placed.kind === 'computer') content = { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined };
       // Face décorée (heure, météo) : elle relit elle-même la seconde, le modèle 3D n'est pas redessiné à chaque seconde.
       else if (isTableClock(placed.item) && decoScene) content = tableFaceContent(placed.item, placed.city, room.style, decoScene);
       // Seul le poste qui sert (le premier posé) montre la lecture.
@@ -548,7 +559,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const carried = useMemo(() => {
     const out = new Map<string, Carried>();
     for (const placed of room.layout) {
-      const hostId = placed.kind === 'computer' ? placed.deskId : placed.kind === 'small' ? placed.hostId : placed.kind === 'stored' ? placed.shelfId : null;
+      const hostId = placed.kind === 'computer' ? placed.deskId : placed.kind === 'small' || placed.kind === 'posed' ? placed.hostId : placed.kind === 'stored' ? placed.shelfId : null;
       if (hostId === null) continue;
       const entry = out.get(hostId) ?? { tops: [], stored: [], computers: [] };
       if (placed.kind === 'stored' || (placed.kind === 'small' && isOnBoard(placed))) entry.stored.push(placed);

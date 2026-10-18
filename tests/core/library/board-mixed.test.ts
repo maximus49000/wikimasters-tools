@@ -97,9 +97,11 @@ describe('tablettes mixtes : cartes et petits objets', () => {
     expect(order(moveStored(layout, 'c2', 'f1', 0, 0)!, 0)).toEqual([['c2', 0], ['l', 1], ['c0', 2], ['c1', 3]]);
   });
 
-  it('moveToTop : carte refusée ; lampe de tablette posée sur le dessus, la tablette se recompacte', () => {
+  it('moveToTop : carte posée sur trépied (v10) ; lampe de tablette posée sur le dessus, la tablette se recompacte', () => {
     const layout: Layout = [...shelf, lamp(1, 0), cd(0, 1, 1)];
-    expect(moveToTop(layout, 'c0', 'f1', 0, 0)).toBeNull();
+    const card = moveToTop(layout, 'c0', 'f1', 0, 0)!;
+    expect(card.find((p) => p.id === 'c0')).toEqual({ id: 'c0', kind: 'posed', shape: 'cd', hostId: 'f1', x: 0, z: 0, slug: 'S0' });
+    expect(order(card, 1)).toEqual([['l', 0]]);
     const next = moveToTop(layout, 'l', 'f1', 0, 0)!;
     expect(next.find((p) => p.id === 'l')).toEqual({ id: 'l', kind: 'small', item: 'lamp', hostId: 'f1', x: 0, z: 0 });
     expect(order(next, 1)).toEqual([['c0', 0]]);

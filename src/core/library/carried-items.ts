@@ -6,7 +6,7 @@ import { drawSize, type Angle } from './footprint';
 import { FURNITURE_MODELS } from './furniture-models';
 import { CELL_H, CELL_W, FACE_CAMERA, cameraKey, levelsOf, localPointOf, pieceBounds, projectOf, type Camera, type V3t } from './furniture-render3d';
 import { ITEM_MODELS, bookColor, itemModel, itemPieces, storedFrontCorners, type ItemPlacement, type ItemShape } from './item-models';
-import { isOnBoard, type Layout, type Placed, type Posed, type ShelfLevel, type SmallItem } from './library-types';
+import { isOnBoard, poseOf, type Layout, type Placed, type Posed, type ShelfLevel, type SmallItem } from './library-types';
 import { SHELF_GAP_CM, boardItems, boardWidthCm, displayOf, type BoardItem, type HostKind, type PxRect, type Stored } from './room-grid';
 import { SLEEVE_ZONE_CM } from './surface';
 
@@ -71,11 +71,12 @@ export function smallPlacement(id: string, item: SmallItem, hostKind: HostKind, 
   return { key: id, shape, x, y: FURNITURE_MODELS[hostKind].h, z: item === 'hifi' ? z + SLEEVE_ZONE_CM : z };
 }
 
-// Carte posée sur le plateau de son porteur : de face, à (x, z) cm (coin avant gauche de son empreinte) ; un livre prend la couleur de
-// dos de sa carte, un jeu son format et sa couleur de boîtier (comme rangé).
+// Carte posée sur le plateau de son porteur, à (x, z) cm (coin avant gauche de son empreinte) : de face sur son trépied, ou couchée
+// (couverture vers le haut) selon sa pose ; un livre prend la couleur de dos de sa carte, un jeu son format et sa couleur de boîtier (comme rangé).
 export function posedPlacement(p: Posed, hostKind: HostKind): ItemPlacement {
   return {
     key: p.id, shape: p.shape, display: 'cover', x: p.x, y: FURNITURE_MODELS[hostKind].h, z: p.z,
+    ...(poseOf(p) === 'flat' && { flat: true as const }),
     ...(p.shape === 'book' && { color: bookColor(p.slug) }),
     ...(p.box && { box: p.box }),
     ...(p.box && p.caseColor && { color: p.caseColor }),

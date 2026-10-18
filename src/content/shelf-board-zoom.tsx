@@ -13,9 +13,10 @@ import { Item3DArt } from './model3d-art';
 
 // Place d'insertion de la vue Modifier (cm de la face de `shelfId`) : verte si l'objet tenu y tient, rouge sinon.
 export type BoardMarker = { shelfId: string; xCm: number; wCm: number; hCm: number; ok: boolean };
-// Branchement de la vue Modifier : un doigt sur un objet le saisit (`onGrab`), l'objet tenu est dessiné en transparence, la place
-// d'insertion s'affiche ; le toucher d'une carte n'ouvre rien.
-export type BoardArrange = { held: string | null; marker: BoardMarker | null; onGrab: (id: string, e: ReactPointerEvent) => void };
+// Branchement de la vue Modifier : un doigt sur un objet passe à `onGrab` (toucher : la bulle de l'objet ; objet armé par ✥ Déplacer,
+// `armed`, cerclé de bleu : le glissé), l'objet tenu est dessiné en transparence, la place d'insertion s'affiche.
+// `pending` : id de la carte en attente de la vue ＋ (cerclée d'or ; de rouge si `pendingBlocked` : sa place ne tient plus).
+export type BoardArrange = { held: string | null; marker: BoardMarker | null; onGrab: (id: string, e: ReactPointerEvent) => void; pending?: string | null; pendingBlocked?: boolean; armed?: string | null };
 
 export type ShelfBoardProps = {
   shelfIds: string[];
@@ -147,9 +148,15 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
   const items = new Map(room.layout.filter((p): p is BoardItem => p.kind === 'stored' || (p.kind === 'small' && 'level' in p)).map((p) => [p.id, p]));
   const last = SHELF_LEVELS[SHELF_LEVELS.length - 1]!;
   const reduced = reducedMotion();
-  // Vue Modifier : un doigt sur un objet le saisit, et le toucher ne remonte pas au conteneur (pas de balayage de tablette).
+  // Vue Modifier : un doigt sur un objet passe à la saisie (toucher : sa bulle ; objet armé par ✥ : le glissé), et ne remonte pas au
+  // conteneur (pas de balayage de tablette).
   const grab = arrange ? (id: string) => (e: ReactPointerEvent) => { e.stopPropagation(); arrange.onGrab(id, e); } : () => undefined;
   const heldStyle = (id: string) => (arrange?.held === id ? { opacity: 0.35 } : {});
+  // Objet armé par ✥ Déplacer (vue Modifier) : cerclé de bleu, prêt à glisser ; les autres se touchent (bulle), ils ne se saisissent pas.
+  const armedRing = (id: string, x: number, y: number, w: number, h: number) => (arrange?.armed === id && arrange.held !== id
+    ? <rect data-armed="" x={x - 0.8} y={y - 0.8} width={w + 1.6} height={h + 1.6} rx={0.8} fill="none" stroke="#2f7fd6" strokeWidth={0.9} strokeDasharray="2 1.2" pointerEvents="none" />
+    : null);
+  const cursorOf = (id: string, fallback: string) => (!arrange ? fallback : arrange.armed === id || arrange.pending === id ? 'grab' : 'pointer');
   const steampunk = room.style === 'steampunk';
 
   return (
@@ -180,8 +187,9 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                 if (p.kind === 'small') {
                   // Petit objet de tablette : son modèle 3D de face, à ses mesures (lampe allumée ou éteinte comme dans la pièce).
                   return (
-                    <g key={p.id} data-board-small={p.id} onPointerDown={grab(p.id)} style={{ cursor: arrange ? 'grab' : 'default', ...heldStyle(p.id) }}>
+                    <g key={p.id} data-board-small={p.id} onPointerDown={grab(p.id)} style={{ cursor: cursorOf(p.id, 'default'), ...heldStyle(p.id) }}>
                       <Item3DArt shape={`small-${p.item}`} angle={0} rect={{ x, y, w, h }} palette={palette} steampunk={steampunk} content={p.item === 'lamp' ? { lit: isLit(p) } : undefined} />
+                      {armedRing(p.id, x, y, w, h)}
                     </g>
                   );
                 }
@@ -197,18 +205,20 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                 // Jeu sur la tranche à boîte connue : la tranche dessinée comme la vraie.
                 const gameSpine = spine ? box.spine : undefined;
                 const spineFont = Math.min(w * 0.6, TITLE_FONT_CM);
+                const waiting = arrange?.pending === p.id;
                 return (
                   <g
                     key={p.id}
                     data-board-card={p.slug}
                     data-board-display={display}
+                    {...(waiting ? { 'data-pending': p.slug } : {})}
                     onPointerDown={grab(p.id)}
                     onClick={() => {
                       if (swiped.current) { swiped.current = false; return; }
-                      // Vue Modifier : toucher une carte sans la glisser ne fait rien pour l'instant (sa bulle vient ensuite).
+                      // Vue Modifier : le toucher passe par la saisie (onGrab), qui ouvre la bulle de la carte.
                       if (info && !arrange) onCard(p.slug);
                     }}
-                    style={{ cursor: arrange ? 'grab' : info ? 'pointer' : 'default', ...heldStyle(p.id) }}
+                    style={{ cursor: cursorOf(p.id, info ? 'pointer' : 'default'), ...heldStyle(p.id) }}
                   >
                     {gameSpine
                       ? <g transform={`translate(${x} ${y})`}><GameSpine w={w} h={h} {...gameSpine} /></g>
@@ -223,6 +233,9 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                       : titleLines(title, w / (TITLE_FONT_CM * CHAR_W)).map((line, k) => (
                         <text key={k} data-board-title="" x={x + w / 2} y={titleY + TITLE_FONT_CM * (k + 1)} fontSize={TITLE_FONT_CM} textAnchor="middle" fill={TITLE_INK}>{line}</text>
                       ))}
+                    {armedRing(p.id, x, y, w, h)}
+                    {/* Carte en attente (vue ＋) : halo doré autour du boîtier. */}
+                    {waiting && <rect data-pending-halo="" x={x - 0.6} y={y - 0.6} width={w + 1.2} height={h + 1.2} rx={0.6} fill="none" stroke={arrange?.pendingBlocked ? '#C8443A' : '#F5C542'} strokeWidth={1} pointerEvents="none" style={{ filter: `drop-shadow(0 0 1.5px ${arrange?.pendingBlocked ? '#C8443A' : '#F5C542'})` }} />}
                   </g>
                 );
               })}

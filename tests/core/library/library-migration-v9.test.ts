@@ -52,7 +52,7 @@ describe('migration v9 (petits objets en cm)', () => {
   it('un bureau à 4 petits objets migre sans perte, relecture idempotente', () => {
     const smalls = (['alarm', 'clock', 'station', 'plant'] as const).map((item, slot) => ({ id: `s${slot}`, kind: 'small', item, hostId: 'h', slot }));
     const once = parseLibraryState(state(8, [desk, ...smalls]));
-    expect(once.version).toBe(9);
+    expect(once.version).toBe(10);
     expect(layoutOf(once).map((p) => p.id)).toEqual(['h', 's0', 's1', 's2', 's3']);
     expect(layoutOf(once)[1]).toEqual({ id: 's0', kind: 'small', item: 'alarm', hostId: 'h', ...slotToTop('desk', 'alarm', 0) });
     expect(parseLibraryState(once)).toEqual(once);
@@ -148,7 +148,7 @@ describe('migration v9 (petits objets en cm)', () => {
     expect(layoutOf(s)[1]).toMatchObject({ level: 0, order: 0 });
   });
 
-  it('nouvel état : version 9', () => {
-    expect(createInitialState().version).toBe(9);
+  it('nouvel état : version 10', () => {
+    expect(createInitialState().version).toBe(10);
   });
 });

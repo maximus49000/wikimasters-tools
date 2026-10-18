@@ -144,8 +144,8 @@ export function bookColor(slug: string): string {
 }
 
 // Objet posé : `key` le distingue (clés de décalque « key|rôle:forme », formes « stored:key », abat-jour « glow:key ») ; (x, y, z) = coin bas avant gauche de sa boîte
-// dans le repère du meuble, une fois posé ; `color` : couleur du dos d'un livre.
-export type ItemPlacement = { key: string; shape: ItemShape; display?: ItemDisplay; x: number; y: number; z: number; color?: string; box?: BoxFormat };
+// dans le repère du meuble, une fois posé ; `color` : couleur du dos d'un livre ; `flat` : objet rangé couché, couverture vers le haut (carte posée à plat).
+export type ItemPlacement = { key: string; shape: ItemShape; display?: ItemDisplay; x: number; y: number; z: number; color?: string; box?: BoxFormat; flat?: true };
 
 // Quart de tour (tranche vers l'avant) : la face gauche passe devant, l'avant à droite, la droite au fond, le fond à gauche.
 const TURNED: Record<BoxFace, BoxFace> = { left: 'front', front: 'right', right: 'back', back: 'left', top: 'top' };
@@ -155,11 +155,12 @@ const HALF: Record<BoxFace, BoxFace> = { front: 'back', back: 'front', left: 'ri
 // Présentoir : un CD, un DVD ou un jeu rangé de face ne tient pas droit comme un piquet. Il penche vers l'arrière de STAND_LEAN_DEG,
 // posé sur un petit support sombre : socle fin, rebord avant qui retient le bas du boîtier, béquille au dos qui l'appuie aux deux tiers
 // de sa hauteur. Le support est moins large que la couverture : la place prise sur la tablette ne change pas (seule la profondeur grandit).
-// Un livre de face, ou tout objet sur la tranche, reste droit.
+// Un livre de face, ou tout objet sur la tranche, reste droit. C'est aussi le trépied d'une carte posée sur un plateau (pose « trépied ») ;
+// une carte posée à plat n'en a pas.
 export const STAND_LEAN_DEG = 14;
 const STAND_COLOR = '#5B4636';
 const STAND = { base: 0.4, lip: 1, lipD: 0.5, strut: 0.4, back: 1.5, rest: 0.62 } as const;
-const onStand = (p: ItemPlacement): boolean => (p.display ?? 'cover') !== 'spine' && (p.shape === 'cd' || p.shape === 'dvd' || p.shape === 'game');
+const onStand = (p: ItemPlacement): boolean => !p.flat && (p.display ?? 'cover') !== 'spine' && (p.shape === 'cd' || p.shape === 'dvd' || p.shape === 'game');
 
 // Support du boîtier `m` posé en (x, y, z) (coin bas avant gauche), et le boîtier penché dessus.
 function standPieces(m: Model, c: Extract<Piece, { shape: 'box' }>, x: number, y: number, z: number): Piece[] {
@@ -184,10 +185,14 @@ function standPieces(m: Model, c: Extract<Piece, { shape: 'box' }>, x: number, y
   ];
 }
 
-// Face avant d'un objet rangé (couverture de face, penchée sur son présentoir ; tranche sur la tranche), repère du meuble (cm) :
-// haut gauche, haut droit, bas droit, bas gauche.
+// Face avant d'un objet rangé (couverture de face, penchée sur son présentoir ; tranche sur la tranche ; couché : la couverture, sur le
+// dessus), repère du meuble (cm) : haut gauche, haut droit, bas droit, bas gauche (couché : le haut de la couverture est au fond).
 export function storedFrontCorners(p: ItemPlacement): [number, number, number][] {
   const m = itemModel(p.shape, false, p.box);
+  if (p.flat) {
+    const y = p.y + m.d;
+    return [[p.x, y, p.z + m.h], [p.x + m.w, y, p.z + m.h], [p.x + m.w, y, p.z], [p.x, y, p.z]];
+  }
   if (!onStand(p)) {
     const w = p.display === 'spine' ? m.d : m.w;
     return [[p.x, p.y + m.h, p.z], [p.x + w, p.y + m.h, p.z], [p.x + w, p.y, p.z], [p.x, p.y, p.z]];
@@ -198,7 +203,8 @@ export function storedFrontCorners(p: ItemPlacement): [number, number, number][]
   return [[p.x, yt, zt], [p.x + m.w, yt, zt], [p.x + m.w, y0, z0], [p.x, y0, z0]];
 }
 
-// Pièces d'un objet posé dans le repère de son meuble. Sur la tranche, l'objet rangé tourne d'un quart (les objets rangés ne sont faits que de boîtes).
+// Pièces d'un objet posé dans le repère de son meuble. Sur la tranche, l'objet rangé tourne d'un quart ; couché, il bascule vers l'arrière
+// (les objets rangés ne sont faits que de boîtes).
 export function itemPieces(p: ItemPlacement, steampunk = false): Piece[] {
   const m = itemModel(p.shape, steampunk, p.box);
   const pieces = placedPieces(p, m);
@@ -210,6 +216,7 @@ function placedPieces(p: ItemPlacement, m: Model): Piece[] {
   const stored = p.shape !== 'monitor' && p.shape !== 'small-plant' && p.shape !== 'small-lamp' && p.shape !== 'small-alarm' && p.shape !== 'small-clock' && p.shape !== 'small-station' && p.shape !== 'small-hifi';
   const turned = p.display === 'spine' && stored;
   const half = p.display === 'back' && p.shape === 'game';
+  const flat = Boolean(p.flat) && stored;
   return m.pieces.map((q): Piece => {
     // Étiquettes : `body` reçoit la couleur propre ; un objet rangé est marqué « stored:key » (il ne se voit qu'à travers l'ouverture du meuble),
     // `glow` devient « glow:key » (allumage de cet objet-là).
@@ -219,6 +226,13 @@ function placedPieces(p: ItemPlacement, m: Model): Piece[] {
     else delete base.tag;
     switch (base.shape) {
       case 'box': {
+        // Couché : la face avant devient le dessus (la couverture), le haut de l'objet va au fond, l'épaisseur devient la hauteur. Seule la
+        // couverture reste décorée (tranche et pages couchées seraient déformées ; le dos est dessous).
+        if (flat) {
+          const cover = base.decals?.filter((d) => d.face === 'front').map((d) => ({ face: 'top' as const, key: `${p.key}|${d.key}` }));
+          const { decals: _d, ...plain } = base;
+          return { ...plain, x: p.x + base.x, y: p.y + m.d - (base.z + base.d), z: p.z + base.y, w: base.w, h: base.d, d: base.h, ...(cover?.length && { decals: cover }) };
+        }
         const decals = base.decals?.map((d) => ({ face: turned ? TURNED[d.face] : half ? HALF[d.face] : d.face, key: `${p.key}|${d.key}` }));
         const placed = turned
           ? { x: p.x + m.d - (base.z + base.d), z: p.z + base.x, w: base.d, d: base.w }

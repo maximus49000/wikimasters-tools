@@ -8,7 +8,7 @@ import { BOX_FORMATS, type BoxFormat } from '../game/platform-boxes';
 import { MAX_COLS, MIN_COLS, ROWS, SECTION, canPlace, compactShelves, isStanding, canHostSmall, fitsWithin, isLamp, sectionIsEmpty, shiftLayout, stretchWindow, windowRow, type HostKind } from './room-grid';
 import { FURNITURE_MODELS } from './furniture-models';
 import { ITEM_MODELS } from './item-models';
-import { SLEEVE_ZONE_CM, canPutOnTop, firstFreeTopSpot, type TopThing } from './surface';
+import { SLEEVE_ZONE_CM, canPutOnTop, firstFreeTopSpot, topThingOf } from './surface';
 
 const BOX_FORMAT_IDS = Object.keys(BOX_FORMATS) as [BoxFormat, ...BoxFormat[]];
 export const MAX_ROOMS = 12;
@@ -52,9 +52,26 @@ const smallSchema = z.union([
 ]);
 const boxSchema = z.enum(BOX_FORMAT_IDS).optional().catch(undefined);
 const caseColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().catch(undefined);
-// Carte posée sur le plateau d'un bureau ou d'une étagère : format et couleur de boîtier pour un jeu seulement (comme rangée).
-const posedSchema = z.object({ id: z.string(), kind: z.literal('posed'), shape: z.enum(['cd', 'dvd', 'game', 'book']), hostId: z.string(), x: cm, z: cm, box: boxSchema, caseColor: caseColorSchema, slug: z.string() })
-  .transform(({ box, caseColor, ...rest }) => ({ ...rest, ...(rest.shape === 'game' && box && { box }), ...(rest.shape === 'game' && box && caseColor && { caseColor }) }));
+// Pochette choisie pour l'objet : une adresse https seulement ; toute autre valeur est écartée (l'objet reste).
+const isHttpsUrl = (s: string): boolean => {
+  try {
+    return new URL(s).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+const coverSchema = z.string().min(1).refine(isHttpsUrl).optional().catch(undefined);
+// Carte posée sur le plateau d'un bureau ou d'une étagère : format et couleur de boîtier pour un jeu seulement (comme rangée) ; pose à plat
+// gardée, trépied ou pose inconnue → absente (trépied).
+const posedSchema = z.object({ id: z.string(), kind: z.literal('posed'), shape: z.enum(['cd', 'dvd', 'game', 'book']), hostId: z.string(), x: cm, z: cm,
+  pose: z.enum(['stand', 'flat']).optional().catch(undefined), box: boxSchema, caseColor: caseColorSchema, slug: z.string(), cover: coverSchema })
+  .transform(({ box, caseColor, pose, cover, ...rest }) => ({
+    ...rest,
+    ...(pose === 'flat' && { pose }),
+    ...(rest.shape === 'game' && box && { box }),
+    ...(rest.shape === 'game' && box && caseColor && { caseColor }),
+    ...(cover && { cover }),
+  }));
 const placedSchema = z.union([
   z.object({ id: z.string(), kind: z.enum(STANDING_KINDS), col: halfCol, row: z.number().int(), lit: z.boolean().optional(), angle: z.unknown().optional(), unlinked: z.literal(true).optional() })
     .transform(({ angle, ...rest }) => (isAngle(angle) && angle !== 0 ? { ...rest, angle } : rest)),
@@ -83,12 +100,14 @@ const placedSchema = z.union([
     box: boxSchema,
     caseColor: caseColorSchema,
     slug: z.string(),
-  }).transform(({ box, caseColor, display, ...rest }) => ({
+    cover: coverSchema,
+  }).transform(({ box, caseColor, display, cover, ...rest }) => ({
     ...rest,
     // Format et couleur de boîtier ne concernent que les jeux ; la présentation de dos aussi (ailleurs : la couverture).
     ...(display && { display: display === 'back' && rest.shape !== 'game' ? ('cover' as const) : display }),
     ...(rest.shape === 'game' && box && { box }),
     ...(rest.shape === 'game' && box && caseColor && { caseColor }),
+    ...(cover && { cover }),
   })),
 ]);
 const ptSchema = z.object({ x: z.number(), y: z.number() });
@@ -136,7 +155,7 @@ const roomSchema = z.object({
   cityEpoch: z.number().int().optional(),
 });
 const stateSchema = z.object({
-  version: z.literal(9),
+  version: z.literal(10),
   activeRoomId: z.string(),
   homeRoomId: z.string().nullable(),
   time: z.union([
@@ -174,7 +193,7 @@ const makeRoom = (id: string, name: string, orientation: Orientation, style: Roo
 });
 
 export function createInitialState(): LibraryState {
-  return { version: 9, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
+  return { version: 10, activeRoomId: 'r1', homeRoomId: null, time: { mode: 'real' }, weather: { mode: 'random' }, rooms: [makeRoom('r1', 'Pièce 1', 'landscape')] };
 }
 
 export function activeRoom(state: LibraryState): Room {
@@ -222,7 +241,7 @@ function cleanEntries(layout: Layout): Layout {
     } else if (p.kind === 'small' || p.kind === 'posed') {
       const hostKind = hostKindOf(p.hostId);
       if (!hostKind || (p.kind === 'small' && !canHostSmall(hostKind, p.item))) continue;
-      const thing: TopThing = p.kind === 'small' ? { item: p.item } : { shape: p.shape, box: p.box };
+      const thing = topThingOf(p);
       if (!canPutOnTop(onTops, p.hostId, thing, p.x, p.z)) {
         const spot = firstFreeTopSpot(onTops, p.hostId, thing);
         if (!spot) continue;
@@ -427,7 +446,14 @@ export function migrateV8(raw: unknown): unknown {
   return { ...state, version: 9, rooms };
 }
 
-const migrate = (raw: unknown): unknown => migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(raw))))))));
+// La v10 ajoute la pose d'une carte posée (`pose`, absente = trépied) et la pochette choisie d'un objet (`cover`) : champs optionnels, seule la
+// version change.
+export function migrateV9(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || (raw as { version?: unknown }).version !== 9) return raw;
+  return { ...(raw as object), version: 10 };
+}
+
+const migrate = (raw: unknown): unknown => migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(raw)))))))));
 
 // Un animal impossible (espèce ou pelage inconnus…) est ignoré sans faire perdre la pièce ; trois au plus.
 function cleanPets(raw: unknown): unknown {

@@ -4,7 +4,7 @@ import { addRoom, createInitialState, parseLibraryState, renameRoom, setWeatherS
 describe('réglage météo', () => {
   it('démarre en aléatoire, version 5', () => {
     const state = createInitialState();
-    expect(state.version).toBe(9);
+    expect(state.version).toBe(10);
     expect(state.weather).toEqual({ mode: 'random' });
   });
   it('change de réglage', () => {
@@ -16,7 +16,7 @@ describe('réglage météo', () => {
     const v4 = { ...createInitialState(), version: 4 } as Record<string, unknown>;
     delete v4.weather;
     const parsed = parseLibraryState(v4);
-    expect(parsed.version).toBe(9);
+    expect(parsed.version).toBe(10);
     expect(parsed.weather).toEqual({ mode: 'random' });
   });
   it('relit un réglage forcé valide', () => {

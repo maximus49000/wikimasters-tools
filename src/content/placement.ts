@@ -76,7 +76,7 @@ function withItemAt(layout: Layout, id: string, col: number, top: number): Layou
 function rectFor(layout: Layout, item: Placed): Rect | null {
   const own = rectOf(item);
   if (own) return own;
-  const hostId = item.kind === 'computer' ? item.deskId : item.kind === 'small' ? item.hostId : item.kind === 'stored' ? item.shelfId : null;
+  const hostId = item.kind === 'computer' ? item.deskId : item.kind === 'small' || item.kind === 'posed' ? item.hostId : item.kind === 'stored' ? item.shelfId : null;
   const host = hostId ? layout.find((x) => x.id === hostId) : undefined;
   return host ? rectOf(host) : null;
 }

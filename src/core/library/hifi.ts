@@ -32,7 +32,7 @@ export function hiddenAtHome(state: HifiState): ReadonlySet<string> {
 // Objet au poste : un boîtier rangé (cd, dvd, game, book) ou un vinyle accroché au mur.
 export type SleeveKind = 'cd' | 'dvd' | 'game' | 'book' | 'vinyl';
 export function sleeveKindOf(p: Placed): SleeveKind | null {
-  if (p.kind === 'stored') return p.shape;
+  if (p.kind === 'stored' || p.kind === 'posed') return p.shape;
   if (p.kind === 'wall' && p.shape !== 'poster') return 'vinyl';
   return null;
 }

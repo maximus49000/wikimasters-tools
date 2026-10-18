@@ -21,6 +21,7 @@ import {
   setWeatherSetting,
   shrinkRoom,
   fitRoomWidth,
+  nextFurnitureId,
   updateLayout,
 } from '../core/library/library-book';
 import { STEAMPUNK_ONLY, isSmallKind, labelOf, WINDOW_MAX, WINDOW_MIN } from '../core/library/furniture-catalog';
@@ -64,6 +65,8 @@ import {
   displayOf,
   moveToBoard,
   moveToTop,
+  poseCard,
+  storeCard,
   type Cell,
 } from '../core/library/room-grid';
 import { formatMinutes } from '../core/library/time-setting';
@@ -99,7 +102,7 @@ import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
 import { applyBoxChanges, boxChanges, gameCoverUrl, localGameBox } from './game-box-content';
 import { getGameBoxService } from './game-box-registry';
-import { Btn, Icon, ICONS } from './library-ui';
+import { Btn, DisplayButtons, Icon, ICONS } from './library-ui';
 import { LibraryTopBar } from './library-topbar';
 import { NEXT_ZONE, SkyMenu, placeBanner } from './library-sky-menu';
 import { PetsMenu, SPECIES_TEXT } from './library-pets-menu';
@@ -116,7 +119,9 @@ import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
 import { ArrangeView } from './arrange/ArrangeView';
 import { ArrangeShelf, type ArrangeLevel } from './arrange/ArrangeShelf';
+import { applyItemChange, type ItemChange } from './arrange/CardBubble';
 import { useArrangeView } from './arrange/use-arrange-view';
+import type { AddAt, AddCard } from './arrange/use-pending-card';
 import { moveOnTop } from '../core/library/arrange';
 import { BookSelector, GameSelector, MusicSelector, ScreenSelector, VideoPlayer, type Video } from './opened-item/selectors';
 import { useOpenedItem } from './opened-item/use-opened-item';
@@ -132,6 +137,7 @@ import { getImageService } from './image-registry';
 
 // Aide affichée pendant un placement valide.
 const PLACE_HINT = 'Glissez ✥ ou touchez l’endroit voulu.';
+const PICK_HOST_HINT = 'Touchez le bureau ou l’étagère où poser la carte.';
 // En plein écran, la bulle de message passe par-dessus la pièce : elle s'efface seule après ce délai (ms).
 export const STAGE_MSG_MS = 2500;
 
@@ -322,7 +328,19 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [arrangeLevel, setArrangeLevel] = useState<ArrangeLevel>('whole');
   const arrangeLevelRef = useRef(arrangeLevel);
   arrangeLevelRef.current = arrangeLevel;
+  // Bulle d'un objet dans la vue Modifier : la vue y range sa fermeture ; le retour ferme la fiche ⓘ (ou le choix de la ville), puis la
+  // bulle (et l'objet armé), puis dézoome.
+  const arrangeBubbleBack = useRef<(() => boolean) | null>(null);
   const arrange = useArrangeView(() => {
+    if (viewingRef.current) {
+      setViewing(null);
+      return true;
+    }
+    if (decoDialogRef.current) {
+      setDecoDialog(null);
+      return true;
+    }
+    if (arrangeBubbleBack.current?.()) return true;
     if (arrangeLevelRef.current === 'whole') return false;
     setArrangeLevel('whole');
     return true;
@@ -332,13 +350,23 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   arrangeRef.current = arrange;
   // Étagère ouverte et sa partenaire liée, mémorisées : un rendu du panneau (mouvement du doigt dans la vue) ne les recalcule pas.
   const arrangeShelfIds = useMemo(() => (lib && arrangeHostId ? shelfGroupOf(activeRoom(lib).layout, arrangeHostId) : []), [lib, arrangeHostId]);
-  const openArrange = (id: string): void => {
+  // Mode de la vue : null = ✋ (déplacer) ; sinon ＋ (ajouter une carte), avec la carte déjà choisie au tiroir le cas échéant.
+  const [arrangeAdd, setArrangeAdd] = useState<{ initial: AddCard | null } | null>(null);
+  // Carte choisie au tiroir (« Poser sur un meuble ») : le prochain meuble touché ouvre sa vue ＋ avec elle en attente.
+  const [cardToPlace, setCardToPlace] = useState<AddCard | null>(null);
+  const openArrange = (id: string, add: { initial: AddCard | null } | null = null): void => {
     setArrangeLevel('whole');
+    setArrangeAdd(add);
     arrange.open(id);
   };
   const activeRoomId = lib ? activeRoom(lib).id : null;
   useEffect(() => { if (mode !== 'edit') arrangeRef.current.reset(); }, [mode]);
-  useEffect(() => { arrangeRef.current.reset(); }, [activeRoomId]);
+  // Autre pièce : la vue Modifier se ferme et la carte du tiroir qui attendait son meuble est oubliée (avec sa consigne).
+  useEffect(() => {
+    arrangeRef.current.reset();
+    setCardToPlace(null);
+    setMessage((m) => (m === PICK_HOST_HINT ? '' : m));
+  }, [activeRoomId]);
   const [blink, setBlink] = useState<Cell[]>([]);
   const [message, setMessage] = useState('');
   // Bulle du plein écran : chaque nouveau message s'y montre un instant ; l'aide du placement une seule fois par placement,
@@ -626,9 +654,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   useEffect(() => {
     if (placementRef.current) cancelRef.current();
   }, [colsNow]);
-  // Échap abandonne le placement en cours.
+  // Échap abandonne le placement en cours, ou le choix du meuble d'une carte du tiroir.
   const cancelRef = useRef<() => void>(() => undefined);
-  const placingNow = placement !== null;
+  const placingNow = placement !== null || cardToPlace !== null;
   useEffect(() => {
     if (!placingNow) return;
     const onKey = (event: KeyboardEvent): void => {
@@ -698,6 +726,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     setBlink([]);
     setMessage('');
     setPicking(false);
+    setCardToPlace(null);
     setAdopting(null);
     setAdoptName('Minou');
     setAdoptCoat('orange');
@@ -710,7 +739,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   cancelRef.current = reset;
 
-  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'not-slot': 'Déposez l’objet sur une tablette de l’étagère.', 'shelf-full': SHELF_FULL_MESSAGE, 'too-high': SHELF_TOO_HIGH_MESSAGE, 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.', 'not-screen': 'Touchez un ordinateur.' } as const;
+  const REASONS = { ...REFUSALS, 'not-desk': 'Un ordinateur se pose sur un bureau.', 'desk-busy': 'Ce bureau a déjà un ordinateur.', 'desk-middle': 'Libérez le milieu du bureau pour y poser l’ordinateur.', 'not-slot': 'Déposez l’objet sur une tablette de l’étagère.', 'shelf-full': SHELF_FULL_MESSAGE, 'too-high': SHELF_TOO_HIGH_MESSAGE, 'host-busy': 'Plus de place sur ce meuble.', 'not-host': 'Déposez l’objet sur un bureau ou une étagère.', 'not-screen': 'Touchez un ordinateur.', 'posed-locked': 'Une carte posée se déplace dans la vue Modifier du meuble.' } as const;
   // Case au centre de la partie visible de la pièce (au milieu de la pièce si elle n'est pas mesurable, par exemple dans les tests).
   const centerSpot = (): Spot => {
     const sc = scrollRef.current;
@@ -884,7 +913,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const item = layout.find((p) => p.id === id);
     if (!item) return;
     // Pendant un placement, toucher une carte rangée revient à toucher son étagère, et un écran son ordinateur.
-    if (editing && placement) return void onPick(item.kind === 'stored' ? item.shelfId : item.id);
+    // Pendant le choix du meuble d'une carte du tiroir, de même : onPick ouvre la vue ＋ du meuble qui porte l'objet touché.
+    if (editing && (placement || cardToPlace)) return void onPick(item.kind === 'stored' ? item.shelfId : item.id);
     if (!editing) {
       if (zoomRef.current) return;
       // Une carte rangée ou affichée sur un écran ouvre le zoom de son meuble ; la fiche s'ouvre ensuite depuis le zoom.
@@ -980,6 +1010,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (press.consumeClick()) return;
     const item = layout.find((p) => p.id === id);
     if (!item) return;
+    // Carte choisie au tiroir : le meuble touché (ou celui qui porte l'objet touché) ouvre sa vue ＋, la carte en attente.
+    if (cardToPlace) {
+      const hostId = item.kind === 'desk' || item.kind === 'shelf' ? item.id
+        : item.kind === 'stored' ? item.shelfId : item.kind === 'small' || item.kind === 'posed' ? item.hostId : item.kind === 'computer' ? item.deskId : null;
+      if (!hostId) return refuse(PICK_HOST_HINT);
+      setMessage('');
+      setSelectedId(null);
+      setCardToPlace(null);
+      openArrange(hostId, { initial: cardToPlace });
+      return;
+    }
     if (placement) {
       if (swallowClick.current) {
         swallowClick.current = false;
@@ -1006,8 +1047,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const item = layout.find((p) => p.id === selectedId);
     // Un meuble qui porte quelque chose (cartes rangées, carte à l'écran, petits objets) demande confirmation : tout part avec lui.
     const holdsMore =
-      (item?.kind === 'shelf' && layout.some((p) => (p.kind === 'stored' && p.shelfId === item.id) || (p.kind === 'small' && p.hostId === item.id))) ||
-      (item?.kind === 'desk' && layout.some((p) => (p.kind === 'computer' && p.deskId === item.id && p.slug) || (p.kind === 'small' && p.hostId === item.id)));
+      (item?.kind === 'shelf' && layout.some((p) => (p.kind === 'stored' && p.shelfId === item.id) || ((p.kind === 'small' || p.kind === 'posed') && p.hostId === item.id))) ||
+      (item?.kind === 'desk' && layout.some((p) => (p.kind === 'computer' && p.deskId === item.id && p.slug) || ((p.kind === 'small' || p.kind === 'posed') && p.hostId === item.id)));
     if (holdsMore && !window.confirm('Retirer aussi ce qui est posé dessus ?')) return;
     // Un objet de carte se range ; un ordinateur qui affiche une carte ne vide d'abord que son écran.
     if (item?.kind === 'wall' || item?.kind === 'stored' || (item?.kind === 'computer' && item.slug)) await editLayout((l) => unplaceCard(l, selectedId));
@@ -1074,10 +1115,33 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     reset();
     setPicking(true);
   };
+  // « Poser sur un meuble » : on touche ensuite le bureau ou l'étagère, dont la vue ＋ s'ouvre avec la carte en attente (à glisser à sa place).
   const chooseCard = (choice: CardChoice): void => {
     setPicking(false);
+    if (choice.target === 'shelf') {
+      setCardToPlace({ slug: choice.slug, shape: choice.shape });
+      setMessage(PICK_HOST_HINT);
+      return;
+    }
     startPlacementFor({ type: 'card', choice });
   };
+  // ✓ de la vue ＋ : la carte est posée (plateau, trépied) ou rangée (tablette, rang) à l'endroit choisi, sous un id neuf.
+  // Bulle d'un objet dans la vue Modifier : intention appliquée à la disposition du moment ; rend faux si elle n'y tient plus (rien n'est
+  // écrit, la bulle affiche le refus).
+  const editArrangedItem = async (id: string, change: ItemChange): Promise<boolean> => {
+    let ok = false;
+    await editLayout((l) => {
+      const next = applyItemChange(l, id, change);
+      ok = next !== null;
+      return next;
+    });
+    return ok;
+  };
+  const addCardAt = (card: AddCard, at: AddAt) => editLayout((l) => {
+    const id = nextFurnitureId(l);
+    return 'hostId' in at ? poseCard(l, at.hostId, card.shape, card.slug, id, at.x, at.z) : storeCard(l, at.shelfId, at.level, at.order, card.shape, card.slug, id);
+  });
+  const arrangeAddProps = (initial: AddCard | null) => ({ cards: roomCards.list, categoryOf: roomCards.categoryOf, initial, onAdd: addCardAt });
 
   // Agrandir à gauche décale les meubles : le défilement suit pour garder la même vue.
   async function extend(side: 'left' | 'right'): Promise<void> {
@@ -1330,6 +1394,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onShrink={(side) => void shrink(side)}
           />
         )}
+        {/* Choix du meuble d'une carte du tiroir : la consigne et ✕ pour y renoncer (Échap aussi). */}
+        {editing && !outside && cardToPlace && (
+          <div data-pick-host="" className="wmt-lib-row" style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 35, padding: '4px 8px', borderRadius: 10, background: 'rgba(43,29,22,.82)', color: '#FBF6EA', alignItems: 'center', gap: 8 }}>
+            <span aria-hidden="true">🃏</span>
+            <span>{PICK_HOST_HINT}</span>
+            <Btn label="Annuler" data={{ action: 'cancel-card' }} onClick={reset}>✕</Btn>
+          </div>
+        )}
         {editing && !outside && selectedId && !placement && (
           <ActionBubble stage={stage.ref.current} scroll={scrollRef.current} targetId={selectedId}>
             <Btn label="Déplacer" data={{ action: 'move' }} onClick={startMove}>
@@ -1339,7 +1411,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               <Icon paths={ICONS.trash} />
             </Btn>
             {selectedItem && (selectedItem.kind === 'desk' || selectedItem.kind === 'shelf') && (
-              <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => openArrange(selectedItem.id)}>✋</Btn>
+              <>
+                <Btn label="Modifier la disposition" data={{ action: 'arrange' }} onClick={() => openArrange(selectedItem.id)}>✋</Btn>
+                {collection !== undefined && <Btn label="Ajouter une carte ici" data={{ action: 'arrange-add' }} onClick={() => openArrange(selectedItem.id, { initial: null })}>＋</Btn>}
+              </>
             )}
             {selectedItem && isStanding(selectedItem) && (
               <>
@@ -1481,29 +1556,43 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
         {editing && !outside && arrangeHostId && layout.some((p) => p.id === arrangeHostId) && (
           layout.find((p) => p.id === arrangeHostId)?.kind === 'shelf' ? (
             <ArrangeShelf
+              key={`${arrangeHostId}:${arrangeAdd ? 'add' : 'move'}`}
               layout={layout}
               room={room}
               shelfIds={arrangeShelfIds}
               level={arrangeLevel}
+              mode={arrangeAdd ? 'add' : 'move'}
+              add={arrangeAdd ? arrangeAddProps(arrangeAdd.initial) : undefined}
               cards={roomCards.cards}
               imageOf={imageOfCard}
               sceneView={sceneView}
               onLevel={setArrangeLevel}
               onBoard={(id, shelfId, level, order) => editLayout((l) => moveToBoard(l, id, shelfId, level, order))}
               onTop={(id, hostId, x, z) => editLayout((l) => moveToTop(l, id, hostId, x, z))}
-              onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
               onClose={arrange.close}
+              onItemEdit={editArrangedItem}
+              onCardInfo={setViewing}
+              onItemCity={(id) => setDecoDialog({ type: 'city', id })}
+              bubbleBack={arrangeBubbleBack}
+              sheetOpen={viewing !== null || decoDialog !== null}
             />
           ) : (
             <ArrangeView
+              key={`${arrangeHostId}:${arrangeAdd ? 'add' : 'move'}`}
               layout={layout}
               room={room}
               hostId={arrangeHostId}
-              mode="move"
+              mode={arrangeAdd ? 'add' : 'move'}
+              add={arrangeAdd ? arrangeAddProps(arrangeAdd.initial) : undefined}
               sceneView={sceneView}
               imageOf={imageOfCard}
               onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
               onClose={arrange.close}
+              onItemEdit={editArrangedItem}
+              onCardInfo={setViewing}
+              onItemCity={(id) => setDecoDialog({ type: 'city', id })}
+              bubbleBack={arrangeBubbleBack}
+              sheetOpen={viewing !== null || decoDialog !== null}
             />
           )
         )}
@@ -1611,17 +1700,6 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 const FIT_BUTTON = { position: 'absolute', top: 4, right: 148, height: 32, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/20px system-ui,sans-serif' } as const;
 
 type ScreenSize = { width: number; height: number };
-
-// Sélecteur de présentation d'un objet rangé : de face (couverture vers l'avant), sur la tranche (titre lisible) ou, pour un jeu, de dos.
-function DisplayButtons({ current, game, onChoose }: { current: StoredDisplay; game: boolean; onChoose: (display: StoredDisplay) => void }): ReactElement {
-  return (
-    <>
-      <Btn label="Présenter de face" pressed={current === 'cover'} data={{ action: 'display-cover' }} onClick={() => onChoose('cover')}><Icon paths={ICONS.cover} /></Btn>
-      <Btn label="Présenter sur la tranche" pressed={current === 'spine'} data={{ action: 'display-spine' }} onClick={() => onChoose('spine')}><Icon paths={ICONS.spine} /></Btn>
-      {game && <Btn label="Présenter de dos" pressed={current === 'back'} data={{ action: 'display-back' }} onClick={() => onChoose('back')}><Icon paths={ICONS.boxBack} /></Btn>}
-    </>
-  );
-}
 
 // Taille de l'écran, suivie seulement pendant le plein écran (rotation du téléphone, fenêtre redimensionnée).
 function useScreenSize(watch: boolean): ScreenSize {

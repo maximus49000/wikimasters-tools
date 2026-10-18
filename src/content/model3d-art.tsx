@@ -103,7 +103,7 @@ function cached(key: string, make: () => Geometry): Geometry {
   return g;
 }
 export const itemsKey = (items: ItemPlacement[] | undefined): string =>
-  (items ?? []).map((i) => `${i.key},${i.shape},${i.display ?? ''},${i.x},${i.y},${i.z},${i.color ?? ''},${i.box ?? ''}`).join(';');
+  (items ?? []).map((i) => `${i.key},${i.shape},${i.display ?? ''},${i.x},${i.y},${i.z},${i.color ?? ''},${i.box ?? ''},${i.flat ? 'flat' : ''}`).join(';');
 // `part` (meuble à socle) : 'base' = socle et tige seulement, 'overhang' = arc et dôme seulement (rangés à part dans la pièce) ; absent = tout.
 export type ModelPart = 'base' | 'overhang';
 function geometryOf(kind: StandingKind, angle: Angle, steampunk: boolean, items?: ItemPlacement[], part?: ModelPart, cam: Camera = FACE_CAMERA): Geometry {
@@ -312,10 +312,10 @@ export const Model3DArt = memo(Model3DArtImpl, (a, b) => a.kind === b.kind && a.
 // de même forme, où qu'ils soient posés (la projection est affine : poser l'objet revient à translater son dessin).
 // La couleur propre du corps (dos d'un livre) n'entre pas dans la clé : le corps est marqué `body` et coloré au dessin (bodyColor).
 const BODY = '#B0D1E5';
-function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean, box?: BoxFormat, cam: Camera = FACE_CAMERA): Geometry {
-  return cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}:${box ?? ''}${cameraKey(cam)}`, () => {
+function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean, box?: BoxFormat, cam: Camera = FACE_CAMERA, flat = false): Geometry {
+  return cached(`item:${shape}:${display}:${angle}:${steampunk ? 1 : 0}:${box ?? ''}${flat ? ':flat' : ''}${cameraKey(cam)}`, () => {
     const m = itemModel(shape, steampunk, box);
-    const pieces = itemPieces({ key: 'item', shape, display, x: 0, y: 0, z: 0, color: BODY, ...(box && { box }) }, steampunk);
+    const pieces = itemPieces({ key: 'item', shape, display, x: 0, y: 0, z: 0, color: BODY, ...(box && { box }), ...(flat && { flat: true as const }) }, steampunk);
     // Objet rangé : sa boîte est celle de ses pièces posées (sur la tranche, largeur et profondeur échangées ; de face, le présentoir
     // l'allonge vers le fond et le boîtier penché).
     const stored = shape !== 'monitor' && shape !== 'small-plant' && shape !== 'small-lamp';
@@ -335,11 +335,11 @@ export function itemCells(shape: ItemShape, steampunk = false): { w: number; h: 
   return { w: g.cols, h: g.rows };
 }
 
-type ItemProps = { shape: ItemShape; display?: ItemDisplay; angle: Angle; rect: PxRect; palette: Palette; content?: ItemContent; color?: string; steampunk?: boolean; box?: BoxFormat; camera?: Camera };
+type ItemProps = { shape: ItemShape; display?: ItemDisplay; angle: Angle; rect: PxRect; palette: Palette; content?: ItemContent; color?: string; steampunk?: boolean; box?: BoxFormat; camera?: Camera; flat?: boolean };
 
 // Objet seul (vignette), dessiné depuis son modèle 3D dans son rectangle ; mêmes décors que sur un meuble.
-export function Item3DArt({ shape, display = 'cover', angle, rect, palette, content, color, steampunk = false, box, camera }: ItemProps): ReactElement {
-  const g = itemGeometry(shape, display, angle, steampunk, box, camera);
+export function Item3DArt({ shape, display = 'cover', angle, rect, palette, content, color, steampunk = false, box, camera, flat }: ItemProps): ReactElement {
+  const g = itemGeometry(shape, display, angle, steampunk, box, camera, flat === true);
   const sx = rect.w / (g.cols * CELL_W);
   const sy = rect.h / (g.rows * CELL_H);
   return (
@@ -354,7 +354,7 @@ type CarriedProps = { host: 'desk' | 'shelf'; angle: Angle; rect: PxRect; placem
 // Objet porté (carte rangée, écran, petit objet) dessiné à sa place dans le repère de son porteur tourné (`rect` : rectangle du porteur) :
 // même angle, même échelle, même ombrage que le meuble ; sa géométrie est celle de l'objet seul, translatée.
 function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content, steampunk = false, camera }: CarriedProps): ReactElement {
-  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.box, camera);
+  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.box, camera, pl.flat === true);
   const { w, h } = drawSize(host, angle, camera);
   const [hx, hy] = hostNativePx(host, angle, [pl.x, pl.y, pl.z], camera);
   const [ox, oy] = g.origin ?? [0, 0];
