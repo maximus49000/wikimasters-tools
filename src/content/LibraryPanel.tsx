@@ -497,8 +497,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // `landedFor` dit que le disque de l'objet ouvert est au poste (atterri, ou déjà là à l'ouverture) ; il retombe dès que le lecteur
   // passe à un autre album.
   const hifi = useHifiPlayer(lib ? activeRoom(lib).layout : NO_LAYOUT).state;
-  // Zoom de la chaîne ouvert sans poste (retiré) ou en Aménager : fermé, avec son entrée d'historique.
-  useEffect(() => { if (hifiZoomRoom !== null && (hifi.hifiId === null || mode === 'edit')) closeHifiZoom(); }, [hifiZoomRoom, hifi.hifiId, mode, closeHifiZoom]);
+  // Zoom de la chaîne ouvert sans poste (retiré), en Aménager ou pour une autre pièce que l'active (pièce supprimée, changée ailleurs) :
+  // fermé, avec son entrée d'historique.
+  const hifiZoomShown = hifiZoomRoom !== null && hifiZoomRoom === activeRoomId;
+  useEffect(() => {
+    if (hifiZoomRoom !== null && (hifiZoomRoom !== activeRoomId || hifi.hifiId === null || mode === 'edit')) closeHifiZoom();
+  }, [hifiZoomRoom, activeRoomId, hifi.hifiId, mode, closeHifiZoom]);
   const hifiRef = useRef(hifi);
   hifiRef.current = hifi;
   const platform = usePlatform();
@@ -554,7 +558,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // Abonné au lecteur seulement quand une couche ou la bulle du poste le montre : sinon chaque relevé du lecteur (5 s en lecture,
   // 15 s à l'arrêt) referait toute la pièce sur Android (le poste a son propre instantané, voir use-hifi).
   const playerSource = getPlayerSource();
-  const playerShown = playerSource !== null && (opened !== null || hifiZoomRoom !== null);
+  const playerShown = playerSource !== null && (opened !== null || hifiZoomShown);
   const playerNow = useSyncExternalStore(playerShown ? playerSource.subscribe : noSubscribe, playerShown ? playerSource.current : noPlayer);
   // Objet ouvert disparu de la pièce (rangé ailleurs, carte retirée de la collection) : la couche se ferme d'un coup, avec son
   // entrée d'historique et l'orientation, et le vol en cours s'arrête (effet sur openedId) ; sinon elle resterait invisible mais active.

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { smallPlacement } from '../../../src/core/library/carried-items';
+import { hostPointPx, placementBounds, smallPlacement } from '../../../src/core/library/carried-items';
+import { PLUNGE_CAMERA } from '../../../src/core/library/furniture-render3d';
+import { HIFI_DISPLAY_CM, HIFI_WELL_CM, hifiZoomArea, hifiZoomFrame } from '../../../src/core/library/hifi-zoom';
 import { activeHifi, hifiState, hiddenAtHome, sleeveKindOf, sleeveRest, sleeveStand } from '../../../src/core/library/hifi';
 import type { Layout } from '../../../src/core/library/library-types';
 
@@ -50,7 +52,7 @@ describe('poste hi-fi', () => {
     for (const kind of ['cd', 'vinyl'] as const) expect(sleeveRest(now, kind)).toEqual(sleeveRest({ x: 62, y: 75, z: 17 }, kind));
   });
 
-  it('pochette debout du zoom : pleine taille, posée sur le bureau, à droite du poste et face à l’utilisateur', () => {
+  it('pochette debout du zoom : pleine taille, posée sur le bureau devant le côté droit du poste, face à l’utilisateur', () => {
     const station = smallPlacement('h', 'hifi', 'desk', 10, 2.5);
     const cd = sleeveStand(station, 'cd');
     expect([cd.w, cd.h]).toEqual([14.2, 12.5]);
@@ -61,18 +63,70 @@ describe('poste hi-fi', () => {
     // Face à l'utilisateur : le bas parallèle à l'axe x, couverture lisible de gauche à droite.
     expect(br[2]).toBeCloseTo(bl[2]!);
     expect(tr[0]! - tl[0]!).toBeCloseTo(14.2);
-    // À droite du poste (56 cm de large), sans le toucher.
-    expect(Math.min(tl[0]!, bl[0]!)).toBeGreaterThan(station.x + 56);
-    // Le vinyle n'est pas réduit (pas de zone de 14,5 cm ici).
+    // Devant le côté droit du poste (56 cm de large), entre le bord du bureau et la façade.
+    expect(br[0]).toBeCloseTo(station.x + 56);
+    for (const p of [...cd.corners, ...cd.back]) {
+      expect(p[2]).toBeGreaterThanOrEqual(0);
+      expect(p[2]).toBeLessThan(station.z);
+    }
+    // Le vinyle n'est pas réduit, il se dresse à côté du poste.
     const v = sleeveStand(station, 'vinyl');
     expect([v.w, v.h]).toEqual([31.4, 31.4]);
+    expect(Math.min(...v.corners.map((p) => p[0]))).toBeGreaterThan(station.x + 56);
     expect(v.back.every((p, i) => p[2] > v.corners[i]![2])).toBe(true);
   });
 
-  it('pochette debout : à gauche du poste si elle dépasserait du bureau', () => {
+  it('vinyle debout : à gauche du poste s’il dépasserait du bureau à droite', () => {
     const station = smallPlacement('h', 'hifi', 'desk', 62, 2.5);
-    const s = sleeveStand(station, 'cd', 120);
+    const s = sleeveStand(station, 'vinyl', 120);
     expect(Math.max(...s.corners.map((p) => p[0]))).toBeLessThan(station.x);
     expect(Math.min(...s.corners.map((p) => p[0]))).toBeGreaterThanOrEqual(0);
+  });
+
+  it('vinyle debout sans place d’aucun côté : le côté le plus large, quitte à dépasser du bureau, jamais sur le poste', () => {
+    // Poste à x 20 : 17 cm à gauche, 41 cm à droite ; il en faut 34,4.
+    const crowded = smallPlacement('h', 'hifi', 'desk', 20, 2.5);
+    const r = sleeveStand(crowded, 'vinyl', 100);
+    expect(Math.min(...r.corners.map((p) => p[0]))).toBeGreaterThan(crowded.x + 56);
+    expect(Math.max(...r.corners.map((p) => p[0]))).toBeGreaterThan(100);
+    // Poste à x 40 : 37 cm à gauche, 1 cm à droite.
+    const right = smallPlacement('h', 'hifi', 'desk', 40, 2.5);
+    const l = sleeveStand(right, 'vinyl', 100);
+    expect(Math.max(...l.corners.map((p) => p[0]))).toBeLessThan(right.x);
+  });
+
+  it('cadrage du zoom : pour un CD, la pochette fait plus d’un tiers de la hauteur, afficheur et puits dans le cadre', () => {
+    const layer = { w: 800, h: 400 };
+    for (const x of [2, 30, 62]) {
+      const pl = smallPlacement('h', 'hifi', 'desk', x, 2.5);
+      const { rect, stand } = hifiZoomFrame('desk', pl, 'cd', layer);
+      const px = (p: [number, number, number]) => hostPointPx('desk', 0, rect, p, PLUNGE_CAMERA);
+      const ys = stand!.corners.map((p) => px(p)[1]);
+      expect(Math.max(...ys) - Math.min(...ys), `x ${x}`).toBeGreaterThanOrEqual(0.35 * layer.h);
+      const area = hifiZoomArea(layer);
+      for (const box of [HIFI_DISPLAY_CM, HIFI_WELL_CM]) {
+        const [x0, x1, y0, y1, z0, z1] = box;
+        for (const p of [[x0, y0, z0], [x1, y1, z1], [x0, y1, z1], [x1, y0, z0]] as [number, number, number][]) {
+          const [sx, sy] = px([pl.x + p[0], pl.y + p[1], pl.z + p[2]]);
+          expect(sx).toBeGreaterThanOrEqual(area.x);
+          expect(sx).toBeLessThanOrEqual(area.x + area.w);
+          expect(sy).toBeGreaterThanOrEqual(area.y);
+          expect(sy).toBeLessThanOrEqual(area.y + area.h);
+        }
+      }
+    }
+  });
+
+  it('cadrage du zoom : un vinyle garde le poste entier dans le cadre', () => {
+    const layer = { w: 800, h: 400 };
+    const pl = smallPlacement('h', 'hifi', 'desk', 2, 2.5);
+    const { rect } = hifiZoomFrame('desk', pl, 'vinyl', layer);
+    const [x0, x1, y0, y1, z0, z1] = placementBounds(pl);
+    const area = hifiZoomArea(layer);
+    for (const p of [[x0, y0, z0], [x1, y1, z1]] as [number, number, number][]) {
+      const [sx] = hostPointPx('desk', 0, rect, p, PLUNGE_CAMERA);
+      expect(sx).toBeGreaterThanOrEqual(area.x);
+      expect(sx).toBeLessThanOrEqual(area.x + area.w);
+    }
   });
 });

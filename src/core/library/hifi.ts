@@ -63,18 +63,30 @@ export function sleeveRest(hifi: { x: number; y: number; z: number }, kind: Slee
 }
 
 // ---------- Pochette debout (zoom de la chaîne) ----------
-// Pleine taille (sans la réduction de la pochette couchée), dressée face à l'utilisateur à droite du poste, penchée en arrière
-// comme sur un chevalet (35° : sous la caméra plongeante du zoom, la couverture garde presque ses proportions) ; à gauche du poste si elle dépasserait du bureau (`deskW`, cm).
+// Pleine taille (sans la réduction de la pochette couchée), dressée face à l'utilisateur, penchée en arrière comme sur un chevalet
+// (35° : sous la caméra plongeante du zoom, la couverture garde presque ses proportions), le bas posé sur le bureau.
+// Boîtier (CD, DVD, jeu, livre) : devant le côté droit du poste (devant l'enceinte), son haut à 1 cm de la façade : le zoom cadre
+// serré sur le corps du poste et elle y reste grande. Vinyle (31 cm) : à côté du poste, à droite, sinon à gauche s'il n'y a pas
+// la place sur le bureau (`deskW`, cm) ; si aucun côté n'a la place, celui qui en a le plus, quitte à dépasser du bureau.
 const STAND_GAP = 3;
 const STAND_LEAN = 35;
 // `corners` : couverture (face avant), haut gauche, haut droit, bas droit, bas gauche ; `back` : les mêmes coins au dos. `w` × `h` : taille (cm).
 export function sleeveStand(hifi: { x: number; y: number; z: number }, kind: SleeveKind, deskW = Infinity): { corners: V3[]; back: V3[]; w: number; h: number } {
   const [w, h, t] = SLEEVE_CM[kind];
   const hifiW = ITEM_MODELS['small-hifi'].w;
-  const right = hifi.x + hifiW + STAND_GAP;
-  const x0 = right + w <= deskW ? right : Math.max(0, hifi.x - STAND_GAP - w);
-  const z0 = Math.max(1, hifi.z - 4);
   const a = (STAND_LEAN * Math.PI) / 180;
+  let x0: number;
+  let z0: number;
+  if (kind !== 'vinyl') {
+    x0 = hifi.x + hifiW - w;
+    z0 = Math.max(0.5, hifi.z - 1 - t - h * Math.sin(a));
+  } else {
+    const right = hifi.x + hifiW + STAND_GAP;
+    const left = hifi.x - STAND_GAP - w;
+    const [roomR, roomL] = [deskW - right, hifi.x - STAND_GAP];
+    x0 = roomR >= w ? right : roomL >= w ? left : roomR >= roomL ? right : left;
+    z0 = Math.max(1, hifi.z - 4);
+  }
   // Point de la couverture à (u vers la droite, v vers le haut), à `depth` cm derrière elle (le dos reste posé sur le bureau).
   const at = (u: number, v: number, depth: number): V3 => [x0 + u, hifi.y + v * Math.cos(a), z0 + v * Math.sin(a) + depth];
   const face = (depth: number): V3[] => [at(0, h, depth), at(w, h, depth), at(w, 0, depth), at(0, 0, depth)];

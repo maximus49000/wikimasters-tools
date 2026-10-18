@@ -26,7 +26,7 @@ let root: Root | null = null;
 let container: HTMLElement;
 const toggle = vi.fn(async () => undefined);
 const setCard = vi.fn();
-function mount(view: PlayerView, extra: { onInfo?: (slug: string) => void } = {}) {
+function mount(view: PlayerView, extra: { onInfo?: (slug: string) => void } = {}, layout: Layout = LAYOUT) {
   const onClose = vi.fn();
   const onEject = vi.fn();
   setPlayerSource({ current: () => view, subscribe: () => () => undefined, toggle, setCard } as unknown as PlayerSource);
@@ -34,7 +34,7 @@ function mount(view: PlayerView, extra: { onInfo?: (slug: string) => void } = {}
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
-  act(() => root!.render(<HifiZoom layout={LAYOUT} room={{ style: 'scandinave' }} view={view} albumTitle="Discovery" imageOf={() => IMG} onClose={onClose} onEject={onEject} {...extra} />));
+  act(() => root!.render(<HifiZoom layout={layout} room={{ style: 'scandinave' }} view={view} albumTitle="Discovery" imageOf={() => IMG} onClose={onClose} onEject={onEject} {...extra} />));
   return { onClose, onEject };
 }
 const btn = (a: string) => container.querySelector<HTMLButtonElement>(`[data-hifi-zoom] [data-action="${a}"]`);
@@ -50,6 +50,12 @@ describe('zoom de la chaîne hi-fi', () => {
     const sleeve = zoom.querySelector('[data-hifi-sleeve-stand]')!;
     expect(sleeve.getAttribute('data-hifi-sleeve-stand')).toBe('Daft_Punk');
     expect(sleeve.querySelector('image')!.getAttribute('href')).toBe(IMG);
+  });
+  it('la pochette choisie pour l’objet passe devant l’image de la carte', () => {
+    const chosen = 'data:image/png;base64,CHOSEN';
+    const layout = LAYOUT.map((p) => (p.id === 'a' ? { ...p, cover: chosen } : p)) as Layout;
+    mount(viewOf(true), {}, layout);
+    expect(container.querySelector('[data-hifi-sleeve-stand] image')!.getAttribute('href')).toBe(chosen);
   });
   it('en pause : le disque s’arrête', () => {
     mount(viewOf(false));

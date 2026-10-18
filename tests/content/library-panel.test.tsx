@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryStore, type KeyValueStore } from '../../src/core/cache/store';
 import { createLibraryRepo, type LibraryRepo } from '../../src/core/library/library-repo';
-import { extendRoom, updateLayout } from '../../src/core/library/library-book';
+import { addRoom, extendRoom, updateLayout } from '../../src/core/library/library-book';
 import { LibraryPanel } from '../../src/content/LibraryPanel';
 import { setGameBoxService } from '../../src/content/game-box-registry';
 import type { GameBox, GameBoxService } from '../../src/content/game-box-service';
@@ -529,6 +529,22 @@ describe('LibraryPanel : objet ouvert dans la pièce', () => {
     await back(before);
     await settle();
     expect(q('[data-hifi-zoom]')).toBeNull();
+  });
+
+  it('pièce active changée ailleurs : le zoom se ferme avec son entrée d’historique et le lecteur n’est plus écouté', async () => {
+    const unsubscribe = vi.fn();
+    setPlayerSource({ current: () => PLAYING, subscribe: () => unsubscribe, toggle: async () => undefined, setCard } as unknown as PlayerSource);
+    await seed(STATION);
+    await click('[data-id="h"]');
+    expect(q('[data-hifi-zoom]')).not.toBeNull();
+    const backSpy = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+    await act(async () => { await repo.update((st) => addRoom(st)); });
+    await settle();
+    expect(repo.current()?.activeRoomId).not.toBe('r1');
+    expect(q('[data-hifi-zoom]')).toBeNull();
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalled();
+    backSpy.mockRestore();
   });
 
   it('en Aménager, toucher le poste ouvre la bulle d’actions, pas le zoom', async () => {

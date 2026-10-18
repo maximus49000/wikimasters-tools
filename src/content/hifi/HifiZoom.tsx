@@ -1,18 +1,17 @@
 // Zoom de la chaîne hi-fi : couche plein écran, paysage (tournée de 90° si l'écran reste en hauteur, comme la vue Modifier), le bureau et
-// le poste dessinés avec les mêmes modèles 3D que la pièce sous la caméra plongeante, cadrés serré sur le poste. La pochette de l'album
-// au poste se dresse à côté, pleine taille ; le disque tourne dans le puits (ou sur la platine) tant que le lecteur joue, s'arrête en pause ;
+// le poste dessinés avec les mêmes modèles 3D que la pièce sous la caméra plongeante, cadrés serré (hifi-zoom). La pochette de l'album
+// au poste se dresse devant le côté droit du poste (un vinyle à côté), pleine taille ; le disque tourne dans le puits (ou sur la platine) tant que le lecteur joue, s'arrête en pause ;
 // l'afficheur fait défiler la piste. Remplace l'ancienne bulle du lecteur : ⏸/▶, ⏏ (le disque rentre, l'objet revient à sa place), ⓘ, ✕.
 // Fable n'est pas passé sur la pochette debout : à reprendre lors d'un rattrapage Fable.
 import { useEffect, useState, type CSSProperties, type ReactElement } from 'react';
-import { carriedPlacementOf, hostNativePx, hostPointPx, placementBounds } from '../../core/library/carried-items';
-import { drawSize } from '../../core/library/footprint';
-import { CELL_H, CELL_W, PLUNGE_CAMERA } from '../../core/library/furniture-render3d';
+import { carriedPlacementOf, hostPointPx } from '../../core/library/carried-items';
+import { PLUNGE_CAMERA } from '../../core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../core/library/furniture-models';
-import { activeHifi, hifiState, sleeveKindOf, sleeveStand } from '../../core/library/hifi';
+import { activeHifi, hifiState, sleeveKindOf } from '../../core/library/hifi';
+import { ZOOM_COLUMN, ZOOM_PAD, hifiZoomFrame } from '../../core/library/hifi-zoom';
 import { bookColor, type ItemPlacement } from '../../core/library/item-models';
 import type { Layout, StyleId } from '../../core/library/library-types';
 import { layerFrame } from '../../core/library/opened-item';
-import type { HostKind, PxRect } from '../../core/library/room-grid';
 import { paletteOf } from '../../core/library/styles';
 import { BUTTON } from '../arrange/arrange-chrome';
 import { useCoverCache } from '../cover-cache';
@@ -39,26 +38,7 @@ type Props = {
 };
 
 type V3 = [number, number, number];
-const PAD = 16;
-// Bande du bas : piste et commandes.
-const BAR = 72;
-// Marge autour du poste et de sa pochette (fraction de leur taille à l'écran).
-const MARGIN = 0.12;
 const screenSize = () => ({ w: window.innerWidth, h: window.innerHeight });
-
-// Cadre : le poste et sa pochette debout au plus grand qui tient au-dessus de la bande du bas ; `rect` est le rectangle du dessin du
-// meuble entier (bien plus grand que la couche, il en déborde).
-function zoomFrame(hostKind: HostKind, pts: V3[], frame: { w: number; h: number }): PxRect {
-  const { w: cols, h: rows } = drawSize(hostKind, 0, PLUNGE_CAMERA);
-  const px = pts.map((p) => hostNativePx(hostKind, 0, p, PLUNGE_CAMERA));
-  const [bx0, bx1] = [Math.min(...px.map((p) => p[0])), Math.max(...px.map((p) => p[0]))];
-  const [by0, by1] = [Math.min(...px.map((p) => p[1])), Math.max(...px.map((p) => p[1]))];
-  const [availW, availH] = [frame.w - 2 * PAD, frame.h - BAR - 2 * PAD];
-  const scale = Math.min(availW / ((bx1 - bx0) * (1 + 2 * MARGIN)), availH / ((by1 - by0) * (1 + 2 * MARGIN)));
-  const x = PAD + (availW - (bx1 - bx0) * scale) / 2 - bx0 * scale;
-  const y = PAD + (availH - (by1 - by0) * scale) / 2 - by0 * scale;
-  return { x, y, w: cols * CELL_W * scale, h: rows * CELL_H * scale };
-}
 
 const TEXT: CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 
@@ -86,15 +66,12 @@ export function HifiZoom({ layout, room, view, albumTitle, imageOf, onClose, onE
   const sleeveKind = atHifi ? sleeveKindOf(atHifi) : null;
   const pl: ItemPlacement | null = at?.placement ?? null;
   const hostKind = at?.hostKind ?? 'desk';
-  const stand = pl && sleeveKind ? sleeveStand(pl, sleeveKind, FURNITURE_MODELS[hostKind].w) : null;
   const layer = layerFrame(screen);
   const steampunk = room.style === 'steampunk';
   // Calcul léger (projection affine mémorisée) : refait à chaque rendu, le zoom ne se redessine qu'avec le lecteur.
-  const rect = pl ? (() => {
-    const [x0, x1, y0, y1, z0, z1] = placementBounds(pl, steampunk);
-    const body: V3[] = [x0, x1].flatMap((x) => [y0, y1].flatMap((y) => [z0, z1].map((z): V3 => [x, y, z])));
-    return zoomFrame(hostKind, [...body, ...(stand ? [...stand.corners, ...stand.back] : [])], layer);
-  })() : null;
+  const frame = pl ? hifiZoomFrame(hostKind, pl, sleeveKind, layer, steampunk) : null;
+  const rect = frame?.rect ?? null;
+  const stand = frame?.stand ?? null;
   if (!pl || !rect) return null;
 
   const palette = paletteOf(room.style);
@@ -134,22 +111,24 @@ export function HifiZoom({ layout, room, view, albumTitle, imageOf, onClose, onE
           </g>
         )}
       </svg>
-      <div data-hifi-zoom-bar="" style={{ position: 'absolute', left: PAD, right: PAD, bottom: PAD / 2, height: BAR - PAD / 2, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', borderRadius: 14, background: 'rgba(43,29,22,.72)', color: '#FBF6EA', font: '14px system-ui, sans-serif' }}>
-        <div data-hifi-zoom-text="" style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, lineHeight: 1.25 }}>
-          {track ? (
-            <>
-              <strong data-field="title" style={TEXT}>{track.title}</strong>
-              <span data-field="artist" style={TEXT}>{track.artist}{albumTitle ? <span data-field="album" style={{ opacity: 0.75 }}> · {albumTitle}</span> : null}</span>
-            </>
-          ) : view.card ? (
-            <>
-              <strong data-field="album" style={TEXT}>{albumTitle ?? view.card.title}</strong>
-              <span data-field="empty" style={{ opacity: 0.75 }}>Rien en lecture</span>
-            </>
-          ) : (
-            <span data-field="empty">Rien en lecture</span>
-          )}
-        </div>
+      {/* Piste en haut à gauche, par-dessus la scène (le cadrage la laisse au mur ou aux bords du poste). */}
+      <div data-hifi-zoom-text="" style={{ position: 'absolute', left: ZOOM_PAD / 2, top: ZOOM_PAD / 2, maxWidth: `calc(55% - ${ZOOM_PAD}px)`, display: 'flex', flexDirection: 'column', padding: '6px 12px', borderRadius: 12, background: 'rgba(43,29,22,.72)', color: '#FBF6EA', font: '14px system-ui, sans-serif', lineHeight: 1.25, pointerEvents: 'none' }}>
+        {track ? (
+          <>
+            <strong data-field="title" style={TEXT}>{track.title}</strong>
+            <span data-field="artist" style={TEXT}>{track.artist}{albumTitle ? <span data-field="album" style={{ opacity: 0.75 }}> · {albumTitle}</span> : null}</span>
+          </>
+        ) : view.card ? (
+          <>
+            <strong data-field="album" style={TEXT}>{albumTitle ?? view.card.title}</strong>
+            <span data-field="empty" style={{ opacity: 0.75 }}>Rien en lecture</span>
+          </>
+        ) : (
+          <span data-field="empty">Rien en lecture</span>
+        )}
+      </div>
+      {/* Commandes en colonne contre le bord droit : toute la hauteur reste au poste et à sa pochette. */}
+      <div data-hifi-zoom-bar="" style={{ position: 'absolute', top: ZOOM_PAD / 2, bottom: ZOOM_PAD / 2, right: (ZOOM_COLUMN - 52) / 2, width: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 26, background: 'rgba(43,29,22,.45)' }}>
         {track && (
           <button type="button" data-action="toggle" aria-label="Lecture / pause" title="Lecture / pause" onClick={() => void getPlayerSource()?.toggle()} style={BUTTON}>
             {track.playing ? '⏸' : '▶'}
