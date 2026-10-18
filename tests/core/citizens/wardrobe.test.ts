@@ -93,9 +93,12 @@ describe('pièces du banc', () => {
     for (const s of HAIRS) checkBound(dress({ k: 'hair', style: s, color: '#3A2A20' }));
     for (const s of BEARDS) checkBound(dress({ k: 'beard', style: s, color: '#3A2A20' }));
   });
-  it('chaussures avec semelle : deux maillages', () => {
-    expect(dress({ k: 'shoes', color: '#000000', sole: '#FFFFFF' })).toHaveLength(2);
+  it('chaussures avec semelle : un seul maillage, semelle peinte en bande (pas de coque confondue en dents de scie)', () => {
+    const ms = dress({ k: 'shoes', color: '#000000', sole: '#FFFFFF' });
+    expect(ms).toHaveLength(1);
     expect(dress({ k: 'shoes', color: '#000000' })).toHaveLength(1);
+    // Motif « bande » : programme propre à la couleur de la semelle.
+    expect(((ms[0] as THREE.Mesh).material as THREE.Material).customProgramCacheKey()).toBe('bande#FFFFFF');
   });
   it('coque top coupée : aucun sommet sous hemY', () => {
     const hem = 0.065, hemY = A.waistY - hem * A.H;

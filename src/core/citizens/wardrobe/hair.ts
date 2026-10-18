@@ -66,7 +66,8 @@ export function hairSurface(A: BodyInfo, S: Skull, { off = 0.008, drop = () => 0
       p = [S.c.x + Math.sin(az) * rh, S.c.y - t * drop(az) * S.size, S.c.z + Math.cos(az) * rh];
     }
     P.setXYZ(i, p[0], p[1], p[2]);
-    ok[i] = keep(az, el) ? 1 : 0;
+    const clip = (S as { clip?: (az: number, el: number) => boolean }).clip;
+    ok[i] = keep(az, el) && (!clip || clip(az, el)) ? 1 : 0;
   }
   // Seuls les sommets des triangles gardés sont conservés (indices renumérotés) : la sphère de départ en compte 12 513.
   const src = g.index!.array, ind: number[] = [], pos: number[] = [], remap = new Int32Array(P.count).fill(-1);
@@ -107,9 +108,18 @@ function hairline(az: number, lift = 0): number {
 
 export const HAIR_STYLES = ['court', 'raie', 'degarni', 'couronne', 'carre', 'long', 'chignon', 'boucles', 'queue', 'couettes', 'rase', 'frise', 'afro', 'tresses', 'enfant'] as const;
 
-// Coiffures : chaque style rend une liste de maillages.
-export function hair(A: BodyInfo, style: string, color: string): THREE.SkinnedMesh[] {
-  const S = skullOf(A);
+// Lisière d'un couvre-chef (élévation sur le crâne selon l'azimut, 0 = front, π = nuque) : la calotte couvre tout ce
+// qui est au-dessus.
+export const CAP_BAND = (az: number): number => 0.26 + 0.1 * Math.max(0, -Math.cos(az)); // un peu plus haute derrière
+export const BONNET_BAND = (az: number): number => 0.14 - 0.2 * Math.max(0, -Math.cos(az));
+
+// Coiffures : chaque style rend une liste de maillages. `under` : lisière d'un couvre-chef porté par-dessus. Les cheveux
+// n'existent alors que sous elle (le volume d'une coiffure frisée, d'un afro ou d'une raie traversait la calotte en
+// mèches noires) et le chignon, qui ne tient pas sous un bonnet ni une casquette, disparaît.
+export function hair(A: BodyInfo, style: string, color: string, under?: (az: number) => number): THREE.SkinnedMesh[] {
+  const S0 = skullOf(A);
+  // Sous un couvre-chef : chaque surface coupée un peu sous la lisière (la calotte, gonflée, recouvre la coupe).
+  const S: Skull & { clip?: (az: number, el: number) => boolean } = under ? { ...S0, clip: (az, el) => el < under(az) + 0.04 } : S0;
   const face = 1.2;
   const fringe = (lo: number, hi: number) => (az: number) => hi - (hi - lo) * Math.pow(Math.min(1, Math.abs(az) / face), 2);
   const front = (az: number) => Math.abs(az) < face;
@@ -128,6 +138,7 @@ export function hair(A: BodyInfo, style: string, color: string): THREE.SkinnedMe
       return [hairSurface(A, S, { volume: 0.03, drop: (az) => (Math.abs(az) > 2.2 ? 1.5 : 1.1), keep: (az, el) => (front(az) ? el >= fringe(0.05, 0.28)(az) : true) }, color)];
     case 'chignon': { // mamie ou femme : cheveux tirés + chignon haut derrière
       const m = hairSurface(A, S, { off: 0.004, drop: () => 0.3, keep: (az, el) => (front(az) ? el > 0.35 : Math.abs(az) < 2.0 ? el > 0.05 : el > -0.6) }, color);
+      if (under) return [m];
       const b = blob(A, new THREE.Vector3(S.c.x, S.c.y + 0.35 * S.size, S.c.z - 0.62 * S.size), 0.28 * S.size, color, [1, 0.9, 0.9]);
       return [m, b];
     }
@@ -176,7 +187,7 @@ export function hair(A: BodyInfo, style: string, color: string): THREE.SkinnedMe
 // Casquette (pas pour les anciens) : calotte au-dessus d'une ligne autour de la tête + visière devant.
 export function cap(A: BodyInfo, color: string, visor = color): THREE.SkinnedMesh[] {
   const S = skullOf(A);
-  const band = (az: number) => 0.26 + 0.1 * Math.max(0, -Math.cos(az)); // un peu plus haute derrière
+  const band = CAP_BAND;
   const crown = hairSurface(A, S, { hug: true, off: 0.012, volume: 0.015, keep: (az, el) => el > band(az) }, color);
   // Visière : demi-disque aplati, centré devant le front, inclinée de ~12° vers le bas.
   const r = 0.58 * S.size, front = S.R(0, 0.26) + 0.012 * A.H;
@@ -193,9 +204,10 @@ export function cap(A: BodyInfo, color: string, visor = color): THREE.SkinnedMes
 // peu lâche sur le dessus, avec un revers : bande plus épaisse en bas. Lié à 100 % à la tête comme les coiffures.
 export function bonnet(A: BodyInfo, color: string): THREE.SkinnedMesh[] {
   const S = skullOf(A);
-  const band = (az: number) => 0.14 - 0.2 * Math.max(0, -Math.cos(az));
-  const crown = hairSurface(A, S, { hug: true, off: 0.012, volume: 0.06, keep: (az, el) => el > band(az) }, color);
-  const rim = hairSurface(A, S, { hug: true, off: 0.02, keep: (az, el) => el > band(az) - 0.02 && el < band(az) + 0.2 }, color);
+  const band = BONNET_BAND;
+  // Revers à peine plus épais que la calotte : plus large, il dessinait un casque de chantier.
+  const crown = hairSurface(A, S, { hug: true, off: 0.012, volume: 0.04, keep: (az, el) => el > band(az) }, color);
+  const rim = hairSurface(A, S, { hug: true, off: 0.016, keep: (az, el) => el > band(az) - 0.02 && el < band(az) + 0.2 }, color);
   return [crown, rim];
 }
 
