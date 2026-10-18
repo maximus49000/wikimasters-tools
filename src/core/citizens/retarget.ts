@@ -86,7 +86,7 @@ export type Hull = {
 const ARM_BINS = 8;
 const ARM_PRESS = 0.65;
 // Écart total au plus (radians) : au-delà, le bras traverserait plutôt un peu que de partir en croix.
-const ARM_MAX = 0.4;
+const ARM_MAX = 0.3;
 
 const X = new THREE.Vector3(1, 0, 0);
 const Y = new THREE.Vector3(0, 1, 0);
