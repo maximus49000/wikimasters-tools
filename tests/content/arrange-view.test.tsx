@@ -33,6 +33,15 @@ const pointer = (type: string, target: EventTarget, x: number, y: number, pointe
     Object.defineProperty(ev, 'pointerId', { value: pointerId });
     target.dispatchEvent(ev);
   });
+// ✥ Déplacer (bulles unifiées) : toucher l'objet ouvre sa bulle, ✥ l'arme, puis le doigt s'y pose pour le glisser.
+async function grabAt(target: Element, x: number, y: number, pointerId = 1) {
+  await pointer('pointerdown', target, x, y, pointerId);
+  await pointer('pointerup', target, x, y, pointerId);
+  const move = container.querySelector('[data-arrange-bubble] [data-action="move"]');
+  if (!move) throw new Error('bulle sans ✥');
+  await act(async () => { move.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+  await pointer('pointerdown', target, x, y, pointerId);
+}
 
 // Bureau avec écran, lampe (15 × 15) devant à gauche, plante (15 × 15) devant à droite, réveil (18 × 7) devant au milieu.
 const DESK: Layout = [
@@ -137,7 +146,7 @@ describe('ArrangeView sur un vrai dépôt : deux lâchers avant l’écriture', 
     act(() => root.render(<Host />));
     const pointerAt = (type: string, target: EventTarget, x: number, y: number) => pointer(type, target, x, y);
     const dragTo = async (id: string, [dx, dy]: [number, number]) => {
-      await pointerAt('pointerdown', item(id), 300, 200);
+      await grabAt(item(id), 300, 200);
       await pointerAt('pointermove', window, 300 + dx, 200 + dy);
       await pointerAt('pointerup', window, 300 + dx, 200 + dy);
     };
@@ -172,8 +181,10 @@ describe('ArrangeView : glissé sur le plateau', () => {
     return h;
   };
   const item = (id: string) => q(`[data-arrange-item="${id}"]`) as SVGGElement;
-  const drag = async (id: string, [dx, dy]: [number, number], release = true) => {
-    await pointer('pointerdown', item(id), 300, 200);
+  // `armed` : passer d'abord par ✥ de la bulle ; faux : le doigt se pose directement (objet en attente d'écriture, ordinateur fixé).
+  const drag = async (id: string, [dx, dy]: [number, number], release = true, armed = true) => {
+    if (armed) await grabAt(item(id), 300, 200);
+    else await pointer('pointerdown', item(id), 300, 200);
     await pointer('pointermove', window, 300 + dx / 2, 200 + dy / 2);
     await pointer('pointermove', window, 300 + dx, 200 + dy);
     if (release) await pointer('pointerup', window, 300 + dx, 200 + dy);
@@ -198,7 +209,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
     const t = item('a').style.transform;
     expect(t).toContain('translate');
     expect(q('[data-footprint]')).toBeNull();
-    // Pas de nouvelle prise de cet objet en attendant.
+    // Pas de nouvelle prise de cet objet en attendant (ni bulle : il n'est pas encore à sa place).
     await pointer('pointerdown', item('a'), 300, 200);
     await pointer('pointermove', window, 400, 200);
     expect(q('[data-footprint]')).toBeNull();
@@ -287,7 +298,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
   it('un autre doigt ne déplace pas l’objet tenu et ne termine pas le glissé', async () => {
     const h = mount();
     const [dx, dy] = delta(40, 2, 60, 20);
-    await pointer('pointerdown', item('a'), 300, 200);
+    await grabAt(item('a'), 300, 200);
     await pointer('pointermove', window, 300 + dx, 200 + dy);
     const t = item('a').style.transform;
     expect(t).toContain('translate');
@@ -318,7 +329,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
 
   it('toucher sans glisser (moins de 4 px) ne fait rien', async () => {
     const h = mount();
-    await pointer('pointerdown', item('a'), 300, 200);
+    await grabAt(item('a'), 300, 200);
     await pointer('pointermove', window, 302, 201);
     expect(q('[data-footprint]')).toBeNull();
     expect(item('a').style.transform).toBe('');
@@ -328,7 +339,7 @@ describe('ArrangeView : glissé sur le plateau', () => {
 
   it('l’ordinateur ne se saisit pas', async () => {
     const h = mount();
-    await drag('pc', [80, 0], false);
+    await drag('pc', [80, 0], false, false);
     expect(q('[data-footprint]')).toBeNull();
     expect(item('pc').style.transform).toBe('');
     await pointer('pointerup', window, 0, 0);

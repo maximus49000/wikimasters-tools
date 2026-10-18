@@ -1,22 +1,33 @@
-// Bulle d'une carte dans la vue Modifier (toucher une carte sans la glisser) : présentation (tablette : face / tranche / dos pour un jeu ;
-// plateau : trépied / à plat), format de l'objet (CD, DVD, jeu, livre : le slug ne change pas), ⓘ fiche, 🗑 retirer, ✕ fermer.
-// Petite, ancrée sous la carte (au-dessus s'il n'y a pas la place), dans le calque de la vue (tourné avec lui en hauteur).
-// Un changement est vérifié sur la disposition reçue : refusé, le message habituel s'affiche dans la bulle et rien ne part ; accepté, il
-// part tout de suite comme une intention (id + changement), appliquée par l'appelant à la disposition du moment (applyCardChange).
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } from 'react';
-import { poseOf, type Layout, type Pose, type Posed, type ShelfShape, type StoredDisplay } from '../../core/library/library-types';
+// Bulle d'un objet dans la vue Modifier (toucher un objet posé sans le glisser) : la même bulle que le mobilier de la pièce (wmt-lib-bubble,
+// mêmes boutons et glyphes). ✥ Déplacer arme l'objet (seul un objet armé se glisse). Carte : présentation (tablette : face / tranche /
+// dos pour un jeu ; plateau : trépied / à plat), format (CD, DVD, jeu, livre : le slug ne change pas), ⓘ fiche, 🗑 retirer. Petit objet :
+// 🗑, allumer / éteindre une lampe, choisir la ville d'une horloge. ✕ ferme.
+// Ancrée à côté de l'objet sans jamais le cacher (bubbleSpot), dans le calque de la vue (tourné avec lui en hauteur).
+// Un changement est vérifié sur la disposition que l'on voit : refusé, le message habituel s'affiche dans la bulle et rien ne part ;
+// accepté, il part tout de suite comme une intention (id + changement), appliquée par l'appelant à la disposition du moment (applyItemChange).
+import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
+import { hasCitySetting } from '../../core/library/deco';
+import { poseOf, type Layout, type Placed, type Pose, type Posed, type ShelfShape, type StoredDisplay } from '../../core/library/library-types';
 import {
-  SHELF_FULL_MESSAGE, SHELF_TOO_HIGH_MESSAGE, boardClearCm, boardHeightCm, displayOf, setDisplayOf, setPose, setShapeOf, unplaceCard, type PxRect, type Stored,
+  SHELF_FULL_MESSAGE, SHELF_TOO_HIGH_MESSAGE, boardClearCm, boardHeightCm, compactShelves, displayOf, isLit, removeFurniture, setDisplayOf, setPose, setShapeOf, toggleLamp,
+  unplaceCard, type PxRect, type Stored,
 } from '../../core/library/room-grid';
 import { Btn, DisplayButtons, Icon, ICONS } from '../library-ui';
 import { TOP_FULL_MESSAGE } from './use-board-drag';
 
-export type CardChange = { display: StoredDisplay } | { shape: ShelfShape } | { pose: Pose } | { remove: true };
+export type ItemChange = { display: StoredDisplay } | { shape: ShelfShape } | { pose: Pose } | { remove: true } | { lamp: true };
 export type BubbleCard = Stored | Posed;
+export type SmallItem = Extract<Placed, { kind: 'small' }>;
+export type BubbleItem = BubbleCard | SmallItem;
+export const isBubbleItem = (p: Placed | undefined): p is BubbleItem => p?.kind === 'stored' || p?.kind === 'posed' || p?.kind === 'small';
 
-// Le changement appliqué à `layout` ; null s'il ne tient plus (rien ne bouge).
-export function applyCardChange(layout: Layout, id: string, change: CardChange): Layout | null {
-  if ('remove' in change) return unplaceCard(layout, id);
+// Le changement appliqué à `layout` ; null s'il ne tient plus (rien ne bouge). Retirer : une carte (unplaceCard) ou un petit objet (sa
+// tablette se recompacte).
+export function applyItemChange(layout: Layout, id: string, change: ItemChange): Layout | null {
+  const item = layout.find((p) => p.id === id);
+  if (!isBubbleItem(item)) return null;
+  if ('remove' in change) return item.kind === 'small' ? compactShelves(removeFurniture(layout, id)) : unplaceCard(layout, id);
+  if ('lamp' in change) return item.kind === 'small' && item.item === 'lamp' ? toggleLamp(layout, id) : null;
   if ('display' in change) return setDisplayOf(layout, id, change.display);
   if ('shape' in change) return setShapeOf(layout, id, change.shape);
   return setPose(layout, id, change.pose);
@@ -24,11 +35,11 @@ export function applyCardChange(layout: Layout, id: string, change: CardChange):
 
 // Message d'un changement refusé : sur un plateau, la place ; sur une tablette, trop haut (le nouveau format dépasse la hauteur libre et
 // grandit) ou la place qui manque.
-export function refusalOf(card: BubbleCard, change: CardChange): string {
-  if (card.kind === 'posed') return TOP_FULL_MESSAGE;
-  if ('shape' in change) {
+export function refusalOf(item: BubbleItem, change: ItemChange): string {
+  if (item.kind === 'posed' || (item.kind === 'small' && 'x' in item)) return TOP_FULL_MESSAGE;
+  if (item.kind === 'stored' && 'shape' in change) {
     const h = boardHeightCm({ shape: change.shape });
-    if (h > boardClearCm(card.level) + 1e-9 && h > boardHeightCm(card) + 1e-9) return SHELF_TOO_HIGH_MESSAGE;
+    if (h > boardClearCm(item.level) + 1e-9 && h > boardHeightCm(item) + 1e-9) return SHELF_TOO_HIGH_MESSAGE;
   }
   return SHELF_FULL_MESSAGE;
 }
@@ -40,71 +51,86 @@ const FORMATS: { shape: ShelfShape; label: string; glyph: string }[] = [
   { shape: 'book', label: 'Livre', glyph: '📖' },
 ];
 
-// Taille réservée pour placer la bulle (deux rangées de boutons de 40 px et la ligne du message) ; marge au bord du calque.
-export const BUBBLE_W = 292;
-export const BUBBLE_H = 128;
-const MARGIN = 8;
+const GAP = 8;
 // Le bandeau du haut (✋, ✓) reste dégagé.
-const TOP_BAND = 60;
+export const TOP_BAND = 60;
+export type BubbleSize = { w: number; h: number };
+// Taille supposée avant la première mesure (jsdom ne mesure rien) : deux rangées de boutons de la bulle de la pièce.
+export const BUBBLE_GUESS: BubbleSize = { w: 300, h: 84 };
 
-// Coin haut-gauche de la bulle (px du calque) : centrée sous la carte, au-dessus si elle sortirait par le bas, toujours dans le calque.
-export function bubbleSpot(anchor: PxRect, layer: { w: number; h: number }): { left: number; top: number } {
-  const left = Math.min(Math.max(MARGIN, anchor.x + anchor.w / 2 - BUBBLE_W / 2), Math.max(MARGIN, layer.w - BUBBLE_W - MARGIN));
-  const below = anchor.y + anchor.h + MARGIN;
-  const above = anchor.y - BUBBLE_H - MARGIN;
-  const top = below + BUBBLE_H <= layer.h - MARGIN ? below : above >= TOP_BAND ? above : Math.max(TOP_BAND, layer.h - BUBBLE_H - MARGIN);
-  return { left, top };
+// Coin haut-gauche de la bulle (px du calque) qui ne recouvre jamais `anchor` (le rectangle de l'objet, ou de toute la tablette) :
+// dessous, sinon dessus, sinon à droite, sinon à gauche ; tout serré, en bas du calque (dernier recours, `over`). `right` : bande
+// réservée au bord droit (▲ ▼ des tablettes), jamais recouverte.
+export function bubbleSpot(anchor: PxRect, size: BubbleSize, layer: { w: number; h: number }, right = 0): { left: number; top: number; side: 'below' | 'above' | 'right' | 'left' | 'over' } {
+  const maxX = layer.w - right - GAP;
+  const clampX = (x: number) => Math.min(Math.max(GAP, x), Math.max(GAP, maxX - size.w));
+  const clampY = (y: number) => Math.min(Math.max(TOP_BAND, y), Math.max(TOP_BAND, layer.h - GAP - size.h));
+  const cx = clampX(anchor.x + anchor.w / 2 - size.w / 2);
+  const below = anchor.y + anchor.h + GAP;
+  if (below + size.h <= layer.h - GAP) return { left: cx, top: below, side: 'below' };
+  const above = anchor.y - GAP - size.h;
+  if (above >= TOP_BAND) return { left: cx, top: above, side: 'above' };
+  const cy = clampY(anchor.y + anchor.h / 2 - size.h / 2);
+  const toRight = anchor.x + anchor.w + GAP;
+  if (toRight + size.w <= maxX) return { left: toRight, top: cy, side: 'right' };
+  const toLeft = anchor.x - GAP - size.w;
+  if (toLeft >= GAP) return { left: toLeft, top: cy, side: 'left' };
+  return { left: cx, top: clampY(layer.h), side: 'over' };
 }
 
-const BOX: CSSProperties = {
-  position: 'absolute', width: BUBBLE_W, boxSizing: 'border-box', padding: 6, borderRadius: 14, zIndex: 3, pointerEvents: 'auto',
-  background: 'rgba(251,246,234,.97)', color: '#2B1D16', boxShadow: '0 6px 18px rgba(0,0,0,.35)', font: '600 14px system-ui, sans-serif',
-  display: 'flex', flexDirection: 'column', gap: 4,
-};
-const ROW: CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'nowrap' };
-// Boutons ronds de 40 px (la classe wmt-lib-btn du panneau, rendue ici compacte et lisible sur le fond clair).
-const CSS = `.wmt-card-bubble .wmt-lib-btn{min-width:40px;width:40px;height:40px;min-height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1px solid rgba(43,29,22,.25);background:transparent;color:#2B1D16;font:20px/1 system-ui,sans-serif;cursor:pointer}
-.wmt-card-bubble .wmt-lib-btn[aria-pressed="true"]{border:2px solid #3E9B5A;background:rgba(62,155,90,.16);color:#2B1D16}`;
-
 type Props = {
-  card: BubbleCard;
+  item: BubbleItem;
   anchor: PxRect;
   layer: { w: number; h: number };
+  // Bande réservée au bord droit du calque (▲ ▼).
+  reserveRight?: number;
   message: string | null;
-  onChange(change: CardChange): void;
-  onInfo(): void;
+  // Les changements (présentation, format, 🗑, lampe) ne sont proposés qu'avec une intention branchée.
+  canEdit: boolean;
+  onMove(): void;
+  onChange(change: ItemChange): void;
+  onInfo?(): void;
+  onCity?(): void;
   onClose(): void;
 };
 
-export function CardBubble({ card, anchor, layer, message, onChange, onInfo, onClose }: Props): ReactElement {
-  const spot = bubbleSpot(anchor, layer);
+export function CardBubble({ item, anchor, layer, reserveRight = 0, message, canEdit, onMove, onChange, onInfo, onCity, onClose }: Props): ReactElement {
+  // Taille mesurée (offsetWidth/Height : hors rotation du calque) ; la bulle se recale quand elle change (message, autre objet).
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<BubbleSize>(BUBBLE_GUESS);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !el.offsetWidth || !el.offsetHeight) return;
+    if (el.offsetWidth !== size.w || el.offsetHeight !== size.h) setSize({ w: el.offsetWidth, h: el.offsetHeight });
+  });
+  const spot = bubbleSpot(anchor, size, layer, reserveRight);
   // Un doigt posé dans la bulle ne la ferme pas (le calque ferme la bulle à tout toucher ailleurs) et ne saisit rien dessous.
   const keep = (e: ReactPointerEvent) => e.stopPropagation();
-  const pose = card.kind === 'posed' ? poseOf(card) : null;
+  const card = item.kind === 'small' ? null : item;
+  const pose = item.kind === 'posed' ? poseOf(item) : null;
   return (
-    <div data-card-bubble={card.id} role="group" aria-label="Carte" className="wmt-card-bubble" onPointerDown={keep} style={{ ...BOX, left: spot.left, top: spot.top }}>
-      <style>{CSS}</style>
-      <div style={ROW}>
-        {card.kind === 'stored'
-          ? <DisplayButtons current={displayOf(card)} game={card.shape === 'game'} onChoose={(display) => onChange({ display })} />
-          : (
-            <>
-              <Btn label="Sur un trépied" pressed={pose === 'stand'} data={{ action: 'pose-stand' }} onClick={() => onChange({ pose: 'stand' })}><Icon paths={ICONS.poseStand} /></Btn>
-              <Btn label="À plat" pressed={pose === 'flat'} data={{ action: 'pose-flat' }} onClick={() => onChange({ pose: 'flat' })}><Icon paths={ICONS.poseFlat} /></Btn>
-            </>
-          )}
-        <span style={{ flex: 1 }} />
-        <Btn label="Fiche de la carte" data={{ action: 'card-info' }} onClick={onInfo}>ⓘ</Btn>
-        <Btn label="Retirer la carte" data={{ action: 'card-remove' }} onClick={() => onChange({ remove: true })}>🗑</Btn>
-        <Btn label="Fermer la bulle" data={{ action: 'card-bubble-close' }} onClick={onClose}>✕</Btn>
-      </div>
-      <div style={ROW}>
-        {FORMATS.map((f) => (
-          <Btn key={f.shape} label={f.label} pressed={card.shape === f.shape} data={{ action: `card-shape-${f.shape}` }} onClick={() => onChange({ shape: f.shape })}>{f.glyph}</Btn>
-        ))}
-      </div>
+    <div ref={ref} className="wmt-lib-bubble" data-arrange-bubble={item.id} {...(card ? { 'data-card-bubble': item.id } : {})} data-side={spot.side} role="toolbar" aria-label="Actions sur l’objet"
+      onPointerDown={keep} style={{ left: spot.left, top: spot.top, zIndex: 3, maxWidth: Math.min(360, layer.w - 2 * GAP) }}>
+      <Btn label="Déplacer" data={{ action: 'move' }} onClick={onMove}><Icon paths={ICONS.move} /></Btn>
+      {canEdit && <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => onChange({ remove: true })}><Icon paths={ICONS.trash} /></Btn>}
+      {card && onInfo && <Btn label="Fiche de la carte" data={{ action: 'card-info' }} onClick={onInfo}>ⓘ</Btn>}
+      {canEdit && item.kind === 'stored' && <DisplayButtons current={displayOf(item)} game={item.shape === 'game'} onChoose={(display) => onChange({ display })} />}
+      {canEdit && pose && (
+        <>
+          <Btn label="Sur un trépied" pressed={pose === 'stand'} data={{ action: 'pose-stand' }} onClick={() => onChange({ pose: 'stand' })}><Icon paths={ICONS.poseStand} /></Btn>
+          <Btn label="À plat" pressed={pose === 'flat'} data={{ action: 'pose-flat' }} onClick={() => onChange({ pose: 'flat' })}><Icon paths={ICONS.poseFlat} /></Btn>
+        </>
+      )}
+      {canEdit && card && FORMATS.map((f) => (
+        <Btn key={f.shape} label={f.label} pressed={card.shape === f.shape} data={{ action: `card-shape-${f.shape}` }} onClick={() => onChange({ shape: f.shape })}>{f.glyph}</Btn>
+      ))}
+      {canEdit && item.kind === 'small' && item.item === 'lamp' && (
+        <Btn label={isLit(item) ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={isLit(item)} data={{ action: 'lamp' }} onClick={() => onChange({ lamp: true })}><Icon paths={ICONS.bulb} /></Btn>
+      )}
+      {onCity && hasCitySetting(item) && <Btn label="Choisir la ville" data={{ action: 'deco-city' }} onClick={onCity}><Icon paths={ICONS.globe} /></Btn>}
+      <Btn label="Fermer la bulle" data={{ action: 'bubble-close' }} onClick={onClose}>✕</Btn>
       {message && (
-        <div data-card-bubble-message="" role="status" style={{ padding: '4px 6px', borderRadius: 8, background: 'rgba(200,68,58,.14)', color: '#8A2A22', font: '600 13px system-ui, sans-serif' }}>{message}</div>
+        <div data-card-bubble-message="" role="status" style={{ flexBasis: '100%', padding: '4px 6px', borderRadius: 8, background: 'rgba(210,59,47,.12)', color: '#a3271e', font: '600 13px system-ui, sans-serif' }}>{message}</div>
       )}
     </div>
   );

@@ -119,7 +119,7 @@ import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
 import { ArrangeView } from './arrange/ArrangeView';
 import { ArrangeShelf, type ArrangeLevel } from './arrange/ArrangeShelf';
-import { applyCardChange, type CardChange } from './arrange/CardBubble';
+import { applyItemChange, type ItemChange } from './arrange/CardBubble';
 import { useArrangeView } from './arrange/use-arrange-view';
 import type { AddAt, AddCard } from './arrange/use-pending-card';
 import { moveOnTop } from '../core/library/arrange';
@@ -328,11 +328,16 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [arrangeLevel, setArrangeLevel] = useState<ArrangeLevel>('whole');
   const arrangeLevelRef = useRef(arrangeLevel);
   arrangeLevelRef.current = arrangeLevel;
-  // Bulle d'une carte dans la vue Modifier : la vue y range sa fermeture ; le retour ferme la fiche ⓘ, puis la bulle, puis dézoome.
+  // Bulle d'un objet dans la vue Modifier : la vue y range sa fermeture ; le retour ferme la fiche ⓘ (ou le choix de la ville), puis la
+  // bulle (et l'objet armé), puis dézoome.
   const arrangeBubbleBack = useRef<(() => boolean) | null>(null);
   const arrange = useArrangeView(() => {
     if (viewingRef.current) {
       setViewing(null);
+      return true;
+    }
+    if (decoDialogRef.current) {
+      setDecoDialog(null);
       return true;
     }
     if (arrangeBubbleBack.current?.()) return true;
@@ -1121,8 +1126,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     startPlacementFor({ type: 'card', choice });
   };
   // ✓ de la vue ＋ : la carte est posée (plateau, trépied) ou rangée (tablette, rang) à l'endroit choisi, sous un id neuf.
-  // Bulle d'une carte dans la vue Modifier : intention appliquée à la disposition du moment (refusée : rien n'est écrit).
-  const editArrangedCard = (id: string, change: CardChange) => editLayout((l) => applyCardChange(l, id, change));
+  // Bulle d'un objet dans la vue Modifier : intention appliquée à la disposition du moment ; rend faux si elle n'y tient plus (rien n'est
+  // écrit, la bulle affiche le refus).
+  const editArrangedItem = async (id: string, change: ItemChange): Promise<boolean> => {
+    let ok = false;
+    await editLayout((l) => {
+      const next = applyItemChange(l, id, change);
+      ok = next !== null;
+      return next;
+    });
+    return ok;
+  };
   const addCardAt = (card: AddCard, at: AddAt) => editLayout((l) => {
     const id = nextFurnitureId(l);
     return 'hostId' in at ? poseCard(l, at.hostId, card.shape, card.slug, id, at.x, at.z) : storeCard(l, at.shelfId, at.level, at.order, card.shape, card.slug, id);
@@ -1556,9 +1570,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onBoard={(id, shelfId, level, order) => editLayout((l) => moveToBoard(l, id, shelfId, level, order))}
               onTop={(id, hostId, x, z) => editLayout((l) => moveToTop(l, id, hostId, x, z))}
               onClose={arrange.close}
-              onCardEdit={editArrangedCard}
+              onItemEdit={editArrangedItem}
               onCardInfo={setViewing}
+              onItemCity={(id) => setDecoDialog({ type: 'city', id })}
               bubbleBack={arrangeBubbleBack}
+              sheetOpen={viewing !== null || decoDialog !== null}
             />
           ) : (
             <ArrangeView
@@ -1572,9 +1588,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               imageOf={imageOfCard}
               onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
               onClose={arrange.close}
-              onCardEdit={editArrangedCard}
+              onItemEdit={editArrangedItem}
               onCardInfo={setViewing}
+              onItemCity={(id) => setDecoDialog({ type: 'city', id })}
               bubbleBack={arrangeBubbleBack}
+              sheetOpen={viewing !== null || decoDialog !== null}
             />
           )
         )}
