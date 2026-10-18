@@ -18,6 +18,9 @@ import { ArrangeShelf, boardFrameFor, boardPointPx, type ArrangeLevel } from '..
 import { boardBoxPx, boardRect } from '../../src/content/arrange/arrange-shelf-frames';
 import { ArrangeView, NAV_PX, arrangeFrameFor } from '../../src/content/arrange/ArrangeView';
 import { BUBBLE_GUESS, TOP_BAND, applyItemChange, bubbleSpot } from '../../src/content/arrange/CardBubble';
+import { resetCoverChoices } from '../../src/content/arrange/use-card-bubble';
+import { setCoverVersions } from '../../src/content/cover-versions';
+import type { CollectionRepo } from '../../src/core/collection/collection-repo';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -96,6 +99,8 @@ beforeEach(() => {
   Object.assign(window, { innerWidth: 800, innerHeight: 400 });
 });
 afterEach(() => {
+  setCoverVersions(null);
+  resetCoverChoices();
   Reflect.deleteProperty(document.documentElement, 'setPointerCapture');
   vi.restoreAllMocks();
   act(() => root.unmount());
@@ -540,5 +545,198 @@ describe('bulles branchées dans LibraryPanel', () => {
     expect(stored().some((p) => p.id === 'k')).toBe(false);
     await act(async () => { window.dispatchEvent(new PopStateEvent('popstate')); });
     expect(q('[data-arrange-view]')).toBeNull();
+  });
+});
+
+describe('bulle d’une carte : choisir la pochette, changer de carte', () => {
+  const V1 = 'https://img.example/v1.jpg';
+  const V2 = 'https://img.example/v2.jpg';
+  const COLLECTION = [{ slug: 'A0', title: 'A0' }, { slug: 'Zappa', title: 'Zappa' }, { slug: 'Matrix', title: 'Matrix' }, { slug: 'Dune', title: 'Dune' }];
+  const SWAP = { cards: COLLECTION };
+  // Versions renvoyées à la demande (resolve / reject) : la recherche reste « en cours » jusque-là.
+  const deferredVersions = () => {
+    let settle: { resolve(urls: string[]): void; reject(e: Error): void } = { resolve: () => undefined, reject: () => undefined };
+    const fn = vi.fn((_card: { slug: string; title: string }, _shape: string) => new Promise<string[]>((resolve, reject) => { settle = { resolve, reject }; }));
+    setCoverVersions(fn);
+    return {
+      fn,
+      resolve: (urls: string[]) => act(async () => { settle.resolve(urls); await Promise.resolve(); }),
+      reject: () => act(async () => { settle.reject(new Error('délai')); await Promise.resolve(); }),
+    };
+  };
+  const shelfEl = (layout: Layout, spies: Spies, level: ArrangeLevel, playingId: string | null) => (
+    <ArrangeShelf layout={layout} room={{ style: 'scandinave' }} shelfIds={['s']} level={level} onLevel={spies.onLevel} onBoard={spies.onBoard} onTop={spies.onTop}
+      onClose={spies.onClose} onItemEdit={spies.onItemEdit} onCardInfo={spies.onCardInfo} swap={SWAP} playingId={playingId} />
+  );
+  const mountSwap = (layout: Layout, level: ArrangeLevel = 0, playingId: string | null = null) => {
+    const spies = spiesOf();
+    act(() => root.render(shelfEl(layout, spies, level, playingId)));
+    return spies;
+  };
+  const coverBtn = () => q(label('Choisir la pochette')) as HTMLButtonElement;
+
+  it('ouvrir et fermer la bulle ne cherche rien ; 🖼️ lance une seule recherche : indicateur, puis la réglette ; une vignette enregistre { cover }', async () => {
+    const v = deferredVersions();
+    const spies = mountSwap(SHELF);
+    await tap('[data-board-card="A1"]');
+    await click(label('Fermer la bulle'));
+    await tap('[data-board-card="A1"]');
+    expect(v.fn).not.toHaveBeenCalled();
+    expect(coverBtn().disabled).toBe(false);
+    await click(label('Choisir la pochette'));
+    expect(v.fn).toHaveBeenCalledTimes(1);
+    expect(v.fn).toHaveBeenCalledWith({ slug: 'A1', title: 'A1' }, 'cd');
+    expect(q('[data-arrange-bubble] [data-cover-loading]')).not.toBeNull();
+    expect(all('[data-arrange-bubble] [data-cover-choice]')).toHaveLength(0);
+    await v.resolve([V1, V2]);
+    await settle();
+    expect(q('[data-arrange-bubble] [data-cover-loading]')).toBeNull();
+    expect(all('[data-arrange-bubble] [data-cover-choice]').map((b) => b.getAttribute('data-cover-choice'))).toEqual([V1, V2]);
+    expect(q('[data-arrange-bubble] [data-cover-choice] img')?.getAttribute('src')).toBe(V1);
+    // Sans pochette choisie : « Pochette d'origine » est la pochette actuelle (enfoncée, rien à effacer).
+    expect(q(label('Pochette d’origine'))?.getAttribute('aria-pressed')).toBe('true');
+    await click(`[data-arrange-bubble] [data-cover-choice="${V2}"]`);
+    expect(spies.onItemEdit).toHaveBeenCalledWith('c1', { cover: V2 });
+    for (const b of all('[data-arrange-bubble] button')) expect(b.getAttribute('title'), b.outerHTML).toBe(b.getAttribute('aria-label'));
+    // Gardé pour la séance : rouvrir la réglette ne relance rien.
+    await click(label('Choisir la pochette'));
+    await click(label('Choisir la pochette'));
+    expect(all('[data-arrange-bubble] [data-cover-choice]')).toHaveLength(2);
+    expect(v.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('pochette déjà choisie : sa vignette enfoncée ; « ↺ Pochette d’origine » l’efface ({ cover: null })', async () => {
+    setCoverVersions(async () => [V1, V2]);
+    const layout = SHELF.map((p) => (p.id === 'c1' && p.kind === 'stored' ? { ...p, cover: V2 } : p));
+    const spies = mountSwap(layout);
+    await tap('[data-board-card="A1"]');
+    await click(label('Choisir la pochette'));
+    expect(q(`[data-arrange-bubble] [data-cover-choice="${V2}"]`)?.getAttribute('aria-pressed')).toBe('true');
+    expect(q(label('Pochette d’origine'))?.getAttribute('aria-pressed')).toBe('false');
+    expect(q(label('Pochette d’origine'))?.textContent).toContain('↺');
+    await click(label('Pochette d’origine'));
+    expect(spies.onItemEdit).toHaveBeenCalledWith('c1', { cover: null });
+  });
+
+  it('aucune version (réponse sûre) : la réglette se referme, 🖼️ grisé, plus jamais de recherche pour cette carte', async () => {
+    const v = deferredVersions();
+    mountSwap(SHELF);
+    await tap('[data-board-card="A2"]');
+    await click(label('Choisir la pochette'));
+    await v.resolve([]);
+    await settle();
+    expect(coverBtn().disabled).toBe(true);
+    expect(q('[data-cover-strip]')).toBeNull();
+    await click(label('Fermer la bulle'));
+    await tap('[data-board-card="A2"]');
+    expect(coverBtn().disabled).toBe(true);
+    expect(v.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('erreur ou délai dépassé (réponse incertaine) : 🖼️ reste actif, un nouvel appui réessaie', async () => {
+    const v = deferredVersions();
+    mountSwap(SHELF);
+    await tap('[data-board-card="A3"]');
+    await click(label('Choisir la pochette'));
+    await v.reject();
+    await settle();
+    expect(coverBtn().disabled).toBe(false);
+    expect(q('[data-cover-strip]')).toBeNull();
+    await click(label('Choisir la pochette'));
+    expect(v.fn).toHaveBeenCalledTimes(2);
+    await v.resolve([V1]);
+    await settle();
+    expect(all('[data-arrange-bubble] [data-cover-choice]')).toHaveLength(1);
+  });
+
+  it('🔄 Changer de carte : la réglette des cartes pas encore dans la pièce ; la carte choisie garde le format de l’objet (même un film à la place d’un CD)', async () => {
+    const spies = mountSwap(SHELF);
+    await tap('[data-board-card="A1"]');
+    expect(q(label('Changer de carte'))?.textContent).toBe('🔄');
+    await click(label('Changer de carte'));
+    expect(all('[data-arrange-bubble] [data-strip-card]').map((b) => b.getAttribute('data-strip-card'))).toEqual(['Dune', 'Matrix', 'Zappa']);
+    await click('[data-arrange-bubble] [data-strip-card="Zappa"]');
+    expect(spies.onItemEdit).toHaveBeenCalledWith('c1', { swap: 'Zappa' });
+    await click(label('Changer de carte'));
+    await click('[data-arrange-bubble] [data-strip-card="Matrix"]');
+    expect(spies.onItemEdit).toHaveBeenLastCalledWith('c1', { swap: 'Matrix' });
+    expect(applyItemChange(SHELF, 'c1', { swap: 'Matrix' })!.find((p) => p.id === 'c1')).toMatchObject({ slug: 'Matrix', shape: 'cd' });
+  });
+
+  it('l’écriture refuse parce que la carte vient d’entrer dans la pièce : « Cette carte est déjà dans la pièce. »', async () => {
+    const spies = spiesOf();
+    act(() => root.render(shelfEl(SHELF, spies, 0, null)));
+    spies.onItemEdit.mockImplementation(async () => {
+      root.render(shelfEl([...SHELF, { id: 'w', kind: 'wall', shape: 'poster', col: 9, row: 0, slug: 'Zappa' }], spies, 0, null));
+      return false;
+    });
+    await tap('[data-board-card="A1"]');
+    await click(label('Changer de carte'));
+    await click('[data-arrange-bubble] [data-strip-card="Zappa"]');
+    await settle();
+    expect(q('[data-card-bubble-message]')?.textContent).toBe('Cette carte est déjà dans la pièce.');
+  });
+
+  it('pendant sa lecture (objet au poste hi-fi) : 🔄 refusé avec un message, rien ne part', async () => {
+    const spies = mountSwap(SHELF, 0, 'c1');
+    await tap('[data-board-card="A1"]');
+    await click(label('Changer de carte'));
+    await click('[data-arrange-bubble] [data-strip-card="Zappa"]');
+    expect(spies.onItemEdit).not.toHaveBeenCalled();
+    expect(q('[data-card-bubble-message]')?.textContent).toBe('Impossible de changer la carte pendant sa lecture.');
+  });
+
+  it('sans Collection branchée (bulle sans `swap`) : pas de 🔄 ; un petit objet n’a ni pochette ni 🔄', async () => {
+    mountShelf(SHELF, 1);
+    await tap('[data-board-card="Jeu"]');
+    expect(q(label('Changer de carte'))).toBeNull();
+    expect(q(label('Choisir la pochette'))).not.toBeNull();
+    mountSwap(SHELF, 1);
+    await tap('[data-board-small="l"]');
+    expect(q(label('Changer de carte'))).toBeNull();
+    expect(q(label('Choisir la pochette'))).toBeNull();
+  });
+
+  describe('branchées dans LibraryPanel', () => {
+    const KNOWN = [{ slug: 'Kiki', title: 'Kiki', imageUrl: 'https://img.example/kiki.jpg' }, { slug: 'Paris', title: 'Paris' }];
+    const collection = { list: async () => KNOWN, subscribe: () => () => undefined } as unknown as CollectionRepo;
+    let repo: LibraryRepo;
+    const stored = () => repo.current()!.rooms[0]!.layout;
+
+    it('la pochette choisie est écrite sur l’objet seul et dessinée ; la fiche de la carte garde son image ; changer de carte garde la place', async () => {
+      setCoverVersions(async () => [V1]);
+      repo = createLibraryRepo(createMemoryStore());
+      await act(async () => { root.render(<LibraryPanel library={repo} collection={collection} />); });
+      await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => DESK.filter((p) => p.id !== 'lp'))); });
+      await settle();
+      await click('[data-action="edit"]');
+      await click('[data-furniture="desk"]');
+      await click('[data-action="arrange"]');
+      await tap('[data-arrange-item="k"]');
+      await click(label('Choisir la pochette'));
+      await click(`[data-arrange-bubble] [data-cover-choice="${V1}"]`);
+      expect(stored().find((p) => p.id === 'k')).toMatchObject({ slug: 'Kiki', cover: V1 });
+      expect(q('[data-arrange-item="k"] image')?.getAttribute('href')).toBe(V1);
+      expect(q('[data-furniture="posed"][data-id="k"] image')?.getAttribute('href')).toBe(V1);
+      await click(label('Fiche de la carte'));
+      expect(q('[data-room-card="Kiki"] img')?.getAttribute('src')).toBe('https://img.example/kiki.jpg');
+    });
+
+    it('🔄 Changer de carte écrit la nouvelle carte à la même place (pochette effacée)', async () => {
+      setCoverVersions(async () => []);
+      repo = createLibraryRepo(createMemoryStore());
+      await act(async () => { root.render(<LibraryPanel library={repo} collection={collection} />); });
+      await act(async () => { await repo.update((st) => updateLayout(st, 'r1', () => DESK.filter((p) => p.id !== 'lp').map((p) => (p.id === 'k' ? { ...p, cover: V1 } : p)))); });
+      await settle();
+      await click('[data-action="edit"]');
+      await click('[data-furniture="desk"]');
+      await click('[data-action="arrange"]');
+      await tap('[data-arrange-item="k"]');
+      await click(label('Changer de carte'));
+      await click('[data-arrange-bubble] [data-strip-card="Paris"]');
+      const k = stored().find((p) => p.id === 'k');
+      expect(k).toMatchObject({ id: 'k', kind: 'posed', shape: 'cd', hostId: 'd', x: 2, z: 2, slug: 'Paris' });
+      expect(k && 'cover' in k).toBe(false);
+    });
   });
 });

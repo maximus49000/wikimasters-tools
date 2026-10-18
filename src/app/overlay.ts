@@ -108,6 +108,7 @@ import { createCollectionMarks } from '../content/collection-marks';
 import { setCollectionMarks } from '../content/collection-marks-registry';
 import { getScreenService, setScreenService } from '../content/screen-registry';
 import { createMediaArt, type MediaArt, type MediaArtSources } from '../content/media-art';
+import { createCoverVersions, setCoverVersions, type CoverVersionSources } from '../content/cover-versions';
 import { createImageService } from '../core/images/image-service';
 import { searchCardImages } from '../core/images/card-image-search';
 import { setImageService } from '../content/image-registry';
@@ -330,6 +331,9 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   // Sources de pochettes / affiches : renseignées plus bas, quand Spotify et TMDB sont prêts.
   const artSources: MediaArtSources = {};
   const mediaArt: MediaArt = createMediaArt({ kinds: kindsRepo, sources: artSources });
+  // Versions de pochette d'un objet posé dans la pièce : mêmes sources, renseignées au même endroit ; Deezer par le relais.
+  const versionSources: CoverVersionSources = {};
+  setCoverVersions(createCoverVersions({ sources: versionSources, fetch: (url) => fetch(url) }));
   const images = createImageService({
     store,
     // Wikipédia et Commons ; la pochette Spotify / l'affiche TMDB passe toujours devant, l'artiste / l'affiche la plus proche en dernier recours.
@@ -585,6 +589,8 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       const playback = remotePlayback ?? spotifyApi;
       const musicRepo = createMusicRepo(store, (slugs) => fetchWikidataMusic((url) => fetch(url), slugs));
       artSources.spotify = { api: spotifyApi, session, music: musicRepo };
+      versionSources.spotify = { api: spotifyApi, session };
+      versionSources.music = musicRepo;
       const player = createPlayerSource({
         api: playback,
         session,
@@ -668,6 +674,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
   try {
     const tmdbApi = createTmdbApi({ fetch: (url) => fetch(url) });
     artSources.tmdb = tmdbApi;
+    versionSources.tmdb = tmdbApi;
     const screenService = createScreenService({
       hasKey: true,
       collection: collectionRepo,
@@ -704,19 +711,19 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     });
     setGameService(gameService);
     // Boîtes des jeux : TheGamesDB via le relais (aucune clé dans le client), repli sur Steam/IGDB. Interrogé seulement pour un jeu affiché.
-    setGameBoxService(
-      createGameBoxService({
-        versions: (name) => fetchTgdbVersions(name, gameFetch),
-        images: (ids) => fetchTgdbImages(ids, gameFetch),
-        choices: createGameVersionRepo(store),
-        game: gameService,
-        store,
-        // Autre version choisie pour une carte : son affiche mémorisée n'est plus la bonne.
-        onChanged: (slug) => void images.forgetGameArt(slug),
-        // « Jaquettes » qui sont des bannières : repérées à la taille réelle de l'image (copie gardée sur l'appareil si possible).
-        measure: async (url) => measureImage((await getCoverCache()?.blobUrl(url)) ?? url),
-      }),
-    );
+    const gameBoxService = createGameBoxService({
+      versions: (name) => fetchTgdbVersions(name, gameFetch),
+      images: (ids) => fetchTgdbImages(ids, gameFetch),
+      choices: createGameVersionRepo(store),
+      game: gameService,
+      store,
+      // Autre version choisie pour une carte : son affiche mémorisée n'est plus la bonne.
+      onChanged: (slug) => void images.forgetGameArt(slug),
+      // « Jaquettes » qui sont des bannières : repérées à la taille réelle de l'image (copie gardée sur l'appareil si possible).
+      measure: async (url) => measureImage((await getCoverCache()?.blobUrl(url)) ?? url),
+    });
+    setGameBoxService(gameBoxService);
+    versionSources.game = gameBoxService;
     // Affiches des jeux vidéo : même mécanisme que les pochettes d'albums et les affiches de films.
     artSources.game = gameService;
   } catch (error) {
@@ -751,6 +758,7 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
     });
     setBookService(bookService);
     artSources.book = bookService;
+    versionSources.book = bookService;
     // Couverture des livres : même canal d'image « officiel » que les affiches de jeux (elle passe devant l'image Wikipédia).
     // Le jeu répond d'abord (liste vide pour une carte qui n'est pas un jeu) ; `null` = pas prêt, on redemandera.
     const gameArt = artSources.game;

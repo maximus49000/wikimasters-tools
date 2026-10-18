@@ -178,6 +178,40 @@ describe('posterUrl', () => {
   });
 });
 
+describe('posterVersions', () => {
+  it('cherche le film au titre exact puis ses affiches : fr, puis en, puis sans langue (les autres écartées)', async () => {
+    const { api: tmdb, fetchFn } = api((url) =>
+      url.pathname.endsWith('/images')
+        ? Response.json({
+            posters: [
+              { file_path: '/en1.jpg', iso_639_1: 'en' },
+              { file_path: '/none.jpg', iso_639_1: null },
+              { file_path: '/de.jpg', iso_639_1: 'de' },
+              { file_path: '/fr1.jpg', iso_639_1: 'fr' },
+              { file_path: '/en2.jpg', iso_639_1: 'en' },
+              { file_path: '/fr1.jpg', iso_639_1: 'fr' },
+            ],
+          })
+        : Response.json({ results: [{ id: 1, title: 'Matrix 2' }, { id: 603, title: 'Matrix' }] }),
+    );
+    expect(await tmdb.posterVersions('matrix')).toEqual([
+      'https://image.tmdb.org/t/p/w500/fr1.jpg',
+      'https://image.tmdb.org/t/p/w500/en1.jpg',
+      'https://image.tmdb.org/t/p/w500/en2.jpg',
+      'https://image.tmdb.org/t/p/w500/none.jpg',
+    ]);
+    expect(new URL(fetchFn.mock.calls[0]![0]).pathname).toBe('/tmdb/search/movie');
+    const images = new URL(fetchFn.mock.calls[1]![0]);
+    expect(images.pathname).toBe('/tmdb/movie/603/images');
+    expect(images.searchParams.get('include_image_language')).toBe('fr,en,null');
+  });
+  it('aucun film au titre exact : liste vide, sans appel aux affiches', async () => {
+    const { api: tmdb, fetchFn } = api(() => Response.json({ results: [{ id: 1, title: 'Autre' }] }));
+    expect(await tmdb.posterVersions('Inconnu')).toEqual([]);
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+});
+
 describe('closestPosterUrl', () => {
   it("prend la première affiche de film ou de série, sans exiger le titre exact, et ignore les personnes", async () => {
     const { api: tmdb, fetchFn } = api(() =>

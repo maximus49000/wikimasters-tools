@@ -19,7 +19,8 @@ import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { WallArt } from './library-card-art';
 import { CarriedItem3D, Model3DArt, type ItemContent, type ModelPart } from './model3d-art';
-import { gameBoxContent, gameCoverUrl } from './game-box-content';
+import { gameCoverUrl } from './game-box-content';
+import { imageOfPlaced, placedBoxContent } from './placed-image';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
 import { localImage, useCoverCache } from './cover-cache';
 import { usableImage, useImageProbe } from './image-probe';
@@ -291,8 +292,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const atHifi = hifi.atHifi !== null ? (room.layout.find((p) => p.id === hifi.atHifi) ?? null) : null;
   const atHifiSlug = atHifi && 'slug' in atHifi ? atHifi.slug : null;
   const sleeveKind = atHifi ? sleeveKindOf(atHifi) : null;
+  // Pochette de l'objet au poste : celle choisie pour lui, sinon celle de la carte.
+  const atHifiCover = atHifiSlug ? imageOfPlaced({ slug: atHifiSlug, ...(atHifi && 'cover' in atHifi && atHifi.cover ? { cover: atHifi.cover } : {}) }, imageOf) ?? null : null;
   const hifiDisc: HifiDiscShow | null = atHifiSlug && sleeveKind
-    ? { kind: hifiDiscKindOf(atHifi!, sleeveKind), cover: imageOf(atHifiSlug) ?? null, color: bookColor(atHifiSlug) }
+    ? { kind: hifiDiscKindOf(atHifi!, sleeveKind), cover: atHifiCover, color: bookColor(atHifiSlug) }
     : null;
   const trackTitle = player.track ? (player.track.artist ? `${player.track.title} — ${player.track.artist}` : player.track.title) : null;
   // Pose 3D de chaque objet rangé dans le repère de son étagère (rangement par largeur réelle), calculée une fois par disposition.
@@ -353,8 +356,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       // Carte posée : sa vraie boîte sur trépied ou à plat, l'image de la carte sur la couverture (comme une carte rangée).
       if (placed.kind === 'posed') {
         const info = cards[placed.slug];
-        const url = info ? imageOf(placed.slug) : undefined;
-        content = info ? { url, title: info.title, ...gameBoxContent(placed.shape, placed.slug, url) } : {};
+        content = info ? { title: info.title, ...placedBoxContent(placed, imageOf) } : {};
       } else if (placed.kind === 'computer') content = { url: placed.slug && cards[placed.slug] ? imageOf(placed.slug) : undefined };
       // Face décorée (heure, météo) : elle relit elle-même la seconde, le modèle 3D n'est pas redessiné à chaque seconde.
       else if (isTableClock(placed.item) && decoScene) content = tableFaceContent(placed.item, placed.city, room.style, decoScene);
@@ -533,8 +535,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       if (!host || !pl || !openingOf(FURNITURE_MODELS.shelf, host.angle)) return null;
       const info = cards[placed.slug];
       // Vraie boîte posée sur sa tablette, tournée avec l'étagère : image de la carte sur la couverture, titre sur la tranche.
-      const url = info ? imageOf(placed.slug) : undefined;
-      const art = <CarriedItem3D host="shelf" angle={host.angle} rect={host.rect} placement={pl} palette={palette} content={info ? { url, title: info.title, ...gameBoxContent(placed.shape, placed.slug, url) } : undefined} />;
+      const art = <CarriedItem3D host="shelf" angle={host.angle} rect={host.rect} placement={pl} palette={palette} content={info ? { title: info.title, ...placedBoxContent(placed, imageOf) } : undefined} />;
       const quad = cardQuad(placed, host.angle, host.rect, pl)!;
       return { slug: placed.slug, rect: boxOfQuad(quad), art, quad };
     }
@@ -615,7 +616,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
         // En Aménager, la pochette laisse passer les gestes vers le bureau (le soulever, l'appui long).
         {...(editing || hideSleeve ? { pointerEvents: 'none' } : { onClick: (event: MouseEvent<SVGGElement>) => onSleeveTap?.(atHifi.id, event.currentTarget) })}
         opacity={hideSleeve ? 0 : drag?.id === hostId ? 0.3 : undefined} style={{ cursor: editing ? 'default' : 'pointer', userSelect: 'none', WebkitTouchCallout: 'none' }}>
-        <SleeveArt top={rest.top.map(px)} bottom={rest.bottom.map(px)} w={rest.w} d={rest.d} kind={sleeveKind} cover={imageOf(atHifiSlug) ?? null} color={bookColor(atHifiSlug)} title={cards[atHifiSlug]?.title ?? ''} />
+        <SleeveArt top={rest.top.map(px)} bottom={rest.bottom.map(px)} w={rest.w} d={rest.d} kind={sleeveKind} cover={atHifiCover} color={bookColor(atHifiSlug)} title={cards[atHifiSlug]?.title ?? ''} />
       </g>
     );
     return { depth: localPointOf(FURNITURE_MODELS.desk, host.angle, mid).z, node };

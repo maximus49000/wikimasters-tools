@@ -15,17 +15,23 @@ type Props = {
   // Carte en attente (vignette enfoncée).
   pending: string | null;
   onPick(slug: string): void;
+  // Dans une bulle (🔄 Changer de carte) : à la suite des boutons, pleine largeur, au lieu du bandeau du haut de la vue.
+  inline?: boolean;
+  label?: string;
 };
 
-export function CardStrip({ cards, taken, pending, onPick }: Props): ReactElement {
+const BAR = { position: 'absolute', top: 6, left: 60, right: 112 } as const;
+const INLINE = { flexBasis: '100%', minWidth: 0 } as const;
+
+export function CardStrip({ cards, taken, pending, onPick, inline = false, label = 'Cartes à ajouter' }: Props): ReactElement {
   const [query, setQuery] = useState('');
   const free = useMemo(() => cards.filter((c) => !taken.has(c.slug)).sort((a, b) => a.title.localeCompare(b.title, 'fr')), [cards, taken]);
   const needle = fold(query.trim());
   const matches = needle ? free.filter((c) => fold(c.title).includes(needle)) : free;
   const shown = matches.slice(0, MAX_STRIP);
   return (
-    <div data-card-strip="" role="group" aria-label="Cartes à ajouter"
-      style={{ position: 'absolute', top: 6, left: 60, right: 112, height: 48, display: 'flex', alignItems: 'center', gap: 6, padding: '0 6px', overflowX: 'auto', overflowY: 'hidden', touchAction: 'pan-x', pointerEvents: 'auto', background: 'rgba(43,29,22,.55)', borderRadius: 10, WebkitOverflowScrolling: 'touch' }}>
+    <div data-card-strip="" role="group" aria-label={label}
+      style={{ ...(inline ? INLINE : BAR), height: 48, display: 'flex', alignItems: 'center', gap: 6, padding: '0 6px', overflowX: 'auto', overflowY: 'hidden', touchAction: 'pan-x', pointerEvents: 'auto', background: 'rgba(43,29,22,.55)', borderRadius: 10, WebkitOverflowScrolling: 'touch' }}>
       <input type="search" aria-label="Chercher une carte" title="Chercher une carte" placeholder="🔍" value={query} onChange={(e) => setQuery(e.target.value)}
         style={{ flex: 'none', width: 92, height: 32, borderRadius: 8, border: '1px solid rgba(251,246,234,.5)', background: 'rgba(251,246,234,.92)', font: '14px system-ui, sans-serif', padding: '0 6px' }} />
       {shown.map((c) => (

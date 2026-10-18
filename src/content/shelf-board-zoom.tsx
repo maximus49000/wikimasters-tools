@@ -7,6 +7,7 @@ import { SHELF_INNER_CM, SHELF_LEVELS, displayOf, isLit, isShelfLevel, shelfBoar
 import { paletteOf } from '../core/library/styles';
 import { reducedMotion } from './ghibli-sky';
 import { gameBoxContent } from './game-box-content';
+import { imageOfPlaced } from './placed-image';
 import { GameSpine } from './game-spine';
 import { Icon, ICONS } from './library-ui';
 import { Item3DArt } from './model3d-art';
@@ -195,7 +196,8 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                 }
                 const info = cards[p.slug];
                 const title = info?.title ?? p.slug.replace(/_/g, ' ');
-                const url = info ? imageOf(p.slug) : undefined;
+                // Pochette choisie pour cet objet, sinon l'image de la carte.
+                const url = info ? imageOfPlaced(p, imageOf) : undefined;
                 const display = displayOf(p);
                 const spine = display === 'spine';
                 // Jeu de dos : l'image du dos de sa boîte, sinon le dos fabriqué ; boîte inconnue : l'aplat de la couleur du boîtier.

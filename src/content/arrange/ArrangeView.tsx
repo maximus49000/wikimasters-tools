@@ -16,7 +16,9 @@ import { paletteOf } from '../../core/library/styles';
 import { computerTopRect, topSize, topThingOf, type TopRect } from '../../core/library/surface';
 import { isTableClock, tableFaceContent, useDecoScene } from '../deco-live';
 import { CarriedItem3D, Model3DArt, type ItemContent } from '../model3d-art';
-import { gameBoxContent } from '../game-box-content';
+import { placedBoxContent } from '../placed-image';
+import { useCoverCache } from '../cover-cache';
+import { useImageProbe } from '../image-probe';
 import type { SceneView } from '../RoomView';
 import { axesOf, topPx, useTopDrag, type TopAxes } from './use-top-drag';
 import { HALO, HaloFilter, KO_HALO, PendingChrome } from './arrange-chrome';
@@ -52,6 +54,7 @@ type Props = CardBubbleProps & {
 };
 
 const PAD = 16;
+const NO_IMAGE = (): undefined => undefined;
 // Bande du bord droit réservée aux boutons ▲ ▼ (vue du dessus d'une étagère) : la bulle ne s'y pose pas.
 export const NAV_PX = 60;
 // L'objet tenu est soulevé de quelques px : son empreinte (sous lui) reste lisible.
@@ -157,6 +160,9 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
   // Ce que l'on voit (déplacements en attente appliqués, carte en attente) : les refus de la bulle s'y jugent.
   const seen = useMemo(() => pending.reduce((l, w) => moveOnTop(l, w.id, w.x, w.z) ?? l, shownLayout), [pending, shownLayout]);
   const ownBubble = useCardBubble(seen, bubbleProps);
+  // Une image qui échoue (pochette choisie → image de la carte) ou arrive sur l'appareil redessine les objets (contentOf, sans mémo).
+  useImageProbe();
+  useCoverCache();
   const bubble = cardBubble ?? ownBubble;
   bubbleRef.current = bubble;
   // Échap : une fiche ouverte par-dessus se ferme seule ; sinon la bulle d'abord, puis l'objet armé, puis la vue.
@@ -190,8 +196,7 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
     if (p.kind === 'computer') return { url: p.slug ? imageOf?.(p.slug) : undefined };
     // Carte posée : l'image de sa pochette (et le dos d'une boîte de jeu), comme dans la pièce.
     if (p.kind === 'posed') {
-      const url = imageOf?.(p.slug);
-      return { url, ...gameBoxContent(p.shape, p.slug, url) };
+      return placedBoxContent(p, imageOf ?? NO_IMAGE);
     }
     if (p.kind !== 'small') return undefined;
     if (isTableClock(p.item) && decoScene) return tableFaceContent(p.item, p.city, room.style, decoScene);
@@ -259,6 +264,7 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
       </svg>
       {bubble.item && bubbleAnchor && (
         <CardBubble item={bubble.item} anchor={bubbleAnchor} layer={layer} reserveRight={external ? NAV_PX : 0} message={bubble.message} canEdit={bubble.canEdit}
+          covers={bubble.covers} onCovers={bubble.searchCovers} swap={bubble.swap} taken={bubble.taken}
           onMove={bubble.arm} onChange={bubble.change} onInfo={bubble.canInfo ? bubble.info : undefined} onCity={bubble.canCity ? bubble.city : undefined} onClose={bubble.close} />
       )}
       {!external && (

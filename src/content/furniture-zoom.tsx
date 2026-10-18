@@ -13,7 +13,9 @@ import { CarriedItem3D, Model3DArt, type ItemContent } from './model3d-art';
 import { Icon, ICONS } from './library-ui';
 import { reducedMotion } from './ghibli-sky';
 import { ShelfBoardZoom } from './shelf-board-zoom';
-import { gameBoxContent } from './game-box-content';
+import { placedBoxContent } from './placed-image';
+import { useCoverCache } from './cover-cache';
+import { useImageProbe } from './image-probe';
 import { isTableClock, tableFaceContent, useDecoScene, type DecoScene } from './deco-live';
 import type { SceneView } from './RoomView';
 
@@ -57,9 +59,9 @@ export function garnishOf(layout: Placed[], item: Placed, cards: Cards, imageOf:
     const slug = p.kind === 'stored' || p.kind === 'computer' || p.kind === 'posed' ? p.slug : undefined;
     const info = slug ? cards[slug] : undefined;
     const small = p.kind === 'small' ? (isTableClock(p.item) && scene ? tableFaceContent(p.item, p.city, style, scene) : { lit: isLit(p) }) : undefined;
-    const url = info && slug ? imageOf(slug) : undefined;
-    const box = p.kind === 'stored' || p.kind === 'posed' ? gameBoxContent(p.shape, p.slug, url) : {};
-    out.push({ p, pl, content: small ?? (info && slug ? { url, title: info.title, ...box } : {}) });
+    // Carte rangée ou posée : sa pochette choisie, sinon l'image de la carte (et la jaquette d'une boîte de jeu connue) ; écran : la carte.
+    const cover = p.kind === 'stored' || p.kind === 'posed' ? placedBoxContent(p, imageOf) : { url: slug ? imageOf(slug) : undefined };
+    out.push({ p, pl, content: small ?? (info && slug ? { title: info.title, ...cover } : {}) });
   }
   return out;
 }
@@ -122,7 +124,10 @@ export function FurnitureZoom({ target, room, cards, imageOf, sceneView, phase, 
   // Objets de chaque bibliothèque (ou du bureau) ; indexé sur `key` : les mêmes ids donnent les mêmes meubles dans `room.layout`.
   const hasFace = room.layout.some((p) => p.kind === 'small' && isTableClock(p.item));
   const decoScene = useDecoScene(sceneView, false, hasFace);
-  const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf, room.style, decoScene)), [room.layout, key, cards, imageOf, room.style, decoScene]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Une image qui échoue (pochette choisie → image de la carte) ou arrive sur l'appareil redessine les garnitures.
+  const probed = useImageProbe();
+  const cached = useCoverCache();
+  const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf, room.style, decoScene)), [room.layout, key, cards, imageOf, room.style, decoScene, probed, cached]); // eslint-disable-line react-hooks/exhaustive-deps
   const clipId = `wm-zoom-open-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   if (!item || (item.kind !== 'shelf' && item.kind !== 'desk')) return null;
 
