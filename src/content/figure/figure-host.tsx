@@ -242,12 +242,14 @@ const CITIZEN_RETRY_MS = 30_000;
 export const HOLD_3D_FRAMES = 30;
 // Demandes d'avance (prewarm : habitant qui va sortir de sa porte, voyageur encore dans le bus) : gardées ce nombre d'images
 // sans être renouvelées, sans perdre leur rang en vieillissant. Priorité 1 (avant les nouveaux cycles) seulement si l'habitant
-// paraît dans moins de PREWARM_SOON_S secondes ; sinon la plus basse (PRIO_WARM) : les premiers cycles des figures montrées en
-// pantin passent avant. Au plus PREWARM_PER_S habitants distincts admis par seconde (les demandes « bientôt » passent toujours).
+// paraît dans moins de PREWARM_SOON_S secondes ; sinon PRIO_WARM, après tout ce qui est montré (nouveaux cycles des figures en
+// pantin, autres paliers de lumière), avant les seules orientations voisines (spéculatives : à leur rang, elles affamaient les
+// demandes d'avance au banc, clients de commerce apparus en pantin). Au plus PREWARM_PER_S habitants distincts admis par
+// seconde (les demandes « bientôt » passent toujours).
 export const PREWARM_TTL = 120;
 export const PREWARM_SOON_S = 3;
 export const PREWARM_PER_S = 16;
-const PRIO_WARM = 5;
+const PRIO_WARM = 3.5;
 // Orientations voisines d'un marcheur dont le cycle est complet : préparées à la plus basse priorité (4), redemandées toutes
 // les NEIGHBOR_EVERY images (sous STALE_CYCLE : la demande ne vieillit jamais tant que le marcheur est montré).
 const NEIGHBOR_EVERY = 10;
@@ -325,8 +327,8 @@ const repKey = (key: FigureKey): FigureKey => {
 // orientation, nouveau geste) ou visage (une image seule par flush au plus), 1 = cycle commencé,
 // 2 = nouveau cycle, 3 = cycle déjà complet à un autre palier de lumière (servi en attendant).
 // `ttl` : images sans renouvellement avant l'abandon (demandes d'avance ; défaut : STALE_CYCLE / STALE_ONE), et pas de
-// perte de priorité en vieillissant. Priorité 4 : orientations voisines d'un marcheur (quand il ne reste rien d'autre) ;
-// 5 : demandes d'avance d'un habitant qui ne paraît pas avant PREWARM_SOON_S (1 s'il paraît plus tôt).
+// perte de priorité en vieillissant. 3,5 : demandes d'avance d'un habitant qui ne paraît pas avant PREWARM_SOON_S (1 s'il paraît
+// plus tôt) ; 4 : orientations voisines d'un marcheur (quand il ne reste rien d'autre).
 type Job = { kind: 'cycle' | 'one'; pk: string; key: FigureKey; face: string; cid: string; at: number; prio: number; ttl?: number };
 // Sprite 3D rendu : son cycle, sa phase, sa clé « habitant + pose + visage » (index sans la lumière), l'habitant et la pose.
 // `standIn` : image reprise d'un autre registre (inherit) — servie en attendant, jamais comptée dans un cycle.
