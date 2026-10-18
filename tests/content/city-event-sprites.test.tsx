@@ -212,6 +212,14 @@ describe('CityEventSprite Ghibli', () => {
       expect(end[1]! + hand[1]).toBeCloseTo(cy, 0);
     }
   });
+  it('promeneur Ghibli : chien dessiné avant le pantin, la laisse passe par-dessus son dos jusqu’au collier', () => {
+    for (const dir of [1, -1] as const) {
+      const svg = mount({ ...ev('dog-walker'), dir }, false).svg;
+      const dog = svg.querySelector('[data-dog]')!;
+      const leash = svg.querySelector('[data-leash]')!;
+      expect(dog.compareDocumentPosition(leash) & Node.DOCUMENT_POSITION_FOLLOWING, `dir ${dir}`).toBeTruthy();
+    }
+  });
   it('promeneur classique inchangé : chien vectoriel animé, laisse au collier (22, −9), aucune image', () => {
     const svg = draw(ev('dog-walker'), false);
     const dog = svg.querySelector('[data-dog]')!;

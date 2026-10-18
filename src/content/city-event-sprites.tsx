@@ -341,8 +341,17 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
             </rect>
           </>
         );
+        // Ghibli : chien dessiné AVANT le pantin, pour que la laisse tendue de la main au collier passe par-dessus son dos
+        // (sinon le corps du chien la cache et elle semble attachée à la queue). Classique : ordre inchangé. Ghibli : 8 poses de
+        // marche sur DOG_CYCLE_S choisies par la boucle (cuites dans le sens de marche), pose 0 en mouvement réduit.
+        const dogNode = (
+          <g data-dog="" transform="translate(26 0)">
+            {breed ? art({ id: 'dog', args: breed }, <g>{dog}</g>, DOG_CYCLE_S) : dog}
+          </g>
+        );
         return (
           <g>
+            {ghibli && dogNode}
             {ghibli ? (
               <g data-walker="0" data-arms="hold" transform={`scale(${e.dir} 1)`}>
                 <GhibliFigure
@@ -360,10 +369,7 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
                 <path d="M4 -20 Q14 -12 22 -9" stroke="#C0463A" fill="none" strokeWidth={0.8} />
               </>
             )}
-            {/* Ghibli : 8 poses de marche sur DOG_CYCLE_S choisies par la boucle (cuites dans le sens de marche), pose 0 en mouvement réduit. */}
-            <g data-dog="" transform="translate(26 0)">
-              {breed ? art({ id: 'dog', args: breed }, <g>{dog}</g>, DOG_CYCLE_S) : dog}
-            </g>
+            {!ghibli && dogNode}
           </g>
         );
       }
