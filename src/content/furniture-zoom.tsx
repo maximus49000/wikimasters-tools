@@ -14,6 +14,8 @@ import { Icon, ICONS } from './library-ui';
 import { reducedMotion } from './ghibli-sky';
 import { ShelfBoardZoom } from './shelf-board-zoom';
 import { placedBoxContent } from './placed-image';
+import { useCoverCache } from './cover-cache';
+import { useImageProbe } from './image-probe';
 import { isTableClock, tableFaceContent, useDecoScene, type DecoScene } from './deco-live';
 import type { SceneView } from './RoomView';
 
@@ -122,7 +124,10 @@ export function FurnitureZoom({ target, room, cards, imageOf, sceneView, phase, 
   // Objets de chaque bibliothèque (ou du bureau) ; indexé sur `key` : les mêmes ids donnent les mêmes meubles dans `room.layout`.
   const hasFace = room.layout.some((p) => p.kind === 'small' && isTableClock(p.item));
   const decoScene = useDecoScene(sceneView, false, hasFace);
-  const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf, room.style, decoScene)), [room.layout, key, cards, imageOf, room.style, decoScene]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Une image qui échoue (pochette choisie → image de la carte) ou arrive sur l'appareil redessine les garnitures.
+  const probed = useImageProbe();
+  const cached = useCoverCache();
+  const garnishes = useMemo(() => items.map((it) => garnishOf(room.layout, it, cards, imageOf, room.style, decoScene)), [room.layout, key, cards, imageOf, room.style, decoScene, probed, cached]); // eslint-disable-line react-hooks/exhaustive-deps
   const clipId = `wm-zoom-open-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   if (!item || (item.kind !== 'shelf' && item.kind !== 'desk')) return null;
 

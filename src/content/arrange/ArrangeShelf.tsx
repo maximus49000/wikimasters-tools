@@ -11,6 +11,8 @@ import { layerFrame } from '../../core/library/opened-item';
 import { SHELF_GAP_CM, SHELF_INNER_CM, boardHeightCm, boardItems, boardUsedCm, boardWidthCm, displayOf, isLit, shelfLayoutIn, type BoardLike, type PxRect } from '../../core/library/room-grid';
 import { gameBoxContent } from '../game-box-content';
 import { imageOfPlaced } from '../placed-image';
+import { useCoverCache } from '../cover-cache';
+import { useImageProbe } from '../image-probe';
 import { paletteOf } from '../../core/library/styles';
 import { topSize, topThingOf, type TopThing } from '../../core/library/surface';
 import { useDecoScene } from '../deco-live';
@@ -150,11 +152,14 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
     const items = boardItems(applied, shelfId, lv);
     return { shelfId, xCm: boardUsedCm(items) + (items.length > 0 ? SHELF_GAP_CM : 0), wCm, hCm, ok: false };
   }, [drag, heldLike, preview, applied, whole.face]);
-  // Garnitures du meuble entier (mêmes dessins que le zoom), refaites seulement quand l'aperçu change (pas à chaque mouvement du doigt).
+  // Garnitures du meuble entier (mêmes dessins que le zoom), refaites seulement quand l'aperçu change (pas à chaque mouvement du doigt)
+  // ou qu'une image échoue (pochette choisie → image de la carte) ou arrive sur l'appareil.
+  const probed = useImageProbe();
+  const cached = useCoverCache();
   const garnishes = useMemo(() => ids.map((id) => {
     const shelf = preview.find((p) => p.id === id);
     return shelf ? garnishOf(preview, shelf, cards, imageOf, room.style, decoScene) : [];
-  }), [ids, preview, cards, imageOf, room.style, decoScene]);
+  }), [ids, preview, cards, imageOf, room.style, decoScene, probed, cached]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const geometry: CSSProperties = layer.rotated
     ? { top: 0, left: screen.w, width: layer.w, height: layer.h, transformOrigin: '0 0', transform: 'rotate(90deg)' }
@@ -309,7 +314,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
       {message}
       {bubble.item && bubbleAnchor && (
         <CardBubble item={bubble.item} anchor={bubbleAnchor} layer={layer} reserveRight={NAV_PX} message={bubble.message} canEdit={bubble.canEdit}
-          covers={bubble.covers} swap={bubble.swap} taken={bubble.taken}
+          covers={bubble.covers} onCovers={bubble.searchCovers} swap={bubble.swap} taken={bubble.taken}
           onMove={bubble.arm} onChange={bubble.change} onInfo={bubble.canInfo ? bubble.info : undefined} onCity={bubble.canCity ? bubble.city : undefined} onClose={bubble.close} />
       )}
       {chrome}

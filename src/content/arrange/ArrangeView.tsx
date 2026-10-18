@@ -17,6 +17,8 @@ import { computerTopRect, topSize, topThingOf, type TopRect } from '../../core/l
 import { isTableClock, tableFaceContent, useDecoScene } from '../deco-live';
 import { CarriedItem3D, Model3DArt, type ItemContent } from '../model3d-art';
 import { placedBoxContent } from '../placed-image';
+import { useCoverCache } from '../cover-cache';
+import { useImageProbe } from '../image-probe';
 import type { SceneView } from '../RoomView';
 import { axesOf, topPx, useTopDrag, type TopAxes } from './use-top-drag';
 import { HALO, HaloFilter, KO_HALO, PendingChrome } from './arrange-chrome';
@@ -158,6 +160,9 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
   // Ce que l'on voit (déplacements en attente appliqués, carte en attente) : les refus de la bulle s'y jugent.
   const seen = useMemo(() => pending.reduce((l, w) => moveOnTop(l, w.id, w.x, w.z) ?? l, shownLayout), [pending, shownLayout]);
   const ownBubble = useCardBubble(seen, bubbleProps);
+  // Une image qui échoue (pochette choisie → image de la carte) ou arrive sur l'appareil redessine les objets (contentOf, sans mémo).
+  useImageProbe();
+  useCoverCache();
   const bubble = cardBubble ?? ownBubble;
   bubbleRef.current = bubble;
   // Échap : une fiche ouverte par-dessus se ferme seule ; sinon la bulle d'abord, puis l'objet armé, puis la vue.
@@ -259,7 +264,7 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
       </svg>
       {bubble.item && bubbleAnchor && (
         <CardBubble item={bubble.item} anchor={bubbleAnchor} layer={layer} reserveRight={external ? NAV_PX : 0} message={bubble.message} canEdit={bubble.canEdit}
-          covers={bubble.covers} swap={bubble.swap} taken={bubble.taken}
+          covers={bubble.covers} onCovers={bubble.searchCovers} swap={bubble.swap} taken={bubble.taken}
           onMove={bubble.arm} onChange={bubble.change} onInfo={bubble.canInfo ? bubble.info : undefined} onCity={bubble.canCity ? bubble.city : undefined} onClose={bubble.close} />
       )}
       {!external && (

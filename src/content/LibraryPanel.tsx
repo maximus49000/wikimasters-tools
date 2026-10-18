@@ -1143,7 +1143,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     return 'hostId' in at ? poseCard(l, at.hostId, card.shape, card.slug, id, at.x, at.z) : storeCard(l, at.shelfId, at.level, at.order, card.shape, card.slug, id);
   });
   // 🔄 Changer de carte dans la bulle : la même Collection que la réglette ＋.
-  const swapCards = { cards: roomCards.list, categoryOf: roomCards.categoryOf };
+  const swapCards = { cards: roomCards.list };
   const arrangeAddProps = (initial: AddCard | null) => ({ cards: roomCards.list, categoryOf: roomCards.categoryOf, initial, onAdd: addCardAt });
 
   // Agrandir à gauche décale les meubles : le défilement suit pour garder la même vue.
@@ -1575,6 +1575,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onClose={arrange.close}
               onItemEdit={editArrangedItem}
               swap={swapCards}
+              playingId={hifi.atHifi}
               onCardInfo={setViewing}
               onItemCity={(id) => setDecoDialog({ type: 'city', id })}
               bubbleBack={arrangeBubbleBack}
@@ -1594,6 +1595,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onClose={arrange.close}
               onItemEdit={editArrangedItem}
               swap={swapCards}
+              playingId={hifi.atHifi}
               onCardInfo={setViewing}
               onItemCity={(id) => setDecoDialog({ type: 'city', id })}
               bubbleBack={arrangeBubbleBack}

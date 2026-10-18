@@ -552,31 +552,40 @@ describe('bulle d’une carte : choisir la pochette, changer de carte', () => {
   const V1 = 'https://img.example/v1.jpg';
   const V2 = 'https://img.example/v2.jpg';
   const COLLECTION = [{ slug: 'A0', title: 'A0' }, { slug: 'Zappa', title: 'Zappa' }, { slug: 'Matrix', title: 'Matrix' }, { slug: 'Dune', title: 'Dune' }];
-  const SWAP = { cards: COLLECTION, categoryOf: (slug: string) => (slug === 'Matrix' ? 'film' as const : slug === 'Dune' ? 'books' as const : 'music' as const) };
-  // Versions renvoyées à la demande (resolve) : la recherche reste « en cours » jusque-là.
+  const SWAP = { cards: COLLECTION };
+  // Versions renvoyées à la demande (resolve / reject) : la recherche reste « en cours » jusque-là.
   const deferredVersions = () => {
-    let resolve: (urls: string[]) => void = () => undefined;
-    const fn = vi.fn((_card: { slug: string; title: string }, _shape: string) => new Promise<string[]>((r) => { resolve = r; }));
+    let settle: { resolve(urls: string[]): void; reject(e: Error): void } = { resolve: () => undefined, reject: () => undefined };
+    const fn = vi.fn((_card: { slug: string; title: string }, _shape: string) => new Promise<string[]>((resolve, reject) => { settle = { resolve, reject }; }));
     setCoverVersions(fn);
-    return { fn, resolve: (urls: string[]) => act(async () => { resolve(urls); await Promise.resolve(); }) };
+    return {
+      fn,
+      resolve: (urls: string[]) => act(async () => { settle.resolve(urls); await Promise.resolve(); }),
+      reject: () => act(async () => { settle.reject(new Error('délai')); await Promise.resolve(); }),
+    };
   };
-  const mountSwap = (layout: Layout, level: ArrangeLevel = 0) => {
+  const shelfEl = (layout: Layout, spies: Spies, level: ArrangeLevel, playingId: string | null) => (
+    <ArrangeShelf layout={layout} room={{ style: 'scandinave' }} shelfIds={['s']} level={level} onLevel={spies.onLevel} onBoard={spies.onBoard} onTop={spies.onTop}
+      onClose={spies.onClose} onItemEdit={spies.onItemEdit} onCardInfo={spies.onCardInfo} swap={SWAP} playingId={playingId} />
+  );
+  const mountSwap = (layout: Layout, level: ArrangeLevel = 0, playingId: string | null = null) => {
     const spies = spiesOf();
-    act(() => root.render(
-      <ArrangeShelf layout={layout} room={{ style: 'scandinave' }} shelfIds={['s']} level={level} onLevel={spies.onLevel} onBoard={spies.onBoard} onTop={spies.onTop}
-        onClose={spies.onClose} onItemEdit={spies.onItemEdit} onCardInfo={spies.onCardInfo} swap={SWAP} />,
-    ));
+    act(() => root.render(shelfEl(layout, spies, level, playingId)));
     return spies;
   };
+  const coverBtn = () => q(label('Choisir la pochette')) as HTMLButtonElement;
 
-  it('pendant la recherche : bouton actif et indicateur ; puis la réglette des versions ; une vignette enregistre { cover }', async () => {
+  it('ouvrir et fermer la bulle ne cherche rien ; 🖼️ lance une seule recherche : indicateur, puis la réglette ; une vignette enregistre { cover }', async () => {
     const v = deferredVersions();
     const spies = mountSwap(SHELF);
     await tap('[data-board-card="A1"]');
-    expect(v.fn).toHaveBeenCalledWith({ slug: 'A1', title: 'A1' }, 'cd');
-    const choose = q(label('Choisir la pochette')) as HTMLButtonElement;
-    expect(choose.disabled).toBe(false);
+    await click(label('Fermer la bulle'));
+    await tap('[data-board-card="A1"]');
+    expect(v.fn).not.toHaveBeenCalled();
+    expect(coverBtn().disabled).toBe(false);
     await click(label('Choisir la pochette'));
+    expect(v.fn).toHaveBeenCalledTimes(1);
+    expect(v.fn).toHaveBeenCalledWith({ slug: 'A1', title: 'A1' }, 'cd');
     expect(q('[data-arrange-bubble] [data-cover-loading]')).not.toBeNull();
     expect(all('[data-arrange-bubble] [data-cover-choice]')).toHaveLength(0);
     await v.resolve([V1, V2]);
@@ -589,6 +598,11 @@ describe('bulle d’une carte : choisir la pochette, changer de carte', () => {
     await click(`[data-arrange-bubble] [data-cover-choice="${V2}"]`);
     expect(spies.onItemEdit).toHaveBeenCalledWith('c1', { cover: V2 });
     for (const b of all('[data-arrange-bubble] button')) expect(b.getAttribute('title'), b.outerHTML).toBe(b.getAttribute('aria-label'));
+    // Gardé pour la séance : rouvrir la réglette ne relance rien.
+    await click(label('Choisir la pochette'));
+    await click(label('Choisir la pochette'));
+    expect(all('[data-arrange-bubble] [data-cover-choice]')).toHaveLength(2);
+    expect(v.fn).toHaveBeenCalledTimes(1);
   });
 
   it('pochette déjà choisie : sa vignette enfoncée ; « ↺ Pochette d’origine » l’efface ({ cover: null })', async () => {
@@ -604,33 +618,72 @@ describe('bulle d’une carte : choisir la pochette, changer de carte', () => {
     expect(spies.onItemEdit).toHaveBeenCalledWith('c1', { cover: null });
   });
 
-  it('aucune version trouvée : « Choisir la pochette » grisé', async () => {
+  it('aucune version (réponse sûre) : la réglette se referme, 🖼️ grisé, plus jamais de recherche pour cette carte', async () => {
     const v = deferredVersions();
     mountSwap(SHELF);
     await tap('[data-board-card="A2"]');
+    await click(label('Choisir la pochette'));
     await v.resolve([]);
     await settle();
-    expect((q(label('Choisir la pochette')) as HTMLButtonElement).disabled).toBe(true);
+    expect(coverBtn().disabled).toBe(true);
+    expect(q('[data-cover-strip]')).toBeNull();
+    await click(label('Fermer la bulle'));
+    await tap('[data-board-card="A2"]');
+    expect(coverBtn().disabled).toBe(true);
+    expect(v.fn).toHaveBeenCalledTimes(1);
   });
 
-  it('🔄 Changer de carte : la réglette des cartes pas encore dans la pièce ; une carte remplace l’objet ({ swap, shape })', async () => {
+  it('erreur ou délai dépassé (réponse incertaine) : 🖼️ reste actif, un nouvel appui réessaie', async () => {
+    const v = deferredVersions();
+    mountSwap(SHELF);
+    await tap('[data-board-card="A3"]');
+    await click(label('Choisir la pochette'));
+    await v.reject();
+    await settle();
+    expect(coverBtn().disabled).toBe(false);
+    expect(q('[data-cover-strip]')).toBeNull();
+    await click(label('Choisir la pochette'));
+    expect(v.fn).toHaveBeenCalledTimes(2);
+    await v.resolve([V1]);
+    await settle();
+    expect(all('[data-arrange-bubble] [data-cover-choice]')).toHaveLength(1);
+  });
+
+  it('🔄 Changer de carte : la réglette des cartes pas encore dans la pièce ; la carte choisie garde le format de l’objet (même un film à la place d’un CD)', async () => {
     const spies = mountSwap(SHELF);
     await tap('[data-board-card="A1"]');
     expect(q(label('Changer de carte'))?.textContent).toBe('🔄');
     await click(label('Changer de carte'));
     expect(all('[data-arrange-bubble] [data-strip-card]').map((b) => b.getAttribute('data-strip-card'))).toEqual(['Dune', 'Matrix', 'Zappa']);
     await click('[data-arrange-bubble] [data-strip-card="Zappa"]');
-    expect(spies.onItemEdit).toHaveBeenCalledWith('c1', { swap: 'Zappa', shape: 'cd' });
+    expect(spies.onItemEdit).toHaveBeenCalledWith('c1', { swap: 'Zappa' });
+    await click(label('Changer de carte'));
+    await click('[data-arrange-bubble] [data-strip-card="Matrix"]');
+    expect(spies.onItemEdit).toHaveBeenLastCalledWith('c1', { swap: 'Matrix' });
+    expect(applyItemChange(SHELF, 'c1', { swap: 'Matrix' })!.find((p) => p.id === 'c1')).toMatchObject({ slug: 'Matrix', shape: 'cd' });
   });
 
-  it('la nouvelle carte ne tient pas (livre parmi 30 DVD sur la tranche) : message dans la bulle, rien ne part', async () => {
-    const full: Layout = [{ id: 's', kind: 'shelf', col: 0, row: 6 }, ...Array.from({ length: 30 }, (_, i): Layout[number] => ({ id: `d${i}`, kind: 'stored', shape: 'dvd', shelfId: 's', level: 1, order: i, display: 'spine', slug: `F${i}` }))];
-    const spies = mountSwap(full, 1);
-    await tap('[data-board-card="F29"]');
+  it('l’écriture refuse parce que la carte vient d’entrer dans la pièce : « Cette carte est déjà dans la pièce. »', async () => {
+    const spies = spiesOf();
+    act(() => root.render(shelfEl(SHELF, spies, 0, null)));
+    spies.onItemEdit.mockImplementation(async () => {
+      root.render(shelfEl([...SHELF, { id: 'w', kind: 'wall', shape: 'poster', col: 9, row: 0, slug: 'Zappa' }], spies, 0, null));
+      return false;
+    });
+    await tap('[data-board-card="A1"]');
     await click(label('Changer de carte'));
-    await click('[data-arrange-bubble] [data-strip-card="Dune"]');
+    await click('[data-arrange-bubble] [data-strip-card="Zappa"]');
+    await settle();
+    expect(q('[data-card-bubble-message]')?.textContent).toBe('Cette carte est déjà dans la pièce.');
+  });
+
+  it('pendant sa lecture (objet au poste hi-fi) : 🔄 refusé avec un message, rien ne part', async () => {
+    const spies = mountSwap(SHELF, 0, 'c1');
+    await tap('[data-board-card="A1"]');
+    await click(label('Changer de carte'));
+    await click('[data-arrange-bubble] [data-strip-card="Zappa"]');
     expect(spies.onItemEdit).not.toHaveBeenCalled();
-    expect(q('[data-card-bubble-message]')?.textContent).toBe('Plus de place sur cette tablette.');
+    expect(q('[data-card-bubble-message]')?.textContent).toBe('Impossible de changer la carte pendant sa lecture.');
   });
 
   it('sans Collection branchée (bulle sans `swap`) : pas de 🔄 ; un petit objet n’a ni pochette ni 🔄', async () => {
@@ -682,7 +735,7 @@ describe('bulle d’une carte : choisir la pochette, changer de carte', () => {
       await click(label('Changer de carte'));
       await click('[data-arrange-bubble] [data-strip-card="Paris"]');
       const k = stored().find((p) => p.id === 'k');
-      expect(k).toMatchObject({ id: 'k', kind: 'posed', hostId: 'd', x: 2, z: 2, slug: 'Paris' });
+      expect(k).toMatchObject({ id: 'k', kind: 'posed', shape: 'cd', hostId: 'd', x: 2, z: 2, slug: 'Paris' });
       expect(k && 'cover' in k).toBe(false);
     });
   });

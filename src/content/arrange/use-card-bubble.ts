@@ -2,13 +2,14 @@
 // posée, petit objet) ouvre une bulle : la carte en attente du mode ＋ n'est pas encore posée (elle se glisse directement). ✥ ferme la
 // bulle et arme l'objet ; un glissé lâché (vert ou rouge) le désarme, comme une bulle ouverte sur un autre objet.
 // `back` : le retour Android y range sa fermeture (vrai si une bulle était ouverte ou un objet armé).
-// Carte avec une intention branchée : les versions de sa pochette sont cherchées dès l'ouverture de la bulle (cover-versions), pour griser
-// 🖼️ quand il n'y en a aucune ; une réponse non vide est gardée pour la séance (même carte, même format : pas de nouvelle requête).
+// Carte avec une intention branchée : les versions de sa pochette ne sont cherchées qu'au premier appui sur 🖼️ (cover-versions : pas de
+// requête Spotify à chaque bulle ouverte) ; une réponse sûre (même vide) est gardée pour la séance par format + carte ; une erreur ou un
+// délai dépassé ne l'est pas (un nouvel appui réessaie).
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Layout, ShelfShape } from '../../core/library/library-types';
 import { placedSlugs } from '../../core/library/room-grid';
 import { coverVersions } from '../cover-versions';
-import { applyItemChange, isBubbleItem, refusalOf, type BubbleItem, type CoverChoices, type ItemChange, type SwapProps } from './CardBubble';
+import { SWAP_PLAYING_MESSAGE, applyItemChange, isBubbleItem, refusalOf, type BubbleItem, type CoverChoices, type ItemChange, type SwapProps } from './CardBubble';
 import { PENDING_ID } from './use-pending-card';
 
 export type CardBubbleProps = {
@@ -25,6 +26,8 @@ export type CardBubbleProps = {
   sheetOpen?: boolean;
   // Cartes de la Collection : 🔄 Changer de carte (absentes : pas de 🔄) et titre de la carte pour chercher ses pochettes.
   swap?: SwapProps;
+  // Objet au poste hi-fi (sa lecture) : 🔄 refusé.
+  playingId?: string | null;
 };
 export type CardBubbleState = {
   item: BubbleItem | null;
@@ -37,6 +40,8 @@ export type CardBubbleState = {
   sheetOpen: boolean;
   // Versions de la pochette de la carte de la bulle (null : pas une carte, ou pas d'intention branchée).
   covers: CoverChoices | null;
+  // Lance la recherche des versions (premier appui sur 🖼️, ou nouvel essai après une erreur).
+  searchCovers(): void;
   swap?: SwapProps;
   // Cartes déjà dans la pièce (vue) : absentes de la réglette 🔄.
   taken: Set<string>;
@@ -54,8 +59,14 @@ export type CardBubbleState = {
 // Éléments d'un objet dans les vues (plateau, tablette zoomée, meuble entier) : un appui dessus n'est pas « dans le vide ».
 const OBJECT_SELECTOR = '[data-arrange-item],[data-board-card],[data-board-small],[data-zoom-card],[data-zoom-small]';
 
-// Versions trouvées, par carte et format, pour la séance (une réponse vide est redemandée : délai dépassé, relais en panne…).
+// Réponses sûres (même vides), par format + carte, pour la séance ; les incertaines (délai dépassé, relais en panne…) sont redemandées.
 const coverCache = new Map<string, string[]>();
+// Titre d'une carte absente de la Collection : son slug décodé (les adresses Wikipédia encodent les accents), tiret bas → espace.
+function titleOfSlug(slug: string): string {
+  let text = slug;
+  try { text = decodeURIComponent(slug); } catch { /* slug mal encodé : tel quel */ }
+  return text.replace(/_/g, ' ');
+}
 // Tests : oublie les versions gardées.
 export const resetCoverChoices = (): void => coverCache.clear();
 
@@ -66,40 +77,36 @@ const itemIn = (layout: Layout, id: string | null): BubbleItem | null => {
 
 // `seen` : la disposition dessinée (déplacements en attente appliqués, carte en attente ＋) : les refus s'y jugent. `resetKey` : la bulle
 // se ferme quand il change (autre niveau de la vue) ; l'objet armé reste (un glissé peut changer de niveau par le bord de l'écran).
-export function useCardBubble(seen: Layout, { onItemEdit, onCardInfo, onItemCity, bubbleBack, sheetOpen = false, swap }: CardBubbleProps, resetKey: unknown = null): CardBubbleState {
+export function useCardBubble(seen: Layout, { onItemEdit, onCardInfo, onItemCity, bubbleBack, sheetOpen = false, swap, playingId = null }: CardBubbleProps, resetKey: unknown = null): CardBubbleState {
   const [state, setState] = useState<{ id: string; message: string | null } | null>(null);
   const [armedId, setArmed] = useState<string | null>(null);
   // Objet disparu de la disposition (retiré, autre onglet) : plus de bulle, plus d'arme.
   const item = itemIn(seen, state?.id ?? null);
   const armed = itemIn(seen, armedId) ? armedId : null;
-  const live = useRef({ seen, onItemEdit, onCardInfo, onItemCity, item, swap });
-  live.current = { seen, onItemEdit, onCardInfo, onItemCity, item, swap };
+  const live = useRef({ seen, onItemEdit, onCardInfo, onItemCity, item, swap, playingId });
+  live.current = { seen, onItemEdit, onCardInfo, onItemCity, item, swap, playingId };
   const taken = useMemo(() => placedSlugs(seen), [seen]);
-  // Versions de la pochette : clé carte + format (un changement de format ou de carte relance la recherche).
+  // Versions de la pochette : clé format + carte (un changement de format ou de carte demande une nouvelle recherche).
   const coverKey = item && item.kind !== 'small' && onItemEdit ? `${item.shape}\n${item.slug}` : null;
-  const [found, setFound] = useState<{ key: string; urls: string[] | null } | null>(null);
-  useEffect(() => {
-    if (!coverKey) return;
-    const known = coverCache.get(coverKey);
-    if (known) {
-      setFound({ key: coverKey, urls: known });
-      return;
-    }
-    setFound({ key: coverKey, urls: null });
-    const cut = coverKey.indexOf('\n');
-    const [shape, slug] = [coverKey.slice(0, cut) as ShelfShape, coverKey.slice(cut + 1)];
-    const title = live.current.swap?.cards.find((c) => c.slug === slug)?.title ?? slug.replace(/_/g, ' ');
-    let current = true;
-    const done = (urls: string[]) => {
-      if (urls.length > 0) coverCache.set(coverKey, urls);
-      if (current) setFound({ key: coverKey, urls });
-    };
-    coverVersions({ slug, title }, shape).then(done, () => done([]));
-    return () => { current = false; };
-  }, [coverKey]);
+  // Recherches en cours ou réponses incertaines non vides (montrées sans être gardées), par clé.
+  const [found, setFound] = useState<Record<string, CoverChoices>>({});
+  const searchCovers = useCallback(() => {
+    const cur = live.current.item;
+    if (!cur || cur.kind === 'small' || !live.current.onItemEdit) return;
+    const key = `${cur.shape}\n${cur.slug}`;
+    if (coverCache.has(key)) return;
+    setFound((f) => (f[key]?.state === 'loading' ? f : { ...f, [key]: { state: 'loading', urls: [] } }));
+    const title = live.current.swap?.cards.find((c) => c.slug === cur.slug)?.title ?? titleOfSlug(cur.slug);
+    const shape: ShelfShape = cur.shape;
+    coverVersions({ slug: cur.slug, title }, shape).then(({ urls, sure }) => {
+      if (sure) coverCache.set(key, urls);
+      setFound((f) => ({ ...f, [key]: urls.length > 0 || sure ? { state: 'ready', urls } : { state: 'idle', urls: [] } }));
+    });
+  }, []);
+  const known = coverKey ? coverCache.get(coverKey) : undefined;
   const covers: CoverChoices | null = !coverKey ? null
-    : found?.key === coverKey && found.urls !== null ? { loading: false, urls: found.urls }
-    : { loading: true, urls: [] };
+    : known ? { state: 'ready', urls: known }
+    : found[coverKey] ?? { state: 'idle', urls: [] };
   const close = useCallback(() => setState(null), []);
   const disarm = useCallback(() => setArmed(null), []);
   const open = useCallback((id: string) => {
@@ -113,9 +120,14 @@ export function useCardBubble(seen: Layout, { onItemEdit, onCardInfo, onItemCity
     setArmed(cur.id);
   }, []);
   const change = useCallback((c: ItemChange) => {
-    const { seen: l, onItemEdit: edit, item: cur } = live.current;
+    const { seen: l, onItemEdit: edit, item: cur, playingId: playing } = live.current;
     if (!cur || !edit) return;
-    const refuse = () => setState((s) => (s && s.id === cur.id ? { id: cur.id, message: refusalOf(cur, c, l) } : s));
+    // Refus jugé sur la disposition vue au moment du refus (l'écriture peut refuser plus tard, la disposition ayant changé).
+    const refuse = () => setState((s) => (s && s.id === cur.id ? { id: cur.id, message: refusalOf(cur, c, live.current.seen) } : s));
+    if ('swap' in c && cur.id === playing) {
+      setState({ id: cur.id, message: SWAP_PLAYING_MESSAGE });
+      return;
+    }
     const next = applyItemChange(l, cur.id, c);
     if (!next) {
       refuse();
@@ -156,7 +168,7 @@ export function useCardBubble(seen: Layout, { onItemEdit, onCardInfo, onItemCity
   }, [bubbleBack, busy]);
   return {
     item, message: item ? state?.message ?? null : null, armed, canEdit: onItemEdit !== undefined, canInfo: onCardInfo !== undefined, canCity: onItemCity !== undefined, sheetOpen,
-    covers, ...(swap ? { swap } : {}), taken,
+    covers, searchCovers, ...(swap ? { swap } : {}), taken,
     open, close, arm, disarm, change, info, city, layerDown,
   };
 }
