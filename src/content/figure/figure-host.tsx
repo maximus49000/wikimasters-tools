@@ -222,7 +222,8 @@ const defaultCitizen3D: Citizen3DFactory = (px) => {
 // Habitant 3D connu du registre (clé `c3d` d'une palette) : clé, description, graine (clignements), attente 3D (waitFor3D),
 // dernière image où une figure l'a demandé (`touched`).
 // `shown` : une figure l'a déjà montré en 3D (dès lors, plus jamais de pantin pour lui : image 3D la plus proche à défaut).
-type Citizen = { ck: string; desc: CitizenDesc; seed: number; waitSince?: number; waitOver?: boolean; failedAt?: number; touched?: number; shown?: boolean };
+// `cid` : cycle que ses figures montrent (ou attendent) en ce moment, épinglé dans le cache tant qu'il est demandé (PIN_FRAMES).
+type Citizen = { ck: string; desc: CitizenDesc; seed: number; waitSince?: number; waitOver?: boolean; failedAt?: number; touched?: number; shown?: boolean; cid?: string };
 const MAX_CITIZENS = 2048;
 // Toutes les 15 images, les figures qui attendent une image 3D sont réexaminées même sans rendu (modèle arrivé entre-temps).
 const WATCH_EVERY = 15;
@@ -245,6 +246,20 @@ export const PREWARM_TTL = 120;
 // Orientations voisines d'un marcheur dont le cycle est complet : préparées à la plus basse priorité (4), redemandées toutes
 // les NEIGHBOR_EVERY images (sous STALE_CYCLE : la demande ne vieillit jamais tant que le marcheur est montré).
 const NEIGHBOR_EVERY = 10;
+// Cache plein (plafond de sprites) : les images des habitants montrés en 3D ne partent jamais avant les autres. Épinglés : le cycle
+// que montre (ou attend) un habitant demandé depuis moins de PIN_FRAMES images, et la dernière image 3D montrée de chacun des
+// KEEP_SHARE × plafond derniers habitants montrés (souvenir : un nœud de réserve caché puis remontré le retrouve en 3D, jamais
+// en pantin). Le reste part du plus ancien au plus récent, d'abord les pantins des habitants montrés en 3D (ils ne servent plus)
+// et les images d'avance restées inutilisées PREWARM_TTL images. Mémoire bornée : au-delà de HARD_SHARE × plafond, les épinglés
+// partent aussi (les souvenirs en dernier) ; une image détenue par un nœud ne part jamais.
+const PIN_FRAMES = 30;
+const KEEP_SHARE = 0.1;
+const HARD_SHARE = 1.5;
+// Demandes d'avance et orientations voisines : seulement si les images épinglées laissent de la place (moins de
+// WARM_SHARE × plafond), sinon elles chasseraient les images montrées.
+const WARM_SHARE = 0.75;
+// Habitants montrés et demandés récemment, recomptés toutes les COUNT_EVERY images (estimation des images épinglées).
+const COUNT_EVERY = 8;
 // Écart entre deux poses (choix de l'image 3D la plus proche) : même allure d'abord, puis même tenue (signature), même geste,
 // orientation la plus proche (16 directions), enfin phase la plus proche.
 const YAWS = 16;
@@ -309,7 +324,8 @@ const repKey = (key: FigureKey): FigureKey => {
 type Job = { kind: 'cycle' | 'one'; pk: string; key: FigureKey; face: string; cid: string; at: number; prio: number; ttl?: number };
 // Sprite 3D rendu : son cycle, sa phase, sa clé « habitant + pose + visage » (index sans la lumière), l'habitant et la pose.
 // `standIn` : image reprise d'un autre registre (inherit) — servie en attendant, jamais comptée dans un cycle.
-type Meta3D = { cid: string | null; phase: number; lk: string; ck: string; key: FigureKey; standIn?: true };
+// `warm` : image d'une demande d'avance jamais encore montrée (numéro de l'image de son rendu) : la première à partir du cache.
+type Meta3D = { cid: string | null; phase: number; lk: string; ck: string; key: FigureKey; standIn?: true; warm?: number };
 
 export type FigureRegistryOptions = {
   max?: number;
@@ -348,6 +364,13 @@ export class FigureRegistry {
   private readonly meta3d = new Map<string, Meta3D>();
   // Images 3D par habitant (clé citizenKey) : recherche de l'image la plus proche (nearest3D).
   private readonly byCitizen = new Map<string, Set<string>>();
+  // Pantins des palettes 3D : sprite → palette (ceux d'un habitant déjà montré en 3D partent les premiers).
+  private readonly owner2D = new Map<string, string>();
+  // Dernière image 3D montrée par habitant (clé citizenKey → sprite), du plus ancien au plus récent : épinglée (voir PIN_FRAMES).
+  private readonly keepsakes = new Map<string, string>();
+  private readonly keepMax: number;
+  // Habitants montrés en 3D et demandés depuis moins de PIN_FRAMES images (recomptés toutes les COUNT_EVERY images).
+  private activeShown = 0;
   // Habitants dont l'attente 3D court (waitFor3D) : seuls examinés à chaque image.
   private readonly waitingSet = new Set<Citizen>();
   // Figures retirées du suivi pendant que la 3D est hors service : remises en suivi au nouvel essai.
@@ -374,6 +397,7 @@ export class FigureRegistry {
     opts: FigureRegistryOptions = {},
   ) {
     this.max = opts.max ?? 1500;
+    this.keepMax = Math.max(16, Math.floor(this.max * KEEP_SHARE));
     this.perFrame = opts.perFrame ?? 8;
     this.px = opts.pxPerUnit ?? SPRITE_PX;
     this.faces = opts.faces ?? false;
@@ -588,9 +612,72 @@ export class FigureRegistry {
     c.waitOver = true;
     this.waitingSet.delete(c);
   }
+  // Image 3D servie à un habitant pour son cycle `cid` : cycle épinglé, image gardée en souvenir, plus une image d'avance.
+  private served(c: Citizen, cid: string, sk: string): void {
+    c.cid = cid;
+    const m = this.meta3d.get(sk);
+    if (m) m.warm = undefined;
+    if (this.keepsakes.get(c.ck) === sk) return;
+    this.keepsakes.delete(c.ck);
+    this.keepsakes.set(c.ck, sk);
+    if (this.keepsakes.size > this.keepMax) this.keepsakes.delete(this.keepsakes.keys().next().value as string);
+  }
+  // Place laissée par les images épinglées (détenues, cycles montrés) : sinon pas de rendu d'avance.
+  private headroom(): boolean {
+    return this.counts.size + this.activeShown * PHASES < this.max * WARM_SHARE;
+  }
+  // Sprite à garder : souvenir d'un habitant ou cycle qu'un habitant montre (demandé depuis moins de PIN_FRAMES images).
+  private pinned(sk: string): boolean {
+    const m = this.meta3d.get(sk);
+    if (!m) return false;
+    if (this.keepsakes.get(m.ck) === sk) return true;
+    if (m.cid === null) return false;
+    const c = this.citizens.get(m.ck);
+    return c !== undefined && c.cid === m.cid && c.touched !== undefined && this.frame - c.touched <= PIN_FRAMES;
+  }
+  private keepsake(sk: string): boolean {
+    const m = this.meta3d.get(sk);
+    return m !== undefined && this.keepsakes.get(m.ck) === sk;
+  }
+  // Partent en premier : pantin d'un habitant déjà montré en 3D, image d'avance jamais montrée depuis PREWARM_TTL images.
+  private cheap(sk: string): boolean {
+    const pk = this.owner2D.get(sk);
+    if (pk !== undefined) return this.citizenOf(pk)?.shown === true;
+    const w = this.meta3d.get(sk)?.warm;
+    return w !== undefined && this.frame - w > PREWARM_TTL;
+  }
+  private drop(sk: string): void {
+    this.sprites.delete(sk);
+    this.owner2D.delete(sk);
+    if (this.anchors3d.delete(sk)) this.forget3D(sk);
+  }
+  // Plafond, du plus ancien au plus récent, jamais un sprite détenu par un nœud : d'abord les sprites « bon marché » non
+  // épinglés, puis les autres non épinglés ; les épinglés seulement au-delà de HARD_SHARE × plafond (mémoire bornée), les
+  // souvenirs en dernier.
+  private evict(): void {
+    if (this.sprites.size <= this.max) return;
+    const passes: [number, (sk: string) => boolean][] = [
+      [this.max, (sk) => !this.pinned(sk) && this.cheap(sk)],
+      [this.max, (sk) => !this.pinned(sk)],
+      [Math.floor(this.max * HARD_SHARE), (sk) => !this.keepsake(sk)],
+      [Math.floor(this.max * HARD_SHARE), () => true],
+    ];
+    for (const [cap, may] of passes) {
+      for (const sk of this.sprites.keys()) {
+        if (this.sprites.size <= cap) break;
+        if (!this.counts.has(sk) && may(sk)) this.drop(sk);
+      }
+      if (this.sprites.size <= this.max) return;
+    }
+  }
+  private countShown(): void {
+    let n = 0;
+    for (const c of this.citizens.values()) if (c.shown && c.touched !== undefined && this.frame - c.touched <= PIN_FRAMES) n++;
+    this.activeShown = n;
+  }
   // Marcheur montré en 3D (cycle complet) : ses orientations voisines (il tourne) sont préparées à la plus basse priorité.
   private prefetchTurns(c: Citizen, pk: string, key: FigureKey): void {
-    if ((this.frame + c.seed) % NEIGHBOR_EVERY !== 0 || phaseSet(key).phases.length === 1) return;
+    if ((this.frame + c.seed) % NEIGHBOR_EVERY !== 0 || phaseSet(key).phases.length === 1 || !this.headroom()) return;
     for (const d of [-1, 1]) {
       const k = { ...key, yaw: (key.yaw + d + YAWS) % YAWS };
       const cid = this.cycleId(c, k);
@@ -622,6 +709,7 @@ export class FigureRegistry {
             if (!this.sprites.has(spriteKey3D(pk, key, base))) this.enqueue3D(`${pk}|${cid}`, { kind: 'cycle', pk, key, face: base, cid, prio: 3 });
           }
           this.markShown(c);
+          this.served(c, cid, got.sk);
           this.prefetchTurns(c, pk, key);
           return got;
         }
@@ -636,6 +724,7 @@ export class FigureRegistry {
         const near = this.nearest3D(c, key, from3D ? shown : null);
         if (near) {
           this.markShown(c);
+          this.served(c, cid, near.sk);
           return near;
         }
       }
@@ -649,7 +738,7 @@ export class FigureRegistry {
   // `ttl` images sans renouvellement ; rien si le cycle est déjà complet ou sans 3D.
   prewarm(pk: string, key2D: FigureKey, ttl = PREWARM_TTL): void {
     const c = this.citizenOf(pk);
-    if (!c || this.c3d === null || this.dead() || !this.usable(c)) return;
+    if (!c || this.c3d === null || this.dead() || !this.usable(c) || !this.headroom()) return;
     this.touch(c);
     const key = repKey(key2D);
     const cid = this.cycleId(c, key);
@@ -715,6 +804,7 @@ export class FigureRegistry {
     if (!p) return null;
     const url = paint(p, key);
     this.sprites.set(sk, url);
+    if (p.c3d !== undefined) this.owner2D.set(sk, pk);
     return url;
   }
   // Sprite tout de suite (pantin peint hors budget au besoin ; palette 3D : son sprite 3D s'il existe) ; null si la palette est
@@ -767,20 +857,8 @@ export class FigureRegistry {
       if (this.create(pk, key, sk) !== null) made++;
     }
     if (this.citizens.size > 0) this.flush3D(t0);
-    // Plafond : retirer les moins récemment utilisés (début de la Map), jamais une clé détenue : elle passe en fin de Map. Une
-    // passe complète sans retrait s'arrête (la taille peut alors dépasser le plafond).
-    let skipped = 0;
-    while (this.sprites.size > this.max && skipped < this.sprites.size) {
-      const [sk, url] = this.sprites.entries().next().value as [string, string];
-      this.sprites.delete(sk);
-      if (this.counts.has(sk)) {
-        this.sprites.set(sk, url);
-        skipped++;
-        continue;
-      }
-      if (this.anchors3d.delete(sk)) this.forget3D(sk);
-      skipped = 0;
-    }
+    if (this.citizens.size > 0 && this.frame % COUNT_EVERY === 0) this.countShown();
+    this.evict();
   }
   // Sprite 3D retiré : son cycle perd une phase, l'index sans lumière l'oublie.
   private forget3D(sk: string): void {
@@ -793,6 +871,7 @@ export class FigureRegistry {
       if (set.size === 0) this.byCitizen.delete(m.ck);
     }
     if (this.latest.get(m.lk) === sk) this.latest.delete(m.lk);
+    if (this.keepsakes.get(m.ck) === sk) this.keepsakes.delete(m.ck);
     const n = m.cid === null ? undefined : this.cycles.get(m.cid);
     if (n && n[m.phase]! > 0) {
       n[m.phase]!--;
@@ -810,7 +889,8 @@ export class FigureRegistry {
       if (!n) this.cycles.set(cycle, (n = new Uint16Array(PHASES)));
       n[key.phase % PHASES]!++;
     }
-    this.meta3d.set(sk, { cid: cycle, phase: key.phase % PHASES, lk, ck: c.ck, key });
+    // Image d'une demande d'avance (ttl) pour un habitant pas encore montré : marquée jusqu'à sa première présentation.
+    this.meta3d.set(sk, { cid: cycle, phase: key.phase % PHASES, lk, ck: c.ck, key, ...(job.ttl !== undefined && !c.shown ? { warm: this.frame } : {}) });
     this.indexOf(c.ck).add(sk);
   }
   // Rendus 3D au budget de temps (RENDER_BUDGET_MS depuis le début de l'image), par priorité (Job), puis mise à jour des

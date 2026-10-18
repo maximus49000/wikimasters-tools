@@ -84,12 +84,15 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false, roll, 
   const driver = seats.find((s) => s.role === 'driver');
   // Volant : conducteur assis seulement (les pilotes des deux-roues tiennent leur guidon peint).
   const steer = driver && gaitOf(driver) === 'seated' ? seatPlacement(driver, dir).hands : null;
+  // Habitants 3D : un occupant n'est montré qu'avec son image 3D (waitFor3D, WAIT3D_FALLBACK_MS au plus, puis pantin) : un véhicule
+  // entre par un bord, hors champ (MARGIN), le temps que ses occupants se rendent (en tête de file) ; jamais de pantin qui
+  // devient 3D sous les yeux. Une figure déjà montrée n'est jamais cachée (attente à la première apparition seulement).
   const seatNode = (s: Seat, i: number): ReactElement => {
     const p = seatPlacement(s, dir);
     return (
       <g key={i} data-seat={i} data-role={s.role} data-hx={n2(s.x * dir)} data-hy={n2(s.headY)}>
         <g transform={p.transform}>
-          <GhibliFigure outfit={outfitOf(s)} sky={sky} rainy={rainy} umbrella={false} initial={{ yaw: yawOf(dir), gait: gaitOf(s), phase: 0, head: 0, arms: armsOf(s) }} citizen={s.outfitSeed} kind={s.child ? 'child' : undefined} pin={pinOf(s)} />
+          <GhibliFigure outfit={outfitOf(s)} sky={sky} rainy={rainy} umbrella={false} initial={{ yaw: yawOf(dir), gait: gaitOf(s), phase: 0, head: 0, arms: armsOf(s) }} citizen={s.outfitSeed} kind={s.child ? 'child' : undefined} pin={pinOf(s)} waitFor3D />
         </g>
       </g>
     );

@@ -31,7 +31,7 @@ import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure, prewarmFigure, type PoseIn } from './figure/ghibli-figure';
 import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
 import { MarkHeld, markAnchor, markArms } from './festive-marks';
-import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
+import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, warmCustomers, type CustomerWarmCache, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
 import { ShopScene, collectScene, muteScene, placeScene, sceneBudget, type SceneNodes } from './shop/shop-scene';
 import { staffSpans, type SceneShop } from './shop/scene-scores';
 import { MovingCrew, MovingTruck, collectMovers, movingLayout, placeMovers, type Crew } from './moving-truck';
@@ -520,6 +520,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     let posedAt = -Infinity;
     // Habitants 3D : poses des trajets à venir (cache par trajet) et dernière demande d'avance (une par seconde).
     const warm: WarmCache = new Map();
+    const customerWarm: CustomerWarmCache = new Map();
     let warmAt = -Infinity;
     return (now: number): void => {
       // Mouvement réduit : toujours le même instant, y compris quand le placement est refait après un changement de minute.
@@ -635,6 +636,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           const poses = tripWarmPoses(trip, warm, width, t, trip.kind === 'out' ? flow.out : flow.in, metrics);
           if (poses) prewarmFigure(figures, nodes.get(trip.id)?.querySelector(':scope > [data-figure]') ?? null, poses);
         }
+        // Clients des commerces hors scène G4b (ceux de la scène : placeScene).
+        warmCustomers(nodes, shopVisits, gates, width, metrics, t, figures, customerWarm, muted, visitLock.current);
       }
       // Halls : allumés tant que la minuterie court et qu'il fait sombre ; n'écrire qu'à la bascule (allumage franc, extinction douce).
       for (const [x, node] of hallNodes) {

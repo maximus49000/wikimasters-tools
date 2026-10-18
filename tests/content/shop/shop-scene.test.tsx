@@ -536,4 +536,30 @@ describe('ShopScene : habitants 3D', () => {
     expect(node.getAttribute('data-key')).toMatch(/@3d$/);
     expect(anchorAt(key, 'handR', 10, 100, 2, node)).toEqual([10 + ANCH.handR[0] * 2, 100 + ANCH.handR[1] * 2]);
   });
+
+  it('client qui entre en scène (rue, seuil, vitrine) : directement en 3D (rendu d’avance), jamais le pantin à son apparition', () => {
+    const figures = new FigureRegistry('t3d-warm', { perFrame: 50, citizens: () => fake3D(false), now: () => 0 });
+    const start = slotStart('bakery', slotIndexAt('bakery', 10 * 3600)) + 5;
+    const { host, draw } = mount();
+    draw(scene(start, false, figures));
+    const nodes = collectScene(host.querySelector('[data-shop-scene]')!);
+    const figs = (): Element[] => [...host.querySelectorAll('[data-scene-street] [data-figure], [data-scene-door] [data-figure], [data-scene-actor] [data-figure]')];
+    const last = new Map<Element, string | null>(figs().map((n) => [n, n.getAttribute('data-key')]));
+    let shown = 0;
+    const puppets: string[] = [];
+    for (let i = 1; i <= 400; i++) {
+      placeScene(nodes, T0 + i * 0.25, figures, []);
+      for (const n of figs()) {
+        const k = n.getAttribute('data-key');
+        if (k !== null && (last.get(n) ?? null) === null) {
+          shown++;
+          if (!k.includes('@3d')) puppets.push(`${i}:${k.slice(-40)}`);
+        }
+        last.set(n, k);
+      }
+      figures.flush();
+    }
+    expect(shown).toBeGreaterThan(0);
+    expect(puppets).toEqual([]);
+  });
 });

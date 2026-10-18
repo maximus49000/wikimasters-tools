@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { useFigureRegistry } from '../../../src/content/figure/figure-host';
+import { FigureContext, FigureRegistry, useFigureRegistry, type Citizen3D } from '../../../src/content/figure/figure-host';
 import { useCarRegistry } from '../../../src/content/vehicle/car-host';
 import { GhibliCar, placeCar } from '../../../src/content/vehicle/ghibli-car';
 import { genCar } from '../../../src/core/library/city/traffic/cars';
@@ -187,5 +187,31 @@ describe('voiture Ghibli sans boucle (V5)', () => {
   it('mouvement réduit : pas de transition sur les roues', async () => {
     const host = await render(<GhibliCar look={look} dir={1} sky={sky} rainy={false} lights={false} roll={{ x: 10, move: 'transform 60s linear' }} still />);
     expect(host.querySelector<SVGGElement>('[data-wheel-spin]')!.style.transition).toBe('');
+  });
+});
+
+describe('voiture Ghibli : occupants 3D', () => {
+  it('occupant d’une voiture qui arrive : rien tant que sa 3D se rend (voiture encore hors champ), puis directement en 3D, jamais le pantin', async () => {
+    const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+    const fake: Citizen3D = { ready: () => true, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
+    const fig = new FigureRegistry('tcar', { citizens: () => fake, now: () => 0 });
+    const host = document.createElement('div');
+    await act(async () =>
+      createRoot(host).render(
+        <FigureContext.Provider value={fig}>
+          <svg>
+            <GhibliCar look={lookOfCar(genCar(11, 'berline', 0.2))} dir={1} sky={sky} rainy={false} lights={false} />
+          </svg>
+        </FigureContext.Provider>,
+      ),
+    );
+    const driver = host.querySelector('[data-seat] [data-figure]')!;
+    const keys: (string | null)[] = [driver.getAttribute('data-key')];
+    for (let i = 0; i < 3; i++) {
+      fig.flush();
+      keys.push(driver.getAttribute('data-key'));
+    }
+    expect(keys.filter((k) => k !== null && !k.includes('@3d'))).toEqual([]);
+    expect(keys.at(-1)).toMatch(/@3d$/);
   });
 });

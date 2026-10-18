@@ -4,7 +4,7 @@
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import { BLANK_SPRITE, CLOSE_UP_SPRITES_MAX, FIGURE_SPRITES_MAX, FigureContext, FigureRegistry, HOLD_3D_FRAMES, figureAnchors, paletteKey, phaseSet, sharedCitizen3D, spriteKey, viewFigureOptions, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
+import { BLANK_SPRITE, CLOSE_UP_SPRITES_MAX, FIGURE_SPRITES_MAX, FigureContext, FigureRegistry, HOLD_3D_FRAMES, figureAnchors, paletteKey, phaseSet, sharedCitizen3D, spriteKey, spriteKey3D, viewFigureOptions, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
 import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, hideFigure, poseFigure, prewarmCitizen, prewarmFigure, rainOutfit, setShown3DFitter, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
 import { CitizenRenderer } from '../../../src/content/citizens/citizen-renderer';
 import { RENDER_BUDGET_MS, WAIT3D_FALLBACK_MS } from '../../../src/content/figure/citizen-config';
@@ -931,5 +931,72 @@ describe('retours S26 : demandes d’avance (habitants qui sortent de leur porte
     poseFigure(r, node, POSE);
     expect(is3DKey(node)).toBe(true);
     act(() => root.unmount());
+  });
+});
+
+describe('retours S26 : plafond de sprites plein (cache des images 3D)', () => {
+  const walk = (r: FigureRegistry, node: Element, n: number): void => {
+    for (let i = 0; i < n; i++) {
+      poseFigure(r, node, { ...POSE, phase: i % PHASES });
+      r.flush();
+    }
+  };
+  it('habitant montré en 3D, caché puis remontré (nœud de réserve) après un flot d’autres habitants : de nouveau en 3D, jamais le pantin', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: 3 * PHASES });
+    const a = mount(r, fig());
+    walk(r, a.node, PHASES);
+    expect(is3DKey(a.node)).toBe(true);
+    hideFigure(r, a.node);
+    // Huit autres habitants qui marchent et tournent : bien plus d'images que le plafond.
+    const others = Array.from({ length: 8 }, (_, j) => mount(r, fig({ out: { ...o, topColor: `#10${j}0${j}0` } })));
+    for (let i = 0; i < 200; i++) {
+      others.forEach((w, j) => poseFigure(r, w.node, { ...POSE, yaw: (j + Math.floor(i / 20)) % 4, phase: i % PHASES }));
+      r.flush();
+    }
+    poseFigure(r, a.node, { ...POSE, yaw: 2, phase: 3 });
+    expect(href(a.node)).not.toBeNull();
+    expect(is3DKey(a.node)).toBe(true);
+    for (const w of [a, ...others]) w.unmount();
+  });
+  it('demandes d’avance en flot : le cycle montré d’un marcheur reste entier (les images d’avance partent avant)', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: 2 * PHASES });
+    const a = mount(r, fig());
+    walk(r, a.node, PHASES);
+    const pk = a.node.getAttribute('data-palette')!;
+    let lost = 0;
+    let to2D = 0;
+    for (let i = 0; i < 60; i++) {
+      poseFigure(r, a.node, { ...POSE, phase: i % PHASES });
+      if (!is3DKey(a.node)) to2D++;
+      prewarmCitizen(r, { outfit: { ...o, topColor: `#20${i % 6}0${i % 6}0` }, sky, rainy: false, umbrella: false }, [POSE, { ...POSE, yaw: 4 }]);
+      r.flush();
+      for (let p = 0; p < PHASES; p++) if (!r.has(spriteKey3D(pk, keyOf(o, { ...POSE, phase: p }), ''))) lost++;
+    }
+    expect(to2D).toBe(0);
+    expect(lost).toBe(0);
+    a.unmount();
+  });
+  it('cache occupé par les habitants montrés : plus de rendus d’avance (mémoire bornée)', () => {
+    const clock = { t: 0 };
+    const fake = new Fake(clock);
+    fake.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => fake, now: () => clock.t, max: PHASES + 2 });
+    const a = mount(r, fig());
+    walk(r, a.node, PHASES);
+    const before = fake.renders;
+    for (let i = 0; i < 20; i++) {
+      poseFigure(r, a.node, { ...POSE, phase: i % PHASES });
+      prewarmCitizen(r, { outfit: { ...o, topColor: '#305050' }, sky, rainy: false, umbrella: false }, [POSE]);
+      r.flush();
+    }
+    // Ni le voyageur d'avance, ni les orientations voisines du marcheur.
+    expect(fake.renders).toBe(before);
+    a.unmount();
   });
 });

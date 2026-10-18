@@ -15,6 +15,7 @@ import type { ActorTrack, Score } from '../../core/library/city/shops/scene/type
 import type { Horn } from '../../core/library/city/traffic/horns';
 import { placeSill } from '../door-passage';
 import type { FigureRegistry } from '../figure/figure-host';
+import { CITIZENS_3D } from '../figure/citizen-config';
 import { citizenPalette, hideFigure, poseFigure, shopIdentity } from '../figure/ghibli-figure';
 import { pictoLook } from './picto';
 import { peekScore, pumpScore, slotGate, slotRef } from './scene-scores';
@@ -48,6 +49,8 @@ type ShopState = {
   looks: Map<string, Look>; tick: number; seen: Seen[]; out: Shown;
   // Nœuds hérités pas encore remis à neuf (nouvel état lié à des nœuds déjà montés : lendemain, autre graine ; remontage).
   fresh: boolean;
+  // Dernière demande d'avance des habitants 3D (s du jour, voir warmShop).
+  warmAt: number;
 };
 export type SceneNodes = { shops: { st: ShopState; rt: ShopRt }[] };
 // Emplacements par boutique : un objet en main par acteur de la vitrine (chaque client de la réserve et chaque employé du jour),
@@ -68,7 +71,7 @@ const figOf = (holder: Element | null): Element | null => holder?.querySelector(
 const newState = (): ShopState => ({
   el: null, rt: null, win: null, entries: [], staff: [], back: null, front: null, props: [], worn: [], carry: [], pictos: [],
   assign: new Map(), admitted: new Set(), refused: new Set(), partyTick: new Map(), muted: NO_MUTED, looks: new Map(), tick: 0, seen: [],
-  out: { props: [], worn: [], carry: [], pictos: [] }, fresh: true,
+  out: { props: [], worn: [], carry: [], pictos: [] }, fresh: true, warmAt: -Infinity,
 });
 
 // (Re)lie l'état d'un local à ses nœuds. Nouveaux nœuds (remontage) : mêmes affectations par rang de nœud, tant que la réserve
@@ -337,6 +340,58 @@ function admit(st: ShopState, rt: ShopRt, party: string, size: number): boolean 
   return ok;
 }
 
+// Habitants 3D : un client qui paraît dans moins de SCENE_WARM_S secondes (rue, seuil ou vitrine) fait rendre d'avance les cycles
+// de ses poses des WARM_SPAN_S premières secondes (relevées tous les quarts de seconde) : il entre en scène directement en 3D, sans
+// pantin ni changement de modèle sous les yeux (ses nœuds de réserve ne lui sont donnés qu'à l'apparition). Une fois montré en 3D,
+// ses poses suivantes ne reviennent jamais au pantin (image 3D la plus proche, figure-host).
+const SCENE_WARM_S = 12;
+const WARM_SPAN_S = 8;
+const WARM_STEP_S = 0.25;
+type WarmPose = { out: boolean; pose: Omit<FigureKey, 'sig'> };
+const warmPoses = new WeakMap<ActorTrack, { geo: string; poses: WarmPose[] }>();
+function warmPosesOf(track: ActorTrack, rt: ShopRt, sc: Score): WarmPose[] {
+  const info = infoOf(track, rt, sc);
+  const got = warmPoses.get(track);
+  if (got && got.geo === info.geo) return got.poses;
+  const seen = new Map<string, WarmPose>();
+  const end = Math.min(info.to, info.from + WARM_SPAN_S);
+  for (let tau = info.from; tau <= end; tau += WARM_STEP_S) {
+    const v = trackAt(track, tau);
+    const side = v.where === 'inside' || !info.plan ? null : sidewalkAt(info.plan, tau);
+    let w: WarmPose;
+    if (v.where === 'inside') w = { out: false, pose: { yaw: v.yaw, gait: v.gait as Gait, phase: v.phase, head: headOf(v.headYaw), arms: v.arms, lean: v.lean } };
+    else if (side) w = { out: true, pose: { yaw: side.yaw, gait: side.gait, phase: 0, head: 0, arms: side.gait === 'stand' ? 'down' : 'swing', lean: 0 } };
+    else continue;
+    const k = `${w.out ? 1 : 0}|${w.pose.yaw}|${w.pose.gait}|${w.pose.head}|${w.pose.arms}|${w.pose.lean}`;
+    if (!seen.has(k)) seen.set(k, w);
+  }
+  const poses = [...seen.values()];
+  warmPoses.set(track, { geo: info.geo, poses });
+  return poses;
+}
+// Une fois par seconde : demandes d'avance des clients à venir (créneaux N−1, N, N+1), sauf partis refusés (jamais montrés).
+function warmShop(st: ShopState, rt: ShopRt, n: number, sec: number, figures: FigureRegistry): void {
+  if (!CITIZENS_3D || rt.still || Math.abs(sec - st.warmAt) < 1) return;
+  st.warmAt = sec;
+  for (let idx = n - 1; idx <= n + 1; idx++) {
+    const { plan: p, index, dt } = slotRef(rt.plan, idx);
+    const sc = peekScore(p, index, slotGate(p, index, rt.gate, rt.open));
+    if (!sc) continue;
+    const tIn = sec + dt - sc.start;
+    for (const track of sc.tracks) {
+      if (track.role !== 'customer') continue;
+      const info = infoOf(track, rt, sc);
+      if (info.from < tIn - 1 || info.from > tIn + SCENE_WARM_S) continue;
+      const party = partyKey(track, dt);
+      if (st.refused.has(party) || (!st.admitted.has(party) && (!rt.open || st.muted.has(party)))) continue;
+      for (const w of warmPosesOf(track, rt, sc)) {
+        const look = lookOf(st, rt, track, w.out, figures);
+        figures.prewarm(look.pk, { sig: look.sig, ...w.pose });
+      }
+    }
+  }
+}
+
 function placeShop(st: ShopState, rt: ShopRt, t: number, horns: readonly Horn[], figures: FigureRegistry): void {
   const p = rt.plan;
   const sec = t + rt.offset;
@@ -388,6 +443,7 @@ function placeShop(st: ShopState, rt: ShopRt, t: number, horns: readonly Horn[],
     st.partyTick.delete(e.party);
     e.party = null;
   }
+  warmShop(st, rt, n, sec, figures);
   placeSlots(st.props, out.props);
   placeSlots(st.worn, out.worn);
   placeSlots(st.carry, out.carry);
