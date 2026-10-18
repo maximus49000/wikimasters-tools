@@ -213,15 +213,18 @@ const FLOOR: Readonly<Record<Gait, number | null>> = {
 // ——— Pas de marche : flexion du genou recalée (3D seulement) ———
 // Le pantin plie le genou au plus fort quand la cuisse est encore en arrière (swing = cos(ph + 0,35)²) : phase 11 →
 // cuisse −12°, genou 57°, pied relevé derrière presque à l'horizontale. Avec des volumes (cuisse, chaussure), le pied
-// semble « botté » en arrière. En 3D, le genou plie surtout pendant que la jambe revient vers l'avant : pic quand la
-// cuisse passe à la verticale (cos(ph + 0,15)²), et le tibia ne part jamais plus de KNEE_CAP degrés en arrière de la
-// cuisse (un peu plus de face, où le pied relevé se lit sans se voir derrière). Cuisse, foulée et pied d'appui restent
-// ceux du pantin ; le pantin 2D n'est pas touché.
+// semble « botté » en arrière. En 3D, le genou plie surtout pendant que la jambe revient vers l'avant, et le tibia ne
+// part jamais plus de KNEE_CAP degrés en arrière de la cuisse (un peu plus de face, où le pied relevé se lit sans se voir
+// derrière). Cuisse, foulée et pied d'appui restent ceux du pantin ; le pantin 2D n'est pas touché.
 // Amplitude du pas par allure (AMPLITUDE de skeleton.ts, recopiée : un test vérifie que la phase est bien retrouvée).
 const WALK_AMP: Partial<Record<Gait, number>> = { walk: 1, step: 0.35 };
 const DEG = Math.PI / 180;
 const KNEE_CAP = 50, KNEE_CAP_FRONT = 18;
-const swingOf = (ph: number, shift: number): number => Math.max(0, Math.cos(ph + shift)) ** 2;
+// Flexion de la jambe libre, comme une vraie marche : ≈ 30° quand le pied quitte le sol, pic d'environ 60° cuisse déjà
+// ≈ 10° devant (cos(ph − 0,2) puissance 4,5), puis le genou se tend vite (≤ 20° quand le pied se pose : la jambe d'appui n'est
+// jamais pliée en « marche assise »).
+const SWING_KNEE = 64, SWING_SHIFT = -0.2;
+const swingOf = (ph: number, shift: number): number => Math.max(0, Math.cos(ph + shift)) ** 4.5;
 const ang = { th: 0, k: 0 };
 // Angles de la jambe du pantin dans son plan (degrés) : cuisse (devant > 0) et flexion du genou.
 function legAngles(leg: Leg, F: V3): typeof ang {
@@ -248,7 +251,7 @@ export function walkPhase(pose: Pose, gait: Gait | undefined): number | null {
 }
 // Flexion du genou 3D (degrés) d'une jambe de phase `ph`, cuisse à `th` degrés, de face à `f` (0 profil, 1 face).
 export function walkKnee(ph: number, f: number, w: number, th: number): number {
-  const k = 4 + w * (55 + 30 * f) * swingOf(ph, 0.15);
+  const k = 4 + w * (SWING_KNEE + 20 * f) * swingOf(ph, SWING_SHIFT);
   return Math.max(0, Math.min(k, th + KNEE_CAP + KNEE_CAP_FRONT * f * f * f));
 }
 // Cheville et pointe recalculées (repère du pantin), par côté : écrites ici, sans allocation.
@@ -482,9 +485,14 @@ export function applyPose(rig: THREE.Object3D, m: BoneMap, pose: Pose, unitsToRi
   // Bassin : haut = vertical, travers = hanche droite → hanche gauche (porte le pelvisTurn). Buste : haut = bassin → cou
   // (porte le lean), travers = épaule droite → épaule gauche (porte le shoulderTurn). La colonne se tord entre les deux.
   align(Y, X, vUp.set(0, 1, 0), diff(vLat, legR.hip, legL.hip), qP);
-  // Buste : la ligne de repos Hips → Neck sur pelvis → neck du pantin. La colonne se tordant entre bassin et buste
-  // (Spine, Spine1 à 1/3 et 2/3), la ligne obtenue s'en écarte un peu : quatre corrections la ramènent sur la cible (à 0,2° près sur les modèles).
-  align(R.torso, X, diff(vUp, pose.pelvis, pose.neck), diff(vLat, armR.sh, armL.sh), qC);
+  // Buste : le pantin droit (pelvis → neck vertical) = le modèle tel qu'il est modelé debout. La ligne Hips → Neck des
+  // modèles est inclinée de 5 à 6° vers l'arrière au repos alors que le corps est droit : la poser sur la ligne du pantin
+  // basculait tout le buste de 6° vers l'avant (9° à la marche), pli au bas du dos, fesses en arrière (retour S26 du
+  // 2026-10-18). Le buste tourne donc du seul écart du pantin à la verticale (son `lean`) : rotation qui porte l'axe y sur
+  // pelvis → neck, appliquée à la ligne de repos, qui devient la cible. La colonne se tordant entre bassin et buste
+  // (Spine, Spine1 à 1/3 et 2/3), la ligne obtenue s'en écarte un peu : quatre corrections la ramènent sur la cible.
+  align(Y, X, diff(vUp, pose.pelvis, pose.neck), diff(vLat, armR.sh, armL.sh), qC);
+  vUp.copy(R.torso).applyQuaternion(qC);
   for (let it = 0; it < 4; it++) {
     vA.copy(R.spine[0]).applyQuaternion(qP);
     vA.add(vB.copy(R.spine[1]).applyQuaternion(qS.slerpQuaternions(qP, qC, 1 / 3)));
