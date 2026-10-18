@@ -62,5 +62,7 @@ describe('cage d’escalier : étage atteint', () => {
     }
     expect(seen.size).toBe(6);
     expect(stairFloorsLit(250, 42, 1)).toBe(1);
+    expect(stairFloorsLit(250, 42, 0)).toBe(0);
+    expect(stairFloorsLit(250, 42, -3)).toBe(0);
   });
 });

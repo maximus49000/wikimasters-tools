@@ -65,11 +65,13 @@ export function roomLit(win: { u: number; key: number; main: boolean }, minutes:
   return windowLit(win.u, minutes, day, daylight, gloom) && (win.main || !soloRoom(win.key, minutes));
 }
 
-// Teinte d'une pièce : la télé ne bleuit que la pièce principale ; une famille seule dans sa pièce après 20 h la regarde
-// parfois (tirage fixe par logement, 30 %) ; les autres pièces d'un logement « télé » restent d'une lumière chaude.
+// Teinte d'une pièce : la télé ne bleuit que la pièce principale, et seulement le soir (20 h – 2 h, sans bascule à minuit).
+// Un logement « télé » la regarde toute la soirée ; une famille seule dans sa pièce la regarde parfois (tirage fixe par
+// logement, 30 %). Hors soirée, et dans les autres pièces, la lumière d'un logement « télé » est chaude.
 export function roomTone(home: { key: number; tone: HomeTone }, main: boolean, minutes: number): HomeTone {
-  if (!main) return home.tone === 'tv' ? 'warm' : home.tone;
   const hours = (((minutes % 1440) + 1440) % 1440) / 60;
-  if (hours >= 20 && soloRoom(home.key, minutes) && mulberry32(home.key ^ hashString('tv'))() < 0.3) return 'tv';
+  const evening = hours >= 20 || hours < 2;
+  if (!main || !evening) return home.tone === 'tv' ? 'warm' : home.tone;
+  if (home.tone === 'tv' || (soloRoom(home.key, minutes) && mulberry32(home.key ^ hashString('tv'))() < 0.3)) return 'tv';
   return home.tone;
 }
