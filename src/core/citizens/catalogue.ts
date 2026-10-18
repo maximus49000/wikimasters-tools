@@ -213,8 +213,10 @@ function peauProche(c: string): string {
   return best[1];
 }
 
-function choisirBase(R: Rnd, kind: CitizenKind, femme: boolean): string {
+// `sex` : sexe imposé par la scène (Père Noël : homme), qui écarte aussi l'enfant (sexe neutre).
+function choisirBase(R: Rnd, kind: CitizenKind, femme: boolean, sex?: 'm' | 'f'): string {
   const ok = Object.entries(BASES).filter(([, b]) => {
+    if (sex && b.sex !== sex) return false;
     if (kind === 'child') return !!b.child;
     // Un enfant n'est tiré que si la scène le demande (`child`) : sinon un adulte de la rue aurait une chance sur cinq
     // d'avoir le corps d'un enfant.
@@ -235,11 +237,13 @@ function coiffure(R: Rnd, base: string, voulu: readonly string[] | null): string
   return pickW(R, sobres);
 }
 
-export function citizenFromOutfit(seed: number, o: Outfit, opts: { work?: Work; umbrella?: boolean; kind?: CitizenKind }): CitizenDesc {
+// `sex` : sexe imposé ; `beard` : barbe pleine imposée (Père Noël), blanche pour un ancien comme toute barbe d'ancien.
+export type CitizenOpts = { work?: Work; umbrella?: boolean; kind?: CitizenKind; sex?: 'm' | 'f'; beard?: boolean };
+export function citizenFromOutfit(seed: number, o: Outfit, opts: CitizenOpts): CitizenDesc {
   const R = rng(seed);
   R(); R();
   const jupe = o.bottom === 'skirt' || o.bottom === 'dress';
-  const base = choisirBase(R, opts.kind ?? 'any', jupe && opts.kind !== 'child');
+  const base = choisirBase(R, opts.kind ?? 'any', jupe && opts.kind !== 'child' && opts.sex !== 'm', opts.sex);
   const B = BASES[base]!, perm = TYPES[base]!;
   const hairColor = o.hairColor;
 
@@ -258,7 +262,11 @@ export function citizenFromOutfit(seed: number, o: Outfit, opts: { work?: Work; 
 
   // Barbe : mêmes probabilités par base que `citizen` ; jamais pour les femmes ni les enfants (pas d'entrée BEARD).
   let beard: [string, string] | null = null;
-  if (BEARD[base] && R() < BEARD[base]!) beard = [pickW(R, [['pleine', 3], ['courte', 4], ['moustache', 2], ['bouc', 2]] as const), B.aged ? PAL.blanc : hairColor];
+  // Mêmes tirages avec ou sans barbe imposée (les autres habitants gardent leur aspect).
+  if (BEARD[base] && (R() < BEARD[base]! || opts.beard)) {
+    const style = pickW(R, [['pleine', 3], ['courte', 4], ['moustache', 2], ['bouc', 2]] as const);
+    beard = [opts.beard ? 'pleine' : style, B.aged ? PAL.blanc : hairColor];
+  }
 
   // Bas, puis haut : le manteau n'accompagne ni short ni jupe courte ; jupe et robe suivent la base.
   let lower: string;

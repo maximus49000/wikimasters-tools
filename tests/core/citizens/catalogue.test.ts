@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { citizen, citizenFromOutfit, citizenKey, expand, PEAUX, type CitizenDesc } from '../../../src/core/citizens/catalogue';
+import { citizen, citizenFromOutfit, citizenKey, expand, PAL, PEAUX, type CitizenDesc } from '../../../src/core/citizens/catalogue';
 import type { Outfit } from '../../../src/core/library/city/people';
 
 const SEEDS = Array.from({ length: 2000 }, (_, i) => i + 1);
@@ -116,6 +116,18 @@ describe("à partir d'une tenue", () => {
     expect(bases).not.toContain('enfant');
     expect(bases.some((b) => b === 'papy' || b === 'mamie')).toBe(true);
     expect(bases.some((b) => b === 'homme-fort' || b === 'homme-maigre')).toBe(true);
+  });
+
+  it('sexe imposé : homme ancien = papy (jamais mamie) ; barbe imposée : pleine, blanche chez l’ancien ; sans elle, tirages inchangés', () => {
+    for (const s of SEEDS.slice(0, 100)) {
+      const d = citizenFromOutfit(s, base, { kind: 'aged', sex: 'm', beard: true });
+      expect(d.base).toBe('papy');
+      expect(d.beard).toEqual(['pleine', PAL.blanc]);
+      expect(citizenFromOutfit(s, base, { sex: 'f' }).base).not.toMatch(/^homme|papy|enfant/);
+      const libre = citizenFromOutfit(s, base, { kind: 'aged' });
+      const impose = citizenFromOutfit(s, base, { kind: 'aged', beard: true });
+      if (libre.beard) expect(impose).toEqual({ ...libre, beard: ['pleine', libre.beard[1]] });
+    }
   });
 
   it('adulte : ni enfant ni ancien ; ancien : papy ou mamie', () => {

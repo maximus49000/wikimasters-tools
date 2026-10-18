@@ -184,17 +184,16 @@ function poseInside(fig: Element | null, v: ActorView, sig: string, head: number
   const pose = { yaw: v.yaw, gait: v.gait as Gait, phase: v.phase, head, arms: v.arms, lean: v.lean };
   poseFigure(figures, fig, pose);
   const key: FigureKey = { sig, ...pose };
-  const on = { reg: figures, node: fig };
   if (v.worn) {
-    const [hx, hy] = anchorAt(key, 'head', x, y, k, on);
+    const [hx, hy] = anchorAt(key, 'head', x, y, k, fig);
     out.worn.push({ id: String((((v.yaw + head) % 16) + 16) % 16), x: hx, y: hy, k });
   } else if (v.prop) {
-    const [px, py] = anchorAt(key, HAND_L.has(v.prop) ? 'handL' : 'handR', x, y, k, on);
+    const [px, py] = anchorAt(key, HAND_L.has(v.prop) ? 'handL' : 'handR', x, y, k, fig);
     if (py <= clipY) out.props.push({ id: v.prop, x: px, y: py, k });
   }
   const look = v.picto ? pictoLook(v.picto.age) : null;
   if (v.picto && look) {
-    const [px, py] = anchorAt(key, 'headTop', x, y, k, on);
+    const [px, py] = anchorAt(key, 'headTop', x, y, k, fig);
     out.pictos.push({ id: v.picto.id, x: px + rt.winX, y: py + rt.winY, k, pop: look });
   }
 }
@@ -286,7 +285,7 @@ function placeCustomer(st: ShopState, rt: ShopRt, e: Entry, a: Seen, t: number, 
   poseFigure(figures, fig, pose);
   // Objet emporté : sur le trottoir seulement (le seuil le rognerait), à la main libre du parapluie.
   if (where === 'street' && v.where === 'street-out' && a.carry) {
-    const [px, py] = anchorAt({ sig: look.sig, lean: 0, ...pose }, rt.umbrella ? 'handL' : 'handR', s.x, m.doorY, k, { reg: figures, node: fig });
+    const [px, py] = anchorAt({ sig: look.sig, lean: 0, ...pose }, rt.umbrella ? 'handL' : 'handR', s.x, m.doorY, k, fig);
     out.carry.push({ id: a.carry, x: px, y: py, k });
   }
 }

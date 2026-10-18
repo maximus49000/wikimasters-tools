@@ -3,7 +3,8 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
+import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content/figure/figure-host';
+import { PAL } from '../../src/core/citizens/catalogue';
 import { SANTA_K, SANTA_OUTFIT, SantaLayer } from '../../src/content/santa-layer';
 import { cityFacades } from '../../src/core/library/city/facades';
 import { cityMetrics } from '../../src/core/library/city/metrics';
@@ -44,10 +45,10 @@ const found = ((): { pass: ReturnType<typeof santaPassFor>; roof: NonNullable<Re
 })();
 const { pass, roof } = found;
 const at = (p: number): number => pass.start + p * SANTA_WINDOW_S;
-const mount = (T: number, ghibli: boolean): HTMLDivElement => {
+const mount = (T: number, ghibli: boolean, reg = new FigureRegistry('t9s', { perFrame: 200 })): HTMLDivElement => {
   vi.spyOn(Date, 'now').mockReturnValue(T * 1000);
   return render(
-    <FigureContext.Provider value={new FigureRegistry('t9s', { perFrame: 200 })}>
+    <FigureContext.Provider value={reg}>
       <svg>
         <SantaLayer width={W} height={H} seed={SEED} sky={night} facades={facades} ground={ground} fests={['christmas-eve']} daylight={0} still={false} frozenT={T} ghibli={ghibli} />
       </svg>
@@ -139,6 +140,17 @@ describe('toits ordinaires', () => {
 });
 
 describe('père Noël Ghibli', () => {
+  it('habitant 3D : papy (ancien, homme), barbe pleine blanche', () => {
+    const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => null, dispose() {} };
+    const reg = new FigureRegistry('t9s3d', { citizens: () => fake });
+    const spy = vi.spyOn(reg, 'citizen');
+    mount(at(0.1), true, reg);
+    expect(spy).toHaveBeenCalled();
+    for (const [d] of spy.mock.calls) {
+      expect(d.base).toBe('papy');
+      expect(d.beard).toEqual(['pleine', PAL.blanc]);
+    }
+  });
   it('tenue rouge, bonnet rouge', () => {
     expect(SANTA_OUTFIT).toMatchObject({ topColor: '#C0302B', bottomColor: '#C0302B', hair: 'beanie', hatColor: '#C0302B' });
   });

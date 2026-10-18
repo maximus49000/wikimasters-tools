@@ -292,7 +292,7 @@ function GMarcher({ d, sky, arms, held, citizen }: { d: Dress; sky: Sky; arms: M
 // Pantin immobile (repère du véhicule) : en selle, `at` = point de la selle où poser le bassin ; debout, `at` = pieds ;
 // `scale` = échelle du pantin dans le repère du véhicule. Habitant 3D : sa selle est épinglée sur celle du pantin (`pin`), là
 // où le bassin est posé.
-function GRider({ outfit, sky, gait, arms, at: [x, y], scale, held }: { outfit: Outfit; sky: Sky; gait: Gait; arms: ArmPose; at: readonly [number, number]; scale: number; held?: readonly Held[] }): ReactElement {
+function GRider({ outfit, sky, gait, arms, at: [x, y], scale, held, citizen }: { outfit: Outfit; sky: Sky; gait: Gait; arms: ArmPose; at: readonly [number, number]; scale: number; held?: readonly Held[]; citizen?: number }): ReactElement {
   const pose: PoseIn = { yaw: PARADE_YAW, gait, phase: 0, head: 0, arms };
   let dx = 0;
   let dy = 0;
@@ -303,7 +303,7 @@ function GRider({ outfit, sky, gait, arms, at: [x, y], scale, held }: { outfit: 
   }
   return (
     <g data-worker="" data-parade-figure="" transform={`translate(${x} ${y}) scale(${scale}) translate(${dx} ${dy})`}>
-      <GhibliFigure outfit={outfit} sky={sky} rainy={false} umbrella={false} initial={pose} held={held} kind="adult" pin={dx !== 0 || dy !== 0 ? 'seat' : undefined} />
+      <GhibliFigure outfit={outfit} sky={sky} rainy={false} umbrella={false} initial={pose} held={held} citizen={citizen} kind="adult" pin={dx !== 0 || dy !== 0 ? 'seat' : undefined} />
     </g>
   );
 }
@@ -551,7 +551,7 @@ function Motorbikes({ unit, t, anim, sky }: UnitArt): ReactElement {
 
 // Cavalier de la Garde : cheval au pas (quatre jambes d'aplomb, chacune à son temps), cuirasse, casque à crinière et plumet
 // rouge. Le cavalier est assis sur la selle, la jambe tombant le long du flanc, la botte contre le flanc du cheval.
-function Horseman({ t, anim, begin, coat, skin, sky }: { t: Tint; anim: boolean; begin: string; coat: string; skin: string; sky?: Sky }): ReactElement {
+function Horseman({ t, anim, begin, coat, skin, sky, citizen }: { t: Tint; anim: boolean; begin: string; coat: string; skin: string; sky?: Sky; citizen?: number }): ReactElement {
   const c = t(coat);
   // Jambe (pivot à l'épaule ou à la hanche) ; `phase` décale le balancement (pas à quatre temps).
   const leg = (x: number, phase: number, far: boolean): ReactElement => {
@@ -587,6 +587,7 @@ function Horseman({ t, anim, begin, coat, skin, sky }: { t: Tint; anim: boolean;
           arms="handlebar"
           at={[-1, -24.5]}
           scale={FIG}
+          citizen={citizen}
           held={[headgear({ tunic: '#1F2A4A', trousers: WHITE, head: 'crested', cap: STEEL, capTop: RED, belt: WHITE, skin }, t)]}
         />
       ) : (
@@ -614,7 +615,7 @@ function Cavalry({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
     <g>
       {skins.map((skin, i) => (
         <g key={i} transform={`translate(${-50 + i * 50} 0)`}>
-          <Horseman t={t} anim={anim} begin={begin} coat={pickOf(coats, (unit.variant + rng()) % 1)} skin={skin} sky={sky} />
+          <Horseman t={t} anim={anim} begin={begin} coat={pickOf(coats, (unit.variant + rng()) % 1)} skin={skin} sky={sky} citizen={citizenSeed(`${unit.id}-${i}`)} />
         </g>
       ))}
     </g>

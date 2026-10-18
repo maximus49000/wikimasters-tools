@@ -12,7 +12,8 @@ import type { Sky } from '../core/library/sky';
 import { citizenSeed } from '../core/citizens/identity';
 import { PersonSprite, tone } from './city-sprites';
 import type { FigureRegistry } from './figure/figure-host';
-import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { CITIZENS_3D } from './figure/citizen-config';
+import { GhibliFigure, poseFigure, shown3DAnchors, type PoseIn } from './figure/ghibli-figure';
 
 // Dessins des événements de la ville (maquette validée du 2026-10-09). Petites animations en SMIL, jamais en mouvement
 // réduit ; aucun id SVG fixe. Les tirages de couleurs viennent de la clé de l'événement (déterministes).
@@ -42,16 +43,32 @@ export function poseEventFigures(reg: FigureRegistry, node: Element, e: CityEven
     }));
     walkersOf.set(node, list);
   }
-  for (const h of list) poseFigure(reg, h.fig, eventWalkPose(e, walked + h.offset, still, h.arms));
+  for (const h of list) {
+    poseFigure(reg, h.fig, eventWalkPose(e, walked + h.offset, still, h.arms));
+    if (CITIZENS_3D) fitLeash(h.fig, e.dir);
+  }
+}
+// Laisse d'un promeneur montré en 3D : redessinée de sa main 3D (image montrée, épingle comprise) jusqu'au collier ; revenu au
+// pantin, le tracé du rendu (gardé dans data-d0) revient.
+function fitLeash(fig: Element | null, dir: 1 | -1): void {
+  const held = fig?.querySelector(':scope > [data-held]');
+  const path = held?.querySelector('[data-leash]');
+  if (!held || !path) return;
+  if (!path.hasAttribute('data-d0')) path.setAttribute('data-d0', path.getAttribute('d') ?? '');
+  const a3 = shown3DAnchors(fig);
+  const hand = held.getAttribute('data-held') as 'handR' | 'handL';
+  const d = a3 ? leashPath(a3[hand], dir) : path.getAttribute('data-d0')!;
+  if (path.getAttribute('d') !== d) path.setAttribute('d', d);
 }
 // Décalage des pas d'un marcheur au suivant dans un groupe (unités).
 const WALKER_OFFSET = 7;
 // Laisse tenue à la main (accroche du pantin) jusqu'au collier du chien (repère du sprite, comme le dessin classique) : la
 // main est lue sur la pose debout, la laisse suit ensuite la main pendant la marche (le bout bouge d'une unité au plus).
-// Habitant 3D : la laisse suit la main 3D (objet tenu) ; le bout reste calculé sur la main du pantin (quelques unités d'écart
-// au collier au plus, la forme de la laisse étant fixée au rendu).
+// Habitant 3D : la boucle la redessine depuis la main 3D montrée (fitLeash).
 function leashFrom(o: Outfit, umbrella: boolean, dir: 1 | -1, hand: 'handR' | 'handL'): string {
-  const a = anchorsOf({ sig: signatureOf(shapeOf(o, umbrella)), yaw: facingYaw(dir), gait: 'stand', phase: 0, head: 0, arms: 'hold', lean: 0 })[hand];
+  return leashPath(anchorsOf({ sig: signatureOf(shapeOf(o, umbrella)), yaw: facingYaw(dir), gait: 'stand', phase: 0, head: 0, arms: 'hold', lean: 0 })[hand], dir);
+}
+function leashPath(a: readonly [number, number], dir: 1 | -1): string {
   // Collier en (22, -9) dans le sprite ; repère du pantin : x multiplié par `dir` (retournement annulé).
   const dx = 22 * dir - a[0];
   const dy = -9 - a[1];

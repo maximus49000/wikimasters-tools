@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, type ReactElement } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { FestivityId } from '../core/library/city/calendar';
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
 import { DOOR_WIDTH, STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
@@ -11,8 +11,9 @@ import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { citizenSeed } from '../core/citizens/identity';
-import { figureAnchors, useFigureRegistry, type FigureRegistry } from './figure/figure-host';
-import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { CITIZENS_3D } from './figure/citizen-config';
+import { useFigureRegistry, type FigureRegistry } from './figure/figure-host';
+import { GhibliFigure, poseFigure, shown3DAnchors, type PoseIn } from './figure/ghibli-figure';
 import { useSceneDayStart } from './parade-layer';
 import { useWallClockLoop } from './use-wallclock-loop';
 
@@ -172,10 +173,25 @@ function HandProp({ s, sky, wave }: { s: Spectator; sky: Sky; wave: boolean }): 
 
 // Corps Ghibli d'un spectateur (`[data-spectator-body]`) : l'enfant des épaules d'abord (la tête de l'adulte cache le bas de ses
 // jambes), puis l'adulte et son objet à la main.
-function GhibliSpectator({ s, sky, rainy, pose, wave }: { s: Spectator; sky: Sky; rainy: boolean; pose: PoseIn; wave: boolean }): ReactElement {
+// `standing` : spectateur en place (jamais posé par la boucle) : l'enfant des épaules suit la nuque de l'adulte par le registre
+// (watch), quand l'adulte passe en 3D sans re-rendu (mouvement réduit compris).
+function GhibliSpectator({ s, sky, rainy, pose, wave, standing = false }: { s: Spectator; sky: Sky; rainy: boolean; pose: PoseIn; wave: boolean; standing?: boolean }): ReactElement {
   const held = pose.arms === 'raise' && s.prop !== 'none' ? [{ anchor: 'handR' as const, node: <HandProp s={s} sky={sky} wave={wave} /> }] : undefined;
+  const reg = useFigureRegistry();
+  const body = useRef<SVGGElement | null>(null);
+  const shoulders = standing && s.kind === 'shoulders';
+  useLayoutEffect(() => {
+    const node = body.current;
+    const kid = node?.querySelector(':scope > [data-shoulders]');
+    if (!CITIZENS_3D || !shoulders || !node || !kid) return;
+    reg.watch(kid, () => {
+      syncShoulders(reg, node, s, pose);
+      return false;
+    });
+    return () => reg.unwatch(kid);
+  });
   return (
-    <g data-spectator-body="">
+    <g data-spectator-body="" ref={body}>
       {s.kind === 'shoulders' && s.child && (
         <g data-shoulders="" transform={shoulderTransform(keyFor(s, pose))}>
           <GhibliFigure outfit={s.child} sky={sky} rainy={rainy} umbrella={false} initial={childPose(pose.yaw)} citizen={citizenSeed(`${s.id}:epaules`)} kind="child" pin="seat" />
@@ -191,18 +207,23 @@ function poseWalker(reg: FigureRegistry, body: Element | null, s: Spectator, pos
   if (!body) return;
   poseFigure(reg, body.querySelector(':scope > [data-figure]'), pose);
   if (s.kind !== 'shoulders') return;
-  syncShoulders(reg, body, s, pose);
+  if (CITIZENS_3D) syncShoulders(reg, body, s, pose);
+  else {
+    const kid = body.querySelector(':scope > [data-shoulders]');
+    const tr = shoulderTransform(keyFor(s, pose));
+    if (kid && kid.getAttribute('transform') !== tr) kid.setAttribute('transform', tr);
+  }
   poseFigure(reg, body.querySelector(':scope > [data-shoulders] > [data-figure]'), childPose(pose.yaw));
 }
 // Enfant des épaules posé à la nuque de l'image que montre l'adulte : en 3D, la nuque du rendu (autre silhouette que le
-// pantin) ; rappelé à chaque image, l'adulte debout passant en 3D sans re-rendu (registre). L'enfant, lui, a son bassin 3D
+// pantin) ; marcheurs : à chaque pose ; debout : par le registre (GhibliSpectator). L'enfant, lui, a son bassin 3D
 // épinglé sur celui de son pantin (`pin="seat"`) : il reste assis à la même hauteur au-dessus de la nuque.
 function syncShoulders(reg: FigureRegistry, body: Element, s: Spectator, pose: PoseIn): void {
   const kid = body.querySelector(':scope > [data-shoulders]');
   if (!kid) return;
   const key = keyFor(s, pose);
-  const sk = body.querySelector(':scope > [data-figure]')?.getAttribute('data-key');
-  const tr = shoulderTransform(key, figureAnchors(reg, sk, key).nape);
+  const adult = body.querySelector(':scope > [data-figure]');
+  const tr = shoulderTransform(key, (shown3DAnchors(adult) ?? anchorsOf(key)).nape);
   if (kid.getAttribute('transform') !== tr) kid.setAttribute('transform', tr);
 }
 
@@ -245,12 +266,6 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
       if (!el) return;
       states.forEach((p, i) => {
         const s = all[i]!;
-        // Debout avec un enfant sur les épaules : l'enfant suit la nuque de l'image montrée (pantin, puis 3D).
-        if (ghibli && p.mode === 'standing' && s.kind === 'shoulders') {
-          const body = el.querySelector(`[data-spectator-id="${s.id}"] > [data-spectator-body]`);
-          if (body) syncShoulders(figures, body, s, standPose(s));
-          return;
-        }
         if (p.mode !== 'walking') return;
         const node = el.querySelector(`[data-spectator-id="${s.id}"]`);
         if (!node) return;
@@ -285,7 +300,7 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
           data-mode="standing"
           transform={transformOf(s, { x: s.x, depth: CROWD_ROW_DEPTH[s.row] + s.jitter * 1.2, dir: s.dir, mode: 'standing', yaw: spectatorYaw(s), gait: 'stand', walked: 0 }, metrics, true, !ghibli)}
         >
-          {ghibli ? <GhibliSpectator s={s} sky={sky} rainy={rainy} pose={standPose(s)} wave={!still} /> : <SpectatorSprite s={s} sky={sky} still={still} rainy={rainy} walking={false} />}
+          {ghibli ? <GhibliSpectator s={s} sky={sky} rainy={rainy} pose={standPose(s)} wave={!still} standing /> : <SpectatorSprite s={s} sky={sky} still={still} rainy={rainy} walking={false} />}
         </g>
       )),
     // eslint-disable-next-line react-hooks/exhaustive-deps

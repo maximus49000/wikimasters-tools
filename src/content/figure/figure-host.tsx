@@ -104,6 +104,8 @@ function paint(p: Palette, key: FigureKey): string {
 // Plafond de sprites des vues de la bibliothèque (RoomView, ScenePanorama) : la rue Ghibli des commerces (G4b) dépasse
 // 1 500 poses en vue à midi. Les sprites 3D (data URL de même cadre et même résolution) comptent dans le même plafond.
 export const FIGURE_SPRITES_MAX = 2400;
+// Plafond de la vue rapprochée (vue « dehors » de RoomView : sprites 3D à 6 px par unité, quatre fois plus lourds).
+export const CLOSE_UP_SPRITES_MAX = 600;
 
 // ── Habitants 3D ──────────────────────────────────────────────────────────────────────────────────────────────────
 // Ce dont le registre a besoin du rendu 3D (CitizenRenderer ; un faux en test).

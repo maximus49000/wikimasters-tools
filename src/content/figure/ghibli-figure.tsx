@@ -66,11 +66,12 @@ const outfitKeyOf = (o: Outfit): string => [o.skin, o.hair, o.hairColor, o.hatCo
 export const outfitSeed = (o: Outfit): number => hashString(outfitKeyOf(o));
 // Descriptions 3D déjà tirées (la figure est re-rendue à chaque minute) ; vidées au-delà de 4096.
 const descCache = new Map<string, CitizenDesc>();
-function descOf(seed: number, o: Outfit, work: Work, umbrella: boolean, kind: CitizenKind | undefined, emotion: Emotion | undefined): CitizenDesc {
-  const k = `${seed}|${outfitKeyOf(o)}|${work}|${umbrella ? 1 : 0}|${kind ?? ''}|${emotion ?? ''}`;
+function descOf(seed: number, o: Outfit, work: Work, umbrella: boolean, id: CitizenIdentity): CitizenDesc {
+  const { kind, emotion, sex, beard } = id;
+  const k = `${seed}|${outfitKeyOf(o)}|${work}|${umbrella ? 1 : 0}|${kind ?? ''}|${emotion ?? ''}|${sex ?? ''}|${beard ? 1 : 0}`;
   let d = descCache.get(k);
   if (!d) {
-    d = citizenFromOutfit(seed, o, { work, umbrella, kind });
+    d = citizenFromOutfit(seed, o, { work, umbrella, kind, sex, beard });
     if (emotion) d = { ...d, mood: emotion };
     if (descCache.size >= 4096) descCache.clear();
     descCache.set(k, d);
@@ -78,8 +79,9 @@ function descOf(seed: number, o: Outfit, work: Work, umbrella: boolean, kind: Ci
   return d;
 }
 
-// Identité 3D d'une figure : graine (`citizen`, défaut : hachage de la tenue), type de corps, humeur du visage.
-export type CitizenIdentity = { citizen?: number; kind?: CitizenKind; emotion?: Emotion };
+// Identité 3D d'une figure : graine (`citizen`, défaut : hachage de la tenue), type de corps, humeur du visage, sexe et barbe
+// imposés (Père Noël).
+export type CitizenIdentity = { citizen?: number; kind?: CitizenKind; emotion?: Emotion; sex?: 'm' | 'f'; beard?: boolean };
 // Identité d'un personnage des commerces (client, employé) : graine tirée de son id (défaut : sa tenue — celle d'un employé
 // suit déjà la personne d'un jour à l'autre et d'une vue à l'autre : vitrine, rue, terrasse) et humeur de fond tirée de la
 // graine ; le visage de chaque geste en dérive (emotionFor, dans le registre : payer → content, trinquer → heureux…).
@@ -93,7 +95,7 @@ export function citizenPalette(reg: FigureRegistry, outfit: Outfit, sky: Sky, ra
   let c3d: { key: string; light: number } | undefined;
   if (CITIZENS_3D) {
     const seed = id.citizen ?? outfitSeed(outfit);
-    const ck = reg.citizen(descOf(seed, rainOutfit(outfit, rainy), work, umbrella, id.kind, id.emotion), seed);
+    const ck = reg.citizen(descOf(seed, rainOutfit(outfit, rainy), work, umbrella, id), seed);
     if (ck !== null) c3d = { key: ck, light: citizenLight(sky) };
   }
   return figurePalette(outfit, sky, rainy, c3d);
@@ -139,6 +141,12 @@ const wantedPoses = new WeakMap<Element, FigureKey>();
 export function figureHeadTop(node: Element): readonly [number, number] | null {
   const key = shownPoses.get(node);
   return key ? (shownAnchors.get(node)?.headTop ?? anchorsOf(key).headTop) : null;
+}
+
+// Accroches 3D de l'image que montre une figure (décalage d'épingle compris), ou null si elle montre un pantin (ou rien) :
+// les objets posés par une boucle (laisse, enfant sur les épaules, objet en main, charge portée) s'y règlent.
+export function shown3DAnchors(node: Element | null): SpriteAnchors | null {
+  return (node && shownAnchors.get(node)) ?? null;
 }
 
 // Épingle (`data-pin`, ex. la selle d'un cycliste posée sur le vélo dessiné autour du pantin, rideFrame) : une image 3D est
@@ -250,6 +258,8 @@ export function GhibliFigure({
   kind,
   waitFor3D = false,
   emotion,
+  sex,
+  beard,
   pin,
 }: {
   outfit: Outfit;
@@ -264,12 +274,14 @@ export function GhibliFigure({
   kind?: CitizenKind;
   waitFor3D?: boolean;
   emotion?: Emotion;
+  sex?: 'm' | 'f';
+  beard?: boolean;
   pin?: Anchor;
 }): ReactElement {
   const reg = useFigureRegistry();
   const ref = useRef<SVGGElement | null>(null);
   const sig = signatureOf(shapeOf(outfit, umbrella, work));
-  const pk = reg.addPalette(citizenPalette(reg, outfit, sky, rainy, umbrella, work, { citizen, kind, emotion }));
+  const pk = reg.addPalette(citizenPalette(reg, outfit, sky, rainy, umbrella, work, { citizen, kind, emotion, sex, beard }));
   const key = keyOf(sig, initial);
   const want = reg.keyFor(pk, key);
   let shownKey: string | undefined;

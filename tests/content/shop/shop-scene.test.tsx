@@ -8,8 +8,10 @@ import { CityLifeLayer } from '../../../src/content/city-life';
 import { FigureContext, FigureRegistry, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
 import { blinkAt, blinkLevel, emotionFor, faceState } from '../../../src/core/citizens/face';
 import { citizenSeed } from '../../../src/core/citizens/identity';
+import { moodOf } from '../../../src/core/citizens/emotion';
 import type { CitizenDesc } from '../../../src/core/citizens/catalogue';
 import { anchorsOf, type FigureKey } from '../../../src/core/library/figure/bake';
+import { GhibliFigure } from '../../../src/content/figure/ghibli-figure';
 import type { ArmPose } from '../../../src/core/library/figure/skeleton';
 import { shapeOf, signatureOf } from '../../../src/core/library/figure/dress';
 import { ShopScene, collectScene, forgetScenes, muteScene, placeScene, sceneBudget, sceneParties } from '../../../src/content/shop/shop-scene';
@@ -494,7 +496,8 @@ describe('ShopScene : habitants 3D', () => {
   });
 
   it('caisse : au geste pay-card, le visage du client est « content » (registre à visages)', () => {
-    const { sec, id } = customerMoment((a) => a.arms === 'pay-card');
+    // Client d'humeur de fond neutre : le « content » vient du geste, pas de l'humeur.
+    const { sec, id } = customerMoment((a) => a.arms === 'pay-card' && moodOf(citizenSeed(a.id)) === 'neutre');
     const figures = new FigureRegistry('t3d-faces', { perFrame: 50, faces: true, citizens: () => fake3D(true), now: () => 0 });
     const { host, draw } = mount();
     draw(scene(sec, false, figures));
@@ -510,17 +513,27 @@ describe('ShopScene : habitants 3D', () => {
     const sk = fig().getAttribute('data-key')!;
     expect(sk.split('#').pop()!.split('|')[5]).toBe('pay-card');
     expect(sk).toMatch(/@3dc(b5|b1)?$/);
+    // Le même client, bras le long du corps (geste sans émotion) : visage neutre (pas de « c »).
+    const parts = sk.split('#').pop()!.split('@')[0]!.split('|');
+    const key: FigureKey = { sig: parts[0]!, yaw: Number(parts[1]), gait: parts[2] as FigureKey['gait'], phase: Number(parts[3]), head: Number(parts[4]), arms: 'down', lean: Number(parts[6]) };
+    expect(figures.keyFor(fig().getAttribute('data-palette')!, key)).toMatch(/@3d(b5|b1)?$/);
   });
 
   it('objet en main : accroche de l’image 3D montrée par la figure, sinon celle du pantin', () => {
     const figures = new FigureRegistry('t3d-anch', { citizens: () => fake3D(false) });
-    const node = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    const key: FigureKey = { sig: signatureOf(shapeOf(outfitFor('ordinary', mulberry32(1)), false)), yaw: 0, gait: 'stand', phase: 0, head: 0, arms: 'down', lean: 0 };
-    vi.spyOn(figures, 'anchors').mockImplementation((sk) => (sk === 'img3d' ? ANCH : null));
-    node.setAttribute('data-key', 'img3d');
-    expect(anchorAt(key, 'handR', 10, 100, 2, { reg: figures, node })).toEqual([10 + ANCH.handR[0] * 2, 100 + ANCH.handR[1] * 2]);
-    node.setAttribute('data-key', 'pantin');
+    const outfit = outfitFor('ordinary', mulberry32(1));
+    const key: FigureKey = { sig: signatureOf(shapeOf(outfit, false)), yaw: 4, gait: 'stand', phase: 0, head: 0, arms: 'down', lean: 0 };
+    const { host, draw } = mount();
+    draw(
+      <FigureContext.Provider value={figures}>
+        <svg><GhibliFigure outfit={outfit} sky={skyAt(720, times)} rainy={false} umbrella={false} initial={key} /></svg>
+      </FigureContext.Provider>,
+    );
+    const node = host.querySelector('[data-figure]')!;
     const p = anchorsOf(key).handR;
-    expect(anchorAt(key, 'handR', 10, 100, 2, { reg: figures, node })).toEqual([10 + p[0] * 2, 100 + p[1] * 2]);
+    expect(anchorAt(key, 'handR', 10, 100, 2, node)).toEqual([10 + p[0] * 2, 100 + p[1] * 2]);
+    act(() => figures.flush());
+    expect(node.getAttribute('data-key')).toMatch(/@3d$/);
+    expect(anchorAt(key, 'handR', 10, 100, 2, node)).toEqual([10 + ANCH.handR[0] * 2, 100 + ANCH.handR[1] * 2]);
   });
 });

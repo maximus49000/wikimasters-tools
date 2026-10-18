@@ -16,13 +16,17 @@ import { pathAt, pathDir, pathLength } from '../core/library/city/walk-path';
 import { DARK } from '../core/library/city/events';
 import { dayNumber } from '../core/library/city/shops/hours';
 import { hashString, mulberry32 } from '../core/library/scene-world';
-import { anchorsOf } from '../core/library/figure/bake';
+import { anchorsOf, type FigureKey } from '../core/library/figure/bake';
+import type { ArmPose } from '../core/library/figure/skeleton';
 import { shapeOf, signatureOf } from '../core/library/figure/dress';
 import { YAW_BACK, facingYaw } from '../core/library/figure/gait';
 import { crankPhase } from './figure/ghibli-cyclist';
 import type { Sky } from '../core/library/sky';
 import { workerPose, type CrewLook, type WorkerMove } from './city-shops-life';
 import { entranceLeft } from './city-sprites';
+import { carryFit, carryLineY, type Carrier } from './figure/carry-fit';
+import { CITIZENS_3D } from './figure/citizen-config';
+import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure } from './figure/ghibli-figure';
 import { paintProp, propKey, type PropRegistry, type PropSpec } from './prop/prop-host';
 import {
@@ -645,9 +649,66 @@ const footNodes = (c: FootCrew, inp: Pick<CrewInput, 'outfits' | 'sky' | 'rainy'
       {c.b && <WorkerNode w={c.b} outfit={inp.outfits[1]!} inp={inp} k={k} id="b" />}
       <WorkerNode w={c.a} outfit={inp.outfits[0]!} inp={inp} k={k} id="a" />
       {c.front}
+      {CITIZENS_3D && inp.ghibli && c.b && <CarryFitWatch k={k} />}
     </>
   );
 };
+
+// Charge portée à deux (barrière, planche, comptoir), porteurs passés en 3D : les porteurs sont placés au rendu pour que les
+// mains du pantin tiennent les bouts ; quand l'un montre une image 3D (sans re-rendu), le registre rappelle ce réglage, qui pose
+// la charge sur la ligne des mains 3D (carryFit). Positions : celles du rendu (porteurs et charge glissent ensemble par la même
+// transition CSS, l'écart relatif reste juste).
+function CarryFitWatch({ k }: { k: number }): ReactElement {
+  const reg = useFigureRegistry();
+  const ref = useRef<SVGGElement | null>(null);
+  useLayoutEffect(() => {
+    const marker = ref.current;
+    const crew = marker?.parentElement;
+    if (!marker || !crew) return;
+    const fit = (): boolean => {
+      fitCarried(crew, k);
+      return false;
+    };
+    fit();
+    reg.watch(marker, fit);
+    return () => reg.unwatch(marker);
+  });
+  return <g data-carry-watch="" ref={ref} />;
+}
+function fitCarried(crew: Element, k: number): void {
+  const load = crew.querySelector(':scope > [data-carried-item][data-shape]');
+  const inner = load?.querySelector(':scope > [data-carry-fit]');
+  const carrier = (id: string): Carrier | null => {
+    const w = crew.querySelector(`:scope > [data-worker-k="${id}"][data-ref]`);
+    const fig = w?.querySelector('[data-figure]') ?? null;
+    if (!w || !fig) return null;
+    const [yaw, arms] = w.getAttribute('data-ref')!.split('|');
+    const ref: FigureKey = { sig: fig.getAttribute('data-sig') ?? '', yaw: Number(yaw), gait: 'stand', phase: 0, head: 0, arms: arms as ArmPose, lean: 0 };
+    return { fig, x: Number(w.getAttribute('data-wx')), y: Number(w.getAttribute('data-wy')), ref, anchor: 'handR' };
+  };
+  const a = carrier('a');
+  const b = carrier('b');
+  if (!load || !inner || !a || !b) return;
+  const f = carryFit(a, b, k);
+  let tr = '';
+  if (f) {
+    // Repère du monde, relatif à l'origine de la charge (x, base) : même écart aux mains que le rendu (prise à mi-hauteur de la
+    // barrière…), sur la ligne des mains 3D, inclinée autour de la prise. Conjugué par `shape` (le contenu est dans son repère).
+    const x = Number(load.getAttribute('data-x'));
+    const base = Number(load.getAttribute('data-base'));
+    const hand2 = (c: Carrier): number => c.y + anchorsOf(c.ref).handR[1] * k;
+    const extra = base - (hand2(a) + hand2(b)) / 2;
+    const ty = carryLineY(f, x + f.dx) + extra - base;
+    const [sa, sb, sc, sd] = load.getAttribute('data-shape')!.split(' ').map(Number) as [number, number, number, number];
+    const det = sa * sd - sb * sc;
+    const n = (v: number): string => (Math.abs(v) < 1e-9 ? '0' : v.toFixed(4));
+    tr = `matrix(${n(sd / det)} ${n(-sb / det)} ${n(-sc / det)} ${n(sa / det)} 0 0) translate(${n(f.dx)} ${n(ty)}) rotate(${n(f.deg)} 0 ${n(-extra)}) matrix(${n(sa)} ${n(sb)} ${n(sc)} ${n(sd)} 0 0)`;
+  }
+  if ((inner.getAttribute('transform') ?? '') !== tr) {
+    if (tr) inner.setAttribute('transform', tr);
+    else inner.removeAttribute('transform');
+  }
+}
 
 // Ouvriers qui descendent du véhicule (du centre de la caisse de la camionnette, de la cabine du camion plateau, où ils sont
 // cachés, ou de la selle du vélo porteur, jusqu'à leur place au début du premier créneau) ou y remontent (de leur place à la
@@ -694,9 +755,8 @@ function crewLook(w: Pick<Worker, 'pose' | 'dir' | 'ladder'>): CrewLook {
 }
 const crewSig = (o: Outfit): string => signatureOf(shapeOf(o, false, 'vest'));
 // Main droite (repère du sprite) d'un ouvrier Ghibli debout dans ce geste : la charge portée à deux s'y accroche (le
-// balancement de la marche ne la fait pas bouger). Reste la main du pantin en 3D : les porteurs sont placés au rendu pour que
-// leurs deux mains tiennent les bouts de la charge (épingler l'image 3D sur la main ferait flotter les pieds) ; la charge
-// tenue par un seul ouvrier (objet tenu) suit, elle, la main 3D.
+// balancement de la marche ne la fait pas bouger). Porteurs en 3D : la charge est réglée ensuite sur leurs mains 3D
+// (CarryFitWatch).
 const restHand = (o: Outfit, w: Pick<Worker, 'pose' | 'dir' | 'ladder'>): readonly [number, number] => {
   const l = crewLook(w);
   return anchorsOf({ sig: crewSig(o), yaw: l.yaw, gait: 'stand', phase: 0, head: 0, arms: l.arms, lean: 0 }).handR;
@@ -733,7 +793,7 @@ function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp:
       data-worker=""
       data-worker-k={id}
       data-pose={w.pose}
-      {...(move ? { 'data-move': JSON.stringify(move) } : {})}
+      {...(move ? { 'data-move': JSON.stringify(move), 'data-wx': w.x.toFixed(2), 'data-wy': w.y.toFixed(2), 'data-ref': `${move.look.yaw}|${move.look.arms}` } : {})}
       style={{ transform: `translate(${w.x.toFixed(1)}px, ${w.y.toFixed(1)}px)`, transition: MOVE }}
     >
       {move ? (
@@ -948,9 +1008,13 @@ function handCrew(inp: CrewInput): FootCrew {
     const shape = barrier
       ? `matrix(${lerp(k, 0.3 * k, tilt).toFixed(3)}, ${lerp(0, 0.72 * k, tilt).toFixed(3)}, 0, ${k.toFixed(3)}, 0, 0)`
       : `matrix(${u.toFixed(3)}, 0, 0, ${u.toFixed(3)}, 0, 0)`;
+    // `data-carry-fit` : réglage de la charge sur les mains 3D des porteurs (CarryFitWatch), dans le repère de `shape`.
+    const sm = barrier ? [lerp(k, 0.3 * k, tilt), lerp(0, 0.72 * k, tilt), 0, k] : [u, 0, 0, u];
     return (
-      <g {...attrs} style={{ transform: `translate(${x.toFixed(1)}px, ${base.toFixed(1)}px) ${shape}`, transition: MOVE }}>
-        {barrier ? <Barrier sky={inp.sky} ghibli={inp.ghibli} /> : counter ? <CarriedCounter sky={inp.sky} ghibli={inp.ghibli} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
+      <g {...attrs} data-base={base.toFixed(2)} data-shape={sm.map((v) => v.toFixed(4)).join(' ')} style={{ transform: `translate(${x.toFixed(1)}px, ${base.toFixed(1)}px) ${shape}`, transition: MOVE }}>
+        <g data-carry-fit="">
+          {barrier ? <Barrier sky={inp.sky} ghibli={inp.ghibli} /> : counter ? <CarriedCounter sky={inp.sky} ghibli={inp.ghibli} /> : <rect x={-17} y={-2.5} width={34} height={2.5} fill={inp.sky.daylight < 0.3 ? '#3A3036' : '#6A5848'} />}
+        </g>
       </g>
     );
   };

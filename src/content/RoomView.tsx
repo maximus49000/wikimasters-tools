@@ -24,7 +24,7 @@ import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
 import { localImage, useCoverCache } from './cover-cache';
 import { usableImage, useImageProbe } from './image-probe';
 import { getImageService } from './image-registry';
-import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
+import { CLOSE_UP_SPRITES_MAX, FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
 import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
 import { PropContext, PropRegistry } from './prop/prop-host';
@@ -184,8 +184,13 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   // Cache des sprites du pantin (Ghibli) : un par pièce ; les figures sont des <image>, rien n'est hébergé dans le DOM.
   // Plafond : la rue Ghibli des commerces (gestes des employés et des clients, G4b) dépasse 1 500 poses en vue à midi ; au-delà
   // le cache tournerait et repeindrait sans cesse. Budget de peinture par image : le défaut (spec G4b §7).
-  // Habitants 3D : vue zoomable, donc rendu 3D à 6 px par unité (net de près) et visages animés (émotion du geste, clignement).
-  const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`, { max: FIGURE_SPRITES_MAX, pxPerUnit: 6, faces: true }), [worldId]);
+  // Habitants 3D : la vue « dehors » (caméra dans la rue, zoom 1 à 4, suivi d'un passant) les montre de près : rendu 3D à
+  // 6 px par unité et visages animés (émotion du geste, clignement), plafond réduit (sprites 4 fois plus lourds). Le registre
+  // est refait à l'entrée et à la sortie de la vue dehors (les figures repeignent une fois).
+  const figures = useMemo(
+    () => new FigureRegistry(`${worldId}-fig`, outside ? { max: CLOSE_UP_SPRITES_MAX, pxPerUnit: 6, faces: true } : { max: FIGURE_SPRITES_MAX }),
+    [worldId, outside],
+  );
   // Sprites peints des voitures Ghibli : même cycle de vie.
   const cars = useMemo(() => new CarRegistry(`${worldId}-car`), [worldId]);
   const shops = useMemo(() => new ShopRegistry(`${worldId}-shop`), [worldId]);
