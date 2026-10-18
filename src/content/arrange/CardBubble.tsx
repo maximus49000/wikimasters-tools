@@ -1,21 +1,37 @@
 // Bulle d'un objet dans la vue Modifier (toucher un objet posé sans le glisser) : la même bulle que le mobilier de la pièce (wmt-lib-bubble,
 // mêmes boutons et glyphes). ✥ Déplacer arme l'objet (seul un objet armé se glisse). Carte : présentation (tablette : face / tranche /
-// dos pour un jeu ; plateau : trépied / à plat), format (CD, DVD, jeu, livre : le slug ne change pas), ⓘ fiche, 🗑 retirer. Petit objet :
+// dos pour un jeu ; plateau : trépied / à plat), format (CD, DVD, jeu, livre : le slug ne change pas), 🖼️ version de la pochette (réglette de
+// vignettes, ↺ pochette d'origine ; la recherche part au premier appui, grisé quand elle n'a définitivement rien trouvé), 🔄 changer de carte
+// (réglette 🃏 de la Collection, la nouvelle carte prend la même place, le même format et la même présentation / pose), ⓘ fiche, 🗑 retirer.
+// Petit objet :
 // 🗑, allumer / éteindre une lampe, choisir la ville d'une horloge. ✕ ferme.
 // Ancrée à côté de l'objet sans jamais le cacher (bubbleSpot), dans le calque de la vue (tourné avec lui en hauteur).
 // Un changement est vérifié sur la disposition que l'on voit : refusé, le message habituel s'affiche dans la bulle et rien ne part ;
 // accepté, il part tout de suite comme une intention (id + changement), appliquée par l'appelant à la disposition du moment (applyItemChange).
 import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
+import type { KnownCard } from '../../core/collection/collection-book';
 import { hasCitySetting } from '../../core/library/deco';
 import { poseOf, type Layout, type Placed, type Pose, type Posed, type ShelfShape, type StoredDisplay } from '../../core/library/library-types';
 import {
-  SHELF_FULL_MESSAGE, SHELF_TOO_HIGH_MESSAGE, boardClearCm, boardHeightCm, compactShelves, displayOf, isLit, removeFurniture, setDisplayOf, setPose, setShapeOf, toggleLamp,
-  unplaceCard, type PxRect, type Stored,
+  SHELF_FULL_MESSAGE, SHELF_TOO_HIGH_MESSAGE, boardClearCm, boardHeightCm, compactShelves, displayOf, isLit, placedSlugs, removeFurniture, replaceCard, setCoverOf, setDisplayOf,
+  setPose, setShapeOf, toggleLamp, unplaceCard, type PxRect, type Stored,
 } from '../../core/library/room-grid';
 import { Btn, DisplayButtons, Icon, ICONS } from '../library-ui';
+import { CardStrip } from './CardStrip';
 import { TOP_FULL_MESSAGE } from './use-board-drag';
 
-export type ItemChange = { display: StoredDisplay } | { shape: ShelfShape } | { pose: Pose } | { remove: true } | { lamp: true };
+// `cover` : pochette choisie pour cet objet (null : celle de la carte) ; `swap` : une autre carte à la même place (le format reste celui de
+// l'objet).
+export type ItemChange = { display: StoredDisplay } | { shape: ShelfShape } | { pose: Pose } | { remove: true } | { lamp: true } | { cover: string | null }
+  | { swap: string };
+// Versions de la pochette d'une carte (cover-versions) : pas encore cherchées (`idle` : le premier appui sur 🖼️ lance la recherche, une
+// erreur y ramène), en cours, puis trouvées (`ready` vide : bouton grisé).
+export type CoverChoices = { state: 'idle' | 'loading' | 'ready'; urls: string[] };
+// Cartes de la Collection pour 🔄 Changer de carte.
+export type SwapProps = { cards: KnownCard[] };
+export const ALREADY_IN_ROOM_MESSAGE = 'Cette carte est déjà dans la pièce.';
+export const SWAP_PLAYING_MESSAGE = 'Impossible de changer la carte pendant sa lecture.';
+export const COVER_REFUSED_MESSAGE = 'Cette pochette ne peut pas être choisie.';
 export type BubbleCard = Stored | Posed;
 export type SmallItem = Extract<Placed, { kind: 'small' }>;
 export type BubbleItem = BubbleCard | SmallItem;
@@ -28,14 +44,18 @@ export function applyItemChange(layout: Layout, id: string, change: ItemChange):
   if (!isBubbleItem(item)) return null;
   if ('remove' in change) return item.kind === 'small' ? compactShelves(removeFurniture(layout, id)) : unplaceCard(layout, id);
   if ('lamp' in change) return item.kind === 'small' && item.item === 'lamp' ? toggleLamp(layout, id) : null;
+  if ('cover' in change) return item.kind === 'small' ? null : setCoverOf(layout, id, change.cover);
+  if ('swap' in change) return item.kind === 'small' ? null : replaceCard(layout, id, change.swap);
   if ('display' in change) return setDisplayOf(layout, id, change.display);
   if ('shape' in change) return setShapeOf(layout, id, change.shape);
   return setPose(layout, id, change.pose);
 }
 
 // Message d'un changement refusé : sur un plateau, la place ; sur une tablette, trop haut (le nouveau format dépasse la hauteur libre et
-// grandit) ou la place qui manque.
-export function refusalOf(item: BubbleItem, change: ItemChange): string {
+// grandit) ou la place qui manque. Changer de carte : d'abord la carte déjà dans la pièce (`layout` : la disposition vue).
+export function refusalOf(item: BubbleItem, change: ItemChange, layout?: Layout): string {
+  if ('cover' in change) return COVER_REFUSED_MESSAGE;
+  if ('swap' in change && layout && placedSlugs(layout).has(change.swap)) return ALREADY_IN_ROOM_MESSAGE;
   if (item.kind === 'posed' || (item.kind === 'small' && 'x' in item)) return TOP_FULL_MESSAGE;
   if (item.kind === 'stored' && 'shape' in change) {
     const h = boardHeightCm({ shape: change.shape });
@@ -107,6 +127,12 @@ type Props = {
   message: string | null;
   // Les changements (présentation, format, 🗑, lampe) ne sont proposés qu'avec une intention branchée.
   canEdit: boolean;
+  // Versions de la pochette (carte, avec une intention branchée) ; absent : pas de 🖼️. `onCovers` lance la recherche.
+  covers?: CoverChoices | null;
+  onCovers?(): void;
+  // Collection pour 🔄 (absente : pas de 🔄) et cartes déjà dans la pièce (absentes de la réglette).
+  swap?: SwapProps;
+  taken?: Set<string>;
   onMove(): void;
   onChange(change: ItemChange): void;
   onInfo?(): void;
@@ -114,7 +140,21 @@ type Props = {
   onClose(): void;
 };
 
-export function CardBubble({ item, anchor, layer, reserveRight = 0, message, canEdit, onMove, onChange, onInfo, onCity, onClose }: Props): ReactElement {
+const NOTHING_TAKEN: Set<string> = new Set();
+const ROW = { flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto', overflowY: 'hidden', touchAction: 'pan-x', padding: '2px 0' } as const;
+
+export function CardBubble({ item, anchor, layer, reserveRight = 0, message, canEdit, covers, onCovers, swap, taken = NOTHING_TAKEN, onMove, onChange, onInfo, onCity, onClose }: Props): ReactElement {
+  // Réglette ouverte sous les boutons (versions de la pochette ou cartes de 🔄), pour cet objet seulement.
+  const [panel, setPanel] = useState<{ id: string; kind: 'covers' | 'swap' } | null>(null);
+  const open = panel && panel.id === item.id ? panel.kind : null;
+  const toggle = (kind: 'covers' | 'swap') => setPanel(open === kind ? null : { id: item.id, kind });
+  // Réglette des versions : montrée pendant la recherche et s'il y a des versions (vide ou erreur : elle se referme).
+  const coversShown = open === 'covers' && covers != null && (covers.state === 'loading' || covers.urls.length > 0);
+  const chooseCovers = () => {
+    if (coversShown) return setPanel(null);
+    setPanel({ id: item.id, kind: 'covers' });
+    if (covers?.state === 'idle') onCovers?.();
+  };
   // Taille mesurée (offsetWidth/Height : hors rotation du calque) ; la bulle se recale quand elle change (message, autre objet).
   const ref = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<BubbleSize>(BUBBLE_GUESS);
@@ -144,11 +184,31 @@ export function CardBubble({ item, anchor, layer, reserveRight = 0, message, can
       {canEdit && card && FORMATS.map((f) => (
         <Btn key={f.shape} label={f.label} pressed={card.shape === f.shape} data={{ action: `card-shape-${f.shape}` }} onClick={() => onChange({ shape: f.shape })}>{f.glyph}</Btn>
       ))}
+      {canEdit && card && covers && (
+        <Btn label="Choisir la pochette" pressed={coversShown} disabled={covers.state === 'ready' && covers.urls.length === 0} data={{ action: 'cover-choose' }} onClick={chooseCovers}>🖼️</Btn>
+      )}
+      {canEdit && card && swap && <Btn label="Changer de carte" pressed={open === 'swap'} data={{ action: 'card-swap' }} onClick={() => toggle('swap')}>🔄</Btn>}
       {canEdit && item.kind === 'small' && item.item === 'lamp' && (
         <Btn label={isLit(item) ? 'Éteindre la lampe' : 'Allumer la lampe'} pressed={isLit(item)} data={{ action: 'lamp' }} onClick={() => onChange({ lamp: true })}><Icon paths={ICONS.bulb} /></Btn>
       )}
       {onCity && hasCitySetting(item) && <Btn label="Choisir la ville" data={{ action: 'deco-city' }} onClick={onCity}><Icon paths={ICONS.globe} /></Btn>}
       <Btn label="Fermer la bulle" data={{ action: 'bubble-close' }} onClick={onClose}>✕</Btn>
+      {canEdit && card && covers && coversShown && (
+        <div data-cover-strip="" role="group" aria-label="Versions de la pochette" style={ROW}>
+          <Btn label="Pochette d’origine" pressed={!card.cover} data={{ action: 'cover-origin' }} onClick={() => onChange({ cover: null })}>↺</Btn>
+          {covers.state === 'loading' && <span data-cover-loading="" role="status" aria-label="Recherche des pochettes…" title="Recherche des pochettes…" style={{ flex: 'none', font: '600 18px system-ui' }}>⏳</span>}
+          {covers.urls.map((url, i) => (
+            <button key={url} type="button" className="wmt-lib-btn" data-cover-choice={url} aria-label={`Pochette ${i + 1}`} title={`Pochette ${i + 1}`} aria-pressed={card.cover === url}
+              onClick={() => onChange({ cover: url })} style={{ flex: 'none', padding: 1, width: 40, height: 40, outline: card.cover === url ? '3px solid #F5C542' : 'none', outlineOffset: 1 }}>
+              <img src={url} alt="" referrerPolicy="no-referrer" loading="lazy" width={36} height={36} style={{ display: 'block', objectFit: 'cover', borderRadius: 4 }} />
+            </button>
+          ))}
+        </div>
+      )}
+      {canEdit && card && swap && open === 'swap' && (
+        <CardStrip inline cards={swap.cards} taken={taken} pending={null} label="Cartes pour remplacer celle-ci"
+          onPick={(slug) => { setPanel(null); onChange({ swap: slug }); }} />
+      )}
       {message && (
         <div data-card-bubble-message="" role="status" style={{ flexBasis: '100%', padding: '4px 6px', borderRadius: 8, background: 'rgba(210,59,47,.12)', color: '#a3271e', font: '600 13px system-ui, sans-serif' }}>{message}</div>
       )}

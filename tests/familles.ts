@@ -26,7 +26,7 @@ export const FAMILLES: Famille[] = [
       ...c(
         'Book*', 'book-service.*', 'Game*', 'game-service.*', 'game-box-service.*', 'Writer*', 'WatchProviders.*', 'HlsTrailerPlayer.*', 'fullscreen.*',
         'documentary-*', 'screen-*', 'platform-service.*', 'use-platform.*', 'work-list.*', 'orientation-lock.*',
-        'card-art.*', 'card-frame.*', 'card-preview-dom.*', 'card-popup-position.*', 'card-thumb.*', 'media-art.*', 'image-probe.*', 'cover-cache.*',
+        'card-art.*', 'card-frame.*', 'card-preview-dom.*', 'card-popup-position.*', 'card-thumb.*', 'media-art.*', 'image-probe.*', 'cover-cache.*', 'cover-versions.*',
       ),
       'tests/core/{book,game,documentary,screen,images,birth,geo}/**',
     ],

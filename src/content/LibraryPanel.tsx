@@ -101,6 +101,7 @@ import { useRoomCards } from './library-cards-data';
 import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
 import { applyBoxChanges, boxChanges, gameCoverUrl, localGameBox } from './game-box-content';
+import { imageOfPlaced } from './placed-image';
 import { getGameBoxService } from './game-box-registry';
 import { Btn, DisplayButtons, Icon, ICONS } from './library-ui';
 import { LibraryTopBar } from './library-topbar';
@@ -129,7 +130,7 @@ import { NO_PLAYER, noPlayer, noSubscribe } from './ListenSection';
 import { getPlayerSource } from './music-registry';
 import { reducedMotion } from './ghibli-sky';
 import { useHifiPlayer } from './hifi/use-hifi';
-import { HifiBubble } from './hifi/HifiBubble';
+import { HifiZoom } from './hifi/HifiZoom';
 import { usePlatform } from './usePlatform';
 import { localImage, useCoverCache } from './cover-cache';
 import { usableImage, useImageProbe } from './image-probe';
@@ -310,8 +311,15 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const [lib, setLib] = useState<LibraryState | null>(library.current());
   const [mode, setMode] = useState<'visit' | 'edit'>('visit');
-  // Bulle « En lecture » du poste hi-fi (ouverte en touchant le poste en mode Visiter) : liée à sa pièce, donc fermée si la pièce change.
-  const [hifiBubbleRoom, setHifiBubbleRoom] = useState<string | null>(null);
+  // Zoom de la chaîne hi-fi (ouvert en touchant le poste en mode Visiter) : lié à sa pièce, fermé au changement de pièce ou en Aménager.
+  // Entrée d'historique propre : le retour Android ferme d'abord la fiche ⓘ ouverte par-dessus, puis le zoom.
+  const hifiZoom = useArrangeView(() => {
+    if (!viewingRef.current) return false;
+    setViewing(null);
+    return true;
+  }, 'wmtHifiZoom');
+  const hifiZoomRoom = hifiZoom.hostId;
+  const closeHifiZoom = hifiZoom.close;
   const [drawer, setDrawer] = useState<DrawerState>(INITIAL_DRAWER);
   // Placement en cours (objet neuf, carte choisie ou objet déplacé) : rien n'est enregistré avant ✓.
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -489,6 +497,12 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // `landedFor` dit que le disque de l'objet ouvert est au poste (atterri, ou déjà là à l'ouverture) ; il retombe dès que le lecteur
   // passe à un autre album.
   const hifi = useHifiPlayer(lib ? activeRoom(lib).layout : NO_LAYOUT).state;
+  // Zoom de la chaîne ouvert sans poste (retiré), en Aménager ou pour une autre pièce que l'active (pièce supprimée, changée ailleurs) :
+  // fermé, avec son entrée d'historique.
+  const hifiZoomShown = hifiZoomRoom !== null && hifiZoomRoom === activeRoomId;
+  useEffect(() => {
+    if (hifiZoomRoom !== null && (hifiZoomRoom !== activeRoomId || hifi.hifiId === null || mode === 'edit')) closeHifiZoom();
+  }, [hifiZoomRoom, activeRoomId, hifi.hifiId, mode, closeHifiZoom]);
   const hifiRef = useRef(hifi);
   hifiRef.current = hifi;
   const platform = usePlatform();
@@ -517,8 +531,6 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const openAt = (id: string, from: Box | null): void => {
     const cur = openedRef.current;
     if (cur && cur.phase !== 'open') return;
-    // La bulle du poste ne reste pas ouverte derrière la couche.
-    setHifiBubbleRoom(null);
     setLandedFor(hifiRef.current.hifiId !== null && hifiRef.current.atHifi === id ? id : null);
     openItem(id, from);
   };
@@ -546,7 +558,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   // Abonné au lecteur seulement quand une couche ou la bulle du poste le montre : sinon chaque relevé du lecteur (5 s en lecture,
   // 15 s à l'arrêt) referait toute la pièce sur Android (le poste a son propre instantané, voir use-hifi).
   const playerSource = getPlayerSource();
-  const playerShown = playerSource !== null && (opened !== null || hifiBubbleRoom !== null);
+  const playerShown = playerSource !== null && (opened !== null || hifiZoomShown);
   const playerNow = useSyncExternalStore(playerShown ? playerSource.subscribe : noSubscribe, playerShown ? playerSource.current : noPlayer);
   // Objet ouvert disparu de la pièce (rangé ailleurs, carte retirée de la collection) : la couche se ferme d'un coup, avec son
   // entrée d'historique et l'orientation, et le vol en cours s'arrête (effet sur openedId) ; sinon elle resterait invisible mais active.
@@ -999,7 +1011,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     if (!editing) {
       if (press.consumeClick()) return;
       if (zoomRef.current) return;
-      if (hifiRef.current.hifiId === id) return setHifiBubbleRoom(room.id);
+      if (hifiRef.current.hifiId === id) return hifiZoom.open(room.id);
       if (tryZoom(id)) return;
       const tapped = layout.find((p) => p.id === id);
       if (tapped && hasCitySetting(tapped)) return setDecoDialog({ type: 'city', id });
@@ -1141,6 +1153,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     const id = nextFurnitureId(l);
     return 'hostId' in at ? poseCard(l, at.hostId, card.shape, card.slug, id, at.x, at.z) : storeCard(l, at.shelfId, at.level, at.order, card.shape, card.slug, id);
   });
+  // 🔄 Changer de carte dans la bulle : la même Collection que la réglette ＋.
+  const swapCards = { cards: roomCards.list };
   const arrangeAddProps = (initial: AddCard | null) => ({ cards: roomCards.list, categoryOf: roomCards.categoryOf, initial, onAdd: addCardAt });
 
   // Agrandir à gauche décale les meubles : le défilement suit pour garder la même vue.
@@ -1174,7 +1188,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const setMode2 = (next: 'visit' | 'edit'): void => {
     reset();
-    setHifiBubbleRoom(null);
+    closeHifiZoom();
     setMode(next);
   };
   // Changer de pièce ramène la vue à gauche et annule tout défilement en attente.
@@ -1184,7 +1198,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   };
   const chooseRoom = (id: string): void => {
     reset();
-    setHifiBubbleRoom(null);
+    closeHifiZoom();
     resetScroll();
     void library.update((state) => setActive(state, id));
   };
@@ -1571,6 +1585,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onTop={(id, hostId, x, z) => editLayout((l) => moveToTop(l, id, hostId, x, z))}
               onClose={arrange.close}
               onItemEdit={editArrangedItem}
+              swap={swapCards}
+              playingId={hifi.atHifi}
               onCardInfo={setViewing}
               onItemCity={(id) => setDecoDialog({ type: 'city', id })}
               bubbleBack={arrangeBubbleBack}
@@ -1589,6 +1605,8 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
               onClose={arrange.close}
               onItemEdit={editArrangedItem}
+              swap={swapCards}
+              playingId={hifi.atHifi}
               onCardInfo={setViewing}
               onItemCity={(id) => setDecoDialog({ type: 'city', id })}
               bubbleBack={arrangeBubbleBack}
@@ -1623,7 +1641,7 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onFlip={(flipped) => { if (flipped) setVideoShown(null); }}
               backRef={openedBackRef}
               card={card}
-              cover={imageOfCard(slug) ?? null}
+              cover={imageOfPlaced({ slug, ...(p.kind === 'stored' && p.cover ? { cover: p.cover } : {}) }, imageOfCard) ?? null}
               color={bookColor(slug)}
               state={opened}
               disc={disc}
@@ -1651,13 +1669,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             />
           );
         })()}
-        {hifiBubbleRoom === room.id && !editing && hifi.hifiId !== null && (
-          <HifiBubble
+        {hifiZoomRoom === room.id && !editing && hifi.hifiId !== null && (
+          <HifiZoom
+            layout={layout}
+            room={room}
             view={playerSource ? playerNow : NO_PLAYER}
             albumTitle={(playerSource ? playerNow : NO_PLAYER).card?.title ?? null}
-            anchor={{ stage: stage.ref.current, scroll: scrollRef.current, targetId: hifi.hifiId }}
-            onClose={() => setHifiBubbleRoom(null)}
-            onEject={() => setHifiBubbleRoom(null)}
+            imageOf={imageOfCard}
+            onClose={closeHifiZoom}
+            onEject={closeHifiZoom}
+            onInfo={setViewing}
+            sheetOpen={viewing !== null}
           />
         )}
         {viewing && roomCards.cards[viewing] && (

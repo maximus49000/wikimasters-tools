@@ -2323,6 +2323,60 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'bibliotheque-v37',
+    theme: 'collection',
+    glyph: '🖼️',
+    title: 'Choisir la pochette d’un objet, changer de carte',
+    summary: 'Dans la bulle d’une carte posée ou rangée : 🖼️ une autre version de sa pochette (autre édition d’un album, autre affiche, autre boîte), 🔄 une autre carte de la Collection à la même place',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: '🖼️ Choisir la pochette',
+        text: 'Dans la vue Modifier (✋ ou ＋) d’un bureau ou d’une étagère, touchez une carte, puis 🖼️ Choisir la pochette dans sa bulle : une réglette de vignettes s’ouvre sous les boutons (⏳ pendant la recherche). Touchez une vignette : l’objet la montre aussitôt dans la pièce, les zooms et la boîte ouverte. ↺ Pochette d’origine remet l’image de la carte.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À montrer l’édition que vous avez vraiment : le vinyle japonais d’un album, l’affiche française d’un film, la boîte européenne d’un jeu, la couverture de poche d’un livre.' },
+          { label: 'D’où viennent les données', text: 'Selon le format de l’objet : CD → Spotify (compte lié) puis Deezer ; DVD → affiches TMDB (français, anglais, sans texte) ; jeu vidéo → boîtes des versions TheGamesDB ; livre → couvertures Open Library des éditions. La pochette choisie est enregistrée sur CET objet seulement, dans votre pièce, sur l’appareil : la fiche de la carte, la Collection et les images du site ne changent pas.' },
+          { label: 'Comment ça marche', text: 'La recherche part au premier appui sur 🖼️ (rien n’est demandé tant que vous ne touchez pas le bouton) ; la réponse est gardée jusqu’à la fermeture de l’application. Si elle ne trouve rien, la réglette se referme et 🖼️ est grisé ; en cas d’erreur ou de délai dépassé, 🖼️ reste actif et un nouvel appui réessaie. La vignette de la pochette actuelle est cerclée d’or. Changer le format de l’objet (💿 📀 🎮 📖) remet l’image de la carte, puisque les versions dépendent du format. Une pochette qui ne se charge plus laisse place à l’image de la carte.' },
+          { label: 'Limites', text: 'Un CD dont l’interprète n’est connu ni par la carte ni par Wikidata est cherché sur son seul titre : les versions peuvent être celles d’un autre album du même nom. Une série rangée en DVD n’a souvent pas d’affiche (TMDB est cherché parmi les films). Les affiches TMDB demandent un titre proche du titre exact du film. Sans réponse en 15 secondes (Spotify : 8 secondes, puis Deezer), rien n’est proposé.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: '🔄 Changer de carte',
+        text: 'Dans la bulle d’une carte, 🔄 Changer de carte ouvre la réglette 🃏 de votre Collection (les cartes pas encore dans la pièce, avec la recherche par titre). Touchez une carte : elle prend la place de l’ancienne et garde le format de l’objet (CD, DVD, jeu, livre) et sa présentation ou sa pose.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À remplacer un objet sans le retirer puis en poser un autre : la place, l’ordre sur la tablette et la présentation sont gardés.' },
+          { label: 'D’où viennent les données', text: 'Les cartes viennent de votre Collection, comme la réglette ＋ ; le changement est enregistré dans votre pièce, sur l’appareil, dès que vous touchez la carte.' },
+          { label: 'Comment ça marche', text: 'C’est l’objet qui reste : son format (CD, DVD, jeu, livre), sa place, sa présentation (de face, sur la tranche) ou sa pose (trépied, à plat). Seule la carte change, avec l’image de sa carte (la pochette choisie de l’ancienne est oubliée). L’ancienne carte sort simplement de la pièce et revient dans la réglette. Pour un autre format, touchez ensuite 💿 📀 🎮 ou 📖.' },
+          { label: 'Limites', text: 'Une carte déjà dans la pièce n’est pas proposée (refusée avec un message si elle y est entrée entre-temps). Une carte dont le disque est au poste hi-fi (sa lecture) ne peut pas être changée tant qu’il y est. Seulement dans la vue Modifier, pas dans la bulle de la pièce.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
+    id: 'bibliotheque-v38',
+    theme: 'collection',
+    glyph: '🎶',
+    title: 'Zoom de la chaîne hi-fi',
+    summary: 'Touchez la chaîne hi-fi de votre pièce : vue rapprochée du poste, pochette de l’album debout, disque qui tourne, et les commandes du lecteur',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: '🎶 Voir la chaîne de près',
+        text: 'Dans votre pièce, en mode Visiter, touchez la chaîne hi-fi : elle s’ouvre en grand, vue d’un peu au-dessus. La pochette de l’album en cours se dresse devant le poste, grande et lisible (un vinyle, à côté) ; le disque tourne dans le puits (un vinyle sur la platine) et l’afficheur fait défiler le titre du morceau. En haut à gauche, le morceau, l’artiste et l’album ; à droite : ⏸/▶ lecture ou pause, ⏏ éjecter le disque, ⓘ la fiche de la carte, ✕ fermer.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À regarder l’album qui joue et à piloter la lecture sans quitter la pièce : c’est la suite de la petite bulle « En lecture », qu’il remplace.' },
+          { label: 'D’où viennent les données', text: 'Le morceau, l’artiste et l’état lecture / pause viennent du lecteur (Spotify, ou la carte posée au lecteur pour Tidal) ; la pochette est celle choisie pour l’objet (🖼️), sinon l’image de la carte. Rien n’est enregistré : le zoom montre l’état du lecteur.' },
+          { label: 'Comment ça marche', text: 'Le bureau et le poste sont les mêmes modèles 3D que dans la pièce, vus sous une caméra plongeante. Pour un CD, un DVD, un jeu ou un livre, la vue se resserre sur l’afficheur, le puits et la pochette posée devant le côté droit du poste (les enceintes et la platine peuvent sortir du cadre) ; pour un vinyle, tout le poste reste visible, la pochette à côté. Le disque s’arrête dès que la lecture est en pause. ⏏ met en pause, retire le disque : l’objet revient à sa place d’origine et le zoom se ferme. ⓘ ouvre la fiche de la carte par-dessus. Le bouton retour d’Android ferme la fiche d’abord, puis le zoom ; Échap aussi.' },
+          { label: 'Limites', text: 'Dans la pièce, la pochette reste couchée devant le poste : elle n’est debout que dans le zoom. En Aménager, toucher la chaîne la sélectionne (bulle d’actions) au lieu d’ouvrir le zoom. Sans disque au poste, le zoom montre le poste vide et « Rien en lecture ». Seul le premier poste posé dans la pièce sert.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'horloges-meteo-panneaux-2026-10',
     theme: 'collection',
     glyph: '🕰️',

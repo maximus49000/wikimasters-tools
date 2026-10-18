@@ -5,6 +5,7 @@
 import { useId, type CSSProperties, type ReactElement } from 'react';
 import { BOX_FORMATS, type BoxFormat } from '../../core/game/platform-boxes';
 import type { SleeveKind } from '../../core/library/hifi';
+import type { Placed } from '../../core/library/library-types';
 import { reducedMotion } from '../ghibli-sky';
 import type { ItemContent } from '../model3d-art';
 
@@ -29,6 +30,13 @@ export type DiscKind = 'vinyl' | 'cd' | 'game' | 'cart';
 // Support d'un jeu selon le gabarit de sa console : cartouche, sinon disque de jeu.
 export const gameDiscKind = (format: BoxFormat | undefined): DiscKind => (BOX_FORMATS[format ?? 'generic'].support.kind === 'cart' ? 'cart' : 'game');
 
+// Ce qui est posé sur le poste : un vinyle, une cartouche (jeu à cartouche, couchée), un disque de jeu ou un CD.
+export function hifiDiscKindOf(placed: Placed, sleeve: SleeveKind): DiscKind {
+  if (sleeve === 'vinyl') return 'vinyl';
+  if (sleeve !== 'game') return 'cd';
+  return gameDiscKind(placed.kind === 'stored' || placed.kind === 'posed' ? placed.box : undefined);
+}
+
 // Cartouche dans le carré -60…60 : proportions d'une cartouche Switch (21 × 31), la même taille quel que soit le jeu.
 export const HIFI_CART = { w: 50, h: 74 };
 
@@ -40,7 +48,7 @@ function HifiCart({ cover, color, clip }: { cover: string | null; color: string;
   const y = -h / 2;
   const label = { x: x + 4, y: y + 13, w: w - 8, h: h - 17 };
   return (
-    <g data-hifi-disc="still" data-hifi-cart="">
+    <g data-hifi-disc="still" data-spinning="false" data-hifi-cart="">
       <rect x={x + 3} y={y + 4} width={w} height={h} rx={4} fill={SHADOW} />
       <path d={`M${x + 4} ${y} L${x + w - 7} ${y} L${x + w} ${y + 7} L${x + w} ${y + h - 4} Q${x + w} ${y + h} ${x + w - 4} ${y + h} L${x + 4} ${y + h} Q${x} ${y + h} ${x} ${y + h - 4} L${x} ${y + 4} Q${x} ${y} ${x + 4} ${y}Z`} fill="#26262C" {...INK} />
       {[3.5, 6.5, 9.5].map((dy) => <line key={dy} x1={x + 10} y1={y + dy} x2={x + w - 10} y2={y + dy} {...THIN} stroke="#55555F" />)}
@@ -71,7 +79,7 @@ export function HifiDisc({ cover, color, spinning, kind = 'cd' }: { cover: strin
     ? Array.from({ length: 12 }, (_, i) => 25 + i * 2.8)
     : Array.from({ length: 6 }, (_, i) => 43 + i * 2.6);
   return (
-    <g data-hifi-disc={spin ? 'spinning' : 'still'}>
+    <g data-hifi-disc={spin ? 'spinning' : 'still'} data-spinning={spinning ? 'true' : 'false'}>
       <style>{'@keyframes wmt-hifi-disc-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}'}</style>
       <circle cx={3} cy={4} r={59} fill={SHADOW} />
       <g data-hifi-disc-spin="" style={style}>
