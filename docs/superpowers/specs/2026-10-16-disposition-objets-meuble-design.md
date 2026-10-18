@@ -244,3 +244,18 @@ Choix de Claude (à relire) :
   choisi** à partir du titre de la carte ; rien trouvé → bouton grisé.
 - **Ordre des parties** : en partie 3, une carte lâchée sur le dessus d'étagère est refusée (rouge) ; la partie 4 l'autorise, pose
   par défaut **trépied**.
+
+### Décision du 2026-10-18 — bulles unifiées (remplace « un doigt sur un objet le saisit tout de suite »)
+
+Dans la vue Modifier, **toucher un objet posé** (carte ou petit objet, sur une tablette, un dessus ou un bureau) ouvre **sa
+bulle**, la même que pour le mobilier classique dans la pièce (même apparence, mêmes glyphes). Le déplacement se lance
+**seulement** par **✥ Déplacer** dans la bulle : l'objet est alors armé, on le glisse, il est posé **au lâcher** sur une place
+verte (rouge : il revient). Aucun objet ne bouge par un geste direct. La bulle d'une carte garde présentation / pose, format,
+ⓘ et 🗑 ; celle d'un petit objet reprend les actions de la pièce (🗑, allumer/éteindre une lampe, …). Au niveau « meuble
+entier », toucher zoome toujours sur la tablette. La bulle ne cache jamais l'objet qu'elle concerne.
+
+**Complément (décision utilisateur du 2026-10-18)** : la bulle d'une carte (objets éligibles : cartes rangées ou posées) regroupe
+toutes les modifications de la carte — présentation / pose, format, **version de la pochette** (partie 6) et **🔄 Changer de
+carte** : remplacer la carte par une autre de la Collection, à la même place (même réglette 🃏 que l'ajout ; la nouvelle carte
+garde place, présentation et pose ; refusée avec message si elle ne tient pas ; la carte remplacée retourne simplement hors de la
+pièce). Seulement dans la vue Modifier, pas dans la bulle de la pièce.

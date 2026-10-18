@@ -2290,6 +2290,39 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'bibliotheque-v36',
+    theme: 'collection',
+    glyph: '🃏',
+    title: 'Une bulle pour chaque objet de la vue Modifier',
+    summary: 'Dans la vue Modifier, toucher une carte ou un petit objet ouvre sa bulle, comme pour les meubles ; on déplace désormais avec ✥ Déplacer, puis on glisse',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Toucher un objet ouvre sa bulle',
+        text: 'Dans la vue Modifier (✋ ou ＋) d’un bureau ou d’une étagère, touchez une carte ou un petit objet : sa bulle s’ouvre à côté de lui, la même que celle des meubles de la pièce. Celle d’une carte propose sa présentation (sur une tablette : de face, sur la tranche, de dos pour un jeu ; sur un bureau ou un dessus : sur un trépied ou à plat), son format (💿 CD, 📀 DVD, 🎮 jeu vidéo, 📖 livre), ⓘ sa fiche et 🗑 Retirer. Celle d’un petit objet propose 🗑 Retirer, pour une lampe, l’allumer ou l’éteindre, et pour une horloge, 🌐 choisir sa ville.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À régler un objet là où on le voit, sans quitter la vue : montrer la pochette d’un album, coucher un film sur le bureau, éteindre une lampe, ou passer un livre en coffret de DVD si c’est ainsi que vous l’avez.' },
+          { label: 'D’où viennent les données', text: 'Présentation, pose, format et lampe sont enregistrés dans votre pièce, sur l’appareil, dès que vous touchez le bouton ; la fiche ⓘ est celle de la carte dans votre Collection.' },
+          { label: 'Comment ça marche', text: 'Le bouton allumé est le réglage actuel. Si le changement ne tient plus à sa place (tablette pleine, trop haut, chevauchement sur un plateau), il est refusé avec le message habituel dans la bulle et rien ne bouge. La bulle se place à côté de l’objet sans jamais le cacher. Toucher ailleurs, ✕, Échap ou le retour Android la ferment (le retour la ferme avant de dézoomer).' },
+          { label: 'Limites', text: 'Au niveau du meuble entier, toucher un objet zoome d’abord sur sa tablette : la bulle s’ouvre dans le zoom, sur le dessus et sur un bureau. Changer de format remet la pochette et la boîte par défaut du nouveau format. Le choix de la version de la pochette (autres éditions d’un album, autres affiches d’un film, boîte d’un jeu, édition d’un livre) arrive avec la prochaine mise à jour.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Déplacer : d’abord ✥ dans la bulle',
+        text: 'Changement : poser le doigt sur un objet ne le saisit plus. Pour le déplacer, touchez-le, puis ✥ Déplacer dans sa bulle : il est cerclé de bleu. Glissez-le alors à sa nouvelle place ; il s’y pose quand vous levez le doigt sur une place verte. En rouge, il revient à sa place et rien ne change.',
+        details: [
+          { label: 'À quoi ça sert', text: 'À ne plus rien déplacer par mégarde en touchant un objet pour le régler ou en balayant la vue : seul l’objet choisi avec ✥ bouge, comme pour les meubles de la pièce.' },
+          { label: 'D’où viennent les données', text: 'La nouvelle place est enregistrée dans votre pièce, sur l’appareil, dès que l’objet est lâché en vert.' },
+          { label: 'Comment ça marche', text: 'Tout le reste du glissé ne change pas : la place verte ou rouge, le bord haut ou bas de l’écran tenu un court instant pour passer à la tablette voisine ou au dessus. Après le lâcher, l’objet n’est plus armé : pour le déplacer encore, repassez par sa bulle.' },
+          { label: 'Limites', text: 'La carte en attente du mode ＋ (cerclée d’or) n’a pas de bulle : elle se glisse directement, puis ✓ la pose. Au niveau du meuble entier, rien ne se glisse : zoomez sur une tablette d’abord.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'horloges-meteo-panneaux-2026-10',
     theme: 'collection',
     glyph: '🕰️',

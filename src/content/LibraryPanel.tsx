@@ -102,7 +102,7 @@ import { RoomCardDialog } from './RoomCardDialog';
 import { RoomView } from './RoomView';
 import { applyBoxChanges, boxChanges, gameCoverUrl, localGameBox } from './game-box-content';
 import { getGameBoxService } from './game-box-registry';
-import { Btn, Icon, ICONS } from './library-ui';
+import { Btn, DisplayButtons, Icon, ICONS } from './library-ui';
 import { LibraryTopBar } from './library-topbar';
 import { NEXT_ZONE, SkyMenu, placeBanner } from './library-sky-menu';
 import { PetsMenu, SPECIES_TEXT } from './library-pets-menu';
@@ -119,6 +119,7 @@ import { bookColor } from '../core/library/item-models';
 import { OpenedItemLayer } from './opened-item/OpenedItemLayer';
 import { ArrangeView } from './arrange/ArrangeView';
 import { ArrangeShelf, type ArrangeLevel } from './arrange/ArrangeShelf';
+import { applyItemChange, type ItemChange } from './arrange/CardBubble';
 import { useArrangeView } from './arrange/use-arrange-view';
 import type { AddAt, AddCard } from './arrange/use-pending-card';
 import { moveOnTop } from '../core/library/arrange';
@@ -327,7 +328,19 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   const [arrangeLevel, setArrangeLevel] = useState<ArrangeLevel>('whole');
   const arrangeLevelRef = useRef(arrangeLevel);
   arrangeLevelRef.current = arrangeLevel;
+  // Bulle d'un objet dans la vue Modifier : la vue y range sa fermeture ; le retour ferme la fiche ⓘ (ou le choix de la ville), puis la
+  // bulle (et l'objet armé), puis dézoome.
+  const arrangeBubbleBack = useRef<(() => boolean) | null>(null);
   const arrange = useArrangeView(() => {
+    if (viewingRef.current) {
+      setViewing(null);
+      return true;
+    }
+    if (decoDialogRef.current) {
+      setDecoDialog(null);
+      return true;
+    }
+    if (arrangeBubbleBack.current?.()) return true;
     if (arrangeLevelRef.current === 'whole') return false;
     setArrangeLevel('whole');
     return true;
@@ -1113,6 +1126,17 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
     startPlacementFor({ type: 'card', choice });
   };
   // ✓ de la vue ＋ : la carte est posée (plateau, trépied) ou rangée (tablette, rang) à l'endroit choisi, sous un id neuf.
+  // Bulle d'un objet dans la vue Modifier : intention appliquée à la disposition du moment ; rend faux si elle n'y tient plus (rien n'est
+  // écrit, la bulle affiche le refus).
+  const editArrangedItem = async (id: string, change: ItemChange): Promise<boolean> => {
+    let ok = false;
+    await editLayout((l) => {
+      const next = applyItemChange(l, id, change);
+      ok = next !== null;
+      return next;
+    });
+    return ok;
+  };
   const addCardAt = (card: AddCard, at: AddAt) => editLayout((l) => {
     const id = nextFurnitureId(l);
     return 'hostId' in at ? poseCard(l, at.hostId, card.shape, card.slug, id, at.x, at.z) : storeCard(l, at.shelfId, at.level, at.order, card.shape, card.slug, id);
@@ -1546,6 +1570,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               onBoard={(id, shelfId, level, order) => editLayout((l) => moveToBoard(l, id, shelfId, level, order))}
               onTop={(id, hostId, x, z) => editLayout((l) => moveToTop(l, id, hostId, x, z))}
               onClose={arrange.close}
+              onItemEdit={editArrangedItem}
+              onCardInfo={setViewing}
+              onItemCity={(id) => setDecoDialog({ type: 'city', id })}
+              bubbleBack={arrangeBubbleBack}
+              sheetOpen={viewing !== null || decoDialog !== null}
             />
           ) : (
             <ArrangeView
@@ -1559,6 +1588,11 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
               imageOf={imageOfCard}
               onMove={(id, x, z) => editLayout((l) => moveOnTop(l, id, x, z))}
               onClose={arrange.close}
+              onItemEdit={editArrangedItem}
+              onCardInfo={setViewing}
+              onItemCity={(id) => setDecoDialog({ type: 'city', id })}
+              bubbleBack={arrangeBubbleBack}
+              sheetOpen={viewing !== null || decoDialog !== null}
             />
           )
         )}
@@ -1666,17 +1700,6 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
 const FIT_BUTTON = { position: 'absolute', top: 4, right: 148, height: 32, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', font: '13px/20px system-ui,sans-serif' } as const;
 
 type ScreenSize = { width: number; height: number };
-
-// Sélecteur de présentation d'un objet rangé : de face (couverture vers l'avant), sur la tranche (titre lisible) ou, pour un jeu, de dos.
-function DisplayButtons({ current, game, onChoose }: { current: StoredDisplay; game: boolean; onChoose: (display: StoredDisplay) => void }): ReactElement {
-  return (
-    <>
-      <Btn label="Présenter de face" pressed={current === 'cover'} data={{ action: 'display-cover' }} onClick={() => onChoose('cover')}><Icon paths={ICONS.cover} /></Btn>
-      <Btn label="Présenter sur la tranche" pressed={current === 'spine'} data={{ action: 'display-spine' }} onClick={() => onChoose('spine')}><Icon paths={ICONS.spine} /></Btn>
-      {game && <Btn label="Présenter de dos" pressed={current === 'back'} data={{ action: 'display-back' }} onClick={() => onChoose('back')}><Icon paths={ICONS.boxBack} /></Btn>}
-    </>
-  );
-}
 
 // Taille de l'écran, suivie seulement pendant le plein écran (rotation du téléphone, fenêtre redimensionnée).
 function useScreenSize(watch: boolean): ScreenSize {

@@ -739,6 +739,49 @@ export function setStoredBox(layout: Layout, id: string, box: BoxFormat, caseCol
   });
 }
 
+// Une carte rangée change de présentation / de format sans jamais bouger seule : le changement ne doit pas la rendre plus large sur une
+// tablette qui ne peut plus la porter (les autres objets + elle > SHELF_INNER_CM), ni plus haute que la hauteur libre ; une tablette qui
+// débordait déjà est tolérée tant que la carte ne grandit pas.
+function stillFits(layout: Layout, before: Stored, after: Stored): boolean {
+  const heightOk = fitsHeight(after.level, after) || boardHeightCm(after) <= boardHeightCm(before) + 1e-9;
+  const widthOk = boardWidthCm(after) <= boardWidthCm(before) + 1e-9 || fits(boardItems(layout, after.shelfId, after.level, after.id), after);
+  return heightOk && widthOk;
+}
+// Présentation écrite seulement si elle diffère du défaut du format (comme partout ailleurs).
+function withDisplay(item: Stored, display: StoredDisplay | undefined): Stored {
+  const { display: _old, ...rest } = item;
+  const next: Stored = display ? { ...rest, display } : rest;
+  return displayOf(next) === displayOf({ shape: next.shape }) ? rest : next;
+}
+
+// Présentation d'une carte rangée (face, tranche, dos : le dos seulement pour un jeu) ; null si elle n'y tient plus (tablette pleine) ou si
+// la présentation ne convient pas au format. Le plan reste inchangé en cas de refus.
+export function setDisplayOf(layout: Layout, id: string, display: StoredDisplay): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || card.kind !== 'stored' || (display === 'back' && card.shape !== 'game')) return null;
+  const next = withDisplay(card, display);
+  if (!stillFits(layout, card, next)) return null;
+  return layout.map((p) => (p.id === id ? next : p));
+}
+
+// Format d'une carte rangée ou posée (CD, DVD, jeu, livre) ; efface pochette, boîte et couleur de boîtier (propres à l'ancien format) ;
+// une présentation qui ne convient pas au nouveau format (dos hors jeu) retombe sur le défaut du format. Null si la carte n'y tient plus.
+export function setShapeOf(layout: Layout, id: string, shape: ShelfShape): Layout | null {
+  const card = layout.find((p) => p.id === id);
+  if (!card || (card.kind !== 'stored' && card.kind !== 'posed')) return null;
+  if (card.shape === shape) return layout;
+  const { cover: _c, box: _b, caseColor: _k, ...rest } = card;
+  if (card.kind === 'posed') {
+    const next: Posed = { ...(rest as Posed), shape };
+    if (!canPutOnTop(layout, card.hostId, topThingOf(next), card.x, card.z, id)) return null;
+    return layout.map((p) => (p.id === id ? next : p));
+  }
+  const kept = card.display === 'back' && shape !== 'game' ? undefined : card.display;
+  const next = withDisplay({ ...(rest as Stored), shape }, kept);
+  if (!stillFits(layout, card, next)) return null;
+  return layout.map((p) => (p.id === id ? next : p));
+}
+
 // Déplace un objet rangé vers une tablette (la sienne ou une autre, sur cette étagère ou une autre) au rang `order` (règles de moveToBoard).
 export function moveStored(layout: Layout, id: string, shelfId: string, level: ShelfLevel, order: number): Layout | null {
   return layout.find((p) => p.id === id)?.kind === 'stored' ? moveToBoard(layout, id, shelfId, level, order) : null;

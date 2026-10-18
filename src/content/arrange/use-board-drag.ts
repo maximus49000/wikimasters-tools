@@ -1,4 +1,5 @@
-// Glissé d'un objet de la vue Modifier d'une étagère (tablettes et dessus) : le doigt saisit une carte ou un petit objet tout de suite,
+// Glissé d'un objet de la vue Modifier d'une étagère (tablettes et dessus) : le doigt saisit l'objet armé par ✥ Déplacer (ou la carte en
+// attente du mode ＋) — sur un autre objet, un toucher sans glisser appelle `onTap` (sa bulle) et rien ne bouge —,
 // la place d'insertion dit vert/rouge (dropOnShelf / moveToTop sur la disposition avec les déplacements en attente appliqués), le
 // relâcher demande le déplacement (`onBoard` / `onTop`, des intentions : l'appelant les applique à la disposition du moment) ou rend
 // l'objet à sa place. Un objet d'un dessus peut descendre sur une tablette ou passer sur l'autre dessus lié ; une carte rangée lâchée
@@ -26,7 +27,7 @@ export type BoardDrag = { id: string; lx: number; ly: number; fx: number; fy: nu
 // Objet lâché en vert, en attente de la disposition écrite : sa place au lâcher (`from`) et le déplacement à appliquer pour le dessiner.
 export type BoardPending = { id: string; from: string; apply(l: Layout): Layout | null };
 
-type Held = { id: string; sx: number; sy: number; fx: number; fy: number; moving: boolean; pointerId: number; zone: 'up' | 'down' | null; timer: number; lx: number; ly: number };
+type Held = { id: string; sx: number; sy: number; fx: number; fy: number; moving: boolean; pointerId: number; zone: 'up' | 'down' | null; timer: number; lx: number; ly: number; tapOnly: boolean };
 
 type Options = {
   layout: Layout;
@@ -42,6 +43,14 @@ type Options = {
   onBoard(id: string, shelfId: string, level: ShelfLevel, order: number): Promise<unknown> | void;
   onTop(id: string, hostId: string, x: number, z: number): Promise<unknown> | void;
   onLevel(level: ArrangeLevel): void;
+  // Toucher sans glisser (moins de SLOP_PX) : la bulle de la carte (l'appelant écarte ce qui n'en a pas, et le meuble entier qui zoome).
+  onTap?(id: string): void;
+  // Objet qui se glisse (armé par ✥ Déplacer, ou la carte en attente du mode ＋) ; les autres ne font que se toucher. Absent : tous.
+  canDrag?(id: string): boolean;
+  // Glissé lâché (vert ou rouge) : l'objet est désarmé.
+  onRelease?(id: string): void;
+  // Un appui sur un objet pas armé devient un mouvement : ce n'est plus un toucher, la bulle ouverte se ferme (comme un toucher ailleurs).
+  onDismiss?(): void;
 };
 
 // Place d'un objet dans la disposition, en clair : l'attente d'un objet lâché tombe quand elle change (ou qu'il disparaît).
@@ -68,7 +77,7 @@ export function neighbourLevel(level: ArrangeLevel, zone: 'up' | 'down'): Arrang
   return next === -1 ? (level === 0 ? 'top' : null) : isShelfLevel(next) ? next : null;
 }
 
-export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel }: Options): {
+export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel, onTap, canDrag, onRelease, onDismiss }: Options): {
   drag: BoardDrag | null; pending: BoardPending[]; applied: Layout; preview: Layout; grab(id: string, e: ReactPointerEvent): void; wasDrag(): boolean;
 } {
   const [drag, setDrag] = useState<BoardDrag | null>(null);
@@ -80,8 +89,8 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
   const held = useRef<Held | null>(null);
   const dragRef = useRef<BoardDrag | null>(null);
   const moved = useRef(false);
-  const live = useRef({ layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel });
-  live.current = { layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel };
+  const live = useRef({ layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel, onTap, canDrag, onRelease, onDismiss });
+  live.current = { layout, applied, pending, level, layerH, rotated, aimAt, boxOf, onBoard, onTop, onLevel, onTap, canDrag, onRelease, onDismiss };
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
   const forget = useCallback((w: BoardPending): void => setPending((list) => (list.includes(w) ? list.filter((q) => q !== w) : list)), []);
@@ -121,13 +130,20 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
     const box = live.current.boxOf(id, live.current.applied);
     const fx = box && box.w > 0 ? Math.min(1, Math.max(0, (lx - box.x) / box.w)) : 0.5;
     const fy = box && box.h > 0 ? Math.min(1, Math.max(0, (ly - box.y) / box.h)) : 0.5;
-    held.current = { id, sx: lx, sy: ly, fx, fy, moving: false, pointerId: e.pointerId, zone: null, timer: 0, lx, ly };
+    held.current = { id, sx: lx, sy: ly, fx, fy, moving: false, pointerId: e.pointerId, zone: null, timer: 0, lx, ly, tapOnly: live.current.canDrag ? !live.current.canDrag(id) : false };
     const mine = (ev: PointerEvent): boolean => held.current !== null && ev.pointerId === held.current.pointerId;
     const move = (ev: PointerEvent): void => {
       const h = held.current;
       if (!h || !mine(ev)) return;
       [h.lx, h.ly] = toLayer(ev);
       if (!h.moving && Math.hypot(h.lx - h.sx, h.ly - h.sy) < SLOP_PX) return;
+      // Objet pas armé : le doigt a bougé, ce n'est plus un toucher (ni un zoom), et rien ne se déplace.
+      if (h.tapOnly) {
+        if (!h.moving) live.current.onDismiss?.();
+        h.moving = true;
+        moved.current = true;
+        return;
+      }
       // Premier mouvement : le doigt est capturé par la page (pas au simple toucher : le clic qui zoome resterait sinon à la page), pour
       // qu'il ne soit pas perdu quand l'élément saisi disparaît avec le niveau quitté (bord d'écran).
       if (!h.moving) {
@@ -162,7 +178,14 @@ export function useBoardDrag({ layout, level, layerH, rotated, aimAt, boxOf, onB
     const up = (ev: PointerEvent): void => {
       if (!mine(ev)) return;
       const r = end();
-      if (!r || !r.d || !r.h.moving || !r.d.ok || !r.d.aim) return;
+      if (r && !r.h.moving) {
+        live.current.onTap?.(r.h.id);
+        return;
+      }
+      if (!r || r.h.tapOnly) return;
+      live.current.onRelease?.(r.h.id);
+      if (!r.d || !r.d.ok || !r.d.aim) return;
+      // Au meuble entier ('whole'), rien n'est armé (un toucher y zoome) : seule la carte en attente du mode ＋ y arrive (arrange-add).
       const { id: did, order } = r.d;
       const aim: BoardAim = r.d.aim;
       const apply = aim.kind === 'board' ? (l: Layout) => moveToBoard(l, did, aim.shelfId, aim.level, order ?? 0) : (l: Layout) => moveToTop(l, did, aim.hostId, aim.x, aim.z);

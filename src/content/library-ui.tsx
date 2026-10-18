@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
+import type { StoredDisplay } from '../core/library/library-types';
 
 // Briques d'interface de Ma Pièce : glyphe, bouton à glyphe et jeu de glyphes (viewBox 24, trait).
 export function Icon({ paths }: { paths: readonly string[] }): ReactElement {
@@ -82,6 +83,9 @@ export const ICONS = {
   spine: ['M4 4h3v16H4z', 'M9 4h3v16H9z', 'M14 5.2l2.9-.8 3.6 15.2-2.9.8z'],
   // De dos (jeu) : dos de la boîte, lignes de texte et code-barres.
   boxBack: ['M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z', 'M8 7h8', 'M8 10h8', 'M8 13h5', 'M9 16v2', 'M11 16v2', 'M12.5 16v2', 'M15 16v2'],
+  // Pose d'une carte sur un plateau : debout sur un trépied (carte, deux pieds et la béquille) ou couchée à plat (pochette vue en biais).
+  poseStand: ['M7 3h10v12H7z', 'M9 15l-2.5 6', 'M15 15l2.5 6', 'M12 15v6'],
+  poseFlat: ['M3 17l5-6h13l-5 6z', 'M3 17v2h13l5-6v-2'],
 } as const;
 
 export function Btn({ label, pressed, disabled, onClick, data, children, className }: { label: string; pressed?: boolean; disabled?: boolean; onClick: () => void; data?: Record<string, string>; children: ReactNode; className?: string }): ReactElement {
@@ -90,5 +94,16 @@ export function Btn({ label, pressed, disabled, onClick, data, children, classNa
     <button type="button" className={className ? `wmt-lib-btn ${className}` : 'wmt-lib-btn'} aria-label={label} title={label} aria-pressed={pressed} disabled={disabled} onClick={onClick} {...attrs}>
       {children}
     </button>
+  );
+}
+
+// Sélecteur de présentation d'un objet rangé : de face (couverture vers l'avant), sur la tranche (titre lisible) ou, pour un jeu, de dos.
+export function DisplayButtons({ current, game, onChoose }: { current: StoredDisplay; game: boolean; onChoose: (display: StoredDisplay) => void }): ReactElement {
+  return (
+    <>
+      <Btn label="Présenter de face" pressed={current === 'cover'} data={{ action: 'display-cover' }} onClick={() => onChoose('cover')}><Icon paths={ICONS.cover} /></Btn>
+      <Btn label="Présenter sur la tranche" pressed={current === 'spine'} data={{ action: 'display-spine' }} onClick={() => onChoose('spine')}><Icon paths={ICONS.spine} /></Btn>
+      {game && <Btn label="Présenter de dos" pressed={current === 'back'} data={{ action: 'display-back' }} onClick={() => onChoose('back')}><Icon paths={ICONS.boxBack} /></Btn>}
+    </>
   );
 }

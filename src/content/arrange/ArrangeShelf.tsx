@@ -4,7 +4,7 @@
 // voisin (use-board-drag). En mode ＋, la réglette 🃏 met une carte en attente (halo doré) sur la première tablette libre, qu'on glisse
 // à sa place (tablette + rang, ou un dessus) avant ✓ (use-pending-card).
 // Couche plein écran paysage (tournée de 90° en CSS si l'écran reste en hauteur), mur et sol de la pièce en fond.
-import { useCallback, useEffect, useId, useMemo, useState, type CSSProperties, type ReactElement } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import { cardQuad, boxOfQuad, placementRectPx } from '../../core/library/carried-items';
 import type { Layout, Placed, ShelfLevel, StyleId } from '../../core/library/library-types';
 import { layerFrame } from '../../core/library/opened-item';
@@ -17,18 +17,20 @@ import { GarnishedPiece, garnishOf, onShelfBoard, type ZoomCards } from '../furn
 import { Item3DArt } from '../model3d-art';
 import type { SceneView } from '../RoomView';
 import { ShelfBoardZoom, type BoardMarker } from '../shelf-board-zoom';
-import { ArrangeView, arrangeFrameFor, frameAt } from './ArrangeView';
+import { ArrangeView, NAV_PX, arrangeFrameFor, frameAt } from './ArrangeView';
 import { FURNITURE_MODELS } from '../../core/library/furniture-models';
 import { boardAim, boardBoxPx, boardFrameFor, boardRect, isBoardLevel, topAim, wholeAim, wholeBoxPx, wholeFrameFor } from './arrange-shelf-frames';
 import { axesOf, topPx } from './use-top-drag';
 import { useBoardDrag, type ArrangeLevel, type BoardAim } from './use-board-drag';
 import { BUTTON, HALO, KO_HALO, PendingChrome } from './arrange-chrome';
 import { PENDING_ID, pendingAtOf, usePendingCard, type AddProps } from './use-pending-card';
+import { CardBubble } from './CardBubble';
+import { useCardBubble, type CardBubbleProps, type CardBubbleState } from './use-card-bubble';
 
 export type { ArrangeLevel } from './use-board-drag';
 export { boardFrameFor, boardPointPx, wholeBoardPx, wholeFrameFor } from './arrange-shelf-frames';
 
-type Props = {
+type Props = CardBubbleProps & {
   layout: Layout;
   room: { style: StyleId };
   // L'étagère (et sa partenaire liée), de gauche à droite.
@@ -57,21 +59,14 @@ const r1 = (v: number): number => Math.round(v * 10) / 10;
 const OK = { fill: 'rgba(62,155,90,.28)', stroke: '#3E9B5A' };
 const KO = { fill: 'rgba(200,68,58,.3)', stroke: '#C8443A' };
 
-export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add, cards = {}, imageOf = NO_IMAGE, sceneView, onLevel, onBoard, onTop, onClose }: Props): ReactElement | null {
+export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add, cards = {}, imageOf = NO_IMAGE, sceneView, onLevel, onBoard, onTop, onClose, ...bubbleProps }: Props): ReactElement | null {
   const [screen, setScreen] = useState(screenSize);
   useEffect(() => {
     const onResize = () => setScreen(screenSize());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  // Échap fait comme le Retour : en zoom, le meuble entier ; au meuble entier, la fermeture (au niveau du dessus, ArrangeView la relaie).
   const escape = useCallback(() => (level === 'whole' ? onClose() : onLevel('whole')), [level, onClose, onLevel]);
-  useEffect(() => {
-    if (level === 'top') return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') escape(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [escape, level]);
   const layer = layerFrame(screen);
   const ids = shelfIds;
   const palette = paletteOf(room.style);
@@ -84,8 +79,15 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
   const moves = pend.wrap({ onBoard, onTop });
   const pendingId = pend.shown ? PENDING_ID : null;
   // Disposition avec les attentes appliquées (`applied`) : visée et cadres stables pendant un glissé ; `preview` : ce qu'on dessine.
+  const bubbleRef = useRef<CardBubbleState | null>(null);
   const { drag, applied, preview, grab, wasDrag } = useBoardDrag({
     layout: pend.view, level, layerH: layer.h, rotated: layer.rotated, onBoard: moves.onBoard, onTop: moves.onTop, onLevel,
+    // Bulle d'un objet (relue ici : elle vient après le glissé) : un toucher l'ouvre (au meuble entier, il zoome), seul l'objet armé
+    // par ✥ (ou la carte en attente) se glisse, le lâcher le désarme.
+    onTap: (id) => { if (level !== 'whole') bubbleRef.current?.open(id); },
+    canDrag: (id) => id === PENDING_ID || bubbleRef.current?.armed === id,
+    onRelease: () => bubbleRef.current?.disarm(),
+    onDismiss: () => bubbleRef.current?.close(),
     aimAt: (lx, ly, id, a) => {
       if (level === 'whole') return wholeAim(wholeFrameFor(ids, a, layer), lx, ly);
       if (isBoardLevel(level)) return boardAim(boardFrameFor(a, ids, level, layer), lx);
@@ -110,6 +112,23 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
       return null;
     },
   });
+  // Bulle (fermée à chaque changement de niveau ; l'objet armé reste, un glissé peut passer d'un niveau à l'autre) ; les refus se jugent sur
+  // ce que l'on voit (`applied` : déplacements en attente et carte en attente).
+  const bubble = useCardBubble(applied, bubbleProps, level);
+  bubbleRef.current = bubble;
+  // Échap fait comme le Retour : une fiche ouverte se ferme seule ; puis la bulle (et l'objet armé) ; en zoom, le meuble entier ; au meuble
+  // entier, la fermeture (au niveau du dessus, ArrangeView la relaie).
+  const busy = bubble.item !== null || bubble.armed !== null;
+  const { close: closeBubble, disarm, sheetOpen } = bubble;
+  useEffect(() => {
+    if (level === 'top') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || sheetOpen) return;
+      if (busy) { closeBubble(); disarm(); } else escape();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [escape, level, busy, closeBubble, disarm, sheetOpen]);
   const whole = useMemo(() => wholeFrameFor(ids, applied, layer), [ids, applied, layer.w, layer.h]); // eslint-disable-line react-hooks/exhaustive-deps
   const board = useMemo(() => (isBoardLevel(level) ? boardFrameFor(preview, ids, level, layer, applied) : null), [level, preview, ids, applied, layer.w, layer.h]); // eslint-disable-line react-hooks/exhaustive-deps
   const heldItem = drag ? applied.find((p) => p.id === drag.id) : undefined;
@@ -198,7 +217,8 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
     return (
       <>
         <ArrangeView layout={drag?.ok && drag.aim?.kind === 'top' ? preview : applied} room={room} hostId={ids[0]!} hostIds={ids} mode={mode}
-          external={{ grab, held: drag?.id ?? null, pending: pendingId, blocked: pend.blocked }} onClose={onClose} onEscape={escape} sceneView={sceneView} imageOf={imageOf} />
+          external={{ grab, held: drag?.id ?? null, pending: pendingId, blocked: pend.blocked }} onClose={onClose} onEscape={escape} sceneView={sceneView} imageOf={imageOf}
+          cardBubble={bubble} />
         <div data-arrange-shelf={ids.join('+')} data-arrange-level="top" data-arrange-mode={mode} style={{ ...layerStyle, zIndex: 41, background: 'none', pointerEvents: 'none' }}>
           {footprint && <svg width={layer.w} height={layer.h} viewBox={`0 0 ${layer.w} ${layer.h}`} aria-hidden="true" style={{ position: 'absolute', inset: 0 }}>{footprint}</svg>}
           {held}
@@ -212,8 +232,15 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
   }
 
   const floorY = Math.min(layer.h, Math.max(0, whole.oy + (whole.pad + whole.art.h) * whole.scale));
+  // Bulle d'un objet de la tablette zoomée : sous toute la bande de la tablette (titres compris), dans l'axe de l'objet ; jamais dessus.
+  const bubbleAnchor = board && bubble.item ? (() => {
+    const box = ids.map((_, i) => boardBoxPx(board, i, bubble.item!.id)).find((b) => b !== null);
+    if (!box) return null;
+    const strip = boardRect(board);
+    return { x: box.x, w: box.w, y: strip.y, h: strip.h };
+  })() : null;
   return (
-    <div data-arrange-shelf={ids.join('+')} data-arrange-level={String(level)} data-arrange-mode={mode} style={layerStyle}>
+    <div data-arrange-shelf={ids.join('+')} data-arrange-level={String(level)} data-arrange-mode={mode} onPointerDown={bubble.layerDown} style={layerStyle}>
       <svg width={layer.w} height={layer.h} viewBox={`0 0 ${layer.w} ${layer.h}`} style={{ display: 'block', touchAction: 'none' }} aria-hidden="true">
         {/* Mur, plinthe et sol de la pièce, en aplats (meuble entier seulement : en zoom, le mur nu derrière la tablette). */}
         {level === 'whole' && (
@@ -275,10 +302,14 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
       {board && (
         <ShelfBoardZoom shelfIds={ids} level={board.level} room={{ style: room.style, layout: preview }} measure={applied} cards={cards} imageOf={imageOf}
           onCard={NO_IMAGE} onLevel={onLevel} onAbove={() => onLevel('top')} frame={boardRect(board)} rotated={layer.rotated}
-          arrange={{ held: drag?.id ?? null, marker, onGrab: grab, pending: pendingId, pendingBlocked: pend.blocked }} />
+          arrange={{ held: drag?.id ?? null, marker, onGrab: grab, pending: pendingId, pendingBlocked: pend.blocked, armed: bubble.armed }} />
       )}
       {held}
       {message}
+      {bubble.item && bubbleAnchor && (
+        <CardBubble item={bubble.item} anchor={bubbleAnchor} layer={layer} reserveRight={NAV_PX} message={bubble.message} canEdit={bubble.canEdit}
+          onMove={bubble.arm} onChange={bubble.change} onInfo={bubble.canInfo ? bubble.info : undefined} onCity={bubble.canCity ? bubble.city : undefined} onClose={bubble.close} />
+      )}
       {chrome}
     </div>
   );

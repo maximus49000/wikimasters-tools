@@ -36,6 +36,15 @@ const pointer = (type: string, target: EventTarget, x: number, y: number, pointe
     Object.defineProperty(ev, 'pointerId', { value: pointerId });
     target.dispatchEvent(ev);
   });
+// ✥ Déplacer (bulles unifiées) : toucher l'objet ouvre sa bulle, ✥ l'arme, puis le doigt s'y pose pour le glisser.
+async function grabAt(target: Element, x: number, y: number, pointerId = 1) {
+  await pointer('pointerdown', target, x, y, pointerId);
+  await pointer('pointerup', target, x, y, pointerId);
+  const move = container.querySelector('[data-arrange-bubble] [data-action="move"]');
+  if (!move) throw new Error('bulle sans ✥');
+  await act(async () => { move.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+  await pointer('pointerdown', target, x, y, pointerId);
+}
 
 // Deux bibliothèques liées (s, t) : s porte 3 CD en haut, une lampe et un CD au milieu ; t un CD en haut.
 const SHELVES: Layout = [
@@ -138,7 +147,7 @@ describe('✋ sur une étagère (LibraryPanel)', () => {
     const f = boardFrameFor(SHELVES, IDS, 0, LAYER);
     const [x0, y0] = boardPointPx(f, 0, 7);
     const [x1, y1] = boardPointPx(f, 1, 40);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x1, y1);
     await pointer('pointerup', window, x1, y1);
     await settle();
@@ -176,7 +185,7 @@ describe('niveaux : meuble entier, tablettes, dessus', () => {
     expect(s.onLevel).toHaveBeenLastCalledWith(1);
   });
 
-  it('balayer verticalement dans le vide change de tablette ; balayer sur une carte la saisit', async () => {
+  it('balayer verticalement dans le vide change de tablette ; balayer sur une carte armée (✥) la saisit', async () => {
     const s = mount(SHELVES, 0);
     const board = q('[data-shelf-board]')!;
     await pointer('pointerdown', board, 300, 300);
@@ -185,7 +194,7 @@ describe('niveaux : meuble entier, tablettes, dessus', () => {
     expect(level()).toBe('1');
     s.onLevel.mockClear();
     const card = q('[data-board-card="D"]')!;
-    await pointer('pointerdown', card, 300, 300);
+    await grabAt(card, 300, 300);
     await pointer('pointermove', window, 300, 300 - SWIPE_PX);
     expect(q('[data-arrange-held]')).not.toBeNull();
     await pointer('pointerup', window, 300, 300 - SWIPE_PX);
@@ -213,12 +222,13 @@ describe('niveaux : meuble entier, tablettes, dessus', () => {
     expect(level()).toBe('0');
   });
 
-  it('toucher une carte sans glisser en zoom ne fait rien pour l’instant', async () => {
+  it('toucher une carte sans glisser en zoom ouvre sa bulle, sans rien déplacer ni zoomer', async () => {
     const s = mount(SHELVES, 0);
     const card = q('[data-board-card="A"]')!;
     await pointer('pointerdown', card, 300, 300);
     await pointer('pointerup', window, 301, 300);
     await click('[data-board-card="A"]');
+    expect(q('[data-arrange-bubble]')?.getAttribute('data-arrange-bubble')).toBe('c1');
     expect(s.onLevel).not.toHaveBeenCalled();
     expect(s.onBoard).not.toHaveBeenCalled();
     expect(q('[data-arrange-held]')).toBeNull();
@@ -232,7 +242,7 @@ describe('glissé en zoom', () => {
     const s = mount(SHELVES, 0);
     const [x0, y0] = boardPointPx(f, 0, 7);
     const [x1, y1] = boardPointPx(f, 0, 30);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x1, y1);
     expect(q('[data-arrange-held]')).not.toBeNull();
     expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
@@ -249,7 +259,7 @@ describe('glissé en zoom', () => {
     const ff = boardFrameFor(FULL, IDS, 0, LAYER);
     const [x0, y0] = boardPointPx(ff, 0, 7);
     const [x1, y1] = boardPointPx(ff, 1, 40);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x1, y1);
     expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('false');
     expect(q('[data-arrange-message]')?.textContent).toBe('Plus de place sur cette tablette.');
@@ -263,7 +273,7 @@ describe('glissé en zoom', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const s = mount(SHELVES, 0);
     const [x0, y0] = boardPointPx(f, 0, 7);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x0, LAYER.h - EDGE_PX + 4);
     await act(async () => { vi.advanceTimersByTime(EDGE_MS - 50); });
     expect(s.onLevel).not.toHaveBeenCalled();
@@ -284,7 +294,7 @@ describe('glissé en zoom', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const s = mount(SHELVES, 0);
     const [x0, y0] = boardPointPx(f, 0, 7);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x0, LAYER.h - 10);
     await act(async () => { vi.advanceTimersByTime(EDGE_MS / 2); });
     await pointer('pointermove', window, x0, y0);
@@ -297,7 +307,7 @@ describe('glissé en zoom', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const s = mount(SHELVES, 0);
     const [x0, y0] = boardPointPx(f, 0, 7);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x0, EDGE_PX - 4);
     await act(async () => { vi.advanceTimersByTime(EDGE_MS + 10); });
     expect(s.onLevel).toHaveBeenLastCalledWith('top');
@@ -317,7 +327,7 @@ describe('glissé en zoom', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const s = mount(SHELVES, 0);
     const [x0, y0] = boardPointPx(f, 0, 7);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x0, EDGE_PX - 4);
     await act(async () => { vi.advanceTimersByTime(EDGE_MS + 10); });
     await pointer('pointermove', window, 4, LAYER.h / 2);
@@ -331,7 +341,7 @@ describe('glissé en zoom', () => {
     const s = mount(SHELVES, 0);
     const [x0, y0] = boardPointPx(f, 0, 7);
     const [x1, y1] = boardPointPx(f, 0, 30);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x1, y1);
     await pointer('pointercancel', window, x1, y1);
     expect(s.onBoard).not.toHaveBeenCalled();
@@ -348,7 +358,7 @@ describe('rien ne bouge tant que la place n’est pas verte', () => {
     const ff = boardFrameFor(FULL, IDS, 0, LAYER);
     const before = { B: xOf('B'), C: xOf('C'), T1: xOf('T1') };
     const [x0, y0] = boardPointPx(ff, 0, 7);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, x0, y0);
+    await grabAt(q('[data-board-card="A"]')!, x0, y0);
     await pointer('pointermove', window, ...boardPointPx(ff, 1, 40));
     expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('false');
     expect({ B: xOf('B'), C: xOf('C'), T1: xOf('T1') }).toEqual(before);
@@ -363,7 +373,7 @@ describe('rien ne bouge tant que la place n’est pas verte', () => {
   it('visée verte : la place s’ouvre, les voisins se resserrent', async () => {
     mount(SHELVES, 0);
     const bBefore = xOf('B');
-    await pointer('pointerdown', q('[data-board-card="A"]')!, ...boardPointPx(f, 0, 7));
+    await grabAt(q('[data-board-card="A"]')!, ...boardPointPx(f, 0, 7));
     await pointer('pointermove', window, ...boardPointPx(f, 0, 30));
     expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
     expect(xOf('B')).not.toBe(bBefore);
@@ -372,11 +382,11 @@ describe('rien ne bouge tant que la place n’est pas verte', () => {
 
   it('deux lâchers en attente sur la même tablette : le premier ne retombe pas quand le second réordonne', async () => {
     mount(SHELVES, 0);
-    await pointer('pointerdown', q('[data-board-card="A"]')!, ...boardPointPx(f, 0, 7));
+    await grabAt(q('[data-board-card="A"]')!, ...boardPointPx(f, 0, 7));
     await pointer('pointermove', window, ...boardPointPx(f, 0, 30));
     await pointer('pointerup', window, ...boardPointPx(f, 0, 30));
     // B A C. Puis C en tête : C B A, A toujours à sa place d'attente.
-    await pointer('pointerdown', q('[data-board-card="C"]')!, ...boardPointPx(f, 0, 37));
+    await grabAt(q('[data-board-card="C"]')!, ...boardPointPx(f, 0, 37));
     await pointer('pointermove', window, ...boardPointPx(f, 0, 1));
     await pointer('pointerup', window, ...boardPointPx(f, 0, 1));
     expect(all('[data-board-shelf="s"] [data-board-card]').map((e) => e.getAttribute('data-board-card'))).toEqual(['C', 'B', 'A']);
@@ -399,7 +409,7 @@ describe('deux dessus liés côte à côte', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const f = boardFrameFor(TOPS, IDS, 0, LAYER);
     const [x0, y0] = boardPointPx(f, 1, 22);
-    await pointer('pointerdown', q('[data-board-small="l2"]')!, x0, y0);
+    await grabAt(q('[data-board-small="l2"]')!, x0, y0);
     await pointer('pointermove', window, x0, EDGE_PX - 4);
     await act(async () => { vi.advanceTimersByTime(EDGE_MS + 10); });
     expect(s.onLevel).toHaveBeenLastCalledWith('top');
@@ -446,7 +456,7 @@ describe('objets d’un dessus : vers une tablette ou l’autre dessus', () => {
   // Tenir l'objet `id` du dessus au bord bas pendant EDGE_MS : la vue passe à la tablette 0, l'objet reste tenu.
   const downToBoard = async (s: Spies, id: string, at: [number, number]) => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    await pointer('pointerdown', q(`[data-arrange-view] [data-arrange-item="${id}"]`)!, ...at);
+    await grabAt(q(`[data-arrange-view] [data-arrange-item="${id}"]`)!, ...at);
     await pointer('pointermove', window, at[0], LAYER.h - EDGE_PX + 4);
     await act(async () => { vi.advanceTimersByTime(EDGE_MS + 10); });
     expect(s.onLevel).toHaveBeenLastCalledWith(0);
@@ -486,7 +496,7 @@ describe('objets d’un dessus : vers une tablette ou l’autre dessus', () => {
 
   it('un objet d’un dessus lâché sur l’autre dessus lié : onTop avec cet autre dessus', async () => {
     const s = mount(ON_TOP, 'top');
-    await pointer('pointerdown', q('[data-arrange-view] [data-arrange-item="lt"]')!, ...topPx(0, 47, 12));
+    await grabAt(q('[data-arrange-view] [data-arrange-item="lt"]')!, ...topPx(0, 47, 12));
     const [x1, y1] = topPx(1, 40, 15);
     await pointer('pointermove', window, x1, y1);
     expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
@@ -499,7 +509,7 @@ describe('objets d’un dessus : vers une tablette ou l’autre dessus', () => {
 
   it('sur son propre dessus : onTop sur le même dessus (déplacement au cm)', async () => {
     const s = mount(ON_TOP, 'top');
-    await pointer('pointerdown', q('[data-arrange-view] [data-arrange-item="lt"]')!, ...topPx(0, 47, 12));
+    await grabAt(q('[data-arrange-view] [data-arrange-item="lt"]')!, ...topPx(0, 47, 12));
     const [x1, y1] = topPx(0, 67, 15);
     await pointer('pointermove', window, x1, y1);
     await pointer('pointerup', window, x1, y1);
@@ -532,31 +542,21 @@ describe('gestes du meuble entier et Échap', () => {
 });
 
 describe('glissé au niveau entier', () => {
-  it('lâcher une carte sur une autre tablette : onBoard avec cette tablette', async () => {
+  // Bulles unifiées (décision du 2026-10-18) : au meuble entier, toucher zoome ; un objet ne se déplace que depuis ✥ de sa bulle, en zoom.
+  it('glisser une carte au meuble entier ne la déplace pas, et ne zoome pas', async () => {
     const s = mount();
     const f = wholeFrameFor(IDS, SHELVES, LAYER);
     const [x0, y0] = wholeBoardPx(f, 0, 0, 7);
     const [x1, y1] = wholeBoardPx(f, 1, 2, 10);
     await pointer('pointerdown', q('[data-zoom-card="A"]')!, x0, y0);
     await pointer('pointermove', window, x1, y1);
-    expect(q('[data-insert]')?.getAttribute('data-ok')).toBe('true');
+    expect(q('[data-arrange-held]')).toBeNull();
+    expect(q('[data-insert]')).toBeNull();
     await pointer('pointerup', window, x1, y1);
-    expect(s.onBoard).toHaveBeenCalledWith('c1', 't', 2, 0);
-    // Le glissé n'a pas zoomé (le clic qui suit non plus).
-    await click('[data-zoom-card="A"]');
-    expect(s.onLevel).not.toHaveBeenCalled();
-  });
-
-  it('au-dessus des tablettes (le dessus, de face) : refusé, rien n’est appelé', async () => {
-    const s = mount();
-    const f = wholeFrameFor(IDS, SHELVES, LAYER);
-    const [x0, y0] = wholeBoardPx(f, 0, 0, 7);
-    await pointer('pointerdown', q('[data-zoom-card="A"]')!, x0, y0);
-    await pointer('pointermove', window, x0, f.oy - 4);
-    expect(q('[data-arrange-held]')?.getAttribute('data-ok')).toBe('false');
-    await pointer('pointerup', window, x0, f.oy - 4);
     expect(s.onBoard).not.toHaveBeenCalled();
     expect(s.onTop).not.toHaveBeenCalled();
+    await click('[data-zoom-card="A"]');
+    expect(s.onLevel).not.toHaveBeenCalled();
   });
 });
 
