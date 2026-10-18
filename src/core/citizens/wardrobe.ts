@@ -3,11 +3,11 @@
 // skinnés liés au MÊME squelette que le corps (ils suivent donc toutes les animations), en matériau toon deux tons.
 // Port typé du banc (.superpowers/sdd/2026-10-18-habitants-3d/bench/wardrobe.js) ; découpé par familles de pièces
 // dans `wardrobe/`. Aucun DOM : tout se calcule à partir de la géométrie du corps.
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { Piece } from './catalogue';
 import type { BodyInfo } from './wardrobe/body';
 import { garments, skirt } from './wardrobe/shell';
-import { beard, bonnet, cap, hair } from './wardrobe/hair';
+import { beard, bonnet, cap, hair, skull } from './wardrobe/hair';
 import { gilet, tablier } from './wardrobe/work';
 import { accessory } from './wardrobe/accessories';
 
@@ -15,7 +15,7 @@ export { analyse, JOINTS, type BodyInfo, type JointName, type Part, type Skull, 
 export { toon, type Band, type Motif } from './wardrobe/materials';
 export { garments, shell, skirt } from './wardrobe/shell';
 export { beard, bonnet, cap, hair, HAIR_STYLES, skull } from './wardrobe/hair';
-export { gilet, GILET_BANDE, GILET_ORANGE, tablier, TABLIER_CREME } from './wardrobe/work';
+export { gilet, GILET_BANDE, tablier } from './wardrobe/work';
 export { accessory, ACCESSORIES, type AccessoryName } from './wardrobe/accessories';
 
 const flat = (m: THREE.SkinnedMesh | THREE.SkinnedMesh[]): THREE.SkinnedMesh[] => (Array.isArray(m) ? m : [m]);
@@ -34,21 +34,33 @@ function piece(A: BodyInfo, p: Piece): THREE.SkinnedMesh[] {
     case 'hair': return hair(A, p.style, p.color);
     case 'beard': return beard(A, p.style, p.color);
     case 'cap': return cap(A, p.color, p.visor);
-    case 'gilet': return [gilet(A)];
-    case 'tablier': return tablier(A);
+    case 'gilet': return [gilet(A, p.color)];
+    case 'tablier': return tablier(A, p.color);
     case 'bonnet': return bonnet(A, p.color);
     case 'accessory': return accessory(A, p.what, p.color);
   }
 }
 
-// Habille un corps analysé : toutes les pièces, liées au squelette du corps. `skin` = teinte des bras nus.
-// Le crâne mesuré est gardé dans `info` (une seule mesure par base, quel que soit le nombre d'habitants habillés).
-export function dressRig(info: BodyInfo, pieces: Piece[], skin: string): THREE.Object3D[] {
-  const A: BodyInfo = { ...info, skin };
-  const out: THREE.Object3D[] = [];
-  for (const p of pieces) {
-    out.push(...piece(A, p));
-    if (A.skull && !info.skull) info.skull = A.skull;
+// Pièces mesurées sur le crâne.
+const HEAD_PIECES = new Set<Piece['k']>(['hair', 'beard', 'cap', 'bonnet']);
+
+// Habille un corps analysé : toutes les pièces, liées au squelette de `body` — le corps analysé lui-même, ou un clone
+// (SkeletonUtils.clone) de la même base, qui partage sa géométrie au repos mais a son propre squelette.
+// `skin` = teinte des bras nus. Le crâne est mesuré une fois et gardé sur `info` (objet de la base, partagé par tous
+// les habitants de cette base).
+export function dressRig(info: BodyInfo, pieces: Piece[], skin: string, body: THREE.SkinnedMesh = info.body): THREE.Object3D[] {
+  if (pieces.some((p) => HEAD_PIECES.has(p.k))) info.skull ??= skull(info);
+  const A: BodyInfo = { ...info, body, skin };
+  return pieces.flatMap((p) => piece(A, p));
+}
+
+// Libère géométries et matériaux d'un habillage (la rampe toon, partagée par tous les matériaux, est gardée).
+export function disposeRig(objs: THREE.Object3D[]): void {
+  for (const o of objs) {
+    o.traverse((n) => {
+      if (!(n instanceof THREE.Mesh)) return;
+      n.geometry.dispose();
+      for (const m of Array.isArray(n.material) ? n.material : [n.material]) m.dispose();
+    });
   }
-  return out;
 }

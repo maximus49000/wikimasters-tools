@@ -189,7 +189,9 @@ export function citizen(seed: number): CitizenDesc {
 // ——— Habitant à partir d'une tenue de la ville ———
 
 const ACCESSOIRES = { backpack: 'sac-a-dos', bag: 'sac', case: 'mallette', ball: 'ballon', scarf: 'echarpe' } as const;
-const GILET = '#E8731C';
+// Tenues de travail : gilet haute visibilité orange, tablier crème clair (la bande réfléchissante est dessinée par la garde-robe).
+const GILET = '#F28C28';
+const TABLIER = '#F4F1EA';
 const HAUTS = { tee: 'tee', sweater: 'pull', jacket: 'manteau', coat: 'manteauLong', shirt: 'chemise', suit: 'chemise', jersey: 'tee' } as const;
 // Si la base ne porte pas le haut demandé, on glisse vers le plus proche qu'elle porte.
 const REPLI_HAUT = ['pull', 'chemise', 'tee'];
@@ -279,7 +281,7 @@ export function citizenFromOutfit(seed: number, o: Outfit, opts: { work?: Work; 
   if (o.accessory !== 'none') items.push(item('accessory', o.accessoryColor, { what: ACCESSOIRES[o.accessory] }));
   if (opts.umbrella) items.push(item('accessory', PAL[pick(R, ['rouge', 'marine', 'moutarde', 'vert', 'prune'] as const)], { what: 'parapluie' }));
   if (opts.work === 'vest') items.push(item('gilet', GILET));
-  if (opts.work === 'apron') items.push(item('tablier', PAL.creme));
+  if (opts.work === 'apron') items.push(item('tablier', TABLIER));
 
   return { base, skin: peauProche(o.skin), height: B.metres * (0.95 + R() * 0.1), hair, beard, cap, items, mood: 'neutre' };
 }

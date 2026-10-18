@@ -32,7 +32,8 @@ export function toon(color: string, side: THREE.Side = THREE.DoubleSide, pattern
           : 'float pat = step(0.55, fract(vBind.y * uFreq));';
       sh.fragmentShader = 'uniform vec3 uC2;\nuniform float uFreq;\nuniform float uLo;\nuniform float uHi;\nvarying vec3 vBind;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + rule + '\ndiffuseColor.rgb = mix(diffuseColor.rgb, uC2, pat);');
     };
-    m.customProgramCacheKey = () => (band ? `bande${band.color}${band.lo.toFixed(4)}${band.hi.toFixed(4)}` : pattern.kind + pattern.color + freq);
+    // Les bornes de la bande sont des uniformes : un seul programme par couleur de bande.
+    m.customProgramCacheKey = () => (band ? 'bande' + band.color : pattern.kind + pattern.color + freq);
   }
   return m;
 }

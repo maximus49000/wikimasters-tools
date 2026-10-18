@@ -2,8 +2,9 @@
 // pièces à la bonne hauteur (cheveux sur la tête, chaussures sous les genoux, gilet sur le torse…).
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Piece } from '../../../src/core/citizens/catalogue';
-import { analyse, dressRig, garments, hair, skirt, type BodyInfo } from '../../../src/core/citizens/wardrobe';
+import { analyse, disposeRig, dressRig, garments, hair, skirt, type BodyInfo } from '../../../src/core/citizens/wardrobe';
 import { makeHumanoid } from './fixtures/humanoid';
 
 const HAIRS = ['court', 'raie', 'degarni', 'couronne', 'carre', 'long', 'chignon', 'boucles', 'queue', 'couettes', 'rase', 'frise', 'afro', 'tresses', 'enfant'];
@@ -181,19 +182,22 @@ describe('nouvelles pièces', () => {
 });
 
 describe('accessoires', () => {
-  const BONE: Record<string, number> = {
-    'sac-a-dos': A.idx.Spine2, mallette: A.idx.RightHand, ballon: A.idx.RightHand, parapluie: A.idx.RightHand,
+  // Os attendu pour chaque maillage de chaque accessoire, dans l'ordre de construction.
+  const BONES: Record<string, string[]> = {
+    'sac-a-dos': ['Spine2', 'Spine2', 'Spine2', 'Spine2'],
+    sac: ['Hips', 'Hips', 'Spine2'],
+    mallette: ['RightHand', 'RightHand'],
+    ballon: ['RightHand'],
+    echarpe: ['Neck', 'Spine2'],
+    parapluie: ['RightHand', 'RightHand', 'RightHand'],
   };
-  it('chacun non vide, lié au même squelette, rigide sur un os', () => {
+  it('chacun non vide, lié au même squelette, rigide sur son os', () => {
     for (const what of ACCESSOIRES) {
       const ms = dress({ k: 'accessory', what, color: '#2A3A5E' });
       checkBound(ms);
-      for (const m of ms) {
-        const SI = (m as THREE.Mesh).geometry.attributes.skinIndex!;
-        rigidOn(m, SI.getX(0));
-      }
-      const bone = BONE[what];
-      if (bone !== undefined) for (const m of ms) rigidOn(m, bone);
+      const expected = BONES[what]!;
+      expect(ms).toHaveLength(expected.length);
+      ms.forEach((m, i) => rigidOn(m, A.idx[expected[i]!]!));
     }
   });
   it('sac : sac au bassin, bandoulière au torse ; écharpe : cou + pan au torse', () => {
@@ -222,5 +226,73 @@ describe('accessoires', () => {
   });
   it('accessoire inconnu : rien', () => {
     expect(dress({ k: 'accessory', what: 'trottinette', color: '#000000' })).toEqual([]);
+  });
+});
+
+describe('toutes les pièces', () => {
+  const ALL: Piece[] = [
+    { k: 'top', sleeve: 0.45, color: '#B5523B' }, { k: 'bottom', cut: 0.97, color: '#2A3A5E' },
+    { k: 'skirt', len: 0.6, flare: 0.35, color: '#8FA77F' }, { k: 'socks', from: 0.8, color: '#FFFFFF' },
+    { k: 'shoes', color: '#3A2A20', sole: '#EEEEEE' }, { k: 'boots', from: 0.72, color: '#3A2A20', sole: '#222222' },
+    { k: 'skin', from: 0.28, to: 0.55 }, { k: 'collar', color: '#FFFFFF' }, { k: 'cap', color: '#C03030', visor: '#FFFFFF' },
+    { k: 'gilet', color: '#F28C28' }, { k: 'tablier', color: '#F4F1EA' }, { k: 'bonnet', color: '#C03030' },
+    ...HAIRS.map((style): Piece => ({ k: 'hair', style, color: '#3A2A20' })),
+    ...BEARDS.map((style): Piece => ({ k: 'beard', style, color: '#3A2A20' })),
+    ...ACCESSOIRES.map((what): Piece => ({ k: 'accessory', what, color: '#2A3A5E' })),
+  ];
+  it('poids de peau : somme = 1 et os existants, pour chaque sommet', () => {
+    const nb = body.skeleton.bones.length;
+    for (const p of ALL) {
+      for (const m of dress(p)) {
+        const g = (m as THREE.Mesh).geometry, SI = g.attributes.skinIndex!, SW = g.attributes.skinWeight!;
+        expect(SI.count).toBe(g.attributes.position!.count);
+        for (let i = 0; i < SW.count; i++) {
+          expect(Math.abs(SW.getX(i) + SW.getY(i) + SW.getZ(i) + SW.getW(i) - 1)).toBeLessThan(1e-4);
+          for (const b of [SI.getX(i), SI.getY(i), SI.getZ(i), SI.getW(i)]) expect(b).toBeLessThan(nb);
+        }
+      }
+    }
+  });
+  it('couleur de la pièce pour le gilet et le tablier', () => {
+    const c = (ms: THREE.Object3D[]) => ((ms[0] as THREE.SkinnedMesh).material as THREE.MeshToonMaterial).color.getHexString();
+    expect(c(dress({ k: 'gilet', color: '#123456' }))).toBe('123456');
+    expect(c(dress({ k: 'tablier', color: '#654321' }))).toBe('654321');
+  });
+});
+
+describe('habillage', () => {
+  it('lié au squelette du clone, crâne mesuré une seule fois', () => {
+    const base = makeHumanoid(), info = analyse(base);
+    let clone: THREE.SkinnedMesh | undefined;
+    cloneSkinned(base).traverse((o) => { if (o instanceof THREE.SkinnedMesh) clone = o; });
+    expect(clone).toBeDefined();
+    expect(clone!.skeleton).not.toBe(base.skeleton);
+    expect(info.skull).toBeUndefined();
+    const pieces: Piece[] = [{ k: 'hair', style: 'court', color: '#000000' }, { k: 'top', sleeve: 0.45, color: '#FFFFFF' }];
+    const ms = dressRig(info, pieces, '#C8906A', clone!);
+    for (const m of ms) expect((m as THREE.SkinnedMesh).skeleton).toBe(clone!.skeleton);
+    const S = info.skull;
+    expect(S).toBeDefined();
+    dressRig(info, pieces, '#C8906A');
+    expect(info.skull).toBe(S);
+  });
+  it('coiffures compactées : seulement les sommets utilisés', () => {
+    for (const style of ['afro', 'court']) {
+      const [m] = hair(A, style, '#000000');
+      const g = m!.geometry, n = g.attributes.position!.count;
+      expect(n).toBeLessThan(7000); // sphère de départ : 12 513 sommets
+      expect(Math.max(...Array.from(g.index!.array))).toBeLessThan(n);
+      expect(new Set(Array.from(g.index!.array)).size).toBe(n);
+    }
+  });
+  it('disposeRig libère géométries et matériaux, pas la rampe toon', () => {
+    const ms = dress({ k: 'top', sleeve: 0.45, color: '#FFFFFF' });
+    const m = ms[0] as THREE.SkinnedMesh, mat = m.material as THREE.MeshToonMaterial;
+    const seen: string[] = [];
+    m.geometry.addEventListener('dispose', () => seen.push('geo'));
+    mat.addEventListener('dispose', () => seen.push('mat'));
+    mat.gradientMap!.addEventListener('dispose', () => seen.push('grad'));
+    disposeRig(ms);
+    expect(seen.sort()).toEqual(['geo', 'mat']);
   });
 });

@@ -82,11 +82,13 @@ describe("à partir d'une tenue", () => {
   it('gilet de chantier : ajoute une pièce gilet', () => {
     const d = citizenFromOutfit(3, base, { work: 'vest' });
     expect(noms(d)).toContain('gilet');
-    expect(expand(d).some((p) => p.k === 'gilet')).toBe(true);
+    expect(expand(d).find((p) => p.k === 'gilet')?.color).toBe('#F28C28');
   });
 
   it('tablier', () => {
-    expect(noms(citizenFromOutfit(3, base, { work: 'apron' }))).toContain('tablier');
+    const d = citizenFromOutfit(3, base, { work: 'apron' });
+    expect(noms(d)).toContain('tablier');
+    expect(expand(d).find((p) => p.k === 'tablier')?.color).toBe('#F4F1EA');
   });
 
   it('enfant : base enfant, jamais de barbe', () => {

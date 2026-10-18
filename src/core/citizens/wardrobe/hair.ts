@@ -68,10 +68,16 @@ export function hairSurface(A: BodyInfo, S: Skull, { off = 0.008, drop = () => 0
     P.setXYZ(i, p[0], p[1], p[2]);
     ok[i] = keep(az, el) ? 1 : 0;
   }
-  const src = g.index!.array, ind: number[] = [];
-  for (let k = 0; k < src.length; k += 3) if (ok[src[k]!] && ok[src[k + 1]!] && ok[src[k + 2]!]) ind.push(src[k]!, src[k + 1]!, src[k + 2]!);
-  const pos = Array.from(P.array as ArrayLike<number>), si: number[] = [], sw: number[] = [];
-  for (let i = 0; i < P.count; i++) { si.push(A.idx.Head, 0, 0, 0); sw.push(1, 0, 0, 0); }
+  // Seuls les sommets des triangles gardés sont conservés (indices renumérotés) : la sphère de départ en compte 12 513.
+  const src = g.index!.array, ind: number[] = [], pos: number[] = [], remap = new Int32Array(P.count).fill(-1);
+  const at = (v: number): number => {
+    if (remap[v]! < 0) { remap[v] = pos.length / 3; pos.push(P.getX(v), P.getY(v), P.getZ(v)); }
+    return remap[v]!;
+  };
+  for (let k = 0; k < src.length; k += 3) if (ok[src[k]!] && ok[src[k + 1]!] && ok[src[k + 2]!]) ind.push(at(src[k]!), at(src[k + 1]!), at(src[k + 2]!));
+  const si: number[] = [], sw: number[] = [];
+  for (let i = 0; i < pos.length / 3; i++) { si.push(A.idx.Head, 0, 0, 0); sw.push(1, 0, 0, 0); }
+  g.dispose();
   return skinned(A, pos, null, si, sw, ind, color);
 }
 // Boule (chignon, bout de couette) ou tube effilé (queue de cheval), liés à un os (la tête par défaut).
