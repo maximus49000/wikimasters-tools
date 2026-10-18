@@ -10,6 +10,8 @@ import { phaseIndexOf } from '../../src/core/library/figure/gait';
 import { DOOR_WIDTH, STREET_SCALE, cityMetrics } from '../../src/core/library/city/metrics';
 import { CROWD_ROW_DEPTH, crowdFor, spectatorAt, spectatorYaw, type Spectator, type SpectatorPos } from '../../src/core/library/city/parade';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
+import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content/figure/figure-host';
+import { citizenSeed } from '../../src/core/citizens/identity';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
@@ -41,17 +43,18 @@ const times = sunTimes({ y: 2026, m: 7, d: 14 }, { lat: 48.85, lon: 2.35 }, 120)
 // Même foule que la vue (le rang du fond s'écarte devant une entrée).
 const CROWD = crowdFor(SEED, W, DOOR_LEFTS.map((d) => d + DOOR_WIDTH / 2)).filter((s) => !(s.row === 2 && DOOR_LEFTS.some((d) => Math.abs(d + DOOR_WIDTH / 2 - s.x) < DOOR_WIDTH / 2 + 2)));
 
-const mount = (t: number, ghibli: boolean, still = false): HTMLDivElement => {
+const mount = (t: number, ghibli: boolean, still = false, reg?: FigureRegistry): HTMLDivElement => {
   if (ghibli) writeArt('ghibli');
   vi.spyOn(Date, 'now').mockReturnValue(t * 1000);
   if (still) vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
   const minutes = Math.floor((t - D0) / 60);
   const sky = skyAt(minutes, times);
-  return render(
+  const crowd = (
     <svg>
       <ParadeCrowd width={W} seed={SEED} sky={sky} still={still} rainy={false} dayFests={['bastille']} minutes={minutes} metrics={M} doorXs={DOOR_LEFTS} ghibli={ghibli} />
-    </svg>,
+    </svg>
   );
+  return render(reg ? <FigureContext.Provider value={reg}>{crowd}</FigureContext.Provider> : crowd);
 };
 const at = (h: number): number => D0 + h * 3600;
 const byId = (id: string): Spectator => CROWD.find((s) => s.id === id)!;
@@ -215,5 +218,22 @@ describe('foule du 14 juillet : portes d immeuble (les deux graphismes)', () => 
     expect(c.querySelectorAll('[data-parade-crowd] [data-figure]').length).toBe(0);
     expect(c.querySelectorAll('[data-parade-crowd] [data-arm]').length).toBeGreaterThan(0);
     expect(spectators(c).some((n) => /scale\(-/.test(n.getAttribute('transform') ?? ''))).toBe(true);
+  });
+});
+
+describe('habitants 3D de la foule', () => {
+  it('enfants (au premier rang ou sur les épaules) : corps d’enfant ; adultes : jamais ; graine = id du spectateur', () => {
+    const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => null, dispose() {} };
+    const reg = new FigureRegistry('t3d', { citizens: () => fake });
+    const spy = vi.spyOn(reg, 'citizen');
+    mount(at(11), true, false, reg);
+    const bySeed = new Map(spy.mock.calls.map(([d, seed]) => [seed, d] as const));
+    const shown = CROWD.filter((s) => bySeed.has(citizenSeed(s.id)));
+    expect(shown.some((s) => s.kind === 'child')).toBe(true);
+    expect(shown.some((s) => s.kind === 'shoulders')).toBe(true);
+    for (const s of shown) {
+      expect(bySeed.get(citizenSeed(s.id))!.base === 'enfant', s.id).toBe(s.kind === 'child');
+      if (s.kind === 'shoulders') expect(bySeed.get(citizenSeed(`${s.id}:epaules`))!.base).toBe('enfant');
+    }
   });
 });

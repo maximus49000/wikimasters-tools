@@ -10,6 +10,7 @@ import { sidewalkPlan, type SidewalkPlan } from '../../core/library/city/shops/s
 import type { ActorTrack, Score } from '../../core/library/city/shops/scene/types';
 import type { Horn } from '../../core/library/city/traffic/horns';
 import type { Sky } from '../../core/library/sky';
+import type { FigureRegistry } from '../figure/figure-host';
 import type { GateOf, SceneStaff, ShopPlan } from './scene-scores';
 
 // Lecture des partitions pour la boucle de la scène des commerces (G4b) : état d'exécution d'une boutique, fenêtre de
@@ -115,13 +116,18 @@ export function hornHead(horns: readonly Horn[], t: number, wx: number, yaw: num
 
 // ---------- Accroches et emplacements partagés ----------
 const anchorCache = new Map<string, ReturnType<typeof anchorsOf>>();
-// Point d'accroche du pantin (repère du sprite) ramené au calque : pieds en (x, y), échelle k.
-export function anchorAt(key: FigureKey, anchor: Anchor, x: number, y: number, k: number): readonly [number, number] {
-  const ks = keyString(key);
-  let a = anchorCache.get(ks);
+// Point d'accroche (repère du sprite) ramené au calque : pieds en (x, y), échelle k. Avec `fig` (la figure qui porte) : accroches
+// de l'image qu'elle montre (rendu 3D quand elle est en 3D, figureAnchors), sinon celles du pantin pour `key`.
+export function anchorAt(key: FigureKey, anchor: Anchor, x: number, y: number, k: number, fig?: { reg: FigureRegistry; node: Element | null }): readonly [number, number] {
+  const a3 = fig?.node ? fig.reg.anchors(fig.node.getAttribute('data-key') ?? '') : null;
+  let a: Record<Anchor, readonly [number, number]> | undefined = a3 ?? undefined;
   if (!a) {
-    if (anchorCache.size > 2048) anchorCache.clear();
-    anchorCache.set(ks, (a = anchorsOf(key)));
+    const ks = keyString(key);
+    a = anchorCache.get(ks);
+    if (!a) {
+      if (anchorCache.size > 2048) anchorCache.clear();
+      anchorCache.set(ks, (a = anchorsOf(key)));
+    }
   }
   const p = a[anchor];
   return [x + p[0] * k, y + p[1] * k];

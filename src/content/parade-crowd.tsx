@@ -10,7 +10,8 @@ import { LIMB, type ArmPose } from '../core/library/figure/skeleton';
 import type { Sky } from '../core/library/sky';
 import { PersonSprite, tone } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
-import { useFigureRegistry, type FigureRegistry } from './figure/figure-host';
+import { citizenSeed } from '../core/citizens/identity';
+import { figureAnchors, useFigureRegistry, type FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
 import { useSceneDayStart } from './parade-layer';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -117,8 +118,9 @@ const sigOfAdult = (s: Spectator): string => {
   return sig;
 };
 const keyFor = (s: Spectator, pose: PoseIn): FigureKey => ({ sig: sigOfAdult(s), yaw: pose.yaw, gait: pose.gait, phase: pose.phase, head: pose.head, arms: pose.arms ?? 'swing', lean: pose.lean ?? 0 });
-export const shoulderTransform = (adult: FigureKey): string => {
-  const [x, y] = anchorsOf(adult).nape;
+// `nape` : nuque de l'image montrée par l'adulte (accroches 3D quand il est en 3D, voir syncShoulders), sinon celle du pantin.
+export const shoulderTransform = (adult: FigureKey, nape: readonly [number, number] = anchorsOf(adult).nape): string => {
+  const [x, y] = nape;
   return `translate(${x} ${Math.round((y + SHOULDER_SEAT * SHOULDER_SCALE) * 100) / 100}) scale(${SHOULDER_SCALE})`;
 };
 // Debout : bras levé avec un objet ; sans objet, bras le long du corps ou au repos du balancement (tirage du spectateur).
@@ -176,10 +178,10 @@ function GhibliSpectator({ s, sky, rainy, pose, wave }: { s: Spectator; sky: Sky
     <g data-spectator-body="">
       {s.kind === 'shoulders' && s.child && (
         <g data-shoulders="" transform={shoulderTransform(keyFor(s, pose))}>
-          <GhibliFigure outfit={s.child} sky={sky} rainy={rainy} umbrella={false} initial={childPose(pose.yaw)} />
+          <GhibliFigure outfit={s.child} sky={sky} rainy={rainy} umbrella={false} initial={childPose(pose.yaw)} citizen={citizenSeed(`${s.id}:epaules`)} kind="child" pin="seat" />
         </g>
       )}
-      <GhibliFigure outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose} held={held} />
+      <GhibliFigure outfit={s.outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose} held={held} citizen={citizenSeed(s.id)} kind={s.kind === 'child' ? 'child' : undefined} />
     </g>
   );
 }
@@ -189,11 +191,19 @@ function poseWalker(reg: FigureRegistry, body: Element | null, s: Spectator, pos
   if (!body) return;
   poseFigure(reg, body.querySelector(':scope > [data-figure]'), pose);
   if (s.kind !== 'shoulders') return;
+  syncShoulders(reg, body, s, pose);
+  poseFigure(reg, body.querySelector(':scope > [data-shoulders] > [data-figure]'), childPose(pose.yaw));
+}
+// Enfant des épaules posé à la nuque de l'image que montre l'adulte : en 3D, la nuque du rendu (autre silhouette que le
+// pantin) ; rappelé à chaque image, l'adulte debout passant en 3D sans re-rendu (registre). L'enfant, lui, a son bassin 3D
+// épinglé sur celui de son pantin (`pin="seat"`) : il reste assis à la même hauteur au-dessus de la nuque.
+function syncShoulders(reg: FigureRegistry, body: Element, s: Spectator, pose: PoseIn): void {
   const kid = body.querySelector(':scope > [data-shoulders]');
   if (!kid) return;
-  const tr = shoulderTransform(keyFor(s, pose));
+  const key = keyFor(s, pose);
+  const sk = body.querySelector(':scope > [data-figure]')?.getAttribute('data-key');
+  const tr = shoulderTransform(key, figureAnchors(reg, sk, key).nape);
   if (kid.getAttribute('transform') !== tr) kid.setAttribute('transform', tr);
-  poseFigure(reg, kid.querySelector(':scope > [data-figure]'), childPose(pose.yaw));
 }
 
 export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes, metrics, doorXs, ghibli = false }: Props): ReactElement | null {
@@ -234,8 +244,14 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
       const el = root.current;
       if (!el) return;
       states.forEach((p, i) => {
-        if (p.mode !== 'walking') return;
         const s = all[i]!;
+        // Debout avec un enfant sur les épaules : l'enfant suit la nuque de l'image montrée (pantin, puis 3D).
+        if (ghibli && p.mode === 'standing' && s.kind === 'shoulders') {
+          const body = el.querySelector(`[data-spectator-id="${s.id}"] > [data-spectator-body]`);
+          if (body) syncShoulders(figures, body, s, standPose(s));
+          return;
+        }
+        if (p.mode !== 'walking') return;
         const node = el.querySelector(`[data-spectator-id="${s.id}"]`);
         if (!node) return;
         const inSill = p.sill !== undefined;

@@ -8,6 +8,8 @@ import { mixHex, type Sky } from '../../core/library/sky';
 import { hashString } from '../../core/library/scene-world';
 import { citizenFromOutfit, type CitizenDesc, type CitizenKind, type Emotion } from '../../core/citizens/catalogue';
 import { tone } from '../city-sprites';
+import { moodOf } from '../../core/citizens/emotion';
+import { citizenSeed } from '../../core/citizens/identity';
 import { CITIZENS_3D, NIGHT_LIGHT } from './citizen-config';
 import { HOLD_3D_FRAMES, SPRITE_BOX, spriteKey, useFigureRegistry, type FigureRegistry, type Palette, type SpriteAnchors } from './figure-host';
 
@@ -74,6 +76,27 @@ function descOf(seed: number, o: Outfit, work: Work, umbrella: boolean, kind: Ci
     descCache.set(k, d);
   }
   return d;
+}
+
+// Identité 3D d'une figure : graine (`citizen`, défaut : hachage de la tenue), type de corps, humeur du visage.
+export type CitizenIdentity = { citizen?: number; kind?: CitizenKind; emotion?: Emotion };
+// Identité d'un personnage des commerces (client, employé) : graine tirée de son id (défaut : sa tenue — celle d'un employé
+// suit déjà la personne d'un jour à l'autre et d'une vue à l'autre : vitrine, rue, terrasse) et humeur de fond tirée de la
+// graine ; le visage de chaque geste en dérive (emotionFor, dans le registre : payer → content, trinquer → heureux…).
+export function shopIdentity(outfit: Outfit, id?: string, kind?: CitizenKind): CitizenIdentity {
+  const citizen = id === undefined ? undefined : citizenSeed(id);
+  return { citizen, kind, emotion: moodOf(citizen ?? outfitSeed(outfit)) };
+}
+// Palette d'une figure, avec son habitant 3D quand la 3D est possible ici (sinon la palette 2D d'avant). Pour les boucles qui
+// habillent elles-mêmes une figure de réserve (scène des commerces) : même palette que GhibliFigure pour la même identité.
+export function citizenPalette(reg: FigureRegistry, outfit: Outfit, sky: Sky, rainy: boolean, umbrella: boolean, work: Work, id: CitizenIdentity = {}): Palette {
+  let c3d: { key: string; light: number } | undefined;
+  if (CITIZENS_3D) {
+    const seed = id.citizen ?? outfitSeed(outfit);
+    const ck = reg.citizen(descOf(seed, rainOutfit(outfit, rainy), work, umbrella, id.kind, id.emotion), seed);
+    if (ck !== null) c3d = { key: ck, light: citizenLight(sky) };
+  }
+  return figurePalette(outfit, sky, rainy, c3d);
 }
 
 // Pose demandée par les sites : geste des bras et penché facultatifs (défauts : balancement de marche, droit).
@@ -246,13 +269,7 @@ export function GhibliFigure({
   const reg = useFigureRegistry();
   const ref = useRef<SVGGElement | null>(null);
   const sig = signatureOf(shapeOf(outfit, umbrella, work));
-  let c3d: { key: string; light: number } | undefined;
-  if (CITIZENS_3D) {
-    const seed = citizen ?? outfitSeed(outfit);
-    const ck = reg.citizen(descOf(seed, rainOutfit(outfit, rainy), work, umbrella, kind, emotion), seed);
-    if (ck !== null) c3d = { key: ck, light: citizenLight(sky) };
-  }
-  const pk = reg.addPalette(figurePalette(outfit, sky, rainy, c3d));
+  const pk = reg.addPalette(citizenPalette(reg, outfit, sky, rainy, umbrella, work, { citizen, kind, emotion }));
   const key = keyOf(sig, initial);
   const want = reg.keyFor(pk, key);
   let shownKey: string | undefined;

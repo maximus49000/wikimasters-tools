@@ -111,6 +111,13 @@ describe("à partir d'une tenue", () => {
     }
   });
 
+  it('sans type imposé (any) : jamais un corps d’enfant, adultes et anciens au tirage', () => {
+    const bases = SEEDS.slice(0, 400).map((s) => citizenFromOutfit(s, base, {}).base);
+    expect(bases).not.toContain('enfant');
+    expect(bases.some((b) => b === 'papy' || b === 'mamie')).toBe(true);
+    expect(bases.some((b) => b === 'homme-fort' || b === 'homme-maigre')).toBe(true);
+  });
+
   it('adulte : ni enfant ni ancien ; ancien : papy ou mamie', () => {
     for (const s of SEEDS.slice(0, 100)) {
       expect(['enfant', 'papy', 'mamie']).not.toContain(citizenFromOutfit(s, base, { kind: 'adult' }).base);

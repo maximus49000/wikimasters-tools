@@ -19,10 +19,11 @@ import { TURN_S, YAW_BACK, YAW_FRONT, YAW_RIGHT, facingYaw, phaseIndexOf, turnYa
 import type { Work } from '../core/library/figure/dress';
 import type { ArmPose } from '../core/library/figure/skeleton';
 import type { Sky } from '../core/library/sky';
+import { citizenSeed } from '../core/citizens/identity';
 import { PersonSprite } from './city-sprites';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import type { FigureRegistry } from './figure/figure-host';
-import { GhibliFigure, hideFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
+import { GhibliFigure, hideFigure, poseFigure, shopIdentity, type PoseIn } from './figure/ghibli-figure';
 import { AccessorySprite, GhibliPosed, LIFTING, PosedPerson, STANDING, applyGhibliPose, applyPose, ghibliHandles, ghibliPoseOf, poseHandles, showCarry, type GhibliPoseHandles, type PoseHandles } from './shop-gesture-sprites';
 import { LIT_SKY, ShopInteriorFront } from './shop-interiors';
 import { NightclubDoor } from './shop-queue';
@@ -247,6 +248,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
                       gesture={seat ? s.gesture : null}
                       seated={inner.gait === 'seated'}
                       hidden={!on}
+                      who={shopIdentity(v.outfit, v.id)}
                     />
                   ) : (
                     <>
@@ -284,6 +286,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
               umbrella={withUmbrella}
               initial={p}
               hidden={!on}
+              {...shopIdentity(v.outfit, v.id)}
               held={takes ? [{ anchor: withUmbrella ? 'handL' : 'handR', node: <g data-item-carry="" display={on && s.carry ? 'inline' : 'none'}><AccessorySprite id={ACCESSORY[v.type!]} sky={sky} ghibli /></g> }] : undefined}
             />
           ) : (
@@ -454,7 +457,7 @@ export function ShopWorks({ view, frame, change, width, metrics, sky, rainy, sti
             style={{ transform: `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px)`, transition: move }}
           >
             <g transform={ghibli ? `scale(${k.toFixed(3)})` : `scale(${(c.dir * k).toFixed(3)} ${k.toFixed(3)})`}>
-              {ghibli ? <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} work="vest" initial={workerPose(w, since)} /> : <PersonSprite outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} />}
+              {ghibli ? <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} work="vest" initial={workerPose(w, since)} citizen={citizenSeed(`${id}-crew-${i}`)} kind="adult" /> : <PersonSprite outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} />}
             </g>
             {item(c.holds, c)}
           </g>
@@ -749,7 +752,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
                   transform={`translate(${x.toFixed(2)} ${win.h - 1}) scale(${(ghibli ? 1 : dir) * STAFF_SCALE} ${STAFF_SCALE})`}
                 >
                   {ghibli ? (
-                    <GhibliPosed outfit={outfits.get(s.id)!} sky={inSky} rainy={false} accessory={ACCESSORY[type]} figure={ghibliPoseOf(pose, yaw, false)} gesture={pose} work={workOf(type)} />
+                    <GhibliPosed outfit={outfits.get(s.id)!} sky={inSky} rainy={false} accessory={ACCESSORY[type]} figure={ghibliPoseOf(pose, yaw, false)} gesture={pose} work={workOf(type)} who={shopIdentity(outfits.get(s.id)!, undefined, 'adult')} />
                   ) : (
                     <PosedPerson outfit={outfits.get(s.id)!} sky={inSky} rainy={false} umbrella={false} accessory={ACCESSORY[type]} pose={pose} />
                   )}
@@ -780,7 +783,7 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
           const dPos: Passage = atSill?.passage ?? { stage: 'threshold', x: doorX, depth: 1, yaw: YAW_FRONT, gait: 'walk', walked: 0 };
           const { clip, dark } = sillBox(atSill?.rect ?? door, dPos.depth, metrics, k);
           const withUmbrella = umbrella && !lifting;
-          const fig = (p: FigurePose, on: boolean): ReactElement => <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} work={workOf(type)} initial={p} hidden={!on} />;
+          const fig = (p: FigurePose, on: boolean): ReactElement => <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={withUmbrella} work={workOf(type)} initial={p} hidden={!on} {...shopIdentity(outfit, undefined, 'adult')} />;
           return (
             <g key={s.id} data-staff-member={s.id} data-staff-where={state.where} data-active={visible ? 'true' : 'false'} {...(walk ? { 'data-walk': JSON.stringify(walk) } : {})}>
               <g data-staff-street="" transform={staffStreetT(onStreet ? onStreet.x : x, metrics.doorY, k)} visibility={onStreet ? 'visible' : 'hidden'}>

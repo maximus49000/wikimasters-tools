@@ -44,6 +44,7 @@ import { PropContext, PropImage } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { ghibliStaffPost } from './shop/ghibli-shop-glass';
 import { collectCarriers, collectCups, collectTerraceGuests, collectWaiters, placeCarriers, placeCups, placeTerraceGuests, placeWaiters, useTerraceWeather, type Carrier, type CupNode, type TerraceGuestNode, type Waiter } from './shop-terrace';
+import { citizenSeed, kindOfProfile } from '../core/citizens/identity';
 import { LampSprite, PersonSprite, tone } from './city-sprites';
 import { FrontSidewalk } from './front-sidewalk';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
@@ -769,7 +770,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           // Ghibli : le nœud inactif (rue ou seuil) est rendu caché, sans sprite.
           const sprite = (p: Passage, on: boolean): ReactElement =>
             ghibli ? (
-              <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics, still)} hidden={!on} />
+              <GhibliFigure outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} initial={residentPose(trip, p, metrics, still)} hidden={!on} citizen={citizenSeed(trip.id)} />
             ) : (
               <PersonSprite outfit={trip.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} />
             );
@@ -846,10 +847,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               transform={pedTransform(p, metrics, width, t0, !ghibli, dodgeZones)}
               opacity={active ? 1 : 0}
             >
-              {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7. */}
+              {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7.
+                  Habitants 3D : chacun a sa graine (id du passant), les enfants un corps d'enfant (l'accompagnant de la
+                  Saint-Valentin est un adulte) ; rien n'est montré tant que leurs images 3D peuvent arriver (waitFor3D, 4 s
+                  au plus, puis le pantin) : à l'ouverture, la rue se remplit au fil des rendus (spec, option b). */}
               {p.companions.map((outfit, k) => (
                 <g key={k} data-companion="" transform={p.pair ? `translate(${(ghibli ? -p.dir : -1) * PAIR_GAP} 0) scale(0.95)` : `translate(${(ghibli ? -p.dir : -1) * COMPANION_GAP * (k + 1)} 0) scale(0.7)`}>
-                  {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0, still)} hidden={!active} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+                  {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pedPose(p, metrics, t0, still)} hidden={!active} citizen={citizenSeed(`${p.id}+${k}`)} kind={p.pair ? undefined : 'child'} waitFor3D /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
                 </g>
               ))}
               {/* Ghibli : le signe de fête est tenu par le pantin (accroche de la tête ou main droite, festive-marks). */}
@@ -861,6 +865,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   umbrella={intensity.umbrellas}
                   initial={{ ...pedPose(p, metrics, t0, still), arms: markArms(mark) }}
                   hidden={!active}
+                  citizen={citizenSeed(p.id)}
+                  kind={kindOfProfile(p.profile)}
+                  waitFor3D
                   held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} /> }] : undefined}
                 />
               ) : (

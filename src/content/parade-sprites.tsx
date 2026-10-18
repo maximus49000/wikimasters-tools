@@ -6,6 +6,7 @@ import type { ArmPose, Gait } from '../core/library/figure/skeleton';
 import type { ParadeKind, ParadeUnit } from '../core/library/city/parade';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { citizenSeed } from '../core/citizens/identity';
 import { tone } from './city-sprites';
 import { GhibliFigure, type Held, type PoseIn } from './figure/ghibli-figure';
 import { ScriptedCar } from './vehicle/scripted-car';
@@ -278,17 +279,19 @@ const headgear = (d: Dress, t: Tint): Held => ({ anchor: 'head', node: <g transf
 export type MarchArms = ArmPose | 'baton';
 const marchPose = (arms: MarchArms): PoseIn => ({ yaw: PARADE_YAW, gait: 'walk', phase: 0, head: 0, arms: arms === 'baton' ? 'raise' : arms });
 
-function GMarcher({ d, sky, arms, held }: { d: Dress; sky: Sky; arms: MarchArms; held?: readonly Held[] }): ReactElement {
+// `citizen` : graine d'habitant 3D (un par rang de l'unité : deux soldats de même uniforme et même peau restent deux personnes).
+function GMarcher({ d, sky, arms, held, citizen }: { d: Dress; sky: Sky; arms: MarchArms; held?: readonly Held[]; citizen?: number }): ReactElement {
   const t: Tint = (c) => tone(c, sky);
   return (
     <g data-worker="" data-parade-figure="" data-arms={arms}>
-      <GhibliFigure outfit={uniform(d)} sky={sky} rainy={false} umbrella={false} initial={marchPose(arms)} held={[...(held ?? []), headgear(d, t)]} />
+      <GhibliFigure outfit={uniform(d)} sky={sky} rainy={false} umbrella={false} initial={marchPose(arms)} held={[...(held ?? []), headgear(d, t)]} citizen={citizen} kind="adult" />
     </g>
   );
 }
 
 // Pantin immobile (repère du véhicule) : en selle, `at` = point de la selle où poser le bassin ; debout, `at` = pieds ;
-// `scale` = échelle du pantin dans le repère du véhicule.
+// `scale` = échelle du pantin dans le repère du véhicule. Habitant 3D : sa selle est épinglée sur celle du pantin (`pin`), là
+// où le bassin est posé.
 function GRider({ outfit, sky, gait, arms, at: [x, y], scale, held }: { outfit: Outfit; sky: Sky; gait: Gait; arms: ArmPose; at: readonly [number, number]; scale: number; held?: readonly Held[] }): ReactElement {
   const pose: PoseIn = { yaw: PARADE_YAW, gait, phase: 0, head: 0, arms };
   let dx = 0;
@@ -300,7 +303,7 @@ function GRider({ outfit, sky, gait, arms, at: [x, y], scale, held }: { outfit: 
   }
   return (
     <g data-worker="" data-parade-figure="" transform={`translate(${x} ${y}) scale(${scale}) translate(${dx} ${dy})`}>
-      <GhibliFigure outfit={outfit} sky={sky} rainy={false} umbrella={false} initial={pose} held={held} />
+      <GhibliFigure outfit={outfit} sky={sky} rainy={false} umbrella={false} initial={pose} held={held} kind="adult" pin={dx !== 0 || dy !== 0 ? 'seat' : undefined} />
     </g>
   );
 }
@@ -455,7 +458,7 @@ function Band({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
         const d: Dress = { ...base, skin: skins[i]!, head: inst === 'baton' ? 'plume' : 'kepi' };
         if (sky) {
           const h = bandHeld(inst, t);
-          return at(-75 + i * 30, <GMarcher d={d} sky={sky} arms={h.arms} held={[h.held]} />, inst);
+          return at(-75 + i * 30, <GMarcher d={d} sky={sky} arms={h.arms} held={[h.held]} citizen={citizenSeed(`${unit.id}-${i}`)} />, inst);
         }
         return at(-75 + i * 30, <Marcher d={d} t={t} anim={anim} begin={begin}><InstrumentArt kind={inst} d={d} t={t} anim={anim} begin={begin} /></Marcher>, inst);
       })}
@@ -470,7 +473,7 @@ function Infantry({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
     <g>
       {skins.map((skin, i) => {
         const d: Dress = { ...base, skin };
-        if (sky) return at(-70 + i * 20, <GMarcher d={d} sky={sky} arms="rifle" held={[rifleHeld(t)]} />, i);
+        if (sky) return at(-70 + i * 20, <GMarcher d={d} sky={sky} arms="rifle" held={[rifleHeld(t)]} citizen={citizenSeed(`${unit.id}-${i}`)} />, i);
         return at(-70 + i * 20, <Marcher d={d} t={t} anim={anim} begin={begin}><Rifle d={d} t={t} /></Marcher>, i);
       })}
     </g>
@@ -484,7 +487,7 @@ function Flags({ unit, t, anim, begin, sky }: UnitArt): ReactElement {
     <g>
       {skins.map((skin, i) => {
         const d: Dress = { ...base, skin, head: base.head === 'shako' ? 'kepi' : base.head, cap: base.head === 'shako' ? '#1F2A4A' : base.cap };
-        if (sky) return at(-32 + i * 32, <GMarcher d={d} sky={sky} arms="flag" held={[flagHeld(t, anim)]} />, i);
+        if (sky) return at(-32 + i * 32, <GMarcher d={d} sky={sky} arms="flag" held={[flagHeld(t, anim)]} citizen={citizenSeed(`${unit.id}-${i}`)} />, i);
         return at(
           -32 + i * 32,
           <Marcher d={d} t={t} anim={anim} begin={begin}>

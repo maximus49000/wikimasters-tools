@@ -117,6 +117,7 @@ export function SantaLayer({ width, height, seed, sky, facades, ground, fests, d
               rainy={false}
               umbrella={false}
               initial={santaFigurePose(st, pass.dir, still)}
+              kind="aged"
               held={[{ anchor: 'hands', node: <g transform="translate(0 9) scale(1.3)"><SantaSack t={(c) => tone(c, sky)} /></g> }]}
             />
           ) : (

@@ -694,7 +694,9 @@ function crewLook(w: Pick<Worker, 'pose' | 'dir' | 'ladder'>): CrewLook {
 }
 const crewSig = (o: Outfit): string => signatureOf(shapeOf(o, false, 'vest'));
 // Main droite (repère du sprite) d'un ouvrier Ghibli debout dans ce geste : la charge portée à deux s'y accroche (le
-// balancement de la marche ne la fait pas bouger).
+// balancement de la marche ne la fait pas bouger). Reste la main du pantin en 3D : les porteurs sont placés au rendu pour que
+// leurs deux mains tiennent les bouts de la charge (épingler l'image 3D sur la main ferait flotter les pieds) ; la charge
+// tenue par un seul ouvrier (objet tenu) suit, elle, la main 3D.
 const restHand = (o: Outfit, w: Pick<Worker, 'pose' | 'dir' | 'ladder'>): readonly [number, number] => {
   const l = crewLook(w);
   return anchorsOf({ sig: crewSig(o), yaw: l.yaw, gait: 'stand', phase: 0, head: 0, arms: l.arms, lean: 0 }).handR;
@@ -736,7 +738,7 @@ function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp:
     >
       {move ? (
         <g transform={`scale(${k.toFixed(3)})`}>
-          <GhibliFigure outfit={outfit} sky={inp.sky} rainy={inp.rainy} umbrella={false} work="vest" initial={workerPose(move, move.since)} held={w.held ? [{ anchor: 'handR', node: w.held }] : undefined} />
+          <GhibliFigure outfit={outfit} sky={inp.sky} rainy={inp.rainy} umbrella={false} work="vest" initial={workerPose(move, move.since)} held={w.held ? [{ anchor: 'handR', node: w.held }] : undefined} kind="adult" />
         </g>
       ) : (
         <>
@@ -1082,6 +1084,7 @@ function liftCrew(inp: CrewInput): ReactElement {
           rainy={inp.rainy}
           umbrella={false}
           work="vest"
+          kind="adult"
           initial={workerPose(perched, 0)}
           held={held ? [{ anchor: 'handR', node: held }] : undefined}
         />

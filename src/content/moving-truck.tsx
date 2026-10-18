@@ -9,6 +9,7 @@ import { changePlans, type ShopView } from '../core/library/city/shops/view';
 import { WORLD_MARGIN, hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
 import { setIfChanged } from './city-shops-life';
+import { citizenSeed } from '../core/citizens/identity';
 import { tone } from './city-sprites';
 import { PosedPerson, STANDING, applyPose, poseHandles, type PoseHandles } from './shop-gesture-sprites';
 import { DOOR_DARK, doorDarkOpacity, type Passage } from '../core/library/city/doorway';
@@ -340,7 +341,9 @@ const ghibliPose = (p: MoverAt, k: number): PoseIn => ({
   arms: (p.load ? 'carry' : p.gait === 'stand' ? p.arms : 'swing') as ArmPose,
 });
 const classicPose = (p: MoverAt): Pose => (p.load ? HOLD : p.arms === 'reach' ? REACH : STANDING);
-// Hauteur des mains d'un déménageur Ghibli qui porte (bras `carry`), unités du pantin : le meuble lourd y est posé.
+// Hauteur des mains d'un déménageur Ghibli qui porte (bras `carry`), unités du pantin : le meuble lourd y est posé. Reste celle
+// du pantin en 3D : le meuble, porté à deux, est posé une fois au rendu entre les deux porteurs (le carton, lui, suit les
+// mains 3D : objet tenu).
 const ghibliHands = (o: Outfit): number => {
   const a = anchorsOf({ sig: signatureOf(shapeOf(o, false)), yaw: YAW_RIGHT, gait: 'stand', phase: 0, head: 0, arms: 'carry', lean: 0 });
   return -(a.handR[1] + a.handL[1]) / 2;
@@ -409,7 +412,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
   );
   const figure = (i: number, p: MoverAt, on: boolean): ReactElement =>
     ghibli ? (
-      <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} initial={ghibliPose(p, kp)} hidden={!on} held={[{ anchor: 'hands', node: box(p.load === 'carton') }]} />
+      <GhibliFigure outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} initial={ghibliPose(p, kp)} hidden={!on} held={[{ anchor: 'hands', node: box(p.load === 'carton') }]} citizen={citizenSeed(`${id}/mover/${day}/${i}`)} kind="adult" />
     ) : (
       <>
         <PosedPerson outfit={outfits[i]!} sky={sky} rainy={rainy} umbrella={false} accessory={null} pose={classicPose(p)} />

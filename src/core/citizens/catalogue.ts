@@ -216,6 +216,9 @@ function peauProche(c: string): string {
 function choisirBase(R: Rnd, kind: CitizenKind, femme: boolean): string {
   const ok = Object.entries(BASES).filter(([, b]) => {
     if (kind === 'child') return !!b.child;
+    // Un enfant n'est tiré que si la scène le demande (`child`) : sinon un adulte de la rue aurait une chance sur cinq
+    // d'avoir le corps d'un enfant.
+    if (b.child) return false;
     if (kind === 'aged' && !b.aged) return false;
     if (kind === 'adult' && (b.aged || b.child)) return false;
     return !femme || (b.sex === 'f' && !b.child);

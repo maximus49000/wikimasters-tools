@@ -5,6 +5,7 @@ import { rideFrame } from '../../core/library/figure/bake';
 import { shapeOf, signatureOf, type Work } from '../../core/library/figure/dress';
 import { PHASES } from '../../core/library/figure/skeleton';
 import type { Sky } from '../../core/library/sky';
+import type { CitizenKind } from '../../core/citizens/catalogue';
 import { GhibliFigure, type PoseIn } from './ghibli-figure';
 
 // Cycliste Ghibli (G3c) : pantin à vélo (allure `pedal`, mains au guidon) posé sur la selle, dans le repère des véhicules
@@ -44,19 +45,20 @@ function geoOf(sig: string, dir: 1 | -1, seatX: number): Geo {
 }
 
 // Pantin seul, selle à `seat` (repère du véhicule) : pour un vélo déjà dessiné (vélo porteur).
-// `seatY` : hauteur de la selle si le vélo est déjà dessiné (sinon tirée du pédalier, CRANK_Y).
-export function GhibliRider({ outfit, sky, rainy, dir, phase, work = 'none', seatX, seatY, stopped = false }: { outfit: Outfit; sky: Sky; rainy: boolean; dir: 1 | -1; phase: number; work?: Work; seatX: number; seatY?: number; stopped?: boolean }): ReactElement {
+// `seatY` : hauteur de la selle si le vélo est déjà dessiné (sinon tirée du pédalier, CRANK_Y). `citizen`, `kind` : identité 3D.
+type RiderIdentity = { citizen?: number; kind?: CitizenKind };
+export function GhibliRider({ outfit, sky, rainy, dir, phase, work = 'none', seatX, seatY, stopped = false, citizen, kind }: { outfit: Outfit; sky: Sky; rainy: boolean; dir: 1 | -1; phase: number; work?: Work; seatX: number; seatY?: number; stopped?: boolean } & RiderIdentity): ReactElement {
   const g0 = geoOf(signatureOf(shapeOf(outfit, false, work)), dir, seatX);
   const g = seatY === undefined ? g0 : { ...g0, seat: [seatX, seatY] as const };
   return (
     <g data-bike-rider="" transform={`translate(${g.seat[0]} ${g.seat[1]}) scale(${dir * RIDER_SCALE} ${RIDER_SCALE}) translate(${-g.anchor[0]} ${-g.anchor[1]})`}>
-      <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={riderPose(dir, phase, stopped)} work={work} pin="seat" />
+      <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={riderPose(dir, phase, stopped)} work={work} pin="seat" citizen={citizen} kind={kind} />
     </g>
   );
 }
 
 // Vélo de ville et son cycliste : roues, cadre en losange autour du pédalier, selle, guidon, phare.
-export function GhibliBike({ outfit, color, ink, sky, rainy, dir, phase, lights, stopped = false }: { outfit: Outfit; color: string; ink: string; sky: Sky; rainy: boolean; dir: 1 | -1; phase: number; lights: boolean; stopped?: boolean }): ReactElement {
+export function GhibliBike({ outfit, color, ink, sky, rainy, dir, phase, lights, stopped = false, citizen, kind }: { outfit: Outfit; color: string; ink: string; sky: Sky; rainy: boolean; dir: 1 | -1; phase: number; lights: boolean; stopped?: boolean } & RiderIdentity): ReactElement {
   const g = geoOf(signatureOf(shapeOf(outfit, false)), dir, -3);
   const [bx, by] = g.crank;
   const rear = [bx - 7.4, -5] as const;
@@ -86,7 +88,7 @@ export function GhibliBike({ outfit, color, ink, sky, rainy, dir, phase, lights,
       <path d={`M${P([st[0] - 0.4, st[1]])} L${P([g.seat[0], g.seat[1] + 0.6])}`} stroke={ink} strokeWidth={0.7} />
       <rect x={g.seat[0] - 1.8} y={g.seat[1] + 0.2} width={3.4} height={1} rx={0.5} fill={ink} />
       <circle cx={bx} cy={by} r={1.3} fill="none" stroke={ink} strokeWidth={0.6} />
-      <GhibliRider outfit={outfit} sky={sky} rainy={rainy} dir={dir} phase={phase} seatX={-3} stopped={stopped} />
+      <GhibliRider outfit={outfit} sky={sky} rainy={rainy} dir={dir} phase={phase} seatX={-3} stopped={stopped} citizen={citizen} kind={kind} />
       {lights && (
         <g data-headlight="">
           <circle cx={ht[0] + 1.4} cy={ht[1]} r={1.4} fill="#FFE9A0" />

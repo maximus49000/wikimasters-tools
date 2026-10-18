@@ -15,7 +15,7 @@ import type { ActorTrack, Score } from '../../core/library/city/shops/scene/type
 import type { Horn } from '../../core/library/city/traffic/horns';
 import { placeSill } from '../door-passage';
 import type { FigureRegistry } from '../figure/figure-host';
-import { figurePalette, hideFigure, poseFigure } from '../figure/ghibli-figure';
+import { citizenPalette, hideFigure, poseFigure, shopIdentity } from '../figure/ghibli-figure';
 import { pictoLook } from './picto';
 import { peekScore, pumpScore, slotGate, slotRef } from './scene-scores';
 import {
@@ -146,7 +146,11 @@ function lookOf(st: ShopState, rt: ShopRt, track: ActorTrack, out: boolean, figu
   let l = st.looks.get(k);
   if (!l) {
     const work = track.role === 'staff' ? rt.work : 'none';
-    l = { sig: signatureOf(shapeOf(track.outfit, out && rt.umbrella, work)), pk: figures.addPalette(figurePalette(track.outfit, out ? rt.sky : rt.inSky, out && rt.rainy)) };
+    // Habitant 3D : client par son id (enfant d'un parti parent-enfant : corps d'enfant), employé par sa tenue (la même
+    // personne que dans la rue et à la terrasse) ; humeur de fond, d'où le visage de chaque geste (payer → content).
+    const who = track.role === 'staff' ? shopIdentity(track.outfit, undefined, 'adult') : shopIdentity(track.outfit, track.id, track.child ? 'child' : undefined);
+    const umbrella = out && rt.umbrella;
+    l = { sig: signatureOf(shapeOf(track.outfit, umbrella, work)), pk: figures.addPalette(citizenPalette(figures, track.outfit, out ? rt.sky : rt.inSky, out && rt.rainy, umbrella, work, who)) };
     st.looks.set(k, l);
   }
   return l;
@@ -180,16 +184,17 @@ function poseInside(fig: Element | null, v: ActorView, sig: string, head: number
   const pose = { yaw: v.yaw, gait: v.gait as Gait, phase: v.phase, head, arms: v.arms, lean: v.lean };
   poseFigure(figures, fig, pose);
   const key: FigureKey = { sig, ...pose };
+  const on = { reg: figures, node: fig };
   if (v.worn) {
-    const [hx, hy] = anchorAt(key, 'head', x, y, k);
+    const [hx, hy] = anchorAt(key, 'head', x, y, k, on);
     out.worn.push({ id: String((((v.yaw + head) % 16) + 16) % 16), x: hx, y: hy, k });
   } else if (v.prop) {
-    const [px, py] = anchorAt(key, HAND_L.has(v.prop) ? 'handL' : 'handR', x, y, k);
+    const [px, py] = anchorAt(key, HAND_L.has(v.prop) ? 'handL' : 'handR', x, y, k, on);
     if (py <= clipY) out.props.push({ id: v.prop, x: px, y: py, k });
   }
   const look = v.picto ? pictoLook(v.picto.age) : null;
   if (v.picto && look) {
-    const [px, py] = anchorAt(key, 'headTop', x, y, k);
+    const [px, py] = anchorAt(key, 'headTop', x, y, k, on);
     out.pictos.push({ id: v.picto.id, x: px + rt.winX, y: py + rt.winY, k, pop: look });
   }
 }
@@ -281,7 +286,7 @@ function placeCustomer(st: ShopState, rt: ShopRt, e: Entry, a: Seen, t: number, 
   poseFigure(figures, fig, pose);
   // Objet emporté : sur le trottoir seulement (le seuil le rognerait), à la main libre du parapluie.
   if (where === 'street' && v.where === 'street-out' && a.carry) {
-    const [px, py] = anchorAt({ sig: look.sig, lean: 0, ...pose }, rt.umbrella ? 'handL' : 'handR', s.x, m.doorY, k);
+    const [px, py] = anchorAt({ sig: look.sig, lean: 0, ...pose }, rt.umbrella ? 'handL' : 'handR', s.x, m.doorY, k, { reg: figures, node: fig });
     out.carry.push({ id: a.carry, x: px, y: py, k });
   }
 }

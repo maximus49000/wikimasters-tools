@@ -184,7 +184,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   // Cache des sprites du pantin (Ghibli) : un par pièce ; les figures sont des <image>, rien n'est hébergé dans le DOM.
   // Plafond : la rue Ghibli des commerces (gestes des employés et des clients, G4b) dépasse 1 500 poses en vue à midi ; au-delà
   // le cache tournerait et repeindrait sans cesse. Budget de peinture par image : le défaut (spec G4b §7).
-  const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`, { max: FIGURE_SPRITES_MAX }), [worldId]);
+  // Habitants 3D : vue zoomable, donc rendu 3D à 6 px par unité (net de près) et visages animés (émotion du geste, clignement).
+  const figures = useMemo(() => new FigureRegistry(`${worldId}-fig`, { max: FIGURE_SPRITES_MAX, pxPerUnit: 6, faces: true }), [worldId]);
   // Sprites peints des voitures Ghibli : même cycle de vie.
   const cars = useMemo(() => new CarRegistry(`${worldId}-car`), [worldId]);
   const shops = useMemo(() => new ShopRegistry(`${worldId}-shop`), [worldId]);

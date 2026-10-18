@@ -9,6 +9,7 @@ import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import type { ArmPose } from '../core/library/figure/skeleton';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
+import { citizenSeed } from '../core/citizens/identity';
 import { PersonSprite, tone } from './city-sprites';
 import type { FigureRegistry } from './figure/figure-host';
 import { GhibliFigure, poseFigure, type PoseIn } from './figure/ghibli-figure';
@@ -47,6 +48,8 @@ export function poseEventFigures(reg: FigureRegistry, node: Element, e: CityEven
 const WALKER_OFFSET = 7;
 // Laisse tenue à la main (accroche du pantin) jusqu'au collier du chien (repère du sprite, comme le dessin classique) : la
 // main est lue sur la pose debout, la laisse suit ensuite la main pendant la marche (le bout bouge d'une unité au plus).
+// Habitant 3D : la laisse suit la main 3D (objet tenu) ; le bout reste calculé sur la main du pantin (quelques unités d'écart
+// au collier au plus, la forme de la laisse étant fixée au rendu).
 function leashFrom(o: Outfit, umbrella: boolean, dir: 1 | -1, hand: 'handR' | 'handL'): string {
   const a = anchorsOf({ sig: signatureOf(shapeOf(o, umbrella)), yaw: facingYaw(dir), gait: 'stand', phase: 0, head: 0, arms: 'hold', lean: 0 })[hand];
   // Collier en (22, -9) dans le sprite ; repère du pantin : x multiplié par `dir` (retournement annulé).
@@ -219,6 +222,8 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
                       umbrella={false}
                       work="vest"
                       initial={{ yaw: facingYaw(e.dir), gait: 'stand', phase: 0, head: 0, arms: 'reach' }}
+                      citizen={citizenSeed(`${e.key}:0`)}
+                      kind="adult"
                     />
                   </g>
                 </g>
@@ -263,6 +268,7 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
                   rainy={rainy}
                   umbrella={rainy}
                   initial={eventWalkPose(e, walked, still, 'hold')}
+                  citizen={citizenSeed(`${e.key}:0`)}
                   held={[{ anchor: hand, node: <path data-leash="" d={leashFrom(walker!, rainy, e.dir, hand)} stroke="#C0463A" fill="none" strokeWidth={0.8} /> }]}
                 />
               </g>
@@ -292,7 +298,7 @@ export function CityEventSprite({ event: e, sky, still, lights, rainy, fests, gh
             {outfitsOf(e.key, 'ordinary', 3).map((o, i) =>
               ghibli ? (
                 <g key={i} data-walker={i * WALKER_OFFSET} data-arms="swing" transform={`translate(${-16 * i} 0) scale(${e.dir} 1)`}>
-                  <GhibliFigure outfit={o} sky={sky} rainy umbrella initial={eventWalkPose(e, walked + i * WALKER_OFFSET, still)} />
+                  <GhibliFigure outfit={o} sky={sky} rainy umbrella initial={eventWalkPose(e, walked + i * WALKER_OFFSET, still)} citizen={citizenSeed(`${e.key}:${i}`)} />
                 </g>
               ) : (
                 <g key={i} transform={`translate(${-16 * i} 0)`}>

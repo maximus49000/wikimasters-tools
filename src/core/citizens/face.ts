@@ -13,7 +13,6 @@ import * as THREE from 'three';
 import type { Emotion } from './catalogue';
 import type { FaceMarks } from './manifest';
 import { skull, shell, type BodyInfo, type VertexInfo } from './wardrobe';
-import type { ArmPose } from '../library/figure/skeleton';
 
 export type { Emotion };
 
@@ -214,18 +213,8 @@ export function blinkAt(t: number, seed: number): number {
   return 0;
 }
 
-// ── Émotion tirée du geste ────────────────────────────────────────────────────────────────────────────────────────
-const GESTURE_EMOTION: Partial<Record<ArmPose, Emotion>> = {
-  'pay-card': 'content', 'pay-cash': 'content', take: 'content', give: 'content', wave: 'content',
-  'toast-1': 'heureux', 'toast-2': 'heureux', cheer: 'heureux', raise: 'heureux',
-  sneeze: 'surpris',
-  crossed: 'inquiet', chin: 'inquiet',
-};
-
-/** Émotion affichée pendant un geste ; hors des gestes expressifs, l'humeur de l'habitant. */
-export function emotionFor(arms: ArmPose, mood: Emotion): Emotion {
-  return GESTURE_EMOTION[arms] ?? mood;
-}
+// ── Émotion tirée du geste (table dans emotion.ts, sans three.js : les scènes l'importent) ──────────────────────────
+export { emotionFor } from './emotion';
 
 // ── Clé d'état des sprites ────────────────────────────────────────────────────────────────────────────────────────
 const CODE: Record<Emotion, string> = { neutre: '', content: 'c', heureux: 'h', triste: 't', surpris: 's', fache: 'f', inquiet: 'i' };
