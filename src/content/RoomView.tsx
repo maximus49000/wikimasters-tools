@@ -9,8 +9,8 @@ import { boxOfQuad, cardQuad, computerPlacement, hostPointPx, placementDepth, pl
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
 import { localPointOf, openingOf } from '../core/library/furniture-render3d';
 import { bookColor, type ItemPlacement } from '../core/library/item-models';
-import { hiddenAtHome, sleeveKindOf, sleeveRest, type SleeveKind } from '../core/library/hifi';
-import { SleeveArt, gameDiscKind, hifiContent, type DiscKind, type HifiDiscShow } from './hifi/hifi-art';
+import { hiddenAtHome, sleeveKindOf, sleeveRest } from '../core/library/hifi';
+import { SleeveArt, hifiContent, hifiDiscKindOf, type HifiDiscShow } from './hifi/hifi-art';
 import { useHifiPlayer } from './hifi/use-hifi';
 import { useTrackTempo } from './hifi/use-track-tempo';
 import { MusicNotes, NOTE_INK } from './hifi/music-notes';
@@ -129,13 +129,6 @@ type Props = {
   // Couches de la pièce (mur, vitres, meubles, animaux, lumière…) : 'hidden' les estompe (400 ms) puis les retire ; le nœud du monde, lui, reste.
   roomLayers?: 'shown' | 'hidden';
 };
-
-// Ce qui est posé sur le poste : un vinyle, une cartouche (jeu à cartouche, couchée), un disque de jeu ou un CD.
-function hifiDiscKindOf(placed: Placed, sleeve: SleeveKind): DiscKind {
-  if (sleeve === 'vinyl') return 'vinyl';
-  if (sleeve !== 'game') return 'cd';
-  return gameDiscKind(placed.kind === 'stored' || placed.kind === 'posed' ? placed.box : undefined);
-}
 
 // Matrice du repère d'une face (footprint.faceFrame) en attribut SVG.
 const matrixOf = (m: readonly number[]): string => `matrix(${m.join(' ')})`;

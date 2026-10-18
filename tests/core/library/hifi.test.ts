@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { smallPlacement } from '../../../src/core/library/carried-items';
-import { activeHifi, hifiState, hiddenAtHome, sleeveKindOf, sleeveRest } from '../../../src/core/library/hifi';
+import { activeHifi, hifiState, hiddenAtHome, sleeveKindOf, sleeveRest, sleeveStand } from '../../../src/core/library/hifi';
 import type { Layout } from '../../../src/core/library/library-types';
 
 const hifi = (id: string): Layout[number] => ({ id, kind: 'small', item: 'hifi', hostId: 'desk', x: 2, z: 2.5 });
@@ -48,5 +48,31 @@ describe('poste hi-fi', () => {
   it('chaîne à x 62, z 2,5 : la pochette a les mêmes coins qu’à l’ancien emplacement 2', () => {
     const now = smallPlacement('h', 'hifi', 'desk', 62, 2.5);
     for (const kind of ['cd', 'vinyl'] as const) expect(sleeveRest(now, kind)).toEqual(sleeveRest({ x: 62, y: 75, z: 17 }, kind));
+  });
+
+  it('pochette debout du zoom : pleine taille, posée sur le bureau, à droite du poste et face à l’utilisateur', () => {
+    const station = smallPlacement('h', 'hifi', 'desk', 10, 2.5);
+    const cd = sleeveStand(station, 'cd');
+    expect([cd.w, cd.h]).toEqual([14.2, 12.5]);
+    const [tl, tr, br, bl] = cd.corners as [number[], number[], number[], number[]];
+    expect(bl[1]).toBe(station.y);
+    expect(br[1]).toBe(station.y);
+    expect(tl[1]).toBeGreaterThan(station.y);
+    // Face à l'utilisateur : le bas parallèle à l'axe x, couverture lisible de gauche à droite.
+    expect(br[2]).toBeCloseTo(bl[2]!);
+    expect(tr[0]! - tl[0]!).toBeCloseTo(14.2);
+    // À droite du poste (56 cm de large), sans le toucher.
+    expect(Math.min(tl[0]!, bl[0]!)).toBeGreaterThan(station.x + 56);
+    // Le vinyle n'est pas réduit (pas de zone de 14,5 cm ici).
+    const v = sleeveStand(station, 'vinyl');
+    expect([v.w, v.h]).toEqual([31.4, 31.4]);
+    expect(v.back.every((p, i) => p[2] > v.corners[i]![2])).toBe(true);
+  });
+
+  it('pochette debout : à gauche du poste si elle dépasserait du bureau', () => {
+    const station = smallPlacement('h', 'hifi', 'desk', 62, 2.5);
+    const s = sleeveStand(station, 'cd', 120);
+    expect(Math.max(...s.corners.map((p) => p[0]))).toBeLessThan(station.x);
+    expect(Math.min(...s.corners.map((p) => p[0]))).toBeGreaterThanOrEqual(0);
   });
 });
