@@ -27,6 +27,7 @@ import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { useArtStyle } from './art-setting';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
+import { CITIZENS_3D } from './figure/citizen-config';
 import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure, prewarmFigure, type PoseIn } from './figure/ghibli-figure';
 import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
@@ -212,7 +213,8 @@ const lockedHappens = (lock: TripLock, trip: Trip, t: number, gate: number): boo
 // directement en 3D, sans pantin ni changement de modèle sous les yeux (il n'a pas d'attente waitFor3D : il apparaît en place).
 export const WARM_AHEAD_S = 12;
 type WarmCache = Map<string, { start: number; poses: PoseIn[] }>;
-export function tripWarmPoses(trip: Trip, cache: WarmCache, width: number, t: number, gate: number, m: CityMetrics): PoseIn[] | null {
+// Rend aussi `lead` : secondes avant le début du trajet (0 s'il est en route).
+export function tripWarmPoses(trip: Trip, cache: WarmCache, width: number, t: number, gate: number, m: CityMetrics): { poses: PoseIn[]; lead: number } | null {
   const c = (((t + trip.phase) % TRIP_CYCLE) + TRIP_CYCLE) % TRIP_CYCLE;
   // Début du tour en cours si le trajet est en route, sinon du prochain.
   const start = tripAt(trip, width, t) !== null ? t - c : t - c + TRIP_CYCLE;
@@ -235,7 +237,7 @@ export function tripWarmPoses(trip: Trip, cache: WarmCache, width: number, t: nu
     e = { start, poses: [...seen.values()] };
     cache.set(trip.id, e);
   }
-  return e.poses;
+  return { poses: e.poses, lead: Math.max(0, start - t) };
 }
 
 // État d'un habitant à l'instant t : passage s'il a lieu ce tour-ci, et nœud visible (rue ou porte).
@@ -630,11 +632,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           if (ghibli) poseFigure(figures, dnode.querySelector('[data-figure]'), residentPose(trip, v.pos, metrics, still));
         } else if (ghibli && doorOff) hideFigure(figures, dnode.querySelector('[data-figure]'));
       }
-      if (ghibli && !still && Math.abs(t - warmAt) >= 1) {
+      if (ghibli && CITIZENS_3D && !still && Math.abs(t - warmAt) >= 1) {
         warmAt = t;
         for (const trip of trips) {
-          const poses = tripWarmPoses(trip, warm, width, t, trip.kind === 'out' ? flow.out : flow.in, metrics);
-          if (poses) prewarmFigure(figures, nodes.get(trip.id)?.querySelector(':scope > [data-figure]') ?? null, poses);
+          const got = tripWarmPoses(trip, warm, width, t, trip.kind === 'out' ? flow.out : flow.in, metrics);
+          if (got) prewarmFigure(figures, nodes.get(trip.id)?.querySelector(':scope > [data-figure]') ?? null, got.poses, got.lead);
         }
         // Clients des commerces hors scène G4b (ceux de la scène : placeScene).
         warmCustomers(nodes, shopVisits, gates, width, metrics, t, figures, customerWarm, muted, visitLock.current);

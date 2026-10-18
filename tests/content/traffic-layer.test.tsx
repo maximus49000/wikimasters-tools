@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BusStopRiders, Crosswalk, TrafficFixtures, TrafficLane, type TrafficHandle } from '../../src/content/traffic-layer';
 import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
 import { cityMetrics } from '../../src/core/library/city/metrics';
@@ -290,6 +290,46 @@ describe('cyclistes et habitants 3D', () => {
     }
     expect(entered - t0).toBeGreaterThanOrEqual(HOLD_MAX_S - 0.2);
     expect(entered).toBeGreaterThan(0); // puis entre (au ralenti hors champ, il passe le bord après la retenue)
+  });
+  it('retenue hors champ seulement quand la 3D a déjà rendu dans ce registre (une 3D qui ne vient jamais ne retient rien)', async () => {
+    const bikeEnv: TrafficEnv = { ...env, demand: { near: 0.2, far: 0.2, bike: 3 } };
+    const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;
+    for (const live of [false, true]) {
+      const world = warmTraffic({ width: 1080, seed: 9, unit: m.unit, startS: T0 }, bikeEnv);
+      let now = world.t * 1000;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const queue: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queue.push(cb));
+      vi.stubGlobal('cancelAnimationFrame', () => {});
+      // Base jamais prête : les cyclistes attendent leur 3D hors champ.
+      const fake: Citizen3D = { ready: () => false, prepare() {}, render: () => ({ url: 'data:image/png;base64,3D', anchors }), dispose() {} };
+      const figures = new FigureRegistry('tlive', { citizens: () => fake, now: () => 0 });
+      // Témoin : registre qui a déjà rendu de la 3D.
+      if (live) (figures as unknown as { everRendered: boolean }).everRendered = true;
+      const host = document.createElement('div');
+      const root = createRoot(host);
+      await act(async () =>
+        root.render(
+          <FigureContext.Provider value={figures}>
+            <svg>
+              <TrafficLane handle={{ world, env: bikeEnv }} lane="near" metrics={m} sky={sky} lights={false} rainy={false} still={false} ghibli fests={[]} eventsByKey={new Map()} frozenT={world.t} />
+            </svg>
+          </FigureContext.Provider>,
+        ),
+      );
+      for (let f = 1, perf = 0; f <= 40; f++) {
+        now += 100;
+        perf += 100;
+        const cbs = queue.splice(0);
+        act(() => {
+          for (const cb of cbs) cb(perf);
+        });
+      }
+      expect(world.agents.some((a) => a.heldSince !== undefined), live ? 'témoin' : 'jamais rendu').toBe(live);
+      act(() => root.unmount());
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
   });
   it('gateEntering : hors champ, attend la 3D ; la 3D arrive : figure en 3D, groupe montrable ; dans le champ sans 3D : pantin', async () => {
     const anchors = { handR: [9, -23], handL: [-9, -23], hands: [0, -23], head: [0, -42], headTop: [0, -50], nape: [0, -36], seat: [0, -20] } as const;

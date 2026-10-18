@@ -166,14 +166,16 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
     () => (now: number): void => {
       const t = still ? frozenT : now;
       const wait3D = (handle.wait3D ??= new Set());
-      if (!still) advance(w, t, handle.env, ghibli && CITIZENS_3D ? wait3D : undefined);
+      // Retenue hors champ seulement quand la 3D a déjà rendu dans ce registre : une 3D qui ne vient jamais (hors service, nouvel
+      // essai toutes les 30 s) ne retient pas les véhicules.
+      if (!still) advance(w, t, handle.env, ghibli && CITIZENS_3D && figures.live3D() ? wait3D : undefined);
       // Arrivées planifiées (bus, tram…) attendues dans CREW_WARM_S s : leurs occupants rendus d'avance (2 fois par seconde).
       if (ghibli && CITIZENS_3D && !still && Math.abs(t - (handle.warmAt ?? -Infinity)) >= 0.5) {
         handle.warmAt = t;
         for (const e of handle.env.arrivals) {
           if (w.spawned.has(e.key) || e.start - t > CREW_WARM_S || t - e.start > 300) continue;
           const crew = scheduledCrew(w, e);
-          if (crew) prewarmSeats(figures, specialArt(crew).seats, TRACK_DIR[e.track], sky, rainy);
+          if (crew) prewarmSeats(figures, specialArt(crew).seats, TRACK_DIR[e.track], sky, rainy, e.start - t);
         }
         if (wait3D.size > 0) for (const id of wait3D) if (!w.agents.some((a) => a.id === id)) wait3D.delete(id);
       }
@@ -190,7 +192,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         if (!a) continue;
         const look = paintedLook(a, ghibli);
         node.setAttribute('transform', transformOf(w, a, metrics, t, look !== null));
-        if (ghibli && !still) {
+        if (ghibli && CITIZENS_3D && !still) {
           // Habitants 3D : véhicule caché hors champ tant qu'un de ses personnages attend sa 3D ; entré dans le champ, toujours entier.
           const half = (a.car ? a.car.L / 2 : (SPRITE_HALF[a.kind] ?? 20)) * kOf(a, metrics);
           const x = agentView(w, a, t).x;
@@ -200,7 +202,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
           if (ok) wait3D.delete(a.id);
           else wait3D.add(a.id);
           // Cycliste en attente : son arrêt pied à terre (feu, file) rendu d'avance aussi.
-          if (!ok && a.kind === 'bike') prewarmFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), [riderPose(1, 0, true)]);
+          if (!ok && a.kind === 'bike') prewarmFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), [riderPose(1, 0, true)], 0);
         }
         if (look) {
           // Véhicule Ghibli : roues, occupants, images peintes, gyrophares ; feu stop, feux de détresse ; bouffées au pot.
@@ -231,7 +233,8 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         cars.flush();
       }
     },
-    [w, handle, metrics, still, frozenT, ghibli, figures, cars, puffs, sky, rainy],
+    // Ciel et pluie (occupants rendus d'avance) : seulement avec les habitants 3D, sinon la boucle n'est pas relancée (comme avant).
+    [w, handle, metrics, still, frozenT, ghibli, figures, cars, puffs, CITIZENS_3D ? sky : null, CITIZENS_3D ? rainy : null],
   );
   useWallClockLoop(place, [place]);
   // Mouvement réduit : un seul placement après le montage.
@@ -602,13 +605,13 @@ export function BusStopRiders({ handle, metrics, sky, rainy, still, ghibli, froz
       if (!el) return;
       // Habitants 3D : un voyageur encore dans le bus (pas de nœud) fait rendre d'avance ses poses de descente (vers nous ou de
       // dos) et de départ (vers un bord) : il descend directement en 3D, une demande par seconde (partie où il descendra).
-      if (ghibli && !still && Math.abs(now - warmAt.current) >= 1) {
+      if (ghibli && CITIZENS_3D && !still && Math.abs(now - warmAt.current) >= 1) {
         warmAt.current = now;
         for (const p of w.stopCrowd.riders) {
           if (p.stage !== 'inside' || (p.side === 'far' ? 'far' : 'near-step') !== part) continue;
           const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
           const walk = (yaw: number) => ({ yaw, gait: 'walk' as const, phase: 0, head: 0 });
-          prewarmCitizen(figures, { outfit, sky, rainy, umbrella: false, id: { citizen: Math.floor(p.u * 1e9) } }, [walk(p.side === 'near' ? 4 : 12), walk(0), walk(8)]);
+          prewarmCitizen(figures, { outfit, sky, rainy, umbrella: false, id: { citizen: Math.floor(p.u * 1e9) } }, [walk(p.side === 'near' ? 4 : 12), walk(0), walk(8)], p.at - w.t);
         }
       }
       for (const p of w.stopCrowd.riders) {
