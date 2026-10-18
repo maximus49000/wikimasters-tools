@@ -55,7 +55,7 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
     const podiums = buildings.flatMap((b) => {
       if (b.far || !b.podiumLayout || !b.podium) return [];
       const stone = plan?.podiums.find((p) => p.id === b.podium!.id)?.stone;
-      return [{ key: `p${b.podium.id}`, layout: { windows: b.podiumLayout.windows, dormers: [] }, wall: stone ? hex(stone) : (b.layout?.wall ?? '#EDE2C8') }];
+      return [{ key: `p${b.podium.id}`, layout: { windows: b.podiumLayout.windows, dormers: [], homes: b.podiumLayout.homes }, wall: stone ? hex(stone) : (b.layout?.wall ?? '#EDE2C8') }];
     });
     return [...towers, ...podiums];
   }, [buildings, plan]);

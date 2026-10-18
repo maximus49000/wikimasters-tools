@@ -3,7 +3,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GhibliWindows } from '../../src/content/ghibli-windows';
-import { NightGlass } from '../../src/content/ghibli-window-art';
+import { NightGlass, amb, luminance, nightCurtain, nightGlass, nightVoile } from '../../src/content/ghibli-window-art';
+import { PLASTERS, STONES } from '../../src/core/library/city/facade-layout';
 import { FAR_WINDOW, cityFacades } from '../../src/core/library/city/facades';
 import { cityMetrics } from '../../src/core/library/city/metrics';
 import { PODIUM_H } from '../../src/core/library/scene-world';
@@ -152,6 +153,50 @@ describe('calque des fenêtres Ghibli', () => {
     for (const el of lamps()) {
       const href = el.querySelector('use')!.getAttribute('href')!;
       expect(ids.has(href.slice(1))).toBe(true);
+    }
+  });
+
+  it('vitres éteintes jamais plus claires que le mur : voilage et rideaux ambiants sous la luminance du mur ambiant', () => {
+    // Rideaux de notes.md §Couleurs (palette privée de facade-layout).
+    const curtains = ['#F4E6D0', '#C85A3A', '#5A7AA8', '#E8C890', '#8A5A8E'];
+    for (const wall of [...STONES, ...PLASTERS]) {
+      const max = luminance(amb(wall));
+      expect(luminance(nightGlass(wall)), wall).toBeLessThan(max);
+      expect(luminance(nightVoile(wall)), wall).toBeLessThanOrEqual(max);
+      for (const c of curtains) expect(luminance(nightCurtain(c, wall)), `${c} sur ${wall}`).toBeLessThanOrEqual(max);
+    }
+    // Un rideau déjà sombre garde exactement sa couleur ambiante.
+    expect(nightCurtain('#5A7AA8', '#EDE2C8')).toBe(amb('#5A7AA8'));
+    render({ daylight: 0 });
+    const glass = [...container.querySelectorAll('[data-night-glass]')];
+    const near = facades.filter((b) => !b.far && b.layout);
+    let voiles = 0;
+    near.forEach((b, i) => {
+      const v = glass[i]!.querySelector('[data-night-voile]');
+      if (!v) return;
+      voiles++;
+      expect(v.getAttribute('fill')).toBe(nightVoile(b.layout!.wall));
+    });
+    expect(voiles).toBeGreaterThan(0);
+  });
+
+  it('vitres éteintes : menuiserie et barreaux des balcons redessinés en un chemin par immeuble, socle avec ses rideaux', () => {
+    render({ daylight: 0 });
+    const glass = [...container.querySelectorAll('[data-night-glass]')];
+    for (const g of glass) {
+      const frames = g.querySelectorAll('[data-night-frames]');
+      expect(frames.length).toBe(1);
+      expect(frames[0]!.getAttribute('stroke')).toBe('#2A1A18');
+      expect(g.querySelectorAll('[data-night-bars]').length).toBeLessThanOrEqual(1);
+    }
+    // Au moins un immeuble à balcon filant ou balconnet : des barreaux devant ses vitres éteintes.
+    expect(container.querySelectorAll('[data-night-glass] [data-night-bars]').length).toBeGreaterThan(0);
+    // Socle des jumeaux : rideaux de ses logements présents si l'un d'eux en a.
+    const podium = facades.find((b) => b.podiumLayout && b.podiumLayout.homes.some((h) => h.curtain));
+    if (podium) {
+      const near = facades.filter((b) => !b.far && b.layout).length;
+      const pg = glass[near + facades.filter((b) => b.podiumLayout).indexOf(podium)]!;
+      expect(pg.querySelectorAll('[data-night-voile], [data-night-curtain]').length).toBeGreaterThan(0);
     }
   });
 
