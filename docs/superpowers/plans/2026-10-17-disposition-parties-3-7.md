@@ -258,6 +258,7 @@ le début du document). Plan précédent (parties 1-2 livrées, PR #327, #330) :
 - Modify: `src/core/whats-new/entries.ts` → fiche `bibliotheque-v37`
 - Test: `tests/content/card-bubble.test.tsx`, `tests/content/room-carried-3d.test.tsx`
 
+- Ajout (décision utilisateur 2026-10-18) : bouton **🔄 « Changer de carte »** dans la même bulle, réglette `CardStrip` (partie 4) ; `replaceCard(layout, id, slug, shape?): Layout | null` dans room-grid.ts — garde id, place, présentation/pose, efface `cover`, refuse (null) si le slug est déjà dans la pièce ou si la nouvelle carte ne tient pas ; tests : remplacement à la même place, refus avec message.
 - [ ] **Step 1: Write the failing tests** : choisir une version enregistre `cover` sur l'objet et la pièce la dessine ; la fiche
   de la carte et la Collection gardent leur image ; « Pochette d'origine » efface `cover` ; sans version le bouton est grisé ;
   pendant la recherche, un indicateur, puis la réglette.
