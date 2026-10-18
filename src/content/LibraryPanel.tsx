@@ -636,9 +636,9 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
   useEffect(() => {
     if (placementRef.current) cancelRef.current();
   }, [colsNow]);
-  // Échap abandonne le placement en cours.
+  // Échap abandonne le placement en cours, ou le choix du meuble d'une carte du tiroir.
   const cancelRef = useRef<() => void>(() => undefined);
-  const placingNow = placement !== null;
+  const placingNow = placement !== null || cardToPlace !== null;
   useEffect(() => {
     if (!placingNow) return;
     const onKey = (event: KeyboardEvent): void => {
@@ -1364,6 +1364,14 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
             onExtend={(side) => void extend(side)}
             onShrink={(side) => void shrink(side)}
           />
+        )}
+        {/* Choix du meuble d'une carte du tiroir : la consigne et ✕ pour y renoncer (Échap aussi). */}
+        {editing && !outside && cardToPlace && (
+          <div data-pick-host="" className="wmt-lib-row" style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 35, padding: '4px 8px', borderRadius: 10, background: 'rgba(43,29,22,.82)', color: '#FBF6EA', alignItems: 'center', gap: 8 }}>
+            <span aria-hidden="true">🃏</span>
+            <span>{PICK_HOST_HINT}</span>
+            <Btn label="Annuler" data={{ action: 'cancel-card' }} onClick={reset}>✕</Btn>
+          </div>
         )}
         {editing && !outside && selectedId && !placement && (
           <ActionBubble stage={stage.ref.current} scroll={scrollRef.current} targetId={selectedId}>

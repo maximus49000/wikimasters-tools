@@ -8,7 +8,7 @@ import { useCallback, useEffect, useId, useMemo, useState, type CSSProperties, t
 import { cardQuad, boxOfQuad, placementRectPx } from '../../core/library/carried-items';
 import type { Layout, Placed, ShelfLevel, StyleId } from '../../core/library/library-types';
 import { layerFrame } from '../../core/library/opened-item';
-import { SHELF_GAP_CM, SHELF_INNER_CM, boardHeightCm, boardItems, boardUsedCm, boardWidthCm, displayOf, isLit, placedSlugs, shelfLayoutIn, type BoardLike, type PxRect } from '../../core/library/room-grid';
+import { SHELF_GAP_CM, SHELF_INNER_CM, boardHeightCm, boardItems, boardUsedCm, boardWidthCm, displayOf, isLit, shelfLayoutIn, type BoardLike, type PxRect } from '../../core/library/room-grid';
 import { gameBoxContent } from '../game-box-content';
 import { paletteOf } from '../../core/library/styles';
 import { topSize, topThingOf, type TopThing } from '../../core/library/surface';
@@ -22,8 +22,7 @@ import { FURNITURE_MODELS } from '../../core/library/furniture-models';
 import { boardAim, boardBoxPx, boardFrameFor, boardRect, isBoardLevel, topAim, wholeAim, wholeBoxPx, wholeFrameFor } from './arrange-shelf-frames';
 import { axesOf, topPx } from './use-top-drag';
 import { useBoardDrag, type ArrangeLevel, type BoardAim } from './use-board-drag';
-import { ArrangeChrome, BUTTON, HALO } from './arrange-chrome';
-import { CardStrip } from './CardStrip';
+import { BUTTON, HALO, KO_HALO, PendingChrome } from './arrange-chrome';
 import { PENDING_ID, pendingAtOf, usePendingCard, type AddProps } from './use-pending-card';
 
 export type { ArrangeLevel } from './use-board-drag';
@@ -84,7 +83,6 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
   const pend = usePendingCard({ layout, ids, add, enabled: mode === 'add' });
   const moves = pend.wrap({ onBoard, onTop });
   const pendingId = pend.shown ? PENDING_ID : null;
-  const taken = useMemo(() => placedSlugs(layout), [layout]);
   // Disposition avec les attentes appliquées (`applied`) : visée et cadres stables pendant un glissé ; `preview` : ce qu'on dessine.
   const { drag, applied, preview, grab, wasDrag } = useBoardDrag({
     layout: pend.view, level, layerH: layer.h, rotated: layer.rotated, onBoard: moves.onBoard, onTop: moves.onTop, onLevel,
@@ -182,10 +180,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
   const message = drag && !drag.ok && drag.message ? (
     <div data-arrange-message="" style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', padding: '6px 12px', borderRadius: 8, background: 'rgba(43,29,22,.82)', color: '#FBF6EA', font: '600 14px system-ui, sans-serif', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{drag.message}</div>
   ) : null;
-  const chrome = (
-    <ArrangeChrome mode={mode} pending={pend.shown} note={pend.message} onCancel={pend.cancel} onDone={() => { if (!pend.commit()) onClose(); }}
-      strip={add ? <CardStrip cards={add.cards} taken={taken} pending={pend.slug} onPick={pend.pick} /> : null} />
-  );
+  const chrome = <PendingChrome mode={mode} add={add} layout={layout} pend={pend} onClose={onClose} />;
 
   // Le dessus : ArrangeView (plongée, les deux dessus liés côte à côte) qui ne fait que dessiner — un doigt sur un objet du dessus le
   // saisit par le glissé de l'étagère, qui peut le faire descendre sur une tablette (bord bas) ou passer sur l'autre dessus — et, par-dessus,
@@ -203,7 +198,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
     return (
       <>
         <ArrangeView layout={drag?.ok && drag.aim?.kind === 'top' ? preview : applied} room={room} hostId={ids[0]!} hostIds={ids} mode={mode}
-          external={{ grab, held: drag?.id ?? null, pending: pendingId }} onClose={onClose} onEscape={escape} sceneView={sceneView} imageOf={imageOf} />
+          external={{ grab, held: drag?.id ?? null, pending: pendingId, blocked: pend.blocked }} onClose={onClose} onEscape={escape} sceneView={sceneView} imageOf={imageOf} />
         <div data-arrange-shelf={ids.join('+')} data-arrange-level="top" data-arrange-mode={mode} style={{ ...layerStyle, zIndex: 41, background: 'none', pointerEvents: 'none' }}>
           {footprint && <svg width={layer.w} height={layer.h} viewBox={`0 0 ${layer.w} ${layer.h}`} aria-hidden="true" style={{ position: 'absolute', inset: 0 }}>{footprint}</svg>}
           {held}
@@ -255,10 +250,10 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
                     const waiting = p.id === pendingId && p.kind === 'stored';
                     return (
                       <g key={p.id} {...(p.kind === 'stored' ? { 'data-zoom-card': p.slug } : { 'data-zoom-small': p.id })} onPointerDown={(e) => grab(p.id, e)}
-                        {...(waiting ? { 'data-pending': p.slug, 'data-at': pendingAtOf(applied) ?? '' } : {})}
+                        {...(waiting ? { 'data-pending': p.slug, 'data-at': pendingAtOf(applied) ?? '', 'data-ok': pend.blocked ? 'false' : 'true' } : {})}
                         onClick={() => { if (!wasDrag()) onLevel(lv); }} style={{ cursor: 'grab' }}>
-                        <rect x={hit.x} y={hit.y} width={hit.w} height={hit.h} fill={waiting ? 'rgba(245,197,66,.18)' : 'transparent'}
-                          {...(waiting ? { 'data-pending-halo': '', stroke: HALO, strokeWidth: 3, vectorEffect: 'non-scaling-stroke' } : {})} />
+                        <rect x={hit.x} y={hit.y} width={hit.w} height={hit.h} fill={waiting ? (pend.blocked ? 'rgba(200,68,58,.3)' : 'rgba(245,197,66,.18)') : 'transparent'}
+                          {...(waiting ? { 'data-pending-halo': '', stroke: pend.blocked ? KO_HALO : HALO, strokeWidth: 3, vectorEffect: 'non-scaling-stroke' } : {})} />
                       </g>
                     );
                   })}
@@ -280,7 +275,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
       {board && (
         <ShelfBoardZoom shelfIds={ids} level={board.level} room={{ style: room.style, layout: preview }} measure={applied} cards={cards} imageOf={imageOf}
           onCard={NO_IMAGE} onLevel={onLevel} onAbove={() => onLevel('top')} frame={boardRect(board)} rotated={layer.rotated}
-          arrange={{ held: drag?.id ?? null, marker, onGrab: grab, pending: pendingId }} />
+          arrange={{ held: drag?.id ?? null, marker, onGrab: grab, pending: pendingId, pendingBlocked: pend.blocked }} />
       )}
       {held}
       {message}

@@ -15,8 +15,8 @@ import { Item3DArt } from './model3d-art';
 export type BoardMarker = { shelfId: string; xCm: number; wCm: number; hCm: number; ok: boolean };
 // Branchement de la vue Modifier : un doigt sur un objet le saisit (`onGrab`), l'objet tenu est dessiné en transparence, la place
 // d'insertion s'affiche ; le toucher d'une carte n'ouvre rien.
-// `pending` : id de la carte en attente de la vue ＋ (cerclée d'or).
-export type BoardArrange = { held: string | null; marker: BoardMarker | null; onGrab: (id: string, e: ReactPointerEvent) => void; pending?: string | null };
+// `pending` : id de la carte en attente de la vue ＋ (cerclée d'or ; de rouge si `pendingBlocked` : sa place ne tient plus).
+export type BoardArrange = { held: string | null; marker: BoardMarker | null; onGrab: (id: string, e: ReactPointerEvent) => void; pending?: string | null; pendingBlocked?: boolean };
 
 export type ShelfBoardProps = {
   shelfIds: string[];
@@ -227,7 +227,7 @@ export function ShelfBoardZoom({ shelfIds, level, room, cards, imageOf, onCard, 
                         <text key={k} data-board-title="" x={x + w / 2} y={titleY + TITLE_FONT_CM * (k + 1)} fontSize={TITLE_FONT_CM} textAnchor="middle" fill={TITLE_INK}>{line}</text>
                       ))}
                     {/* Carte en attente (vue ＋) : halo doré autour du boîtier. */}
-                    {waiting && <rect data-pending-halo="" x={x - 0.6} y={y - 0.6} width={w + 1.2} height={h + 1.2} rx={0.6} fill="none" stroke="#F5C542" strokeWidth={1} pointerEvents="none" style={{ filter: 'drop-shadow(0 0 1.5px #F5C542)' }} />}
+                    {waiting && <rect data-pending-halo="" x={x - 0.6} y={y - 0.6} width={w + 1.2} height={h + 1.2} rx={0.6} fill="none" stroke={arrange?.pendingBlocked ? '#C8443A' : '#F5C542'} strokeWidth={1} pointerEvents="none" style={{ filter: `drop-shadow(0 0 1.5px ${arrange?.pendingBlocked ? '#C8443A' : '#F5C542'})` }} />}
                   </g>
                 );
               })}

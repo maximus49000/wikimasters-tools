@@ -147,6 +147,81 @@ describe('＋ sur un bureau (ArrangeView en mode ajout)', () => {
   });
 });
 
+describe('✓ refusé : la carte reste en attente, à sa place', () => {
+  const frame = arrangeFrameFor('desk', LAYER);
+  const delta = (x0: number, z0: number, x1: number, z1: number): [number, number] => {
+    const a = topToScreen(frame, x0, z0);
+    const b = topToScreen(frame, x1, z1);
+    return [b[0] - a[0], b[1] - a[1]];
+  };
+  const spot = firstFreeTopSpot(DESK, 'd', { shape: 'cd' })!;
+  type OnAdd = (...args: unknown[]) => Promise<unknown> | void;
+  const render = (layout: Layout, add: { cards: typeof KNOWN; categoryOf: () => 'music'; onAdd: OnAdd }, onClose = vi.fn()) =>
+    act(() => root.render(<ArrangeView layout={layout} room={{ style: 'scandinave' }} hostId="d" mode="add" onMove={vi.fn()} onClose={onClose} add={add} />));
+
+  it('écriture rejetée : la carte reste en attente au même endroit, avec le message', async () => {
+    const add = { cards: KNOWN, categoryOf: () => 'music' as const, onAdd: vi.fn(() => Promise.reject(new Error('refusé'))) };
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    render(DESK, add);
+    await click('[data-strip-card="Paris"]');
+    await click('[data-action="arrange-done"]');
+    await settle();
+    expect(add.onAdd).toHaveBeenCalledTimes(1);
+    expect(q('[data-pending]')?.getAttribute('data-at')).toBe(`${spot.x},${spot.z}`);
+    expect(q('[data-arrange-note]')?.textContent).toBe('Impossible de poser la carte ici.');
+  });
+
+  it('écriture lancée en exception : même chose, rien n’est avalé en silence', async () => {
+    const add = { cards: KNOWN, categoryOf: () => 'music' as const, onAdd: vi.fn(() => { throw new Error('boum'); }) };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    render(DESK, add);
+    await click('[data-strip-card="Paris"]');
+    await click('[data-action="arrange-done"]');
+    expect(q('[data-pending]')?.getAttribute('data-at')).toBe(`${spot.x},${spot.z}`);
+    expect(q('[data-arrange-note]')?.textContent).toBe('Impossible de poser la carte ici.');
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('écriture tenue mais disposition inchangée (pose refusée) : la carte reste en attente, avec le message', async () => {
+    const add = { cards: KNOWN, categoryOf: () => 'music' as const, onAdd: vi.fn(() => Promise.resolve()) };
+    render(DESK, add);
+    await click('[data-strip-card="Paris"]');
+    await click('[data-action="arrange-done"]');
+    await settle();
+    expect(q('[data-pending]')?.getAttribute('data-at')).toBe(`${spot.x},${spot.z}`);
+    expect(q('[data-arrange-note]')?.textContent).toBe('Impossible de poser la carte ici.');
+  });
+
+  it('la disposition reçue prend sa place : la carte ne bouge pas, rouge + message, ✓ refusé jusqu’à une place verte', async () => {
+    const add = { cards: KNOWN, categoryOf: () => 'music' as const, onAdd: vi.fn() };
+    const onClose = vi.fn();
+    render(DESK, add, onClose);
+    await click('[data-strip-card="Paris"]');
+    expect(q('[data-pending]')?.getAttribute('data-ok')).toBe('true');
+    // Un réveil arrive à cette place (autre appareil, autre vue) : la carte reste là, en rouge.
+    const taken: Layout = [...DESK, { id: 'a', kind: 'small', item: 'alarm', hostId: 'd', x: spot.x, z: spot.z }];
+    render(taken, add, onClose);
+    expect(q('[data-pending]')?.getAttribute('data-at')).toBe(`${spot.x},${spot.z}`);
+    expect(q('[data-pending]')?.getAttribute('data-ok')).toBe('false');
+    expect(q('[data-pending-halo]')?.getAttribute('data-ok')).toBe('false');
+    expect(q('[data-arrange-note]')?.textContent).toBe('Plus de place ici : glissez la carte à une place libre.');
+    await click('[data-action="arrange-done"]');
+    expect(add.onAdd).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    // Glissée à une place libre : verte, ✓ la pose là.
+    const [dx, dy] = delta(spot.x, spot.z, 90, 12);
+    await pointer('pointerdown', q('[data-pending]')!, 300, 200);
+    await pointer('pointermove', window, 300 + dx / 2, 200 + dy / 2);
+    await pointer('pointermove', window, 300 + dx, 200 + dy);
+    await pointer('pointerup', window, 300 + dx, 200 + dy);
+    await settle();
+    expect(q('[data-pending]')?.getAttribute('data-ok')).toBe('true');
+    expect(q('[data-arrange-note]')).toBeNull();
+    await click('[data-action="arrange-done"]');
+    expect(add.onAdd).toHaveBeenCalledWith({ slug: 'Paris', shape: 'cd' }, { hostId: 'd', x: 90, z: 12 });
+  });
+});
+
 describe('＋ sur une étagère (ArrangeShelf en mode ajout)', () => {
   const mount = () => {
     const h = { onAdd: vi.fn(), onBoard: vi.fn(), onTop: vi.fn(), onLevel: vi.fn(), onClose: vi.fn() };
@@ -225,8 +300,45 @@ describe('LibraryPanel : ＋ et tiroir « Ajouter une carte »', () => {
     await settle();
     const spot = firstFreeTopSpot(DESK, 'd', { shape: 'cd' })!;
     expect(layoutNow().find((p) => p.kind === 'posed' && p.slug === 'Paris')).toMatchObject({ hostId: 'd', x: spot.x, z: spot.z, shape: 'cd' });
-    // La carte posée n'est plus dans la réglette, ni en attente.
+    // La carte posée n'est plus dans la réglette, ni en attente ; la vue reste ouverte : on en ajoute une seconde.
     expect(strip()).toEqual(['Daft_Punk']);
     expect(q('[data-pending]')).toBeNull();
+    expect(q('[data-arrange-view]')).not.toBeNull();
+    await click('[data-strip-card="Daft_Punk"]');
+    expect(q('[data-pending]')?.getAttribute('data-pending')).toBe('Daft_Punk');
+    await click('[data-action="arrange-done"]');
+    await settle();
+    expect(layoutNow().filter((p) => p.kind === 'posed').map((p) => (p as { slug: string }).slug).sort()).toEqual(['Daft_Punk', 'Kiki', 'Paris']);
+    expect(strip()).toEqual([]);
+    // ✓ sans carte en attente : la vue se ferme.
+    await click('[data-action="arrange-done"]');
+    expect(q('[data-arrange-view]')).toBeNull();
+  });
+
+  it('choix du meuble : ✕ « Annuler » ou Échap y renoncent (aucune vue ne s’ouvre ensuite)', async () => {
+    await seed(DESK);
+    await click('[data-action="edit"]');
+    const choose = async () => {
+      await click('[data-action="add-card"]');
+      await click('[data-card-option="Paris"]');
+      await click('[data-target="shelf"]');
+      await click('[data-shape="cd"]');
+      expect(q('[data-pick-host]')).not.toBeNull();
+    };
+    await choose();
+    const cancel = q('[data-action="cancel-card"]')!;
+    expect(cancel.getAttribute('aria-label')).toBe('Annuler');
+    expect(cancel.getAttribute('title')).toBe('Annuler');
+    expect(cancel.textContent).toContain('✕');
+    await click('[data-action="cancel-card"]');
+    expect(q('[data-pick-host]')).toBeNull();
+    await click('[data-furniture="desk"]');
+    expect(q('[data-arrange-view]')).toBeNull();
+    await choose();
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
+    await settle();
+    expect(q('[data-pick-host]')).toBeNull();
+    await click('[data-furniture="desk"]');
+    expect(q('[data-arrange-view]')).toBeNull();
   });
 });

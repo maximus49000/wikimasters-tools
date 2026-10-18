@@ -18,15 +18,13 @@ import { isTableClock, tableFaceContent, useDecoScene } from '../deco-live';
 import { CarriedItem3D, Model3DArt, type ItemContent } from '../model3d-art';
 import { gameBoxContent } from '../game-box-content';
 import type { SceneView } from '../RoomView';
-import { placedSlugs } from '../../core/library/room-grid';
 import { axesOf, topPx, useTopDrag, type TopAxes } from './use-top-drag';
-import { ArrangeChrome, HALO, HaloFilter } from './arrange-chrome';
-import { CardStrip } from './CardStrip';
+import { HALO, HaloFilter, KO_HALO, PendingChrome } from './arrange-chrome';
 import { PENDING_ID, pendingAtOf, usePendingCard, type AddProps } from './use-pending-card';
 
 // Vue du dessus d'une étagère (ArrangeShelf) : la vue ne fait que dessiner ; la saisie passe par le glissé de l'étagère (use-board-drag,
 // qui peut changer de niveau), l'objet tenu est estompé, la carte en attente et le bandeau du haut sont ceux de l'étagère.
-export type ArrangeExternal = { grab(id: string, e: ReactPointerEvent): void; held: string | null; pending: string | null };
+export type ArrangeExternal = { grab(id: string, e: ReactPointerEvent): void; held: string | null; pending: string | null; blocked?: boolean };
 
 type Props = {
   layout: Layout;
@@ -144,7 +142,8 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
   const { drag, pending, axes, grab: ownGrab } = useTopDrag({ layout: shownLayout, hostIds: ids, frame, rotated: layer.rotated, onMove: moves.onMove });
   const grab = external ? external.grab : ownGrab;
   const pendingId = external ? external.pending : pend.shown ? PENDING_ID : null;
-  const taken = useMemo(() => placedSlugs(layout), [layout]);
+  // Carte en attente dont la place ne tient plus (disposition reçue) : cerclée de rouge, ✓ refusé.
+  const pendingBlocked = external ? external.blocked === true : pend.blocked;
   const haloId = `wm-halo-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const items = useMemo(() => topItemsOf(shownLayout, ids), [shownLayout, ids]);
   // Axes de chaque plateau : mêmes images des axes, origine décalée d'un meuble au suivant.
@@ -196,7 +195,8 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
         )}
         {/* Carte en attente : son empreinte cerclée d'or (là où ✓ la posera). */}
         {pendingItem && !liftedOf(pendingItem.placed.id) && (
-          <polygon data-pending-halo="" points={quad(axesAt[pendingItem.host] ?? axes, pendingItem.rect)} fill="rgba(245,197,66,.22)" stroke={HALO} strokeWidth={2.5} pointerEvents="none" />
+          <polygon data-pending-halo="" data-ok={pendingBlocked ? 'false' : 'true'} points={quad(axesAt[pendingItem.host] ?? axes, pendingItem.rect)}
+            fill={pendingBlocked ? 'rgba(200,68,58,.3)' : 'rgba(245,197,66,.22)'} stroke={pendingBlocked ? KO_HALO : HALO} strokeWidth={2.5} pointerEvents="none" />
         )}
         {ordered.map((i) => {
           const held = drag?.id === i.placed.id || external?.held === i.placed.id;
@@ -204,7 +204,7 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
           const isPending = i.placed.id === pendingId && i.placed.kind === 'posed';
           return (
             <g key={i.placed.id} data-arrange-item={i.placed.id} {...(i.fixed ? { 'data-fixed': '' } : {})}
-              {...(isPending && i.placed.kind === 'posed' ? { 'data-pending': i.placed.slug, 'data-at': pendingAtOf(shownLayout) ?? '', filter: `url(#${haloId})` } : {})}
+              {...(isPending && i.placed.kind === 'posed' ? { 'data-pending': i.placed.slug, 'data-at': pendingAtOf(shownLayout) ?? '', 'data-ok': pendingBlocked ? 'false' : 'true', filter: `url(#${haloId})` } : {})}
               style={{ cursor: i.fixed ? 'default' : held ? 'grabbing' : 'grab', ...(moved ? { transform: `translate(${r1(moved.tx)}px, ${r1(moved.ty - (held ? LIFT_PX : 0))}px)` } : {}), ...(held ? { opacity: external ? 0.6 : 0.9 } : {}) }}
               onPointerDown={i.fixed ? undefined : (e) => grab(i.placed.id, e)}>
               <CarriedItem3D host={hostKind} angle={0} rect={frameAt(fit, i.host).rect} placement={i.placement} palette={palette} steampunk={steampunk} content={contentOf(i.placed)} camera={PLUNGE_CAMERA} />
@@ -213,8 +213,7 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
         })}
       </svg>
       {!external && (
-        <ArrangeChrome mode={mode} pending={pend.shown} note={pend.message} onCancel={pend.cancel} onDone={() => { if (!pend.commit()) onClose(); }}
-          strip={add ? <CardStrip cards={add.cards} taken={taken} pending={pend.slug} onPick={pend.pick} /> : null} />
+        <PendingChrome mode={mode} add={add} layout={layout} pend={pend} onClose={onClose} />
       )}
     </div>
   );

@@ -63,6 +63,8 @@ beforeEach(() => {
   Object.assign(window, { innerWidth: 800, innerHeight: 400 });
 });
 afterEach(() => {
+  // Capture du doigt simulée par un test (propriété propre de la page) : retirée même si le test échoue.
+  Reflect.deleteProperty(document.documentElement, 'setPointerCapture');
   vi.useRealTimers();
   vi.restoreAllMocks();
   act(() => root.unmount());
@@ -469,7 +471,6 @@ describe('objets d’un dessus : vers une tablette ou l’autre dessus', () => {
     expect(s.onBoard).toHaveBeenCalledTimes(1);
     expect(s.onBoard).toHaveBeenCalledWith('lt', 's', 0, 3);
     expect(s.onTop).not.toHaveBeenCalled();
-    Reflect.deleteProperty(document.documentElement, 'setPointerCapture');
   });
 
   it('une carte posée sur le dessus descend sur une tablette : onBoard (elle y sera rangée)', async () => {
