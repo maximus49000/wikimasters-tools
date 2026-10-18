@@ -251,13 +251,17 @@ export function citizenFromOutfit(seed: number, o: Outfit, opts: CitizenOpts): C
   let hair: [string, string] | null = null;
   let cap: [string, string] | null = null;
   const items: Item[] = [];
-  if (o.hair === 'beanie') {
+  // Crâne rasé (« bald » des tenues de la Ville, tiré sans regarder la base) : réservé aux hommes ; une femme ou un enfant
+  // reçoit des cheveux longs ou un chignon (sinon des femmes chauves en robe dans la rue).
+  const chauve = o.hair === 'bald' && B.sex === 'm';
+  const coiffe = o.hair === 'bald' && !chauve ? (R() < 0.5 ? 'long' : 'bun') : o.hair;
+  if (coiffe === 'beanie') {
     items.push(item('bonnet', o.hatColor));
-  } else if (o.hair !== 'bald') {
-    const voulu = o.hair === 'cap' || o.hair === 'short' ? COIFFURES.short : COIFFURES[o.hair];
+  } else if (coiffe !== 'bald') {
+    const voulu = coiffe === 'cap' || coiffe === 'short' ? COIFFURES.short : COIFFURES[coiffe];
     const style = coiffure(R, base, voulu);
     hair = style ? [style, hairColor] : null;
-    if (o.hair === 'cap' && !B.aged) cap = [o.hatColor, o.hatColor];
+    if (coiffe === 'cap' && !B.aged) cap = [o.hatColor, o.hatColor];
   }
 
   // Barbe : mêmes probabilités par base que `citizen` ; jamais pour les femmes ni les enfants (pas d'entrée BEARD).

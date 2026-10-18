@@ -125,6 +125,23 @@ export function coverRadius(over: THREE.Mesh[], c: THREE.Vector3, y0: number, y1
   return row.map((_, a) => Math.max(row[a]!, row[(a + 1) % NA]!, row[(a + NA - 1) % NA]!));
 }
 
+// Rayon du corps sous une jupe, par rangée (NY + 1, de `top` à `hem`) et colonne (NA + 1, angle -π + ia·2π/NA) : le
+// plus large du corps entre le haut de la jupe et la rangée, sans descendre sous le haut des cuisses.
+export function hangRadius(A: BodyInfo, R: (y: number, az: number) => number, top: number, hem: number, NY: number, NA: number): Float32Array {
+  const low = A.J.LeftUpLeg.y - 0.08 * A.H, dy = 0.004 * A.H;
+  const out = new Float32Array((NY + 1) * (NA + 1));
+  for (let ia = 0; ia <= NA; ia++) {
+    const az = -Math.PI + (ia / NA) * 2 * Math.PI;
+    let m = 0.02 * A.H, y = top;
+    for (let iy = 0; iy <= NY; iy++) {
+      const yr = Math.max(low, top + (hem - top) * (iy / NY));
+      for (; y >= yr - 1e-9; y -= dy) m = Math.max(m, R(y, az));
+      out[iy * (NA + 1) + ia] = m;
+    }
+  }
+  return out;
+}
+
 // Jupe : du haut (yTop) jusqu'à la longueur `len` (fraction de la hauteur hanche→cheville), évasée de `flare`.
 // Un haut porté avec (`over`) est rentré dedans : la jupe ne descend jamais sous lui, sinon son bas ressortait à travers
 // la jupe en traînées (corps ronds : le haut gonflé le long des normales dépasse le rayon de la jupe).
@@ -137,19 +154,19 @@ export function skirt(A: BodyInfo, { top = skirtTop(A), len = 0.6, flare = 0.35,
   const step = (top - hem) / NY, gap = TUCK_GAP * A.H;
   const under = (y: number) => (over.length ? coverRadius(over, c, y - step, Math.min(top, y + step), NA) : null);
   const H = A.idx.Hips, L = A.idx.LeftUpLeg, Rr = A.idx.RightUpLeg;
-  // Rayon de départ : le plus large du corps entre la taille et le haut des cuisses (la jupe tombe sans coller).
-  const base = (az: number) => { let r = 0; for (let y = top; y >= top - 0.25 * (top - hem); y -= 0.01) r = Math.max(r, R(y, az)); return r; };
+  // Tombé du tissu : en haut la jupe épouse le corps (taille, reins, fesses, ventre), puis tombe droit depuis le point
+  // le plus saillant au-dessus d'elle (maximum cumulé du rayon du corps en descendant). Autrefois l'anneau du haut prenait
+  // déjà le plus large de la tranche voisine : sur les corps aux fesses marquées il restait décollé des reins et formait
+  // une tournure. On s'arrête au haut des cuisses (genoux et pieds ne comptent pas).
+  const hang = hangRadius(A, R, top, hem, NY, NA);
   for (let iy = 0; iy <= NY; iy++) {
     const t = iy / NY, y = top + (hem - top) * t, u = under(y);
     for (let ia = 0; ia <= NA; ia++) {
       const az = -Math.PI + (ia / NA) * 2 * Math.PI;
-      let r0 = 0.02;
-      for (let dy = -0.03; dy <= 0.03; dy += 0.01) r0 = Math.max(r0, R(top + dy * A.H, az));
-      r0 += off * e * A.H;
       const fold = folds * A.H * Math.pow(t, 1.4) * (0.6 * Math.sin(az * 9 + 0.7) + 0.4 * Math.sin(az * 14 + 2.1));
       // Jamais sous le haut rentré dedans (0 = rien dessous : rayon d'origine).
       const lip = u && u[ia % NA]! > 0 ? u[ia % NA]! + gap : 0;
-      const r = Math.max(lip, r0 + (base(az) + off * e * A.H - r0) * Math.min(1, t * 4)) + flare * (top - hem) * t * t + fold;
+      const r = Math.max(lip, hang[iy * (NA + 1) + ia]! + off * e * A.H) + flare * (top - hem) * t * t + fold;
       pos.push(c.x + Math.sin(az) * r, y, c.z + Math.cos(az) * r);
       const s = Math.sin(az);
       const wl = t * 0.8 * (0.5 + 0.5 * s), wr = t * 0.8 * (0.5 - 0.5 * s);
@@ -186,9 +203,16 @@ export const garments = {
     const col = (v: VertexInfo) => Math.max(colY - v.y, Math.hypot(v.x - nx, v.z - nz) - r0);
     const chest = A.J.Spine2.y;
     const e = A.ease ?? 1;
-    const offAt = (v: VertexInfo) => e * (off + ease * (v.part === 'arm' ? clamp01(aT(v)) * 0.8 : clamp01((chest - v.y) / (chest - hemY))));
+    // Rentré dans une jupe : l'aisance retombe à zéro vers la ceinture (tissu resserré à la taille), sinon le haut gonflé
+    // repoussait le haut de la jupe loin du corps (tournure dans le dos, bourrelet au ventre).
+    const belt = tuckY + TUCK_DEPTH * A.H, band = 0.06 * A.H;
+    const gather = (v: VertexInfo) => (tuckY === -Infinity ? 1 : clamp01((v.y - belt) / band));
+    const offAt = (v: VertexInfo) => e * (off + ease * (v.part === 'arm' ? clamp01(aT(v)) * 0.8 : clamp01((chest - v.y) / (chest - hemY)) * gather(v)));
     const cutY = Math.max(hemY, tuckY);
-    return shell(A, (v) => Math.min(v.y - cutY, col(v), (sleeve - aT(v)) * 0.2, v.part === 'hand' || v.part === 'head' ? -1 : 1), offAt, color, { pattern, drape: true });
+    const reshape = tuckY === -Infinity ? undefined : bridgeBack(A, chest, belt, e * off);
+    const m = shell(A, (v) => Math.min(v.y - cutY, col(v), (sleeve - aT(v)) * 0.2, v.part === 'hand' || v.part === 'head' ? -1 : 1), offAt, color, { pattern, drape: true, reshape });
+    if (tuckY !== -Infinity) pinToHips(A, m, belt + 0.02 * A.H, belt - 0.02 * A.H);
+    return m;
   },
   // Col de chemise : bande montante autour du cou.
   collar: (A: BodyInfo, { color, collar = 0.3, neckR = 0.062 }: { color: string; collar?: number; neckR?: number }) => {
@@ -205,6 +229,60 @@ export const garments = {
   socks: (A: BodyInfo, { from = 0.8, color }: { from?: number; color: string }) => shell(A, (v) => (lT(v) - from) * 0.3, 0.003, color),
   shoes: (A: BodyInfo, { from = 0.965, color, off = 0.01, sole = null }: { from?: number; color: string; off?: number; sole?: string | null }) => shoeShell(A, from, off, color, 0.012, sole),
 };
+
+// Haut rentré dans une jupe (robe, manteau long, haut + jupe) : dans le dos, le tissu enjambe le creux des reins en ligne
+// droite des omoplates (hauteur `chest`) au haut de la jupe (`belt`, rayon pris au plus saillant juste dessous). Sur les
+// corps cambrés aux fesses marquées, le haut collé aux reins puis la jupe sur les fesses dessinaient une marche (une
+// tournure). Seulement dans le dos : devant, rien n'est ajouté (pas de faux ventre). `off` : épaisseur du haut.
+export function bridgeBack(A: BodyInfo, chest: number, belt: number, off: number): Reshape {
+  const R = bodyRadius(A), c = A.J.Hips, span = chest - belt, far = 0.3 * A.H;
+  const seat = (az: number): number => {
+    let m = 0;
+    for (let y = belt; y >= belt - 0.04 * A.H; y -= 0.004 * A.H) m = Math.max(m, R(y, az));
+    return m;
+  };
+  return (pos, i) => {
+    const y = pos[i + 1]!;
+    if (span <= 0 || y >= chest) return;
+    const dx = pos[i]! - c.x, dz = pos[i + 2]! - c.z, r = Math.hypot(dx, dz);
+    if (r < 1e-6 || r > far) return;
+    const az = Math.atan2(dx, dz);
+    // Poids du dos : 1 plein dos, 0 dès les flancs.
+    const w = clamp01((-Math.cos(az) - 0.2) / 0.5);
+    if (w <= 0) return;
+    const s = clamp01((chest - y) / span), rc = R(chest, az);
+    const want = rc + (seat(az) - rc) * s + off;
+    if (want <= r) return;
+    const k = (r + (want - r) * w) / r;
+    pos[i] = c.x + dx * k;
+    pos[i + 2] = c.z + dz * k;
+  };
+}
+
+// Partie d'un haut rentrée dans la jupe : liée au bassin comme le haut de la jupe (fondu de `y0` à `y1`, positions au
+// repos). Avec les poids du corps (fesses liées aux cuisses), la jambe qui part en arrière poussait le bas du haut à
+// travers la jupe : une bosse sur les fesses à chaque pas.
+export function pinToHips(A: BodyInfo, m: THREE.SkinnedMesh, y0: number, y1: number): void {
+  const g = m.geometry, P = g.attributes.bindPos ?? g.attributes.position!, SI = g.attributes.skinIndex!, SW = g.attributes.skinWeight!;
+  const hips = A.idx.Hips;
+  for (let i = 0; i < SI.count; i++) {
+    const h = clamp01((y0 - P.getY(i)) / (y0 - y1));
+    if (h <= 0) continue;
+    const w = new Map<number, number>();
+    for (let k = 0; k < 4; k++) {
+      const b = comp(SI, i, k), x = comp(SW, i, k) * (1 - h);
+      if (x > 0) w.set(b, (w.get(b) ?? 0) + x);
+    }
+    w.set(hips, (w.get(hips) ?? 0) + h);
+    const best = [...w].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const sum = best.reduce((s, [, x]) => s + x, 0);
+    const at = (k: number): [number, number] => best[k] ?? [0, 0];
+    SI.setXYZW(i, at(0)[0], at(1)[0], at(2)[0], at(3)[0]);
+    SW.setXYZW(i, at(0)[1] / sum, at(1)[1] / sum, at(2)[1] / sum, at(3)[1] / sum);
+  }
+  SI.needsUpdate = true;
+  SW.needsUpdate = true;
+}
 
 // Chaussure : coque du pied, semelle aplatie au sol, bout un peu allongé ; `sole` = couleur d'une semelle (bande basse).
 function shoeShell(A: BodyInfo, from: number, off: number, color: string, toe: number, sole: string | null): THREE.SkinnedMesh | THREE.SkinnedMesh[] {

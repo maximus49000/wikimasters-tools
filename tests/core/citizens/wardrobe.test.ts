@@ -6,7 +6,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import type { Piece } from '../../../src/core/citizens/catalogue';
 import { analyse, disposeRig, dressRig, garments, hair, parapluieOuvert, PARAPLUIE_DEFAUT, skirt, type BodyInfo } from '../../../src/core/citizens/wardrobe';
 import { drapeNormals } from '../../../src/core/citizens/wardrobe/body';
-import { skirtTop, TUCK_DEPTH } from '../../../src/core/citizens/wardrobe/shell';
+import { bodyRadius, bridgeBack, hangRadius, skirtTop, TUCK_DEPTH } from '../../../src/core/citizens/wardrobe/shell';
 import { vi } from 'vitest';
 import { makeHumanoid } from './fixtures/humanoid';
 
@@ -301,6 +301,46 @@ describe('haut et jupe', () => {
       checked++;
     }
     expect(checked).toBeGreaterThan(20);
+  });
+  it('jupe : épouse le corps en haut (pas de tournure), puis ne rétrécit jamais en descendant', () => {
+    const off = 0.012, e = B.ease!, NA = 64;
+    const m = skirt(B, { len: 0.95, flare: 0, folds: 0, off, color: '#3A3A48' });
+    const S = m.geometry.attributes.position!, c = B.J.Hips, R = bodyRadius(B), top = skirtTop(B);
+    const ring = (iy: number, ia: number) => Math.hypot(S.getX(iy * (NA + 1) + ia) - c.x, S.getZ(iy * (NA + 1) + ia) - c.z);
+    for (let ia = 0; ia <= NA; ia++) {
+      const az = -Math.PI + (ia / NA) * 2 * Math.PI;
+      // Anneau du haut (dos compris) : le rayon du corps à cette hauteur plus l'épaisseur du tissu, rien de plus.
+      expect(ring(0, ia)).toBeLessThanOrEqual(R(top, az) + off * e * B.H + 1e-6);
+      for (let iy = 1; iy <= 24; iy++) expect(ring(iy, ia)).toBeGreaterThanOrEqual(ring(iy - 1, ia) - 1e-6);
+    }
+  });
+  it('hangRadius : maximum cumulé du corps en descendant, arrêté au haut des cuisses', () => {
+    // Corps cambré : reins creux (rayon 0,08) puis fesses (0,13) puis cuisses qui s'écartent (0,05).
+    const R = (y: number) => (y > 0.55 ? 0.08 : y > 0.45 ? 0.13 : 0.05);
+    const h = hangRadius({ ...A, H: 1, J: { ...A.J, LeftUpLeg: new THREE.Vector3(0, 0.5, 0) } }, R, 0.6, 0.1, 10, 4);
+    const col = (iy: number) => h[iy * 5]!;
+    expect(col(0)).toBeCloseTo(0.08, 6);
+    expect(col(2)).toBeCloseTo(0.13, 6);
+    expect(col(10)).toBeCloseTo(0.13, 6);
+  });
+  it('haut rentré : le dos enjambe le creux des reins, la partie rentrée suit le bassin', () => {
+    const [, topM] = dressRig(B, [jupe, top], '#C8906A') as THREE.SkinnedMesh[];
+    const g = topM!.geometry, SI = g.attributes.skinIndex!, SW = g.attributes.skinWeight!, BP = g.attributes.bindPos!;
+    const belt = skirtTop(B);
+    let pinned = 0;
+    for (let i = 0; i < SI.count; i++) {
+      expect(SW.getX(i) + SW.getY(i) + SW.getZ(i) + SW.getW(i)).toBeCloseTo(1, 5);
+      if (BP.getY(i) > belt - 0.02 * B.H) continue;
+      pinned++;
+      expect(SI.getX(i)).toBe(B.idx.Hips);
+      expect(SW.getX(i)).toBeCloseTo(1, 5);
+    }
+    expect(pinned).toBeGreaterThan(0);
+    // Pont du dos : un point du dos au milieu des reins est poussé au moins sur la droite omoplates → haut de la jupe.
+    const chest = B.J.Spine2.y, c = B.J.Hips, R = bodyRadius(B), y = (chest + belt) / 2;
+    const pos = [c.x, y, c.z - 0.001], k = bridgeBack(B, chest, belt, 0);
+    k(pos, 0, pos);
+    expect(c.z - pos[2]!).toBeGreaterThanOrEqual(Math.min(R(chest, Math.PI), R(belt, Math.PI)) - 1e-6);
   });
   it('sans jupe, le haut garde sa longueur', () => {
     const [topM] = dressRig(B, [top], '#C8906A') as THREE.SkinnedMesh[];
