@@ -129,7 +129,10 @@ export function anchorAt(key: FigureKey, anchor: Anchor, x: number, y: number, k
 // Emplacement partagé : un exemplaire caché de chaque dessin, un seul visible, posé à l'accroche de qui le porte. Emplacement
 // à réserve (`pool`) : les dessins vivent dans une réserve cachée de la boutique (rendue par React, jamais déplacée) ; la
 // boucle en clone une copie par emplacement et par dessin à la première demande (`clones`), posée dans l'emplacement.
-export type Slot = { node: Element; inner: Element; items: Map<string, Element>; shown: string | null; pooled: boolean; cur: Element | null; clones: Map<string, Element> };
+// Copie faite pendant que le dessin montrait encore son repli d'accessoire (`[data-prop-fallback]`, image Ghibli pas encore
+// cuite) : jamais gardée dans `clones`, et refaite dès que le dessin de la réserve a son image (`stale`).
+export type Slot = { node: Element; inner: Element; items: Map<string, Element>; shown: string | null; pooled: boolean; cur: Element | null; clones: Map<string, Element>; stale?: boolean };
+const FALLBACK = '[data-prop-fallback]';
 // Ce qu'un emplacement montre à cette image : dessin `id` au point (x, y) de son calque, échelle `k` ; `pop` : saut du picto.
 export type SlotAt = { id: string; x: number; y: number; k: number; pop?: { transform: string; opacity: string } };
 export const slotsOf = (root: Element, sel: string, item: string, inner?: string): Slot[] =>
@@ -156,15 +159,22 @@ export function placeSlots(slots: readonly Slot[], list: readonly SlotAt[]): voi
     const p = list[i];
     setIf(slot.node, 'display', p ? 'inline' : 'none');
     const id = p ? p.id : null;
+    // Copie au repli : refaite quand le dessin de la réserve a son image.
+    if (slot.stale && slot.shown === id && id && !slot.items.get(id)?.querySelector(FALLBACK)) slot.shown = null;
     if (slot.shown !== id) {
       if (slot.pooled) {
         if (slot.cur) slot.cur.remove();
         slot.cur = null;
+        slot.stale = false;
         if (id) {
           let el = slot.clones.get(id) ?? null;
           if (!el) {
             const base = slot.items.get(id);
-            if (base) slot.clones.set(id, (el = base.cloneNode(true) as Element));
+            if (base) {
+              el = base.cloneNode(true) as Element;
+              if (el.querySelector(FALLBACK)) slot.stale = true;
+              else slot.clones.set(id, el);
+            }
           }
           if (el) {
             slot.node.appendChild(el);
