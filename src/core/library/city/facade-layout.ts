@@ -43,10 +43,11 @@ const MIN_SPAN = 12;
 // Tour de jumeaux la plus étroite : en deçà (tour coupée au bord du monde), la porte du socle n'est pas à son aplomb.
 const MIN_DOOR_SPAN = 26;
 
-const STONES = ['#EDE2C8', '#E8DCC0', '#F0E6D0', '#E4D6BA', '#EAD5B0', '#F2E8D4'];
-const PLASTERS = ['#F6E2B4', '#EEC79A', '#CFE0B8', '#E0C8A0', '#F4D89C', '#E6BCD0'];
-const ZINCS = ['#8290A2', '#98A4B4', '#7A8AA0'];
-const TILES = ['#C86A40', '#B4523A'];
+// Palettes de notes.md §Couleurs (exportées pour le plan peint : teinte voisine de la 2e tour d'un socle).
+export const STONES = ['#EDE2C8', '#E8DCC0', '#F0E6D0', '#E4D6BA', '#EAD5B0', '#F2E8D4'];
+export const PLASTERS = ['#F6E2B4', '#EEC79A', '#CFE0B8', '#E0C8A0', '#F4D89C', '#E6BCD0'];
+export const ZINCS = ['#8290A2', '#98A4B4', '#7A8AA0'];
+export const TILES = ['#C86A40', '#B4523A'];
 const SHUTTERS = ['#8FA88C', '#6A7A9A', '#B8705A', '#7A8A6A'];
 const CURTAINS = ['#F4E6D0', '#C85A3A', '#5A7AA8', '#E8C890', '#8A5A8E'];
 
@@ -89,7 +90,7 @@ export function roofOutline(l: FacadeLayout): [number, number][] {
 }
 
 // Hauteur du contour en x (interpolation sur la ligne brisée, bornée à ses extrémités).
-function heightOn(outline: readonly [number, number][], x: number): number {
+export function heightOn(outline: readonly [number, number][], x: number): number {
   if (x <= outline[0]![0]) return outline[0]![1];
   for (let i = 1; i < outline.length; i++) {
     const [x1, y1] = outline[i]!;

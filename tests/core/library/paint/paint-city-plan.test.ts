@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { doorsFor } from '../../../../src/core/library/city/doors';
 import { cityFacades, GROUND_FLOOR } from '../../../../src/core/library/city/facades';
-import { TILE, tileItems } from '../../../../src/core/library/paint/city-painter';
-import { cityPaintPlan, ROOF_H, silhouetteTop } from '../../../../src/core/library/paint/city-plan';
+import { hexRgb } from '../../../../src/core/library/paint/color';
+import { TILE, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
+import { cityPaintPlan, silhouetteTop } from '../../../../src/core/library/paint/city-plan';
 
 describe('plan de la ville peinte', () => {
   for (const seed of [1, 7, 42]) {
@@ -19,13 +20,26 @@ describe('plan de la ville peinte', () => {
       });
     });
 
-    it(`graine ${seed} : fenêtres = lampes (premier plan) ou fenêtres du fond, lucarnes dans le toit`, () => {
+    it(`graine ${seed} : fenêtres = fenêtres d'étage de la mise en page (premier plan) ou fenêtres du fond`, () => {
       plan.buildings.forEach((b, i) => {
         const f = facades[i]!;
-        // La rangée de fenêtres du socle est peinte sur le socle : elle n'est pas dans les fenêtres de la tour.
-        const towerLamps = b.podiumTop === null ? f.lamps : f.lamps.filter((l) => l.y + 7 <= b.podiumTop!);
-        expect(b.wins.length).toBe(b.far ? f.farWindows.length : towerLamps.length);
-        if (!b.far) for (const w of b.wins) expect(w.dormer).toBe(w.y < b.top + ROOF_H);
+        if (b.far) {
+          expect(b.wins.length).toBe(f.farWindows.length);
+          expect(b.layout).toBeNull();
+          return;
+        }
+        // Lucarnes peintes par le toit, rangée du socle peinte sur le socle : ni l'une ni l'autre dans les fenêtres de la tour.
+        const floors = (f.layout?.windows ?? []).filter((w) => w.kind !== 'dormer');
+        expect(b.wins.map((w) => [w.x, w.y, w.w, w.h, w.kind])).toEqual(floors.map((w) => [w.x, w.y, w.w, w.h, w.kind]));
+        b.wins.forEach((w, k) => {
+          expect(w.dormer).toBe(false);
+          const home = floors[k]!.home >= 0 ? f.layout!.homes[floors[k]!.home]! : null;
+          expect(w.curtain).toBe(!!home?.curtain);
+        });
+        if (b.layout) {
+          expect(b.look.roofH).toBe(b.layout.roof.h);
+          expect(b.homes).toBe(b.layout.homes);
+        }
       });
     });
 
@@ -54,10 +68,10 @@ describe('plan de la ville peinte', () => {
     });
   }
 
-  it('toits : pignon, mansarde et zinc au premier plan, jamais de zinc au fond', () => {
+  it('toits : mansarde, zinc et tuile au premier plan (mise en page), jamais de zinc au fond', () => {
     const plan = cityPaintPlan(2160, 340, 1);
-    const kinds = new Set(plan.buildings.filter((b) => !b.far).map((b) => b.look.roofKind));
-    expect([...kinds].sort()).toEqual(['gable', 'mansard', 'zinc']);
+    const kinds = new Set(plan.buildings.filter((b) => !b.far && b.layout).map((b) => b.layout!.roof.kind));
+    expect([...kinds].sort()).toEqual(['mansard', 'tile', 'zinc']);
     for (const b of plan.buildings.filter((b) => b.far)) expect(b.look.roofKind).not.toBe('zinc');
   });
 
@@ -84,9 +98,29 @@ describe('plan de la ville peinte', () => {
     for (const p of plan.podiums) {
       for (let x = p.x + 0.5; x < p.x + p.w; x += 2) expect(silhouetteTop(plan, x)).toBeLessThanOrEqual(p.top);
       // Socle au-delà du bord du monde (moins de 12 px visibles) : pas de mise en page, donc pas de fenêtres.
-      if (Math.min(p.x + p.w, 1440) - p.x >= 12) expect(p.wins.length).toBeGreaterThan(0);
+      if (Math.min(p.x + p.w, 1440) - Math.max(p.x, 0) >= 12) expect(p.wins.length).toBeGreaterThan(0);
       else expect(p.wins).toEqual([]);
     }
+  });
+  it('fenêtres du socle : celles de podiumLayout, à leur vraie taille et position', () => {
+    let n = 0;
+    for (const seed of [1, 4, 9]) {
+      const plan = cityPaintPlan(1440, 340, seed);
+      const facades = cityFacades(1440, 340, seed);
+      for (const p of plan.podiums) {
+        const f = facades.find((g) => g.podium?.id === p.id && g.x === g.podium.x)!;
+        const pl = f.podiumLayout;
+        // Socle au-delà du bord du monde : pas de mise en page, pas de fenêtres.
+        if (!pl) {
+          expect(p.wins).toEqual([]);
+          continue;
+        }
+        expect(p.wins.map((w) => [w.x, w.y, w.w, w.h])).toEqual(pl.windows.map((w) => [w.x, w.y, w.w, w.h]));
+        p.wins.forEach((w, k) => expect(w.curtain).toBe(!!pl.homes[pl.windows[k]!.home]!.curtain));
+        n += p.wins.length;
+      }
+    }
+    expect(n).toBeGreaterThan(0);
   });
   it("ne pose pas d'arbre dont la couronne descend devant un socle", () => {
     // Compte les couples (arbre, socle) qui se chevauchent : le test ne doit pas passer à vide.
@@ -109,19 +143,28 @@ describe('plan de la ville peinte', () => {
     expect(tileItems(plan, tile).podiums).toContain(p);
   });
 
-  it('les deux tours d’un jumeau ont un mur et un toit différents', () => {
+  it('les deux tours d’un socle n’ont ni le même mur ni le même toit', () => {
+    const roofColor = (b: { layout: { roof: { kind: string; zinc?: string; tile?: string } } | null }): string | undefined => (b.layout!.roof.kind === 'tile' ? b.layout!.roof.tile : b.layout!.roof.zinc);
     let pairs = 0;
     for (let seed = 1; seed <= 30; seed++) {
       const plan = cityPaintPlan(2160, 340, seed);
       for (const p of plan.podiums) {
         const t = plan.buildings.filter((b) => b.podiumTop !== null && b.x >= p.x - 0.01 && b.x + b.w <= p.x + p.w + 0.01);
         expect(t.length).toBe(2);
-        expect(t[0]!.look.wall).not.toBe(t[1]!.look.wall);
-        expect(t[0]!.look.roof).not.toBe(t[1]!.look.roof);
+        if (!t[0]!.layout || !t[1]!.layout) continue;
+        expect(t[0]!.layout.wall).not.toBe(t[1]!.layout.wall);
+        expect(roofColor(t[0]!)).not.toBe(roofColor(t[1]!));
+        // Le mur peint est celui de la mise en page.
+        for (const b of t) expect(b.look.wall).toEqual(hexRgb(b.layout!.wall));
         pairs++;
       }
     }
     expect(pairs).toBeGreaterThan(20);
+  });
+
+  it('PAINT_VERSION vaut 8 (cache des tranches invalidé)', () => {
+    const plan = cityPaintPlan(720, 340, 1);
+    expect(tileKey(plan, 0).startsWith('8|')).toBe(true);
   });
 });
 

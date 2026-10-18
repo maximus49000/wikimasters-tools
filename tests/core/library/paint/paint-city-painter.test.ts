@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
 import { CORNICE, LEFT_GAP, leftOf, paintBuilding, paintCityTile, paintPodium, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
 import { doorsFor } from '../../../../src/core/library/city/doors';
+import { roofOutline } from '../../../../src/core/library/city/facade-layout';
+import { PAINT_VERSION } from '../../../../src/core/library/paint/city-painter';
 import { recordingCtx } from './recording-ctx';
 
 afterEach(() => vi.restoreAllMocks());
@@ -179,6 +181,43 @@ describe('peintre de tranche', () => {
       }
     }
     expect(found).toBeGreaterThan(0);
+  });
+
+  it('PAINT_VERSION vaut 8', () => {
+    expect(PAINT_VERSION).toBe(8);
+  });
+
+  it('premier plan : chaque fenêtre de la mise en page (étages et lucarnes) a sa vitre à sa taille', () => {
+    let n = 0;
+    for (const seed of [1, 4]) {
+      const plan = cityPaintPlan(1440, 340, seed);
+      for (const b of plan.buildings) {
+        if (b.far || !b.layout) continue;
+        const ctx = recordingCtx();
+        paintBuilding(ctx, plan, b);
+        const rects = ctx.ops.filter((o) => o.op === 'fillRect').map((o) => o.args.join(','));
+        for (const w of b.layout.windows) {
+          expect(rects).toContain([w.x, w.y, w.w, w.h].join(','));
+          n++;
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(100);
+  });
+
+  it('premier plan : le trait encré du toit suit exactement roofOutline', () => {
+    const plan = cityPaintPlan(1440, 340, 1);
+    const kinds = new Set<string>();
+    for (const b of plan.buildings) {
+      if (b.far || !b.layout) continue;
+      const ctx = recordingCtx();
+      paintBuilding(ctx, plan, b);
+      const pts = roofOutline(b.layout);
+      const at = ctx.ops.findIndex((o, i) => o.op === 'moveTo' && o.args[0] === pts[0]![0] && o.args[1] === pts[0]![1] && pts.slice(1).every(([x, y], k) => ctx.ops[i + 1 + k]?.op === 'lineTo' && ctx.ops[i + 1 + k]!.args[0] === x && ctx.ops[i + 1 + k]!.args[1] === y));
+      expect(at).toBeGreaterThanOrEqual(0);
+      kinds.add(b.layout.roof.kind);
+    }
+    expect(kinds.size).toBeGreaterThan(1);
   });
 
   it('entrées d’immeuble : celles de doorsFor, dans les tranches qu’elles touchent, et dans la clé', () => {
