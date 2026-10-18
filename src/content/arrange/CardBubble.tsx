@@ -58,24 +58,44 @@ export type BubbleSize = { w: number; h: number };
 // Taille supposée avant la première mesure (jsdom ne mesure rien) : deux rangées de boutons de la bulle de la pièce.
 export const BUBBLE_GUESS: BubbleSize = { w: 300, h: 84 };
 
-// Coin haut-gauche de la bulle (px du calque) qui ne recouvre jamais `anchor` (le rectangle de l'objet, ou de toute la tablette) :
-// dessous, sinon dessus, sinon à droite, sinon à gauche ; tout serré, en bas du calque (dernier recours, `over`). `right` : bande
-// réservée au bord droit (▲ ▼ des tablettes), jamais recouverte.
-export function bubbleSpot(anchor: PxRect, size: BubbleSize, layer: { w: number; h: number }, right = 0): { left: number; top: number; side: 'below' | 'above' | 'right' | 'left' | 'over' } {
+// Largeur sous laquelle une bulle à côté de l'objet n'a plus de sens (trois boutons) : dernier recours, `over`.
+export const MIN_SIDE_PX = 120;
+// Largeur maximale de la bulle (celle de la pièce).
+const MAX_W = 360;
+export type BubbleSpot = { left: number; top: number; side: 'below' | 'above' | 'right' | 'left' | 'over'; maxWidth: number };
+
+// Coin haut-gauche et largeur maximale de la bulle (px du calque), sans jamais recouvrir `anchor` (le rectangle de l'objet, ou sa colonne
+// sur toute la hauteur de la tablette) : dessous, sinon dessus ; sinon à côté (droite, puis gauche) à sa largeur ; sinon du côté le plus
+// large, rétrécie à la place qui reste (elle passe sur plus de rangées : sa hauteur estimée croît d'autant) ; seulement si ce côté a moins
+// de MIN_SIDE_PX, en bas du calque par-dessus (`over`). `size` : la taille mesurée (ou supposée) ; `right` : bande réservée au bord droit
+// (▲ ▼ des tablettes), jamais recouverte. La largeur maximale rendue garde la bulle repliée d'une mesure à l'autre (pas d'oscillation).
+export function bubbleSpot(anchor: PxRect, size: BubbleSize, layer: { w: number; h: number }, right = 0): BubbleSpot {
   const maxX = layer.w - right - GAP;
-  const clampX = (x: number) => Math.min(Math.max(GAP, x), Math.max(GAP, maxX - size.w));
-  const clampY = (y: number) => Math.min(Math.max(TOP_BAND, y), Math.max(TOP_BAND, layer.h - GAP - size.h));
-  const cx = clampX(anchor.x + anchor.w / 2 - size.w / 2);
+  const full = Math.max(0, Math.min(MAX_W, maxX - GAP));
+  const w = Math.min(size.w, full);
+  const clampX = (x: number, bw: number) => Math.min(Math.max(GAP, x), Math.max(GAP, maxX - bw));
+  const clampY = (y: number, bh: number) => Math.min(Math.max(TOP_BAND, y), Math.max(TOP_BAND, layer.h - GAP - bh));
+  const cx = clampX(anchor.x + anchor.w / 2 - w / 2, w);
   const below = anchor.y + anchor.h + GAP;
-  if (below + size.h <= layer.h - GAP) return { left: cx, top: below, side: 'below' };
+  if (below + size.h <= layer.h - GAP) return { left: cx, top: below, side: 'below', maxWidth: full };
   const above = anchor.y - GAP - size.h;
-  if (above >= TOP_BAND) return { left: cx, top: above, side: 'above' };
-  const cy = clampY(anchor.y + anchor.h / 2 - size.h / 2);
-  const toRight = anchor.x + anchor.w + GAP;
-  if (toRight + size.w <= maxX) return { left: toRight, top: cy, side: 'right' };
-  const toLeft = anchor.x - GAP - size.w;
-  if (toLeft >= GAP) return { left: toLeft, top: cy, side: 'left' };
-  return { left: cx, top: clampY(layer.h), side: 'over' };
+  if (above >= TOP_BAND) return { left: cx, top: above, side: 'above', maxWidth: full };
+  // Place libre de chaque côté de l'objet (px), bande réservée exclue.
+  const roomRight = Math.min(MAX_W, maxX - (anchor.x + anchor.w + GAP));
+  const roomLeft = Math.min(MAX_W, anchor.x - 2 * GAP);
+  const side = (where: 'right' | 'left', room: number): BubbleSpot => {
+    const bw = Math.min(w, room);
+    // Rétrécie : autant de rangées de plus que la largeur l'impose.
+    const bh = bw < w ? size.h * Math.ceil(w / bw) : size.h;
+    const left = where === 'right' ? anchor.x + anchor.w + GAP : anchor.x - GAP - bw;
+    return { left, top: clampY(anchor.y + anchor.h / 2 - bh / 2, bh), side: where, maxWidth: room };
+  };
+  if (roomRight >= w) return side('right', roomRight);
+  if (roomLeft >= w) return side('left', roomLeft);
+  const wider = roomRight >= roomLeft ? 'right' : 'left';
+  const room = Math.max(roomRight, roomLeft);
+  if (room >= MIN_SIDE_PX) return side(wider, room);
+  return { left: cx, top: clampY(layer.h, size.h), side: 'over', maxWidth: full };
 }
 
 type Props = {
@@ -110,7 +130,7 @@ export function CardBubble({ item, anchor, layer, reserveRight = 0, message, can
   const pose = item.kind === 'posed' ? poseOf(item) : null;
   return (
     <div ref={ref} className="wmt-lib-bubble" data-arrange-bubble={item.id} {...(card ? { 'data-card-bubble': item.id } : {})} data-side={spot.side} role="toolbar" aria-label="Actions sur l’objet"
-      onPointerDown={keep} style={{ left: spot.left, top: spot.top, zIndex: 3, maxWidth: Math.min(360, layer.w - 2 * GAP) }}>
+      onPointerDown={keep} style={{ left: spot.left, top: spot.top, zIndex: 3, maxWidth: spot.maxWidth, boxSizing: 'border-box' }}>
       <Btn label="Déplacer" data={{ action: 'move' }} onClick={onMove}><Icon paths={ICONS.move} /></Btn>
       {canEdit && <Btn label="Retirer" data={{ action: 'remove' }} onClick={() => onChange({ remove: true })}><Icon paths={ICONS.trash} /></Btn>}
       {card && onInfo && <Btn label="Fiche de la carte" data={{ action: 'card-info' }} onClick={onInfo}>ⓘ</Btn>}

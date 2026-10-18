@@ -2299,7 +2299,7 @@ export const ENTRIES: Entry[] = [
       {
         target: '[data-wmt-library-entry]',
         title: 'Toucher un objet ouvre sa bulle',
-        text: 'Dans la vue Modifier (✋ ou ＋) d’un bureau ou d’une étagère, touchez une carte ou un petit objet : sa bulle s’ouvre à côté de lui, la même que celle des meubles de la pièce. Celle d’une carte propose sa présentation (sur une tablette : de face, sur la tranche, de dos pour un jeu ; sur un bureau ou un dessus : sur un trépied ou à plat), son format (💿 CD, 📀 DVD, 🎮 jeu vidéo, 📖 livre), ⓘ sa fiche et 🗑 Retirer. Celle d’un petit objet propose 🗑 Retirer, et pour une lampe, l’allumer ou l’éteindre.',
+        text: 'Dans la vue Modifier (✋ ou ＋) d’un bureau ou d’une étagère, touchez une carte ou un petit objet : sa bulle s’ouvre à côté de lui, la même que celle des meubles de la pièce. Celle d’une carte propose sa présentation (sur une tablette : de face, sur la tranche, de dos pour un jeu ; sur un bureau ou un dessus : sur un trépied ou à plat), son format (💿 CD, 📀 DVD, 🎮 jeu vidéo, 📖 livre), ⓘ sa fiche et 🗑 Retirer. Celle d’un petit objet propose 🗑 Retirer, pour une lampe, l’allumer ou l’éteindre, et pour une horloge, 🌐 choisir sa ville.',
         details: [
           { label: 'À quoi ça sert', text: 'À régler un objet là où on le voit, sans quitter la vue : montrer la pochette d’un album, coucher un film sur le bureau, éteindre une lampe, ou passer un livre en coffret de DVD si c’est ainsi que vous l’avez.' },
           { label: 'D’où viennent les données', text: 'Présentation, pose, format et lampe sont enregistrés dans votre pièce, sur l’appareil, dès que vous touchez le bouton ; la fiche ⓘ est celle de la carte dans votre Collection.' },

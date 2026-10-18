@@ -4,7 +4,7 @@
 // carte en attente (halo doré) qu'on glisse à l'endroit exact avant ✓ (use-pending-card).
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
 import { moveOnTop, type ArrangeFrame } from '../../core/library/arrange';
-import { carriedPlacementOf, hostNativePx } from '../../core/library/carried-items';
+import { carriedPlacementOf, hostNativePx, hostPointPx, placementBounds } from '../../core/library/carried-items';
 import { drawSize } from '../../core/library/footprint';
 import { CELL_H, CELL_W, PLUNGE_CAMERA } from '../../core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../core/library/furniture-models';
@@ -12,7 +12,6 @@ import type { ItemPlacement } from '../../core/library/item-models';
 import type { Layout, Placed, StyleId } from '../../core/library/library-types';
 import { layerFrame } from '../../core/library/opened-item';
 import { isLit, type HostKind, type PxRect } from '../../core/library/room-grid';
-import { hostPointPx, placementBounds } from '../../core/library/carried-items';
 import { paletteOf } from '../../core/library/styles';
 import { computerTopRect, topSize, topThingOf, type TopRect } from '../../core/library/surface';
 import { isTableClock, tableFaceContent, useDecoScene } from '../deco-live';
@@ -220,7 +219,7 @@ export function ArrangeView({ layout, room, hostId, hostIds, mode, add, onMove, 
   })() : null;
 
   return (
-    <div data-arrange-view={ids.join('+')} data-arrange-mode={mode} onPointerDown={bubble.item ? closeBubble : undefined} style={{ position: 'absolute', zIndex: 40, overflow: 'hidden', background: palette.wall, touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', ...geometry }}>
+    <div data-arrange-view={ids.join('+')} data-arrange-mode={mode} onPointerDown={bubble.layerDown} style={{ position: 'absolute', zIndex: 40, overflow: 'hidden', background: palette.wall, touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', ...geometry }}>
       <svg width={layer.w} height={layer.h} viewBox={`0 0 ${layer.w} ${layer.h}`} style={{ display: 'block', touchAction: 'none' }} aria-hidden="true">
         {pendingItem && <HaloFilter id={haloId} />}
         {/* Mur, plinthe et sol de la pièce, en aplats. */}

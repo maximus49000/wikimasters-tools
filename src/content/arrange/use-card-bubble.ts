@@ -2,7 +2,7 @@
 // posée, petit objet) ouvre une bulle : la carte en attente du mode ＋ n'est pas encore posée (elle se glisse directement). ✥ ferme la
 // bulle et arme l'objet ; un glissé lâché (vert ou rouge) le désarme, comme une bulle ouverte sur un autre objet.
 // `back` : le retour Android y range sa fermeture (vrai si une bulle était ouverte ou un objet armé).
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Layout } from '../../core/library/library-types';
 import { applyItemChange, isBubbleItem, refusalOf, type BubbleItem, type ItemChange } from './CardBubble';
 import { PENDING_ID } from './use-pending-card';
@@ -36,7 +36,12 @@ export type CardBubbleState = {
   change(change: ItemChange): void;
   info(): void;
   city(): void;
+  // Appui sur le calque de la vue : ferme la bulle ; dans le vide (pas sur un objet), désarme aussi l'objet armé.
+  layerDown(e: ReactPointerEvent): void;
 };
+
+// Éléments d'un objet dans les vues (plateau, tablette zoomée, meuble entier) : un appui dessus n'est pas « dans le vide ».
+const OBJECT_SELECTOR = '[data-arrange-item],[data-board-card],[data-board-small],[data-zoom-card],[data-zoom-small]';
 
 const itemIn = (layout: Layout, id: string | null): BubbleItem | null => {
   const p = id === null || id === PENDING_ID ? undefined : layout.find((q) => q.id === id);
@@ -90,6 +95,11 @@ export function useCardBubble(seen: Layout, { onItemEdit, onCardInfo, onItemCity
     const { item: cur, onItemCity: pick } = live.current;
     if (cur) pick?.(cur.id);
   }, []);
+  const layerDown = useCallback((e: ReactPointerEvent) => {
+    setState(null);
+    const target = e.target as Element | null;
+    if (!target?.closest?.(OBJECT_SELECTOR)) setArmed(null);
+  }, []);
   useEffect(() => { setState(null); }, [resetKey]);
   const busy = item !== null || armed !== null;
   useEffect(() => {
@@ -104,6 +114,6 @@ export function useCardBubble(seen: Layout, { onItemEdit, onCardInfo, onItemCity
   }, [bubbleBack, busy]);
   return {
     item, message: item ? state?.message ?? null : null, armed, canEdit: onItemEdit !== undefined, canInfo: onCardInfo !== undefined, canCity: onItemCity !== undefined, sheetOpen,
-    open, close, arm, disarm, change, info, city,
+    open, close, arm, disarm, change, info, city, layerDown,
   };
 }

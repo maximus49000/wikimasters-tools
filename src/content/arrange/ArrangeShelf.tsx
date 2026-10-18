@@ -87,6 +87,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
     onTap: (id) => { if (level !== 'whole') bubbleRef.current?.open(id); },
     canDrag: (id) => id === PENDING_ID || bubbleRef.current?.armed === id,
     onRelease: () => bubbleRef.current?.disarm(),
+    onDismiss: () => bubbleRef.current?.close(),
     aimAt: (lx, ly, id, a) => {
       if (level === 'whole') return wholeAim(wholeFrameFor(ids, a, layer), lx, ly);
       if (isBoardLevel(level)) return boardAim(boardFrameFor(a, ids, level, layer), lx);
@@ -239,7 +240,7 @@ export function ArrangeShelf({ layout, room, shelfIds, level, mode = 'move', add
     return { x: box.x, w: box.w, y: strip.y, h: strip.h };
   })() : null;
   return (
-    <div data-arrange-shelf={ids.join('+')} data-arrange-level={String(level)} data-arrange-mode={mode} onPointerDown={bubble.item ? closeBubble : undefined} style={layerStyle}>
+    <div data-arrange-shelf={ids.join('+')} data-arrange-level={String(level)} data-arrange-mode={mode} onPointerDown={bubble.layerDown} style={layerStyle}>
       <svg width={layer.w} height={layer.h} viewBox={`0 0 ${layer.w} ${layer.h}`} style={{ display: 'block', touchAction: 'none' }} aria-hidden="true">
         {/* Mur, plinthe et sol de la pièce, en aplats (meuble entier seulement : en zoom, le mur nu derrière la tablette). */}
         {level === 'whole' && (

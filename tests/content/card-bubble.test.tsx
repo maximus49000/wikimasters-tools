@@ -167,6 +167,43 @@ describe('bubbleSpot : la bulle ne recouvre jamais son objet', () => {
     expect(apart(l, tallRight) && inside(l, LAYER, NAV_PX)).toBe(true);
   });
 
+  // Téléphone étroit / calque tourné (760 × 360) : la tablette zoomée remplit la hauteur, ni dessous ni dessus ne tiennent.
+  const NARROW = { w: 760, h: 360 };
+  const STRIP_COL = { x: 330, y: 62, w: 100, h: 290 };
+  // Rectangle rendu : largeur bornée par maxWidth, hauteur multipliée par les rangées en plus.
+  const rectOf = (s: ReturnType<typeof bubbleSpot>, sz: { w: number; h: number }) => {
+    const w = Math.min(sz.w, s.maxWidth);
+    return { x: s.left, y: s.top, w, h: sz.h * Math.ceil(sz.w / w) };
+  };
+  const hits = (r: { x: number; y: number; w: number; h: number }, a: { x: number; y: number; w: number; h: number }) =>
+    !(r.x + r.w <= a.x || r.x >= a.x + a.w || r.y + r.h <= a.y || r.y >= a.y + a.h);
+  for (const [name, sz] of [['une rangée', { w: 420, h: 46 }], ['avec la ligne du message', { w: 420, h: 76 }], ['jeu sur deux rangées', { w: 300, h: 88 }]] as const) {
+    it(`760 × 360, carte au milieu (${name}) : à côté, rétrécie, jamais sur la colonne de la carte`, () => {
+      const s = bubbleSpot(STRIP_COL, sz, NARROW, NAV_PX);
+      expect(s.side).not.toBe('over');
+      expect(s.maxWidth).toBeGreaterThanOrEqual(120);
+      const r = rectOf(s, sz);
+      expect(hits(r, STRIP_COL)).toBe(false);
+      expect(r.x).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w).toBeLessThanOrEqual(NARROW.w - NAV_PX);
+    });
+  }
+
+  it('calque tourné 360 × 760 → 760 × 360 : même placement à côté', () => {
+    const layer = layerFrame({ w: 360, h: 760 });
+    const sz = { w: 420, h: 46 };
+    const s = bubbleSpot(STRIP_COL, sz, layer, NAV_PX);
+    expect(s.side).not.toBe('over');
+    expect(hits(rectOf(s, sz), STRIP_COL)).toBe(false);
+  });
+
+  it('moins de 120 px de chaque côté : seul cas documenté où la bulle passe par-dessus (en bas du calque)', () => {
+    const wide = { x: 16, y: 62, w: 620, h: 290 };
+    const s = bubbleSpot(wide, { w: 420, h: 46 }, NARROW, NAV_PX);
+    expect(s.side).toBe('over');
+    expect(s.top + 46).toBeLessThanOrEqual(NARROW.h);
+  });
+
   it('calque tourné (écran en hauteur) : le calque paysage, la bulle y reste', () => {
     const layer = layerFrame({ w: 412, h: 915 });
     expect(layer.rotated).toBe(true);
@@ -312,6 +349,32 @@ describe('bulle d’une carte rangée (zoom d’une tablette)', () => {
     await tap('[data-board-card="A1"]');
     await pointer('pointerdown', q('[data-arrange-shelf]')!, 20, 380);
     expect(bubble()).toBeNull();
+  });
+
+  it('un appui sur un autre objet pas armé qui devient un mouvement ferme la bulle', async () => {
+    mountShelf();
+    await tap('[data-board-card="A1"]');
+    expect(bubble()).not.toBeNull();
+    const f = boardFrameFor(SHELF, ['s'], 0, LAYER);
+    const [x, y] = boardPointPx(f, 0, 40);
+    await pointer('pointerdown', q('[data-board-card="A2"]')!, x, y);
+    await pointer('pointermove', window, x + 30, y);
+    expect(bubble()).toBeNull();
+    await pointer('pointerup', window, x + 30, y);
+  });
+
+  it('un appui dans le vide désarme l’objet armé ; un appui sur l’objet armé le garde', async () => {
+    mountShelf();
+    const f = boardFrameFor(SHELF, ['s'], 0, LAYER);
+    const at = boardPointPx(f, 0, 7);
+    await arm('[data-board-card="A0"]', ...at);
+    expect(q('[data-armed]')).not.toBeNull();
+    await pointer('pointerdown', q('[data-board-card="A0"]')!, ...at);
+    expect(q('[data-armed]')).not.toBeNull();
+    await pointer('pointerup', window, ...at);
+    await arm('[data-board-card="A0"]', ...at);
+    await pointer('pointerdown', q('[data-arrange-shelf]')!, 20, 380);
+    expect(q('[data-armed]')).toBeNull();
   });
 
   it('Échap avec une fiche ouverte par-dessus : seule la fiche est concernée (la bulle reste, pas de dézoom)', async () => {
