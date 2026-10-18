@@ -44,6 +44,19 @@ describe('placeEvent', () => {
     expect(nearFacades(frame).some((b) => b.lamps.some((l) => l.x === lamp.x && l.y === lamp.y))).toBe(true);
     expect(placeEvent(apt, 1001, frame)).toEqual({ x: lamp.x, y: lamp.y, sx: lamp.w / 5, sy: lamp.h / 7 });
   });
+  it('appartement : immeuble tiré sans fenêtre de logement → un immeuble qui en a, pas le repli', () => {
+    const facades = cityFacades(720, 340, 7);
+    // L'immeuble proche tiré par pick = 0 perd ses fenêtres.
+    const first = facades.findIndex((b) => !b.far && b.x + b.w > 0 && b.x < 720);
+    const bare = facades.map((b, i) => (i === first ? { ...b, lamps: [], homes: [] } : b));
+    const f2: EventFrame = { ...frame, facades: bare };
+    const apt = ev({ id: 'apartment', layer: 'fixed', speed: 0, pick: 0, variant: 0.5 });
+    const lamp = apartmentLamp(apt, f2);
+    const hit = nearFacades(f2).flatMap((b) => b.lamps).find((l) => l.x === lamp.x && l.y === lamp.y);
+    expect(hit).toBeDefined();
+    expect(hit!.home).toBeGreaterThanOrEqual(0);
+    expect(apartmentLamp(apt, f2)).toEqual(lamp);
+  });
   it('appartement : fenêtre de logement, échelle = taille / 5 × 7', () => {
     for (const pick of [0, 0.2, 0.45, 0.7, 0.99]) {
       for (const variant of [0, 0.3, 0.6, 0.99]) {

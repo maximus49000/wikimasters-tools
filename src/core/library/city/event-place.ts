@@ -48,8 +48,13 @@ const APT_H = 7;
 // `variant` ; ni cage ni entresol), avec sa taille. Sans fenêtre : repli à la taille du dessin.
 export function apartmentLamp(e: CityEvent, f: EventFrame): { x: number; y: number; w: number; h: number } {
   const near = nearFacades(f);
-  const b = near[Math.min(near.length - 1, Math.floor(e.pick * near.length))];
-  const lamps = b ? b.lamps.filter((l) => l.home >= 0) : [];
+  const homeLamps = (b: Facade | undefined): Facade['lamps'] => (b ? b.lamps.filter((l) => l.home >= 0) : []);
+  let lamps = homeLamps(near[Math.min(near.length - 1, Math.floor(e.pick * near.length))]);
+  if (lamps.length === 0) {
+    // Immeuble tiré sans fenêtre de logement (lot coupé au bord) : même tirage parmi ceux qui en ont.
+    const lit = near.filter((b) => homeLamps(b).length > 0);
+    lamps = homeLamps(lit[Math.min(lit.length - 1, Math.floor(e.pick * lit.length))]);
+  }
   if (lamps.length === 0) return { x: e.x0, y: f.metrics.ground - 60 * f.metrics.unit, w: APT_W, h: APT_H };
   const lamp = lamps[Math.min(lamps.length - 1, Math.floor(e.variant * lamps.length))]!;
   return { x: lamp.x, y: lamp.y, w: lamp.w, h: lamp.h };

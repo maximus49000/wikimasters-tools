@@ -83,7 +83,9 @@ describe('plan de la ville peinte', () => {
     expect(plan.podiums.length * 2).toBe(twins.length);
     for (const p of plan.podiums) {
       for (let x = p.x + 0.5; x < p.x + p.w; x += 2) expect(silhouetteTop(plan, x)).toBeLessThanOrEqual(p.top);
-      expect(p.wins.length).toBeGreaterThan(0);
+      // Socle au-delà du bord du monde (moins de 12 px visibles) : pas de mise en page, donc pas de fenêtres.
+      if (Math.min(p.x + p.w, 1440) - p.x >= 12) expect(p.wins.length).toBeGreaterThan(0);
+      else expect(p.wins).toEqual([]);
     }
   });
   it("ne pose pas d'arbre dont la couronne descend devant un socle", () => {

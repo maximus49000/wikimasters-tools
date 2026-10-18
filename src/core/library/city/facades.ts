@@ -1,6 +1,6 @@
 import { PODIUM_H, citySkyline, hashString, mulberry32, type Building } from '../scene-world';
 import { BUILDING_STRETCH, cityMetrics } from './metrics';
-import { facadeInputs, facadeLayout, podiumLayout, type FacadeLayout, type FacadeWindow, type Home, type PodiumLayout } from './facade-layout';
+import { facadeInputs, facadeLayout, podiumInputs, podiumLayout, type FacadeLayout, type FacadeWindow, type Home, type PodiumLayout } from './facade-layout';
 
 // Façades de la scène Ville, dérivées de `citySkyline` SANS en changer le tirage (mêmes largeurs, hauteurs, socles) :
 // - les immeubles sont plus hauts d'un facteur BUILDING_STRETCH (proportions avec les passants et les entrées) ;
@@ -55,12 +55,8 @@ export function cityFacades(width: number, height: number, seed: number): Facade
     const input = inputs.get(i);
     return input ? facadeLayout(input, ground, seed) : null;
   });
-  // Porte d'un socle : celle du lot, portée par la tour de son côté (à son aplomb), quelle que soit la tour.
-  const podiumDoor = new Map<number, number>();
-  raw.forEach((b, i) => {
-    const door = layouts[i]?.doorCx ?? null;
-    if (b.podium && door !== null) podiumDoor.set(b.podium.id, door);
-  });
+  // Socles visibles : partie visible et porte du lot.
+  const podiums = podiumInputs(width, height, seed);
   const front = raw.filter((b) => !b.far);
   const near = [
     ...front.map((b) => ({ x: b.x, w: b.w, top: ground - b.h * BUILDING_STRETCH })),
@@ -72,11 +68,11 @@ export function cityFacades(width: number, height: number, seed: number): Facade
       const far = farWindows(b, ground, seed).filter((win) => !farWindowHidden(win, near));
       return { ...b, h, lamps: [], homes: [], farWindows: far, layout: null, podiumLayout: null };
     }
-    const layout = layouts[i]!;
-    const p = b.podium && b.x === b.podium.x ? podiumLayout(b.podium, ground, seed, podiumDoor.get(b.podium.id) ?? null) : null;
+    const layout = layouts[i] ?? null;
+    const pin = b.podium && b.x === b.podium.x ? podiums.get(b.podium.id) : undefined;
+    const p = pin ? podiumLayout(b.podium!, ground, seed, pin.doorCx, pin.span) : null;
     const shift = layout?.homes.length ?? 0;
-    // Socle coupé au bord du monde : seules ses fenêtres visibles (ses logements restent, pour garder les index).
-    const podiumLamps = (p?.windows ?? []).filter((w) => w.x >= 0 && w.x + w.w <= width).map((w) => ({ ...w, home: w.home + shift }));
+    const podiumLamps = (p?.windows ?? []).map((w) => ({ ...w, home: w.home + shift }));
     return {
       ...b,
       h,

@@ -281,10 +281,12 @@ export function facadeLayout(b: FacadeInput, ground: number, seed: number): Faca
 }
 
 // Étage du socle des jumeaux : une rangée de fenêtres standard centrée dans la bande de 14 px, travées à l'aplomb de la porte.
-export function podiumLayout(p: Podium, ground: number, seed: number, doorCx: number | null): PodiumLayout {
+// `span` : partie visible du socle (socle coupé au bord du monde : travées réparties sur elle seule, comme pour les tours) ;
+// le générateur reste tiré du x du socle entier.
+export function podiumLayout(p: Podium, ground: number, seed: number, doorCx: number | null, span: { x0: number; x1: number } = { x0: p.x, x1: p.x + p.w }): PodiumLayout {
   const x8 = Math.round(p.x * 8);
   const rng = mulberry32(seed ^ hashString('podium-floor') ^ x8);
-  const { bays, winW } = baysOn(p.x, p.x + p.w, doorCx, 17);
+  const { bays, winW } = baysOn(span.x0, span.x1, doorCx, 17);
   const band = PODIUM_H - GROUND_FLOOR;
   const wh = band * 0.62;
   const wy = ground - PODIUM_H + (band - wh) / 2;
@@ -295,6 +297,22 @@ export function podiumLayout(p: Podium, ground: number, seed: number, doorCx: nu
   });
   windows.sort((a, b) => a.bay - b.bay);
   return { bays, windows, homes };
+}
+
+// Entrées de la mise en page des socles visibles (clé = id du socle) : partie visible et porte du lot (celle du local,
+// même source que `doorsFor`), si son centre tombe dans la partie visible. Socle de moins de MIN_SPAN px visibles : absent.
+export function podiumInputs(width: number, height: number, seed: number): Map<number, { span: { x0: number; x1: number }; doorCx: number | null }> {
+  const slots = shopSlotsFor(width, height, seed);
+  const out = new Map<number, { span: { x0: number; x1: number }; doorCx: number | null }>();
+  for (const lot of frontLots(width, height, seed)) {
+    if (!lot.podium) continue;
+    const span = { x0: Math.max(lot.x, 0), x1: Math.min(lot.x + lot.w, width) };
+    if (span.x1 - span.x0 < MIN_SPAN) continue;
+    const slot = slots.find((s) => s.residentDoorX >= lot.x && s.residentDoorX <= lot.x + lot.w);
+    const cx = slot ? slot.residentDoorX + DOOR_WIDTH / 2 : null;
+    out.set(lot.podium.id, { span, doorCx: cx !== null && cx >= span.x0 && cx <= span.x1 ? cx : null });
+  }
+  return out;
 }
 
 // Entrées de la mise en page, une par immeuble du premier plan, dans l'ordre de `citySkyline` (`index` = rang dans sa sortie).

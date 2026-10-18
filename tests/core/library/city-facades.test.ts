@@ -44,8 +44,7 @@ describe('cityFacades', () => {
           continue;
         }
         const shift = f.layout!.homes.length;
-        const visible = f.podiumLayout.windows.filter((w) => w.x >= 0 && w.x + w.w <= 1440);
-        expect(podiumPart(f)).toEqual(visible.map((w) => ({ ...w, home: w.home + shift })));
+        expect(podiumPart(f)).toEqual(f.podiumLayout.windows.map((w) => ({ ...w, home: w.home + shift })));
         expect(f.homes.slice(shift)).toEqual(f.podiumLayout.homes);
       }
       // Chaque fenêtre de logement pointe sur un logement de la façade, avec sa clé et son seuil.
@@ -162,7 +161,8 @@ describe('cityFacades', () => {
         // Fenêtres de la tour au-dessus du socle.
         for (const w of f.layout.windows) expect(w.y + w.h).toBeLessThanOrEqual(ground - PODIUM_H + 1e-6);
         const first = f.x === f.podium.x;
-        expect(f.podiumLayout !== null).toBe(first);
+        if (!first) expect(f.podiumLayout).toBeNull();
+        else expect(f.podiumLayout).not.toBeNull();
         for (const w of podiumPart(f)) {
           expect(w.y).toBeGreaterThanOrEqual(ground - PODIUM_H);
           expect(w.y + w.h).toBeLessThanOrEqual(ground - GROUND_FLOOR);
@@ -173,14 +173,55 @@ describe('cityFacades', () => {
     }
     expect(twins).toBeGreaterThan(0);
   });
-  it('jumeaux : le socle est mis en page avec la porte du lot', () => {
+  it('jumeaux : le socle est mis en page sur sa partie visible avec la porte du lot', () => {
+    let doors = 0;
     for (let s = 1; s <= 10; s++) {
-      const facades = cityFacades(1440, 340, s);
-      for (const f of facades) {
-        if (!f.podium || f.x !== f.podium.x || !f.podiumLayout) continue;
-        const towers = facades.filter((g) => g.podium?.id === f.podium!.id);
-        const door = towers.map((g) => g.layout?.doorCx ?? null).find((d) => d !== null) ?? null;
-        expect(f.podiumLayout).toEqual(podiumLayout(f.podium, ground, s, door));
+      for (const width of [720, 1440]) {
+        const slots = shopSlotsFor(width, 340, s);
+        for (const f of cityFacades(width, 340, s)) {
+          if (!f.podium || f.x !== f.podium.x || !f.podiumLayout) continue;
+          const p = f.podium;
+          const span = { x0: Math.max(p.x, 0), x1: Math.min(p.x + p.w, width) };
+          const slot = slots.find((sl) => sl.residentDoorX >= p.x && sl.residentDoorX <= p.x + p.w);
+          const door = slot ? slot.residentDoorX + DOOR_WIDTH / 2 : null;
+          if (door !== null) doors++;
+          expect(f.podiumLayout).toEqual(podiumLayout(p, ground, s, door, span));
+          // Porte du lot à l'aplomb d'une travée du socle.
+          if (door !== null) expect(f.podiumLayout.bays).toContain(door);
+        }
+      }
+    }
+    expect(doors).toBeGreaterThan(0);
+  });
+  it('socle coupé : travées sur la partie visible, chaque logement a au moins une fenêtre', () => {
+    let cut = 0;
+    for (let s = 1; s <= 30; s++) {
+      for (const width of [500, 720, 1000]) {
+        for (const f of cityFacades(width, 340, s)) {
+          if (!f.podiumLayout) continue;
+          const p = f.podium!;
+          const x1 = Math.min(p.x + p.w, width);
+          if (p.x + p.w > width) cut++;
+          for (const w of f.podiumLayout.windows) {
+            expect(w.x).toBeGreaterThanOrEqual(p.x);
+            expect(w.x + w.w).toBeLessThanOrEqual(x1 + 1e-6);
+          }
+          // Travées de bord à 10 px des bords visibles (pas de trou au bord) ; la porte du local, sur laquelle la travée se
+          // pose, est à 10 px du bord à l'arrondi de son placement près.
+          expect(f.podiumLayout.bays[0]! - p.x).toBeLessThanOrEqual(10.5);
+          expect(x1 - f.podiumLayout.bays.at(-1)!).toBeLessThanOrEqual(10.5);
+        }
+      }
+    }
+    expect(cut).toBeGreaterThan(0);
+  });
+  it('plus aucun logement sans fenêtre', () => {
+    for (let s = 1; s <= 30; s++) {
+      for (const width of [500, 720, 1000, 1440]) {
+        for (const f of near(cityFacades(width, 340, s))) {
+          const used = new Set(f.lamps.map((w) => w.home));
+          f.homes.forEach((_, i) => expect(used.has(i)).toBe(true));
+        }
       }
     }
   });
