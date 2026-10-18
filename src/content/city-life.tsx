@@ -4,7 +4,7 @@ import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tr
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
 import { fixedFade, placeEvent, type EventFrame, type EventPlacement } from '../core/library/city/event-place';
 import { EVENT_DEFS, type CityEvent } from '../core/library/city/events';
-import { cityFacades } from '../core/library/city/facades';
+import { cityFacades, stairsFor } from '../core/library/city/facades';
 import { cityIntensity, schoolWindows, type CityContext } from '../core/library/city/intensity';
 import { schoolBusArrivals } from '../core/library/city/traffic/school-bus';
 import { busArrivals, serviceKindOf } from '../core/library/city/traffic/bus-timetable';
@@ -56,8 +56,9 @@ import { GullsLayer } from './gulls-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
 import { useWallClockLoop } from './use-wallclock-loop';
-import { HALL_TIMER_S, crossingDoorX, hallLit, seedHallTimers } from '../core/library/city/hall-lights';
+import { HALL_TIMER_S, crossingDoorX, hallLit, seedHallTimers, stairFloorsLit } from '../core/library/city/hall-lights';
 import { HallLights, hallTransition } from './hall-lights';
+import { StairLights, stairTransition } from './stair-lights';
 
 // Vie de la scène Ville : passants, habitants qui sortent de leur immeuble ou y rentrent, deux files de circulation,
 // les événements de la ville (vague 1b-i), les clients des commerces et l'équipe d'un chantier (vague 1b-iv-a,
@@ -286,6 +287,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   }
   const doorXs = useMemo(() => doors.map((d) => d.x), [doors]);
   const facades = useMemo(() => cityFacades(width, height, seed), [width, height, seed]);
+  // Cages d'escalier par porte (centre x, comme les halls) : fenêtres de bas en haut.
+  const stairs = useMemo(() => stairsFor(facades), [facades]);
   const frame = useMemo<EventFrame>(() => ({ width, height, metrics, facades }), [width, height, metrics, facades]);
   const intensity = useMemo(() => cityIntensity(city), [city]);
   // Une entrée par lot : la probabilité par trajet est réduite selon le nombre d'entrées (≤ 6 habitants par 720 px).
@@ -316,6 +319,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     hallUntil.current = seedHallTimers(trips, width, still ? (frozen.current ?? 0) : Date.now() / 1000, gateOf);
     hallFor.current = trips;
   }
+  // Cage d'escalier : sous la minuterie du hall, étages allumés du bas jusqu'à celui de l'habitant (0 : hall éteint).
+  const stairFloors = (x: number, t: number): number => (hallLit(hallUntil.current, x, t, hallDark) ? stairFloorsLit(x, hallUntil.current.get(x)!, stairs.get(x)?.length ?? 0) : 0);
 
   // Commerces : deux visites par local (seulement si la rue a des commerces) ; probabilité d'une visite recalculée à la minute,
   // nulle si le local n'est pas ouvert, et en mouvement réduit (aucun client ne bouge).
@@ -527,6 +532,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     const shadeNodes = new Map<string, Element>();
     // Lumières des halls, par centre de porte.
     const hallNodes = new Map<number, Element>();
+    // Fenêtres de cage par porte, rangées par étage (0 = la plus basse).
+    const stairNodes = new Map<number, Element[]>();
     let muted: Set<string> = new Set();
     // Scène G4b (Ghibli) : nœuds de ShopScene, posés après les clients de l'ancien rendu.
     let scene: SceneNodes | null = null;
@@ -553,6 +560,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         for (const node of el.querySelectorAll('[data-shade-for]')) shadeNodes.set(node.getAttribute('data-shade-for')!, node);
         hallNodes.clear();
         for (const node of el.querySelectorAll('[data-hall-light]')) hallNodes.set(Number(node.getAttribute('data-hall-light')), node);
+        stairNodes.clear();
+        for (const node of el.querySelectorAll('[data-stair-light]')) {
+          const x = Number(node.getAttribute('data-stair-light'));
+          if (!stairNodes.has(x)) stairNodes.set(x, []);
+          stairNodes.get(x)![Number(node.getAttribute('data-floor'))] = node;
+        }
         staff = collectPosedStaff(el);
         swaps = collectSwaps(el);
         waiters = collectWaiters(el);
@@ -672,6 +685,16 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         node.setAttribute('data-lit', on ? 'true' : 'false');
         node.setAttribute('opacity', on ? '1' : '0');
       }
+      // Cages d'escalier : même minuterie ; n'écrire qu'à la bascule (allumage étage par étage, extinction douce).
+      for (const [x, list] of stairNodes) {
+        const floors = stairFloors(x, t);
+        list.forEach((node, k) => {
+          const on = k < floors;
+          if (node.getAttribute('opacity') === (on ? '1' : '0') && !first) return;
+          (node as SVGElement).style.transition = stairTransition(on, k, still);
+          node.setAttribute('opacity', on ? '1' : '0');
+        });
+      }
       placeCustomers(nodes, shopVisits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
       if (scene) placeScene(scene, t, figures, traffic.world.horns);
       placeSwaps(swaps, t);
@@ -702,7 +725,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps, hallDark, dodgeZones]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps, hallDark, stairs, dodgeZones]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -763,6 +786,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           lampadaires (bord du trottoir), la file du fond, puis celle du premier plan. */}
       <g data-city-sidewalk="">
         {/* Lumières des halls (minuterie) : devant le décor, derrière les habitants qui passent le seuil. */}
+        {/* Cages d'escalier (même minuterie) : fenêtres de la travée de la porte, au-dessus du hall. */}
+        <StairLights stairs={stairs} ghibli={ghibli} still={still} lit={(x, k) => k < stairFloors(x, t0!)} />
         <HallLights doors={doors} unit={metrics.unit} doorY={metrics.doorY} ghibli={ghibli} still={still} lit={(x) => hallLit(hallUntil.current, x, t0!, hallDark)} />
         {/* Contre les devantures : l'équipe d'un chantier, le personnel (derrière la vitrine, rideau roulant, trottoir), puis les
             clients (derrière les vitrines et sur le trottoir). */}

@@ -17,7 +17,8 @@ import { THRESHOLD_S, entranceOpening } from '../../src/core/library/city/doorwa
 import { DOOR_WIDTH } from '../../src/core/library/city/doors';
 import { DOOR_SILL_HALF, DOOR_SILL_TOP } from '../../src/content/door-passage';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
-import { HALL_TIMER_S, crossingDoorX, seedHallTimers } from '../../src/core/library/city/hall-lights';
+import { HALL_TIMER_S, crossingDoorX, seedHallTimers, stairFloorsLit } from '../../src/core/library/city/hall-lights';
+import { cityFacades, stairsFor } from '../../src/core/library/city/facades';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -386,7 +387,7 @@ describe('CityLifeLayer : minuterie des halls', () => {
   const ymd = { y: 2026, m: 10, d: 9 };
   const litDoors = (c: HTMLElement): string[] => [...c.querySelectorAll('[data-hall-light][data-lit="true"]')].map((n) => n.getAttribute('data-hall-light')!);
   // Premier habitant au seuil (la nuit) après T0, avec sa porte.
-  const crossing = () => {
+  const crossing = (only: (door: number) => boolean = () => true) => {
     const minutes = Math.round(night * 60);
     const sky = skyAt(minutes, times);
     const doors = doorsFor(720, 340, 1);
@@ -396,7 +397,7 @@ describe('CityLifeLayer : minuterie des halls', () => {
     for (let t = 1.8e9; t < 1.8e9 + 1200; t += 0.5) {
       for (const trip of trips) {
         const pos = tripAt(trip, 720, t);
-        if (pos?.stage === 'threshold' && tripHappens(trip, t, gateOf(trip))) return { t, door: crossingDoorX(trip, pos), trips, gateOf };
+        if (pos?.stage === 'threshold' && tripHappens(trip, t, gateOf(trip)) && only(crossingDoorX(trip, pos))) return { t, door: crossingDoorX(trip, pos), trips, gateOf };
       }
     }
     throw new Error('aucun passage');
@@ -425,6 +426,49 @@ describe('CityLifeLayer : minuterie des halls', () => {
     vi.spyOn(Date, 'now').mockReturnValue((t + 30) * 1000);
     const day = make(13, ymd);
     expect(litDoors(day)).toHaveLength(0);
+  });
+  // Cage d'escalier : fenêtres d'une porte, étage 0 en bas ; allumées attendues d'après la minuterie (même calcul que la boucle).
+  const stairs = stairsFor(cityFacades(720, 340, 1));
+  const stairLit = (c: HTMLElement, x: number): string[] =>
+    [...c.querySelectorAll(`[data-stair-light="${x}"]`)]
+      .sort((a, b) => Number(a.getAttribute('data-floor')) - Number(b.getAttribute('data-floor')))
+      .map((n) => n.getAttribute('opacity')!);
+  const expectedStair = (until: Map<number, number>, x: number, at: number, dark: boolean): string[] => {
+    const n = stairs.get(x)!.length;
+    const on = dark && (until.get(x) ?? -Infinity) > at;
+    const floors = on ? stairFloorsLit(x, until.get(x)!, n) : 0;
+    return stairs.get(x)!.map((_, k) => (k < floors ? '1' : '0'));
+  };
+
+  it('cage éteinte de jour et sans passage ; allumée du bas jusqu’à l’étage atteint après un passage de nuit', () => {
+    expect(stairs.size).toBeGreaterThan(0);
+    const { t, door, trips, gateOf } = crossing((x) => stairs.has(x));
+    vi.spyOn(Date, 'now').mockReturnValue((t + 30) * 1000);
+    const c = make(night, ymd);
+    const until = seedHallTimers(trips, 720, t + 30, gateOf);
+    // La porte du passage : au moins le premier étage allumé, du bas, contigu.
+    const lit = stairLit(c, door);
+    expect(lit).toEqual(expectedStair(until, door, t + 30, true));
+    expect(lit[0]).toBe('1');
+    expect(lit.join('')).toMatch(/^1+0*$/);
+    // Toutes les cages suivent leur minuterie.
+    for (const x of stairs.keys()) expect(stairLit(c, x)).toEqual(expectedStair(until, x, t + 30, true));
+    vi.restoreAllMocks();
+    vi.spyOn(Date, 'now').mockReturnValue((t + 30) * 1000);
+    const day = make(13, ymd);
+    expect(day.querySelectorAll('[data-stair-light][opacity="1"]')).toHaveLength(0);
+    expect(day.querySelectorAll('[data-stair-light]').length).toBe([...stairs.values()].reduce((s, w) => s + w.length, 0));
+  });
+
+  it('jamais allumée en continu : éteinte quand la minuterie des halls est échue', () => {
+    const { t, door, trips, gateOf } = crossing((x) => stairs.has(x));
+    // Premier instant après le passage où la minuterie de cette porte est échue (pas de nouveau passage depuis 2 min).
+    let at = t + HALL_TIMER_S + 1;
+    while ((seedHallTimers(trips, 720, at, gateOf).get(door) ?? -Infinity) > at) at += 30;
+    vi.spyOn(Date, 'now').mockReturnValue(at * 1000);
+    const c = make(night, ymd);
+    expect(stairLit(c, door)).toEqual(stairs.get(door)!.map(() => '0'));
+    expect(c.querySelector(`[data-hall-light="${door}"]`)!.getAttribute('data-lit')).toBe('false');
   });
 });
 
