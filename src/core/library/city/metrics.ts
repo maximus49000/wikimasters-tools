@@ -18,6 +18,10 @@ export const WALK_PACE = 0.7;
 export const DOOR_WIDTH = 12;
 // Marge entre l'entrée et les bords de son immeuble (auvent, interphone et plaque débordent un peu du cadre).
 export const DOOR_MARGIN = 4;
+// Hauteur du rez-de-chaussée laissée sans fenêtre (l'entrée y tient, auvent compris).
+export const GROUND_FLOOR = 30;
+// Les immeubles sont étirés de ce facteur par rapport à leur tirage (proportions avec les passants et les entrées).
+export const BUILDING_STRETCH = 1.6;
 
 export function cityMetrics(height: number): CityMetrics {
   const ground = height * CITY_GROUND;

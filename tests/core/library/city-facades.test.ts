@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { BUILDING_STRETCH, FAR_WINDOW, FAR_WINDOWS_MAX, GROUND_FLOOR, cityFacades, extraFloorWindows, farWindows, podiumWindows } from '../../../src/core/library/city/facades';
 import { CITY_GROUND, cityMetrics } from '../../../src/core/library/city/metrics';
+import { doorsFor } from '../../../src/core/library/city/doors';
+import { shopSlotsFor } from '../../../src/core/library/city/shops/slots';
 import { PODIUM_H, SKYLINE_GROUND, citySkyline } from '../../../src/core/library/scene-world';
+import empreinte from './fixtures/city-skyline-empreinte.json';
 
 const ground = 340 * CITY_GROUND;
 
@@ -115,4 +118,16 @@ describe('façades des jumeaux', () => {
     const right = p.x + p.w - (wins.at(-1)!.x + 5);
     expect(Math.abs(left - right)).toBeLessThan(0.01);
   });
+});
+
+// Empreinte prise sur main avant les façades parisiennes : le tirage (immeubles, boutiques, portes) ne doit jamais bouger.
+describe('empreinte du tirage', () => {
+  for (const s of empreinte.seeds) {
+    it(`graine ${s} : immeubles, boutiques et portes identiques à main`, () => {
+      const key = String(s) as keyof typeof empreinte.skyline;
+      expect(JSON.parse(JSON.stringify(citySkyline(1440, 340, s)))).toEqual(empreinte.skyline[key]);
+      expect(shopSlotsFor(1440, 340, s)).toEqual(empreinte.slots[key]);
+      expect(doorsFor(1440, 340, s)).toEqual(empreinte.doors[key]);
+    });
+  }
 });

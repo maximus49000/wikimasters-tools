@@ -1,14 +1,13 @@
 import { PODIUM_H, SKYLINE_GROUND, citySkyline, hashString, mulberry32, type Building, type Lamp, type Podium } from '../scene-world';
-import { cityMetrics } from './metrics';
+import { BUILDING_STRETCH, GROUND_FLOOR, cityMetrics } from './metrics';
 
 // Façades de la scène Ville, dérivées de `citySkyline` SANS en changer le tirage (mêmes largeurs, hauteurs et fenêtres) :
 // - les immeubles sont plus hauts d'un facteur BUILDING_STRETCH (proportions avec les passants et les entrées) ;
 //   les fenêtres tirées par `citySkyline` restent en haut, à leur espacement, et les étages ajoutés en bas reçoivent
 //   des fenêtres tirées à part (générateur propre à l'immeuble), en laissant un rez-de-chaussée sans fenêtre pour l'entrée ;
 // - les immeubles du fond reçoivent quelques fenêtres « dissipées » (petites, peu nombreuses), elles aussi tirées à part.
-export const BUILDING_STRETCH = 1.6;
-// Hauteur du rez-de-chaussée laissée sans fenêtre (l'entrée y tient, auvent compris).
-export const GROUND_FLOOR = 30;
+// Constantes déplacées dans metrics.ts (cassent un cycle d'import avec facade-layout.ts), réexportées ici.
+export { BUILDING_STRETCH, GROUND_FLOOR } from './metrics';
 // Plafond de fenêtres dessinées par immeuble du fond (coût mobile : quelques dizaines de nœuds par zone de 360 px).
 export const FAR_WINDOWS_MAX = 8;
 export const FAR_WINDOW = { w: 3.5, h: 5 } as const;
