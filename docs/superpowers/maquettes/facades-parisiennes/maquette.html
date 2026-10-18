@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Maquette — façades parisiennes (cellulo Ghibli)</title>
+<style>
+  body { background: #1c1a22; color: #eee; font: 13px/1.4 system-ui, sans-serif; margin: 0; padding: 12px; }
+  h2 { font-weight: 500; margin: 18px 0 6px; color: #d9d2c0; }
+  canvas { display: block; background: #000; max-width: 100%; height: auto; border: 1px solid #333; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+</style>
+<body>
+<h2>rue-jour-10h (900 × 400 monde, ×2)</h2><canvas id="rue-jour-10h"></canvas>
+<h2>rue-jour-10h-zoom (×4)</h2><canvas id="rue-jour-10h-zoom"></canvas>
+<h2>rue-crepuscule-19h</h2><canvas id="rue-crepuscule-19h"></canvas>
+<h2>rue-nuit-22h</h2><canvas id="rue-nuit-22h"></canvas>
+<h2>rue-nuit-22h-zoom</h2><canvas id="rue-nuit-22h-zoom"></canvas>
+<h2>rue-nuit-2h</h2><canvas id="rue-nuit-2h"></canvas>
+<h2>lucarnes-planche</h2><canvas id="lucarnes-planche"></canvas>
+<h2>avant-apres (haut : grille actuelle du moteur ; bas : travées)</h2><canvas id="avant-apres"></canvas>
+<script>window.onerror=(m,s,l,c)=>{window.__err=(window.__err||"")+m+" @"+l+":"+c+"
+"};</script>
+<script>
+// ───────────────────────────── outils cellulo (copie de paint/cel.ts) ─────────────────────────────
+const TAU = Math.PI * 2;
+const hex = (s) => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+const rgba = (c, a = 1) => `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const SUN = hex('#FFF6D0'), COOL = hex('#5A4A9C'), INK = '#2A1A18';
+const shade = (c, t = 0.3) => mix(c, COOL, t);
+const light = (c, t = 0.3) => mix(c, SUN, t);
+function mulberry32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function hashString(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; }
+const pick = (l, r) => l[Math.floor(r() * l.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// Ambiance : `dark` ∈ [0,1] assombrit tous les aplats vers NIGHT (teinte bleu nuit) ; les lumières sont peintes à part.
+const NIGHT = hex('#1E2A5A'), DUSK = hex('#6A4A7A');
+let ENV = { dark: 0, tint: NIGHT, litFrac: 0, hour: 10 };
+const amb = (c) => mix(c, ENV.tint, ENV.dark);
+const col = (c) => rgba(amb(typeof c === 'string' ? hex(c) : c));
+function fillRect(ctx, c, x, y, w, h) { ctx.fillStyle = typeof c === 'string' && c.startsWith('rgba') ? c : col(c); ctx.fillRect(x, y, w, h); }
+function rawRect(ctx, css, x, y, w, h) { ctx.fillStyle = css; ctx.fillRect(x, y, w, h); }
+function poly(ctx, c, pts, raw = false) { ctx.fillStyle = raw ? c : col(c); ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill(); }
+function disc(ctx, c, x, y, r, raw = false) { ctx.fillStyle = raw ? c : col(c); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+function inkRect(ctx, x, y, w, h, lw = 0.8) { ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h); }
+function inkLine(ctx, pts, lw = 0.7, close = false) { ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); if (close) ctx.closePath(); ctx.stroke(); }
+
+// ───────────────────────────── palette ─────────────────────────────
+const STONES = ['#EDE2C8', '#E8DCC0', '#F0E6D0', '#E4D6BA', '#EAD5B0', '#F2E8D4'];        // pierre de taille (haussmann)
+const PLASTERS = ['#F6E2B4', '#EEC79A', '#CFE0B8', '#E0C8A0', '#F4D89C', '#E6BCD0'];      // enduits (faubourg)
+const ZINCS = ['#8290A2', '#98A4B4', '#7A8AA0'];                                           // zinc gris-bleu
+const TILES = ['#C86A40', '#B4523A'];
+const BRICK = '#C2724E', IRON = '#3A3A4A', WOOD = ['#2F5D50', '#2E4A6E', '#5A3A2E', '#3A4A3A'];
+const GLASS_DAY = '#7FB4E0', GLASS_NIGHT = '#232D52';
+const LIT = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF', stair: '#F4F0D8' };
+const CURTAINS = ['#F4E6D0', '#C85A3A', '#5A7AA8', '#E8C890', '#8A5A8E'];
+const GF = 30;          // rez-de-chaussée du moteur (GROUND_FLOOR)
+const MIN_FLOOR = 10;   // lisibilité téléphone
+
+// ───────────────────────────── mise en page (pure, déterministe) ─────────────────────────────
+// b = { x, w, h } en px de scène ; ground = y du sol. Renvoie travées, étages, fenêtres, logements, cage, lucarnes, toit.
+function facadeLayout(b, ground, seed) {
+  const rng = mulberry32(seed ^ hashString('facade') ^ Math.round(b.x * 8));
+  const kind = b.w >= 56 && b.h >= 120 && rng() < 0.78 ? 'haussmann' : 'faubourg';
+  const top = ground - b.h;
+  // Toit : mansarde zinc (brisis + terrasson) pour l'haussmannien ; zinc ou tuile à faible pente pour le faubourg.
+  const roof = kind === 'haussmann'
+    ? { kind: 'mansard', h: clamp(Math.round(b.h * 0.12), 14, 20), zinc: pick(ZINCS, rng), terrasson: 4 }
+    : rng() < 0.55 ? { kind: 'zinc', h: 11, zinc: pick(ZINCS, rng) } : { kind: 'tile', h: 12, tile: pick(TILES, rng) };
+  const eave = top + roof.h;
+  // Travées : 2 à 5, centrées (marges égales) ; pas de travée ≈ 15-17 px.
+  const nBays = clamp(Math.round((b.w - 6) / (kind === 'haussmann' ? 17 : 15)), 2, 5);
+  const pitch = b.w / nBays;
+  const winW = clamp(Math.round(pitch * 0.42 * 2) / 2, 5, 8);
+  const bayX = (i) => b.x + pitch * (i + 0.5);
+  // Entresol au-dessus des boutiques (haussmann, immeuble assez haut).
+  const entresol = kind === 'haussmann' && b.h >= 150 && rng() < 0.6 ? 11 : 0;
+  // Étages : hauteur propre à l'immeuble ; étage noble ×1.25, dernier étage ×0.85 ; jamais sous MIN_FLOOR.
+  const avail = b.h - roof.h - GF - entresol;
+  let n = clamp(Math.round(avail / (kind === 'haussmann' ? 17 : 14.5)), 1, 7);
+  let floors;
+  for (;;) {
+    const weights = Array.from({ length: n }, (_, i) => (kind === 'haussmann' && n >= 3 && i === 0 ? 1.25 : n >= 3 && i === n - 1 ? 0.85 : 1));
+    const sum = weights.reduce((a, v) => a + v, 0);
+    floors = weights.map((wgt) => (avail * wgt) / sum);
+    if (Math.min(...floors) >= MIN_FLOOR || n === 1) break;
+    n--;
+  }
+  const floorsBottom = ground - GF - entresol;
+  let y = floorsBottom;
+  const levels = floors.map((fh, i) => {
+    y -= fh;
+    const level = kind === 'haussmann' && n >= 3 && i === 0 ? 'noble' : i === n - 1 && n >= 3 ? 'top' : 'std';
+    const balcony = level === 'noble' ? 'filant' : level === 'top' && kind === 'haussmann' && n >= 4 ? 'filant' : kind === 'haussmann' && rng() < 0.6 ? 'balconnet' : 'none';
+    return { y, h: fh, level, balcony };
+  });
+  if (entresol) levels.unshift({ y: floorsBottom, h: entresol, level: 'entresol', balcony: 'none' });
+  // Porte de l'immeuble (travée de bord) et cage d'escalier à son aplomb.
+  const doorBay = rng() < 0.5 ? 0 : nBays - 1;
+  const stairBay = nBays >= 4 && rng() < 0.65 ? doorBay : -1;
+  const shutters = kind === 'faubourg' ? pick(['#8FA88C', '#6A7A9A', '#B8705A', '#7A8A6A'], rng) : null;
+  // Fenêtres par étage et par travée.
+  const windows = [];
+  for (const lv of levels) {
+    for (let i = 0; i < nBays; i++) {
+      const french = lv.level === 'noble' || (lv.balcony === 'filant');
+      if (i === stairBay && lv.level !== 'entresol') {
+        // cage : petite fenêtre à mi-étage (palier intermédiaire)
+        const sw = Math.max(3, winW - 2.5), sh = clamp(lv.h * 0.4, 4, 7);
+        windows.push({ bay: i, level: lv, kind: 'stair', x: bayX(i) - sw / 2, y: lv.y + lv.h * 0.78 - sh / 2, w: sw, h: sh });
+        continue;
+      }
+      const wh = lv.level === 'entresol' ? clamp(lv.h * 0.5, 4, 6) : french ? lv.h * 0.72 : lv.level === 'top' ? lv.h * 0.56 : lv.h * 0.62;
+      const wy = french ? lv.y + lv.h - wh - 0.5 : lv.y + (lv.h - wh) * 0.42;
+      windows.push({ bay: i, level: lv, kind: lv.level === 'entresol' ? 'entresol' : french ? 'french' : 'std', x: bayX(i) - winW / 2, y: wy, w: winW, h: wh });
+    }
+  }
+  // Logements : 2 ou 3 travées voisines d'un même étage (hors cage), allumées ensemble.
+  const homes = [];
+  const liveBays = Array.from({ length: nBays }, (_, i) => i).filter((i) => i !== stairBay);
+  for (const lv of levels) {
+    if (lv.level === 'entresol') { homes.push({ level: lv, bays: liveBays.slice(), u: 0.75 + rng() * 0.25, tone: 'cream', curtain: null, props: [] }); continue; }
+    const groups = splitBays(liveBays, rng);
+    for (const g of groups) {
+      const r = rng();
+      homes.push({ level: lv, bays: g, u: rng(), tone: r < 0.12 ? 'tv' : r < 0.5 ? 'warm' : r < 0.78 ? 'cream' : 'orange',
+        curtain: rng() < 0.75 ? { color: pick(CURTAINS, rng), style: rng() < 0.4 ? 'voile' : 'side' } : null,
+        props: g.map(() => (rng() < 0.45 ? pick(['lamp', 'plant', 'shelf', 'lamp'], rng) : null)) });
+    }
+  }
+  // Lucarnes : jamais une par travée, type selon le toit, jamais une rangée identique.
+  const dormers = dormersFor(roof, nBays, stairBay, bayX, winW, top, rng);
+  // Cheminées en brique : sur les murs mitoyens (à 3 px des bords), 1 ou 2 selon la largeur.
+  const chimneys = [b.x + 4 + rng() * 3];
+  if (b.w > 70 || rng() < 0.3) chimneys.push(b.x + b.w - 8 - rng() * 3);
+  const wall = kind === 'haussmann' ? pick(STONES, rng) : pick(PLASTERS, rng);
+  const stair = { u: rng(), floorsLit: 1 + Math.floor(rng() * (levels.length)) };
+  return { ...b, kind, top, eave, roof, nBays, pitch, winW, bayX, levels, windows, homes, dormers, chimneys, wall, doorBay, stairBay, stair, shutters, entresol, ground };
+}
+function splitBays(bays, rng) {
+  const n = bays.length;
+  if (n <= 3) return [bays.slice()];
+  if (n === 4) return [bays.slice(0, 2), bays.slice(2)];
+  return rng() < 0.5 ? [bays.slice(0, 2), bays.slice(2)] : [bays.slice(0, 3), bays.slice(3)];
+}
+function dormersFor(roof, nBays, stairBay, bayX, winW, top, rng) {
+  const out = [];
+  if (roof.kind === 'mansard') {
+    const main = rng() < 0.6 ? 'fronton-tri' : 'fronton-cintre';
+    const brisisTop = top + roof.terrasson;
+    for (let i = 0; i < nBays; i++) {
+      if (i === stairBay) { if (rng() < 0.5) out.push({ type: 'oeil', cx: bayX(i), y: brisisTop + (roof.h - roof.terrasson) * 0.5 }); continue; }
+      const r = rng();
+      if (r < 0.5) out.push({ type: main, cx: bayX(i), w: winW + 1, y: brisisTop + 2, h: roof.h - roof.terrasson - 3 });
+      else if (r < 0.7) out.push({ type: 'oeil', cx: bayX(i), y: brisisTop + (roof.h - roof.terrasson) * 0.5 });
+    }
+    if (!out.some((d) => d.type !== 'oeil')) { const i = Math.floor(nBays / 2); out.push({ type: main, cx: bayX(i), w: winW + 1, y: brisisTop + 2, h: roof.h - roof.terrasson - 3 }); }
+    if (rng() < 0.5) { const i = Math.floor(rng() * nBays); out.push({ type: 'tabatiere', cx: bayX(i) + 3, y: top + 1 }); }
+  } else {
+    // toits simples : une capucine au plus sur une travée, une tabatière ailleurs
+    const mid = clamp(Math.round(0.42 * nBays - 0.5), 0, nBays - 1);
+    const i = clamp(mid + (rng() < 0.5 ? 0 : 1), 0, nBays - 1);
+    if (rng() < 0.7) out.push({ type: 'capucine', cx: bayX(i), w: winW - 1, y: top + 3, h: roof.h - 5 });
+    if (rng() < 0.6) { let j = (i + 1 + Math.floor(rng() * (nBays - 1))) % nBays; out.push({ type: 'tabatiere', cx: bayX(j), y: top + 2 }); }
+  }
+  return out;
+}
+// Part de logements allumés par heure (reprise de city/window-lights.ts, semaine) × obscurité.
+const LIT_KEYS = [[0, 0.22], [1, 0.08], [2, 0.03], [4, 0.01], [6, 0.2], [7, 0.45], [8, 0.5], [10, 0.25], [16, 0.25], [18, 0.5], [20, 0.8], [21, 0.85], [22, 0.65], [23, 0.4], [24, 0.22]];
+function litFraction(hour) { for (let i = 1; i < LIT_KEYS.length; i++) { const [h1, a1] = LIT_KEYS[i], [h0, a0] = LIT_KEYS[i - 1]; if (hour <= h1) return a0 + ((a1 - a0) * (hour - h0)) / (h1 - h0); } return 0.22; }
+const homeLit = (home) => home.u < ENV.litFrac;
+const stairLit = (f) => f.stair.u < ENV.litFrac * 0.8;
+
+// ───────────────────────────── peinture d'une façade ─────────────────────────────
+function paintFacade(ctx, f, opts = {}) {
+  const { x, w, top, eave, ground, wall, levels, roof } = f;
+  const h = ground - eave;
+  const night = ENV.dark > 0.2;
+  // Mur : aplat, ombre nette à droite (lumière du haut gauche), rehaut à gauche.
+  fillRect(ctx, wall, x, eave, w, h);
+  fillRect(ctx, shade(hex(wall), 0.28), x + w * 0.74, eave, w * 0.26, h);
+  fillRect(ctx, light(hex(wall), 0.45), x, eave, 1.4, h);
+  fillRect(ctx, shade(hex(wall), 0.18), x, ground - 3, w, 3);
+  // Assises de pierre (haussmann) : fines lignes horizontales dans le ton d'ombre léger.
+  if (f.kind === 'haussmann') { ctx.strokeStyle = rgba(amb(shade(hex(wall), 0.22)), 0.9); ctx.lineWidth = 0.4; ctx.beginPath(); for (let yy = eave + 6; yy < ground - GF - 2; yy += 4.5) { ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); } ctx.stroke(); }
+  // Bandeaux : une ligne claire + ombre sous chaque plancher (alignés sur toute la rue par immeuble).
+  for (const lv of levels) {
+    const by = lv.y + lv.h;
+    if (lv.level === 'entresol') continue;
+    fillRect(ctx, light(hex(wall), 0.5), x, by - 1.2, w, 1.2);
+    fillRect(ctx, shade(hex(wall), 0.38), x, by, w, 0.9);
+  }
+  // Bandeau du rez-de-chaussée (au-dessus des boutiques).
+  fillRect(ctx, shade(hex(wall), 0.3), x, ground - GF - 1, w, 1);
+  // Rez-de-chaussée : boutique + porte (emplacement conservé ; les vraies devantures existent déjà dans l'app).
+  paintGroundFloor(ctx, f);
+  // Fenêtres (ombre, encadrement, vitre, rideaux, lumière).
+  for (const win of f.windows) paintWindow(ctx, f, win);
+  // Balcons : filants (dalle + garde-corps fer forgé sur toute la largeur) et balconnets.
+  for (const lv of levels) if (lv.balcony === 'filant') paintBalcony(ctx, f, x + 1.5, lv.y + lv.h, w - 3, lv, true);
+  for (const win of f.windows) if (win.level.balcony === 'balconnet' && win.kind === 'std') paintBalcony(ctx, f, win.x - 1.2, win.y + win.h, win.w + 2.4, win.level, false);
+  // Corniche sous le toit : rehaut, ombre nette dessous.
+  fillRect(ctx, light(hex(wall), 0.5), x - 1.5, eave - 0.8, w + 3, 3);
+  fillRect(ctx, shade(hex(wall), 0.42), x, eave + 2.2, w, 2.6);
+  inkRect(ctx, x - 1.5, eave - 0.8, w + 3, 3, 0.7);
+  // Toit, cheminées, lucarnes.
+  paintRoof(ctx, f);
+  inkRect(ctx, x, eave, w, h, 0.9);
+  if (opts.leftTouch) inkLine(ctx, [[x, Math.max(top, opts.leftTouch)], [x, ground]], 1.3);
+}
+
+function paintGroundFloor(ctx, f) {
+  const { x, w, ground, wall } = f;
+  const dx = f.bayX(f.doorBay);
+  const dw = Math.min(11, f.winW * 1.6), dh = 21;
+  // Boutique : vitrine sur le reste de la largeur, bandeau d'enseigne.
+  const shopL = f.doorBay === 0 ? dx + dw / 2 + 2 : x + 2, shopR = f.doorBay === 0 ? x + w - 2 : dx - dw / 2 - 2;
+  const tone = pick(['#C85A3A', '#2F5D50', '#2E4A6E', '#8A5A8E', '#B8702A'], mulberry32(Math.round(x * 3)));
+  const sy = ground - GF + 3;
+  fillRect(ctx, tone, shopL, sy, shopR - shopL, GF - 3);
+  fillRect(ctx, shade(hex(tone), 0.3), shopL + (shopR - shopL) * 0.74, sy, (shopR - shopL) * 0.26, GF - 3);
+  const night = ENV.hour >= 20 || ENV.hour < 7;
+  // vitrine : fermée (rideau métallique) la nuit, vitrée le jour
+  const vx = shopL + 2, vw = shopR - shopL - 4, vy = sy + 7, vh = GF - 11;
+  if (night) { fillRect(ctx, '#8A8AA0', vx, vy, vw, vh); ctx.strokeStyle = rgba(amb(hex('#5A5A74'))); ctx.lineWidth = 0.4; ctx.beginPath(); for (let yy = vy + 2; yy < vy + vh; yy += 2) { ctx.moveTo(vx, yy); ctx.lineTo(vx + vw, yy); } ctx.stroke(); }
+  else { fillRect(ctx, '#E8F2F6', vx, vy, vw, vh); poly(ctx, 'rgba(255,255,255,0.8)', [[vx, vy + vh * 0.7], [vx + vw * 0.45, vy], [vx + vw * 0.6, vy], [vx, vy + vh]], true); fillRect(ctx, shade(hex('#E8F2F6'), 0.35), vx + vw * 0.7, vy, vw * 0.3, vh); }
+  inkRect(ctx, vx, vy, vw, vh, 0.6);
+  fillRect(ctx, light(hex(tone), 0.5), shopL + 2, sy + 2, vw, 3.5); // enseigne
+  inkRect(ctx, shopL, sy, shopR - shopL, GF - 3, 0.8);
+  // Porte cochère : bois foncé, cintrée, imposte vitrée.
+  const wood = pick(WOOD, mulberry32(Math.round(x * 5)));
+  fillRect(ctx, light(hex(wall), 0.35), dx - dw / 2 - 1.5, ground - dh - 1.5, dw + 3, dh + 1.5);
+  ctx.fillStyle = col(wood); ctx.beginPath(); ctx.moveTo(dx - dw / 2, ground); ctx.lineTo(dx - dw / 2, ground - dh + dw / 2); ctx.arc(dx, ground - dh + dw / 2, dw / 2, Math.PI, 0); ctx.lineTo(dx + dw / 2, ground); ctx.closePath(); ctx.fill();
+  fillRect(ctx, shade(hex(wood), 0.35), dx + 0.4, ground - dh + dw / 2, dw / 2 - 0.4, dh - dw / 2);
+  ctx.fillStyle = col(night ? LIT.stair : '#B8D4E8'); ctx.beginPath(); ctx.arc(dx, ground - dh + dw / 2, dw / 2 - 1.2, Math.PI, 0); ctx.closePath(); ctx.fill();
+  if (night && stairLit(f)) { ctx.fillStyle = LIT.stair; ctx.beginPath(); ctx.arc(dx, ground - dh + dw / 2, dw / 2 - 1.2, Math.PI, 0); ctx.closePath(); ctx.fill(); rawRect(ctx, 'rgba(255,236,180,0.28)', dx - dw / 2 - 1, ground - 1, dw + 2, 1); }
+  ctx.strokeStyle = INK; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(dx - dw / 2, ground); ctx.lineTo(dx - dw / 2, ground - dh + dw / 2); ctx.arc(dx, ground - dh + dw / 2, dw / 2, Math.PI, 0); ctx.lineTo(dx + dw / 2, ground); ctx.stroke();
+  inkLine(ctx, [[dx, ground - dh + dw / 2], [dx, ground]], 0.5);
+  inkLine(ctx, [[dx - dw / 2, ground - dh + dw / 2], [dx + dw / 2, ground - dh + dw / 2]], 0.5);
+  disc(ctx, '#E8C060', dx - 1.6, ground - dh / 2 + 1, 0.5);
+}
+
+function paintWindow(ctx, f, win) {
+  const wallC = hex(f.wall);
+  const home = f.homes.find((hm) => hm.level === win.level && hm.bays.includes(win.bay));
+  const night = ENV.dark > 0.2;
+  let lit = false, tone = null;
+  if (win.kind === 'stair') { const idx = f.levels.indexOf(win.level); lit = night && stairLit(f) && idx < f.stair.floorsLit; tone = LIT.stair; }
+  else if (home) { lit = night && homeLit(home); tone = LIT[home.tone]; }
+  const { x, y, w, h } = win;
+  // Lueur qui retombe : bord net, forme douce (deux paliers plats), sur l'appui, le mur, la rambarde.
+  if (lit) {
+    const d = clamp(h * 0.7, 4, 9);
+    const g = (k, a) => { ctx.fillStyle = `rgba(255,214,130,${a})`; ctx.beginPath(); ctx.moveTo(x - 0.5, y + h); ctx.lineTo(x + w + 0.5, y + h); ctx.lineTo(x + w + 1.5 + 1.5 * k, y + h + d * k * 0.8); ctx.quadraticCurveTo(x + w / 2, y + h + d * k + 2 * k, x - 1.5 - 1.5 * k, y + h + d * k * 0.8); ctx.closePath(); ctx.fill(); };
+    g(1, 0.22); g(0.55, 0.22);
+    // halo doux sur le mur autour du cadre (fin, teinté)
+    rawRect(ctx, 'rgba(255,214,130,0.16)', x - 1.6, y - 1.2, w + 3.2, h + 1.2);
+  }
+  // Encadrement pierre claire (linteau + jambages), tableau en ombre.
+  fillRect(ctx, light(wallC, 0.5), x - 1.2, y - 1.2, w + 2.4, 1.2);
+  fillRect(ctx, shade(wallC, 0.5), x - 0.9, y, 0.9, h);
+  fillRect(ctx, shade(wallC, 0.5), x + w, y, 0.9, h);
+  // Vitre.
+  if (lit) {
+    ctx.fillStyle = tone; ctx.fillRect(x, y, w, h);
+    const home2 = home;
+    if (home2 && home2.tone === 'tv') { rawRect(ctx, 'rgba(255,255,255,0.35)', x + 0.6, y + h * 0.35, w - 1.2, h * 0.3); }
+    else { ctx.fillStyle = `rgba(255,255,255,${home2 && home2.tone === 'cream' ? 0.3 : 0.2})`; ctx.fillRect(x, y, w, h * 0.3); }
+    // Rideaux, voilages, silhouettes (seulement dans un logement).
+    if (home2) {
+      const prop = home2.props[home2.bays.indexOf(win.bay)];
+      if (home2.curtain && home2.curtain.style === 'voile') { rawRect(ctx, 'rgba(255,248,230,0.45)', x, y, w, h); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.4; ctx.beginPath(); for (let k = 1; k < w; k += 1.6) { ctx.moveTo(x + k, y); ctx.lineTo(x + k - 0.6, y + h); } ctx.stroke(); }
+      if (prop === 'lamp') { poly(ctx, '#6E3A2A', [[x + w * 0.55, y + h * 0.3], [x + w * 0.95, y + h * 0.3], [x + w * 0.9, y + h * 0.55], [x + w * 0.6, y + h * 0.55]], true); rawRect(ctx, '#6E3A2A', x + w * 0.73, y + h * 0.55, 0.6, h * 0.45); rawRect(ctx, 'rgba(255,255,255,0.55)', x + w * 0.62, y + h * 0.33, w * 0.26, h * 0.1); }
+      else if (prop === 'plant') { disc(ctx, '#2A4A30', x + w * 0.3, y + h * 0.6, w * 0.2, true); disc(ctx, '#2A4A30', x + w * 0.42, y + h * 0.5, w * 0.16, true); rawRect(ctx, '#5A3A2E', x + w * 0.18, y + h * 0.72, w * 0.26, h * 0.28); }
+      else if (prop === 'shelf') { for (let k = 0; k < 3; k++) rawRect(ctx, 'rgba(60,30,30,0.6)', x + 0.8, y + 1 + k * (h / 3.2), w * 0.5, 0.6); rawRect(ctx, 'rgba(60,30,30,0.45)', x + 0.8, y + 1, w * 0.5, h - 2); }
+      if (home2.curtain && home2.curtain.style === 'side') { const cw = clamp(w * 0.22, 1, 1.8); rawRect(ctx, home2.curtain.color, x, y, cw, h); rawRect(ctx, home2.curtain.color, x + w - cw, y, cw, h); rawRect(ctx, 'rgba(0,0,0,0.18)', x + cw - 0.4, y, 0.4, h); }
+    }
+  } else {
+    const glass = night ? hex(GLASS_NIGHT) : hex(GLASS_DAY);
+    // de nuit : vitre plus sombre que le mur, reflet discret ; de jour : reflet du ciel, on voit peu l'intérieur
+    ctx.fillStyle = night ? rgba(mix(glass, amb(wallC), 0.25)) : col(glass); ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = night ? 'rgba(150,170,230,0.22)' : 'rgba(255,255,255,0.72)'; ctx.beginPath(); ctx.moveTo(x, y + h * 0.55); ctx.lineTo(x + w * 0.5, y); ctx.lineTo(x + w * 0.7, y); ctx.lineTo(x, y + h * 0.95); ctx.closePath(); ctx.fill();
+    fillRect(ctx, shade(glass, 0.45), x, y, w, 1);
+    if (home && home.curtain && win.kind !== 'stair') { const cw = clamp(w * 0.22, 1, 1.8); const cc = home.curtain.style === 'voile' ? 'rgba(255,248,230,0.35)' : rgba(amb(hex(home.curtain.color))); ctx.fillStyle = cc; if (home.curtain.style === 'voile') ctx.fillRect(x, y, w, h); else { ctx.fillRect(x, y, cw, h); ctx.fillRect(x + w - cw, y, cw, h); } }
+  }
+  // Menuiserie : meneau et traverse, trait.
+  ctx.strokeStyle = INK; ctx.lineWidth = 0.55; ctx.strokeRect(x, y, w, h);
+  ctx.beginPath(); ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h);
+  if (h >= 8) { ctx.moveTo(x, y + h * 0.33); ctx.lineTo(x + w, y + h * 0.33); }
+  ctx.stroke();
+  // Volets (faubourg) : persiennes colorées de part et d'autre.
+  if (f.shutters && win.kind === 'std' && win.x - 2.6 > f.x + 1 && win.x + w + 2.6 < f.x + f.w - 1) {
+    const sc = hex(f.shutters);
+    fillRect(ctx, light(sc, 0.2), x - 2.6, y, 2, h); fillRect(ctx, shade(sc, 0.3), x + w + 0.6, y, 2, h);
+    ctx.strokeStyle = INK; ctx.lineWidth = 0.45; ctx.strokeRect(x - 2.6, y, 2, h); ctx.strokeRect(x + w + 0.6, y, 2, h);
+    ctx.fillStyle = rgba(amb(shade(sc, 0.5))); for (let k = 1.5; k < h; k += 2) { ctx.fillRect(x - 2.3, y + k, 1.4, 0.4); ctx.fillRect(x + w + 0.9, y + k, 1.4, 0.4); }
+  }
+  // Appui : pierre claire + ombre nette (éclairé si allumé) ; jardinière sur certaines fenêtres.
+  if (win.kind !== 'french') {
+    ctx.fillStyle = lit ? '#FFE8B0' : col(light(wallC, 0.55)); ctx.fillRect(x - 1.2, y + h, w + 2.4, 1);
+    fillRect(ctx, shade(wallC, 0.4), x - 1.2, y + h + 1, w + 2.4, 0.9);
+    const r = mulberry32(Math.round(x * 7 + y * 3));
+    if (win.kind === 'std' && r() < 0.35 && f.kind === 'faubourg') {
+      fillRect(ctx, '#8A4A2E', x - 0.4, y + h + 1, w + 0.8, 1.6); inkRect(ctx, x - 0.4, y + h + 1, w + 0.8, 1.6, 0.4);
+      for (let k = 0; k < 6; k++) disc(ctx, pick(['#3F8A3A', '#E8456B', '#F6C62E', '#FFFFFF', '#E070C0'], r), x + 0.5 + r() * (w - 1), y + h + 0.4 + r() * 1.2, 0.7);
+      if (lit) rawRect(ctx, 'rgba(255,214,130,0.3)', x - 0.4, y + h + 0.2, w + 0.8, 1.2);
+    }
+  }
+}
+
+// Balcon : dalle en débord (rehaut dessus, ombre nette dessous) + garde-corps fer forgé (barreaux, lisse, volute par travée).
+function paintBalcony(ctx, f, bx, by, bw, lv, filant) {
+  const wallC = hex(f.wall);
+  const rh = filant ? 5.5 : 4;
+  // lumière retombée sur la dalle depuis les portes-fenêtres allumées de cet étage
+  const litBays = f.windows.filter((w) => w.level === lv && w.x >= bx - 1 && w.x + w.w <= bx + bw + 1).filter((w) => { const hm = f.homes.find((h) => h.level === lv && h.bays.includes(w.bay)); return hm && ENV.dark > 0.2 && homeLit(hm); });
+  // garde-corps (devant la vitre : silhouette sombre sur la lumière)
+  ctx.fillStyle = INK;
+  ctx.fillRect(bx, by - rh, bw, 0.7);
+  for (let k = bx + 0.8; k < bx + bw; k += 1.5) ctx.fillRect(k, by - rh, 0.45, rh);
+  if (filant) {
+    // volutes : deux arcs par travée
+    ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath();
+    for (let i = 0; i < f.nBays; i++) { const cx = f.bayX(i); if (cx - 3 < bx || cx + 3 > bx + bw) continue; ctx.moveTo(cx - 2.5, by - 1.2); ctx.arc(cx - 1.2, by - rh * 0.55, 1.3, Math.PI * 0.7, Math.PI * 2.3); ctx.moveTo(cx + 2.5, by - 1.2); ctx.arc(cx + 1.2, by - rh * 0.55, 1.3, Math.PI * 0.7, Math.PI * 2.3, true); }
+    ctx.stroke();
+  }
+  // dalle
+  fillRect(ctx, light(wallC, 0.5), bx - 0.8, by - 0.4, bw + 1.6, 1.4);
+  fillRect(ctx, shade(wallC, 0.45), bx - 0.8, by + 1, bw + 1.6, filant ? 2 : 1.4);
+  inkRect(ctx, bx - 0.8, by - 0.4, bw + 1.6, filant ? 3.4 : 2.8, 0.6);
+  for (const w of litBays) { rawRect(ctx, 'rgba(255,214,130,0.3)', w.x - 1.5, by - 0.4, w.w + 3, 1.4); rawRect(ctx, 'rgba(255,214,130,0.22)', w.x - 1, by - rh, w.w + 2, rh); }
+  if (filant && f.kind === 'haussmann') { disc(ctx, '#3F8A3A', bx + 3.5, by - rh - 0.6, 1.5); fillRect(ctx, '#A04A2E', bx + 2.3, by - rh - 0.2, 2.4, 1.4); }
+}
+
+function paintRoof(ctx, f) {
+  const { x, w, top, eave, roof } = f;
+  if (roof.kind === 'mansard') {
+    const zc = hex(roof.zinc), bt = top + roof.terrasson;
+    // brisis : trapèze presque vertical, rentré de 2.5 px par côté ; terrasson : bande plate plus claire en haut.
+    poly(ctx, zc, [[x - 1.5, eave], [x + 2.5, bt], [x + w - 2.5, bt], [x + w + 1.5, eave]]);
+    poly(ctx, shade(zc, 0.3), [[x + w * 0.74, eave], [x + w * 0.74, bt], [x + w - 2.5, bt], [x + w + 1.5, eave]]);
+    poly(ctx, light(zc, 0.35), [[x - 1.5, eave], [x + 2.5, bt], [x + w * 0.4, bt], [x + w * 0.4, eave]]);
+    // joints debout du zinc (brisis)
+    ctx.strokeStyle = rgba(amb(shade(zc, 0.5)), 0.8); ctx.lineWidth = 0.4; ctx.beginPath();
+    for (let i = 0; i < f.nBays * 2 + 1; i++) { const t = (i + 0.5) / (f.nBays * 2 + 1); ctx.moveTo(x - 1.5 + (w + 3) * t, eave); ctx.lineTo(x + 2.5 + (w - 5) * t, bt); } ctx.stroke();
+    poly(ctx, light(zc, 0.5), [[x + 2.5, bt], [x + 5, top + 0.5], [x + w - 5, top + 0.5], [x + w - 2.5, bt]]);
+    poly(ctx, shade(zc, 0.2), [[x + w * 0.74, bt], [x + w * 0.74, top + 0.5], [x + w - 5, top + 0.5], [x + w - 2.5, bt]]);
+    inkLine(ctx, [[x - 1.5, eave], [x + 2.5, bt], [x + 5, top + 0.5], [x + w - 5, top + 0.5], [x + w - 2.5, bt], [x + w + 1.5, eave]], 0.9);
+    inkLine(ctx, [[x + 2.5, bt], [x + w - 2.5, bt]], 0.6);
+    for (const cx of f.chimneys) paintChimney(ctx, cx, bt, top, 7);
+    for (const d of f.dormers) paintDormer(ctx, f, d);
+  } else {
+    const rc = roof.kind === 'zinc' ? hex(roof.zinc) : hex(roof.tile);
+    // toit à faible pente, à deux versants vus de face : faîtage légèrement décentré vers la gauche
+    const rx = x + w * 0.42;
+    poly(ctx, rc, [[x - 2, eave], [rx, top + 0.5], [x + w + 2, eave]]);
+    poly(ctx, light(rc, 0.35), [[x - 2, eave], [rx, top + 0.5], [rx, eave]]);
+    poly(ctx, shade(rc, 0.32), [[rx, top + 0.5], [x + w + 2, eave], [rx, eave]]);
+    ctx.strokeStyle = rgba(amb(shade(rc, 0.5)), 0.8); ctx.lineWidth = 0.45; ctx.beginPath();
+    for (let yy = top + 3; yy < eave; yy += roof.kind === 'tile' ? 2.4 : 3.2) { const t = (yy - top) / (eave - top); ctx.moveTo(rx - (rx - x + 2) * t, yy); ctx.lineTo(rx + (x + w + 2 - rx) * t, yy); } ctx.stroke();
+    fillRect(ctx, light(rc, 0.5), rx - 1, top + 0.3, 2, 0.8);
+    inkLine(ctx, [[x - 2, eave], [rx, top + 0.5], [x + w + 2, eave]], 0.9);
+    const ridgeAt = (cx) => top + 0.5 + (eave - top - 0.5) * (cx < rx ? (rx - cx) / (rx - x + 2) : (cx - rx) / (x + w + 2 - rx));
+    for (const cx of f.chimneys) paintChimney(ctx, cx, ridgeAt(cx + 2), top - 2, 6);
+    for (const d of f.dormers) paintDormer(ctx, f, d, ridgeAt);
+  }
+}
+function paintChimney(ctx, cx, baseY, topY, hMax) {
+  const ch = Math.min(hMax, baseY - topY);
+  const bc = hex(BRICK);
+  fillRect(ctx, bc, cx, baseY - ch, 4, ch); fillRect(ctx, shade(bc, 0.35), cx + 2.6, baseY - ch, 1.4, ch); fillRect(ctx, light(bc, 0.4), cx, baseY - ch, 0.9, ch);
+  fillRect(ctx, '#6E3A2A', cx - 0.6, baseY - ch, 5.2, 1.2);
+  for (let p = 0; p < 3; p++) fillRect(ctx, '#9E6A4A', cx + 0.3 + p * 1.4, baseY - ch - 2.2, 1, 2.3);
+  inkRect(ctx, cx, baseY - ch, 4, ch, 0.6);
+}
+// Lucarnes : fronton triangulaire / cintré dans le brisis, œil-de-bœuf, capucine (petit toit à trois pans), tabatière (châssis à plat).
+function paintDormer(ctx, f, d, ridgeAt) {
+  const zc = f.roof.kind === 'mansard' ? hex(f.roof.zinc) : f.roof.kind === 'zinc' ? hex(f.roof.zinc) : hex(f.roof.tile);
+  const night = ENV.dark > 0.2;
+  const r = mulberry32(Math.round(d.cx * 11));
+  const lit = night && r() < ENV.litFrac * 0.9;
+  const glass = (gx, gy, gw, gh) => { if (lit) { ctx.fillStyle = r() < 0.3 ? LIT.cream : LIT.warm; ctx.fillRect(gx, gy, gw, gh); rawRect(ctx, 'rgba(255,255,255,0.25)', gx, gy, gw, gh * 0.3); rawRect(ctx, 'rgba(255,214,130,0.22)', gx - 1, gy + gh, gw + 2, 2.2); } else { fillRect(ctx, night ? GLASS_NIGHT : GLASS_DAY, gx, gy, gw, gh); ctx.fillStyle = night ? 'rgba(150,170,230,0.22)' : 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.moveTo(gx, gy + gh * 0.5); ctx.lineTo(gx + gw * 0.6, gy); ctx.lineTo(gx + gw, gy); ctx.lineTo(gx, gy + gh); ctx.fill(); } ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.strokeRect(gx, gy, gw, gh); ctx.beginPath(); ctx.moveTo(gx + gw / 2, gy); ctx.lineTo(gx + gw / 2, gy + gh); ctx.stroke(); };
+  const stone = light(hex(f.wall), 0.3);
+  if (d.type === 'fronton-tri' || d.type === 'fronton-cintre') {
+    const w = d.w, x = d.cx - w / 2, y = d.y, h = d.h;
+    // joues en zinc à l'ombre, face en pierre claire, fronton
+    fillRect(ctx, shade(zc, 0.45), x + w - 0.5, y - 1, 2.2, h + 1);
+    fillRect(ctx, stone, x - 1.2, y, w + 2.4, h);
+    fillRect(ctx, shade(hex(f.wall), 0.3), x + w * 0.74, y, w * 0.26 + 1.2, h);
+    if (d.type === 'fronton-tri') { poly(ctx, light(stone, 0.4), [[x - 2.2, y], [d.cx, y - 3.6], [x + w + 2.2, y]]); inkLine(ctx, [[x - 2.2, y], [d.cx, y - 3.6], [x + w + 2.2, y]], 0.7, true); }
+    else { ctx.fillStyle = col(light(stone, 0.4)); ctx.beginPath(); ctx.moveTo(x - 2, y); ctx.arc(d.cx, y, w / 2 + 2, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.arc(d.cx, y, w / 2 + 2, Math.PI, 0); ctx.closePath(); ctx.stroke(); }
+    glass(x, y + 1, w, h - 2);
+    inkRect(ctx, x - 1.2, y, w + 2.4, h, 0.6);
+  } else if (d.type === 'oeil') {
+    const R = 2.6;
+    disc(ctx, stone, d.cx, d.y, R + 1); disc(ctx, shade(zc, 0.4), d.cx + 0.6, d.y + 0.6, R + 0.6);
+    disc(ctx, stone, d.cx, d.y, R + 0.6);
+    if (lit) { disc(ctx, LIT.warm, d.cx, d.y, R, true); rawRect(ctx, 'rgba(255,214,130,0.2)', d.cx - R - 1, d.y + R, 2 * R + 2, 2); } else { disc(ctx, night ? GLASS_NIGHT : GLASS_DAY, d.cx, d.y, R); ctx.fillStyle = night ? 'rgba(150,170,230,0.25)' : 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(d.cx - 0.6, d.y - 0.6, R * 0.55, 0, TAU); ctx.fill(); }
+    ctx.strokeStyle = INK; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(d.cx, d.y, R, 0, TAU); ctx.moveTo(d.cx - R, d.y); ctx.lineTo(d.cx + R, d.y); ctx.moveTo(d.cx, d.y - R); ctx.lineTo(d.cx, d.y + R); ctx.stroke();
+    ctx.lineWidth = 0.5; ctx.beginPath(); ctx.arc(d.cx, d.y, R + 0.9, 0, TAU); ctx.stroke();
+  } else if (d.type === 'capucine') {
+    const w = d.w, x = d.cx - w / 2, y = Math.max(d.y, (ridgeAt ? ridgeAt(d.cx) : d.y) - 1), h = Math.max(5, Math.min(d.h, f.eave - y - 1));
+    fillRect(ctx, light(hex(f.wall), 0.2), x - 1, y, w + 2, h);
+    fillRect(ctx, shade(hex(f.wall), 0.3), x + w * 0.7, y, w * 0.3 + 1, h);
+    poly(ctx, light(zc, 0.4), [[x - 2.5, y], [x - 0.5, y - 2.8], [x + w + 0.5, y - 2.8], [x + w + 2.5, y]]);
+    poly(ctx, shade(zc, 0.3), [[x + w * 0.7, y], [x + w * 0.7, y - 2.8], [x + w + 0.5, y - 2.8], [x + w + 2.5, y]]);
+    inkLine(ctx, [[x - 2.5, y], [x - 0.5, y - 2.8], [x + w + 0.5, y - 2.8], [x + w + 2.5, y]], 0.7, true);
+    glass(x, y + 1, w, h - 2);
+    inkRect(ctx, x - 1, y, w + 2, h, 0.6);
+  } else if (d.type === 'tabatiere') {
+    const w = 5, h = 2.6, x = d.cx - w / 2, y = d.y;
+    poly(ctx, shade(zc, 0.5), [[x, y], [x + w, y], [x + w + 1.2, y + h], [x + 1.2, y + h]]);
+    poly(ctx, lit ? LIT.warm : night ? hex('#3A4A7A') : hex('#BBD8F0'), [[x + 0.5, y + 0.4], [x + w - 0.5, y + 0.4], [x + w + 0.5, y + h - 0.4], [x + 1.5, y + h - 0.4]], lit);
+    if (!night) poly(ctx, 'rgba(255,255,255,0.75)', [[x + 0.5, y + 0.4], [x + w * 0.5, y + 0.4], [x + 1.5, y + h - 0.4]], true);
+    inkLine(ctx, [[x, y], [x + w, y], [x + w + 1.2, y + h], [x + 1.2, y + h]], 0.5, true);
+  }
+}
+
+// ───────────────────────────── ancienne grille (moteur actuel) pour l'avant/après ─────────────────────────────
+const OLD_WALLS = ['#F6E2B4', '#F0A98A', '#CFE0B8', '#F4D89C', '#EEC79A', '#E6BCD0', '#FFF1D6', '#C4D6E6'];
+function paintOldBuilding(ctx, b, ground, seed) {
+  const rng = mulberry32(seed ^ hashString('old') ^ Math.round(b.x * 8));
+  const top = ground - b.h, roofH = 14, eave = top + roofH;
+  const wall = hex(pick(OLD_WALLS, rng)); const kind = pick(['gable', 'gable', 'mansard', 'zinc'], rng);
+  const rc = hex(kind === 'gable' ? '#D8603A' : kind === 'mansard' ? '#5A6A84' : '#98A4B4');
+  fillRect(ctx, wall, b.x, eave, b.w, ground - eave); fillRect(ctx, shade(wall, 0.28), b.x + b.w * 0.72, eave, b.w * 0.28, ground - eave); fillRect(ctx, light(wall, 0.45), b.x, eave, 1.6, ground - eave);
+  if (kind === 'gable') { poly(ctx, rc, [[b.x - 2, eave], [b.x + b.w / 2, top], [b.x + b.w + 2, eave]]); inkLine(ctx, [[b.x - 2, eave], [b.x + b.w / 2, top], [b.x + b.w + 2, eave]], 0.9, true); }
+  else if (kind === 'mansard') { poly(ctx, rc, [[b.x - 2, eave], [b.x + 2, top + 1], [b.x + b.w - 2, top + 1], [b.x + b.w + 2, eave]]); inkLine(ctx, [[b.x - 2, eave], [b.x + 2, top + 1], [b.x + b.w - 2, top + 1], [b.x + b.w + 2, eave]], 0.9, true); }
+  else { fillRect(ctx, rc, b.x - 1, top + 1, b.w + 2, roofH - 1); inkRect(ctx, b.x - 1, top + 1, b.w + 2, roofH - 1, 0.9); }
+  fillRect(ctx, shade(wall, 0.42), b.x, eave, b.w, 3.5);
+  // grille du moteur : colonnes de 10 px dès 4 px du bord gauche, rangées de 14 px dès 4 px du haut, fenêtres 5 × 7
+  for (let r = 0; top + 4 + r * 14 + 7 <= ground - GF; r++) for (let c = 0; c < Math.floor(b.w / 10); c++) {
+    const wx = b.x + 4 + c * 10, wy = top + 4 + r * 14, dormer = wy < top + roofH;
+    const lit = ENV.dark > 0.2 && rng() < ENV.litFrac;
+    if (dormer) { fillRect(ctx, light(rc, 0.45), wx - 1.2, wy - 1, 7.4, 8.6); inkRect(ctx, wx - 1.2, wy - 1, 7.4, 8.6, 0.6); }
+    if (lit) { ctx.fillStyle = rng() < 0.15 ? LIT.tv : LIT.warm; ctx.fillRect(wx, wy, 5, 7); } else { fillRect(ctx, ENV.dark > 0.2 ? GLASS_NIGHT : GLASS_DAY, wx, wy, 5, 7); ctx.fillStyle = ENV.dark > 0.2 ? 'rgba(150,170,230,0.22)' : 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.moveTo(wx, wy + 3.8); ctx.lineTo(wx + 2.7, wy); ctx.lineTo(wx + 5, wy); ctx.lineTo(wx, wy + 6.3); ctx.fill(); }
+    if (rng() < 0.5) { ctx.fillStyle = lit ? '#FFF4DC' : col('#FFF4DC'); ctx.fillRect(wx, wy, 1.6, 7); ctx.fillRect(wx + 3.4, wy, 1.6, 7); }
+    inkRect(ctx, wx, wy, 5, 7, 0.6); inkLine(ctx, [[wx + 2.5, wy], [wx + 2.5, wy + 7]], 0.6);
+    if (!dormer) { fillRect(ctx, '#FFF6E0', wx - 0.9, wy + 7, 6.8, 1); fillRect(ctx, shade(wall, 0.4), wx - 0.9, wy + 8, 6.8, 1); }
+  }
+  // rez-de-chaussée simplifié (boutique)
+  const tone = pick(['#C85A3A', '#2F5D50', '#2E4A6E', '#8A5A8E', '#B8702A'], mulberry32(Math.round(b.x * 3)));
+  fillRect(ctx, tone, b.x + 2, ground - GF + 3, b.w - 4, GF - 3); fillRect(ctx, '#E8F2F6', b.x + 4, ground - GF + 10, b.w - 8, GF - 14); inkRect(ctx, b.x + 4, ground - GF + 10, b.w - 8, GF - 14, 0.6); inkRect(ctx, b.x + 2, ground - GF + 3, b.w - 4, GF - 3, 0.8);
+  inkRect(ctx, b.x, eave, b.w, ground - eave, 0.9);
+}
+
+// ───────────────────────────── scène ─────────────────────────────
+const W = 900, H = 400, GROUND = 300, SEED = 20261018;
+// Tirage des lots : largeurs 44-110, hauteurs 100-220 (plage demandée ; le moteur donne 40-70 × 64-160 après BUILDING_STRETCH).
+function streetLots(seed) {
+  const rng = mulberry32(seed ^ hashString('lots'));
+  const out = []; let x = 8;
+  const plan = [[96, 200], [58, 150], [110, 215], [66, 128], [84, 190], [46, 108], [100, 205], [72, 160], [90, 182]];
+  for (const [w, h] of plan) { const jw = w + (rng() - 0.5) * 8, jh = h + (rng() - 0.5) * 16; out.push({ x, w: jw, h: jh }); x += jw + (rng() < 0.5 ? 0 : 6 + rng() * 12); }
+  return out;
+}
+function farRow(seed) {
+  const rng = mulberry32(seed ^ hashString('far')); const out = []; let x = -10;
+  while (x < W + 20) { const w = 36 + rng() * 34, h = 150 + rng() * 90; out.push({ x, w, h, wall: pick(['#D8CCB8', '#D0C4B4', '#CCBFAE', '#DCD0BE'], rng), roof: pick(['#8A94A4', '#B8705A', '#7A8898'], rng) }); x += w - 3; }
+  return out;
+}
+function paintSky(ctx, hour) {
+  const g = ctx.createLinearGradient(0, 0, 0, GROUND);
+  if (hour === 10) { g.addColorStop(0, '#3F8BE0'); g.addColorStop(0.55, '#8EC3F0'); g.addColorStop(1, '#DCEFF8'); }
+  else if (hour === 19) { g.addColorStop(0, '#5E4E9C'); g.addColorStop(0.45, '#D86C7A'); g.addColorStop(0.8, '#F8A050'); g.addColorStop(1, '#FFD88C'); }
+  else { g.addColorStop(0, '#0A1038'); g.addColorStop(0.7, '#1A2A66'); g.addColorStop(1, '#34488C'); }
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND);
+  if (hour >= 22 || hour < 6) { const r = mulberry32(9); ctx.fillStyle = '#FFF6D0'; for (let i = 0; i < 80; i++) ctx.fillRect(r() * W, r() * 120, 1, 1); ctx.fillStyle = 'rgba(255,245,200,0.18)'; ctx.beginPath(); ctx.arc(760, 44, 18, 0, TAU); ctx.fill(); ctx.fillStyle = '#FFF4C8'; ctx.beginPath(); ctx.arc(760, 44, 9, 0, TAU); ctx.fill(); ctx.fillStyle = '#1A2A66'; ctx.beginPath(); ctx.arc(764, 41, 8, 0, TAU); ctx.fill(); }
+  else if (hour === 10) { ctx.fillStyle = 'rgba(255,255,230,0.35)'; ctx.beginPath(); ctx.arc(120, 38, 22, 0, TAU); ctx.fill(); ctx.fillStyle = '#FFFBE0'; ctx.beginPath(); ctx.arc(120, 38, 11, 0, TAU); ctx.fill(); }
+}
+function paintFar(ctx, far) {
+  // Fond simple : on le peint AVANT le premier plan ; une fenêtre du fond n'apparaît donc jamais devant un immeuble plus proche.
+  const haze = ENV.dark > 0.2 ? 0.35 : 0.3;
+  for (const b of far) {
+    const wc = mix(hex(b.wall), hex('#9AAFD0'), haze), top = GROUND - b.h;
+    fillRect(ctx, wc, b.x, top + 6, b.w, b.h - 6); fillRect(ctx, shade(wc, 0.2), b.x + b.w * 0.72, top + 6, b.w * 0.28, b.h - 6);
+    fillRect(ctx, mix(hex(b.roof), hex('#9AAFD0'), haze), b.x - 1, top, b.w + 2, 6); inkRect(ctx, b.x - 1, top, b.w + 2, 6, 0.5);
+    const r = mulberry32(Math.round(b.x * 13)); const cols = Math.max(1, Math.floor((b.w - 6) / 9));
+    for (let k = 0; k < 8; k++) { const c = Math.floor(r() * cols), row = Math.floor(r() * 4); const wx = b.x + 4 + c * 9, wy = top + 11 + row * 12; const lit = ENV.dark > 0.2 && r() < ENV.litFrac * 0.8; ctx.fillStyle = lit ? (r() < 0.3 ? LIT.tv : LIT.warm) : col(mix(hex(ENV.dark > 0.2 ? GLASS_NIGHT : '#6A90C0'), hex('#9AAFD0'), haze)); ctx.fillRect(wx, wy, 3.5, 5); }
+    inkRect(ctx, b.x, top + 6, b.w, b.h - 6, 0.5);
+  }
+}
+function paintStreet(ctx) {
+  const night = ENV.dark > 0.2;
+  fillRect(ctx, '#E6D4AE', 0, GROUND, W, 22); fillRect(ctx, shade(hex('#E6D4AE'), 0.2), 0, GROUND + 20, W, 2);
+  fillRect(ctx, '#B49E7A', 0, GROUND + 22, W, H - GROUND - 22);
+  inkLine(ctx, [[0, GROUND + 22], [W, GROUND + 22]], 0.8);
+  // lampadaires
+  for (let lx = 110; lx < W; lx += 260) {
+    if (night) { ctx.fillStyle = 'rgba(255,222,150,0.22)'; ctx.beginPath(); ctx.moveTo(lx - 5, GROUND - 34); ctx.lineTo(lx + 5, GROUND - 34); ctx.lineTo(lx + 30, GROUND + 22); ctx.lineTo(lx - 30, GROUND + 22); ctx.closePath(); ctx.fill(); ctx.fillStyle = 'rgba(255,222,150,0.25)'; ctx.beginPath(); ctx.ellipse(lx, GROUND + 20, 32, 5, 0, 0, TAU); ctx.fill(); }
+    fillRect(ctx, '#2E3A3A', lx - 0.9, GROUND - 32, 1.8, 52); fillRect(ctx, '#2E3A3A', lx - 3, GROUND - 38, 6, 6); fillRect(ctx, night ? '#FFF0B0' : '#D8E8F0', lx - 2.2, GROUND - 37, 4.4, 4.4); inkRect(ctx, lx - 3, GROUND - 38, 6, 6, 0.6);
+  }
+}
+function setEnv(hour) {
+  const dark = hour === 10 ? 0 : hour === 19 ? 0.32 : 0.64;
+  ENV = { dark, tint: hour === 19 ? DUSK : NIGHT, hour, litFrac: hour === 10 ? 0 : hour === 19 ? 0.38 : hour === 22 ? 0.66 : 0.02 };
+}
+function renderStreet(ctx, hour, { old = false, lots = streetLots(SEED), far = farRow(SEED) } = {}) {
+  setEnv(hour);
+  paintSky(ctx, hour);
+  paintFar(ctx, far);
+  let prev = null;
+  for (const b of lots) {
+    if (old) paintOldBuilding(ctx, b, GROUND, SEED);
+    else { const f = facadeLayout(b, GROUND, SEED); paintFacade(ctx, f, { leftTouch: prev && prev.x + prev.w >= b.x - 0.5 ? Math.max(prev.top, f.top) + 10 : null }); }
+    prev = { ...b, top: GROUND - b.h };
+  }
+  paintStreet(ctx);
+}
+function canvasFor(id, w, h, scale) { const c = document.getElementById(id); c.width = w * scale; c.height = h * scale; const ctx = c.getContext('2d'); ctx.scale(scale, scale); return ctx; }
+
+// rues
+for (const [id, hour] of [['rue-jour-10h', 10], ['rue-crepuscule-19h', 19], ['rue-nuit-22h', 22], ['rue-nuit-2h', 2]]) renderStreet(canvasFor(id, W, H, 2), hour);
+// zooms ×4 sur 3 immeubles (x 70 → 350 du monde)
+for (const [id, hour] of [['rue-jour-10h-zoom', 10], ['rue-nuit-22h-zoom', 22]]) { const ctx = canvasFor(id, 300, 260, 4); ctx.translate(-60, -60); renderStreet(ctx, hour); }
+// avant / après
+{ const ctx = canvasFor('avant-apres', W, 2 * (H - 60), 2);
+  const half = H - 60;
+  const pane = (oy, old, label) => { ctx.save(); ctx.translate(0, oy); ctx.beginPath(); ctx.rect(0, 0, W, half); ctx.clip(); renderStreet(ctx, 10, { old }); ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, 150, 14); ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.fillText(label, 4, 10); ctx.restore(); };
+  pane(0, true, 'AVANT — grille 10 × 14, fenêtres 5 × 7'); pane(half, false, 'APRÈS — travées, étages, lucarnes'); }
+// planche des lucarnes et des toits : 5 colonnes (types) × 2 lignes (jour / nuit), ×3
+{
+  const CW = 140, CH = 96, LB = 14, types = ['fronton-tri', 'fronton-cintre', 'oeil', 'capucine', 'tabatiere'];
+  const LABEL = { 'fronton-tri': ['Fronton triangulaire', 'brisis zinc (haussmann)'], 'fronton-cintre': ['Fronton cintré', 'brisis zinc (haussmann)'], oeil: ['Œil-de-bœuf', 'au-dessus de la cage / travée sans lucarne'], capucine: ['Capucine', 'toit simple zinc ou tuile (faubourg)'], tabatiere: ['Tabatière', 'terrasson ou versant, jamais seule en rangée'] };
+  const ctx = canvasFor('lucarnes-planche', CW * 5, (CH + LB) * 2, 3);
+  [10, 22].forEach((hour, row) => types.forEach((t, i) => {
+    const oy = row * (CH + LB);
+    ctx.fillStyle = '#F2EDE2'; ctx.fillRect(i * CW, oy, CW, LB);
+    ctx.fillStyle = '#2A1A18'; ctx.font = 'bold 6px sans-serif'; ctx.fillText(LABEL[t][0] + (row ? ' — nuit' : ' — jour'), i * CW + 3, oy + 5.5); ctx.font = '4.6px sans-serif'; ctx.fillText(LABEL[t][1], i * CW + 3, oy + 11.5);
+    ctx.save(); ctx.translate(i * CW, oy + LB); ctx.beginPath(); ctx.rect(0, 0, CW, CH); ctx.clip();
+    setEnv(hour); paintSky(ctx, hour);
+    const b = { x: 25, w: 90, h: 150 };
+    const f = facadeLayout(b, CH + 60, 77 + i);
+    const mans = t !== 'capucine' && t !== 'tabatiere';
+    if (!mans) { f.roof = t === 'capucine' ? { kind: 'zinc', h: 12, zinc: ZINCS[0] } : { kind: 'tile', h: 12, tile: TILES[0] }; f.kind = 'faubourg'; f.wall = PLASTERS[0]; f.shutters = '#8FA88C'; }
+    else { f.roof = { kind: 'mansard', h: 18, zinc: ZINCS[0], terrasson: 4 }; f.kind = 'haussmann'; f.wall = STONES[0]; f.shutters = null; }
+    f.eave = f.top + f.roof.h;
+    const bt = f.top + (f.roof.terrasson || 0);
+    f.dormers = t === 'oeil' ? [{ type: 'oeil', cx: f.bayX(1), y: bt + 7 }, { type: 'fronton-tri', cx: f.bayX(3), w: f.winW + 1, y: bt + 2, h: f.roof.h - 7 }]
+      : t === 'tabatiere' ? [{ type: 'tabatiere', cx: f.bayX(1), y: f.top + 2 }, { type: 'tabatiere', cx: f.bayX(3) + 2, y: f.top + 5 }]
+      : t === 'capucine' ? [{ type: 'capucine', cx: f.bayX(2), w: f.winW - 1, y: f.top + 3, h: 7 }, { type: 'tabatiere', cx: f.bayX(0) + 3, y: f.top + 6 }]
+      : [{ type: t, cx: f.bayX(0), w: f.winW + 1, y: bt + 2, h: f.roof.h - 7 }, { type: t, cx: f.bayX(2), w: f.winW + 1, y: bt + 2, h: f.roof.h - 7 }, { type: 'oeil', cx: f.bayX(4), y: bt + 7 }];
+    ctx.scale(1.45, 1.45); ctx.translate(-20, -f.top + 6);
+    paintSky(ctx, hour); paintFacade(ctx, f);
+    ctx.restore();
+  }));
+}
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { windowLit, windowsLitFraction } from '../../../../src/core/library/city/window-lights';
+import { nightness, roomLit, roomTone, soloRoom, soloShare, windowLit, windowsLitFraction } from '../../../../src/core/library/city/window-lights';
 
 const tuesday = { weekday: 2, kind: 'school' as const };
 const friday = { weekday: 5, kind: 'school' as const };
@@ -71,5 +71,89 @@ describe('fenêtres allumées des immeubles', () => {
 
   it('sans jour connu : rythme de semaine', () => {
     expect(windowsLitFraction(h(2), undefined)).toBeCloseTo(0.02);
+  });
+});
+
+describe('allumage par logement : pièce seule et télé', () => {
+  it('pièce seule : ≈ 20 % au dîner, ≈ 50 % après 22 h', () => {
+    expect(soloShare(h(20))).toBeCloseTo(0.2);
+    expect(soloShare(h(22.5))).toBeCloseTo(0.5);
+  });
+
+  it('pièce seule déterministe et stable dans l’heure', () => {
+    expect(soloRoom(123, h(22.1))).toBe(soloRoom(123, h(22.9)));
+    expect(soloRoom(123, h(22.1))).toBe(soloRoom(123, h(22.1)));
+  });
+
+  it('un logement allumé allume toujours sa pièce principale ; les autres pièces suivent la pièce seule', () => {
+    const m = h(22.5);
+    for (let key = 0; key < 500; key++) {
+      const u = (key * 0.618034) % 1;
+      const lit = windowLit(u, m, tuesday, 0, false);
+      expect(roomLit({ u, key, main: true }, m, tuesday, 0, false)).toBe(lit);
+      expect(roomLit({ u, key, main: false }, m, tuesday, 0, false)).toBe(lit && !soloRoom(key, m));
+    }
+  });
+
+  it('le soir, une part des logements allumés n’éclaire qu’une pièce', () => {
+    let solo = 0;
+    for (let key = 0; key < 1000; key++) if (soloRoom(key * 7919 + 13, h(22.5))) solo++;
+    expect(solo / 1000).toBeGreaterThan(0.4);
+    expect(solo / 1000).toBeLessThan(0.6);
+  });
+
+  it('télé seulement sur la pièce principale', () => {
+    for (let key = 0; key < 300; key++) {
+      for (const m of [h(9), h(21), h(23.5), h(0.5)]) expect(roomTone({ key, tone: 'tv' }, false, m)).toBe('warm');
+      expect(roomTone({ key, tone: 'cream' }, false, h(22.5))).toBe('cream');
+    }
+  });
+
+  it('un logement « télé » ne bleuit que le soir (20 h – 2 h), chaud le reste du temps', () => {
+    for (let key = 0; key < 300; key++) {
+      expect(roomTone({ key, tone: 'tv' }, true, h(21))).toBe('tv');
+      expect(roomTone({ key, tone: 'tv' }, true, h(0.5))).toBe('tv');
+      for (const m of [h(2.5), h(9), h(14), h(19.98)]) expect(roomTone({ key, tone: 'tv' }, true, m)).toBe('warm');
+    }
+  });
+
+  // Part de télé parmi les pièces seules (pièce principale, teinte chaude tirée) à un instant donné.
+  const tvShare = (minutes: number): number => {
+    let tv = 0;
+    let solo = 0;
+    for (let key = 0; key < 2000; key++) {
+      if (!soloRoom(key, minutes)) continue;
+      solo++;
+      if (roomTone({ key, tone: 'warm' }, true, minutes) === 'tv') tv++;
+    }
+    return tv / solo;
+  };
+
+  it('une pièce seule regarde parfois la télé le soir, jusqu’à 2 h, sans bascule à minuit', () => {
+    for (const m of [h(20), h(22.5), h(23.5), h(23.98), h(0), h(0.5), h(1.9)]) {
+      expect(tvShare(m)).toBeGreaterThan(0.2);
+      expect(tvShare(m)).toBeLessThan(0.4);
+    }
+    expect(tvShare(h(2.5))).toBe(0);
+  });
+
+  it('jamais de télé avant 20 h ni après 2 h, quelle que soit la teinte', () => {
+    const tones = ['warm', 'cream', 'orange', 'tv'] as const;
+    for (let key = 0; key < 1000; key++) {
+      for (const tone of tones) {
+        for (const m of [h(2), h(2.5), h(6), h(12), h(17.5), h(19.98)]) {
+          expect(roomTone({ key, tone }, true, m)).not.toBe('tv');
+          expect(roomTone({ key, tone }, false, m)).not.toBe('tv');
+        }
+      }
+    }
+    expect(tvShare(h(19.98))).toBe(0);
+    expect(tvShare(h(20))).toBeGreaterThan(0.2);
+  });
+
+  it('nightness : 1 de nuit, 0 en plein jour, sans le mauvais temps', () => {
+    expect(nightness(0)).toBe(1);
+    expect(nightness(1)).toBe(0);
+    expect(nightness(0.45)).toBeCloseTo(0.5);
   });
 });

@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
 import { CORNICE, LEFT_GAP, leftOf, paintBuilding, paintCityTile, paintPodium, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
 import { doorsFor } from '../../../../src/core/library/city/doors';
+import { roofOutline } from '../../../../src/core/library/city/facade-layout';
+import { PAINT_VERSION } from '../../../../src/core/library/paint/city-painter';
+import { paintParisRoof } from '../../../../src/core/library/paint/roof-painter';
 import { recordingCtx } from './recording-ctx';
 
 afterEach(() => vi.restoreAllMocks());
@@ -179,6 +182,91 @@ describe('peintre de tranche', () => {
       }
     }
     expect(found).toBeGreaterThan(0);
+  });
+
+  it('PAINT_VERSION vaut 8', () => {
+    expect(PAINT_VERSION).toBe(8);
+  });
+
+  it('premier plan : chaque fenêtre de la mise en page (étages et lucarnes) a sa vitre à sa taille', () => {
+    let n = 0;
+    for (const seed of [1, 4]) {
+      const plan = cityPaintPlan(1440, 340, seed);
+      for (const b of plan.buildings) {
+        if (b.far || !b.layout) continue;
+        const ctx = recordingCtx();
+        paintBuilding(ctx, plan, b);
+        const rects = ctx.ops.filter((o) => o.op === 'fillRect').map((o) => o.args.join(','));
+        for (const w of b.layout.windows) {
+          expect(rects).toContain([w.x, w.y, w.w, w.h].join(','));
+          n++;
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(100);
+  });
+
+  it('dernier étage court : corniche (rehaut, trait, ombre) interrompue au droit des vitres, jour = nuit', () => {
+    // Le peintre du toit ne touche aucune vitre d'étage : ni remplissage, ni trait (épaisseur comprise). Les vitres des
+    // lucarnes sont peintes par lui (exclues).
+    let close = 0;
+    let bitten = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const plan = cityPaintPlan(1440, 340, seed);
+      for (const b of plan.buildings) {
+        if (b.far || !b.layout) continue;
+        const panes = b.layout.windows.filter((v) => v.kind !== 'dormer');
+        const eave = b.top + b.look.roofH;
+        close += panes.filter((v) => v.y < eave + 4.8).length;
+        bitten += panes.filter((v) => v.y < eave + 2.55).length;
+        const ctx = recordingCtx();
+        const strokes: { pts: [[number, number], [number, number]]; lw: number }[] = [];
+        let path: [number, number][] = [];
+        const { beginPath, moveTo, lineTo, stroke, strokeRect } = ctx;
+        ctx.beginPath = () => { path = []; beginPath(); };
+        ctx.moveTo = (x, y) => { path.push([x, y]); moveTo(x, y); };
+        ctx.lineTo = (x, y) => { path.push([x, y]); lineTo(x, y); };
+        ctx.stroke = () => { for (let i = 1; i < path.length; i++) strokes.push({ pts: [path[i - 1]!, path[i]!], lw: ctx.lineWidth }); stroke(); };
+        ctx.strokeRect = (x, y, w, h) => {
+          const c: [number, number][] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+          for (let i = 1; i < c.length; i++) strokes.push({ pts: [c[i - 1]!, c[i]!], lw: ctx.lineWidth });
+          strokeRect(x, y, w, h);
+        };
+        paintParisRoof(ctx, plan, b);
+        const hits = (x0: number, y0: number, x1: number, y1: number) =>
+          panes.find((v) => x0 < v.x + v.w - 1e-6 && x1 > v.x + 1e-6 && y0 < v.y + v.h - 1e-6 && y1 > v.y + 1e-6);
+        for (const o of ctx.ops) {
+          if (o.op !== 'fillRect') continue;
+          const [x, y, w, h] = o.args as [number, number, number, number];
+          expect(hits(x, y, x + w, y + h), `remplissage ${o.args.join(',')}`).toBeUndefined();
+        }
+        for (const { pts: [[ax, ay], [bx, by]], lw } of strokes) {
+          // Segments droits seulement (corniche, souches) : le contour du toit, en pente, est au-dessus de l'avant-toit.
+          if (ax !== bx && ay !== by) continue;
+          const r = lw / 2;
+          expect(hits(Math.min(ax, bx) - r, Math.min(ay, by) - r, Math.max(ax, bx) + r, Math.max(ay, by) + r), `trait ${ax},${ay} → ${bx},${by}`).toBeUndefined();
+        }
+      }
+    }
+    // Des vitres du dernier étage dans la bande de la corniche existent bien (sinon le test ne prouve rien).
+    expect(close).toBeGreaterThan(0);
+    // … et sous le rehaut et le trait de la corniche (eave + 2,55).
+    expect(bitten).toBeGreaterThan(0);
+  });
+
+  it('premier plan : le trait encré du toit suit exactement roofOutline', () => {
+    const plan = cityPaintPlan(1440, 340, 1);
+    const kinds = new Set<string>();
+    for (const b of plan.buildings) {
+      if (b.far || !b.layout) continue;
+      const ctx = recordingCtx();
+      paintBuilding(ctx, plan, b);
+      const pts = roofOutline(b.layout);
+      const at = ctx.ops.findIndex((o, i) => o.op === 'moveTo' && o.args[0] === pts[0]![0] && o.args[1] === pts[0]![1] && pts.slice(1).every(([x, y], k) => ctx.ops[i + 1 + k]?.op === 'lineTo' && ctx.ops[i + 1 + k]!.args[0] === x && ctx.ops[i + 1 + k]!.args[1] === y));
+      expect(at).toBeGreaterThanOrEqual(0);
+      kinds.add(b.layout.roof.kind);
+    }
+    expect(kinds.size).toBeGreaterThan(1);
   });
 
   it('entrées d’immeuble : celles de doorsFor, dans les tranches qu’elles touchent, et dans la clé', () => {

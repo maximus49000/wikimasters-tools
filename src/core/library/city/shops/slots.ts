@@ -1,7 +1,6 @@
 import { hashString, mulberry32 } from '../../scene-world';
 import { frontLots } from '../lots';
-import { DOOR_MARGIN, DOOR_WIDTH } from '../metrics';
-import { GROUND_FLOOR } from '../facades';
+import { DOOR_MARGIN, DOOR_WIDTH, GROUND_FLOOR } from '../metrics';
 
 // Locaux commerciaux : lots du premier plan (immeuble simple, ou jumeau et son socle) dont la partie visible fait au moins SHOP_MIN_WIDTH px.
 // L'entrée des habitants est poussée au bord (côté tiré) ; le local occupe le reste du rez-de-chaussée.

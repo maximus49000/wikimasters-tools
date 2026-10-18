@@ -52,8 +52,13 @@ describe('ville peinte', () => {
     await render(12 * 60);
     expect(q('[data-painted-city]')).toBeNull();
     expect(q('[data-art="ghibli"]')).toBeNull();
-    const lamps = cityFacades(720, 340, 5).filter((b) => !b.far).reduce((n, b) => n + b.lamps.length, 0);
+    // Une fenêtre par fenêtre allumable (logement) : la cage et l'entresol ne s'allument pas avec les logements.
+    const lamps = cityFacades(720, 340, 5).filter((b) => !b.far).reduce((n, b) => n + b.lamps.filter((l) => l.home >= 0).length, 0);
+    expect(lamps).toBeLessThan(cityFacades(720, 340, 5).filter((b) => !b.far).reduce((n, b) => n + b.lamps.length, 0));
     expect(qa('[data-lamp]').length).toBe(lamps);
+    // À la taille de chaque fenêtre.
+    const sizes = new Set([...qa('[data-lamp]')].map((r) => `${r.getAttribute('width')}x${r.getAttribute('height')}`));
+    expect(sizes.size).toBeGreaterThan(3);
   });
 
   it('graphisme classique : le socle d’un jumeau est dessiné avant les fenêtres (rien ne cache la rangée du socle)', async () => {
@@ -107,7 +112,7 @@ describe('ville peinte', () => {
     expect(night).not.toBe(noon);
   });
 
-  it('nuit : flaques des lampadaires et silhouettes aux fenêtres, hors filtre ; rien de visible à midi', async () => {
+  it('nuit : flaques des lampadaires, fenêtres allumées et vitres sombres, hors filtre ; rien de visible à midi', async () => {
     localStorage.setItem(ART_KEY, 'ghibli');
     setTilePainterForTests(async (_p, t) => `blob:fake-${t}`);
     await render(23 * 60);
@@ -118,8 +123,14 @@ describe('ville peinte', () => {
     expect(lamps.length).toBeGreaterThan(0);
     expect([...lamps].every((l) => l.getAttribute('data-lit') === 'true' && Number(l.getAttribute('opacity')) > 0.5)).toBe(true);
     expect(qa('[data-ghibli-windows] [data-lamp][data-lit="true"] [data-figure]').length).toBeGreaterThan(0);
+    const windows = q('[data-painted-city] [data-ghibli-windows]');
+    expect(windows!.closest('[filter]')).toBeNull();
+    expect([...qa('[data-ghibli-windows] [data-lamp][data-lit="true"]')].every((l) => Number(l.getAttribute('opacity')) > 0.5)).toBe(true);
+    expect([...qa('[data-ghibli-windows] [data-night-glass]')].every((g) => g.getAttribute('opacity') === '1')).toBe(true);
     await render(12 * 60);
     expect([...qa('[data-ghibli-night] [data-night-lamp]')].every((l) => l.getAttribute('opacity') === '0')).toBe(true);
+    expect([...qa('[data-ghibli-windows] [data-lamp]')].every((l) => l.getAttribute('opacity') === '0')).toBe(true);
+    expect([...qa('[data-ghibli-windows] [data-night-glass]')].every((g) => g.getAttribute('opacity') === '0')).toBe(true);
   });
 
   it('une erreur de peinture sur une tranche n’arrête pas les autres', async () => {

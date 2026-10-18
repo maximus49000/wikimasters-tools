@@ -1,5 +1,6 @@
 import { doorsFor, DOOR_MARGIN, DOOR_WIDTH } from '../city/doors';
-import { cityFacades, FAR_WINDOW, GROUND_FLOOR, podiumWindows } from '../city/facades';
+import { PLASTERS, STONES as LAYOUT_STONES, TILES, ZINCS, type FacadeLayout, type Home, type PodiumLayout, type Roof, type WindowKind } from '../city/facade-layout';
+import { cityFacades, FAR_WINDOW, GROUND_FLOOR } from '../city/facades';
 import { cityMetrics } from '../city/metrics';
 import { shopSlotsFor } from '../city/shops/slots';
 import { hashString, mulberry32 } from '../scene-world';
@@ -11,7 +12,12 @@ import { hexRgb, type Rgb } from './color';
 // les mouettes volent dans leur calque animé) et le mobilier peint. Pur et déterministe ; aucun tirage ne change ceux de la ville.
 
 export type RoofKind = 'gable' | 'mansard' | 'zinc';
-export type Win = { x: number; y: number; w: number; h: number; dormer: boolean; curtain: boolean };
+// `kind` : type de la fenêtre de la mise en page (premier plan) ; absent au fond et sur le socle.
+export type Win = { x: number; y: number; w: number; h: number; dormer: boolean; curtain: boolean; kind?: WindowKind };
+// Allure d'un immeuble (tirage `ghibli-look`, inchangé). Premier plan : `wall` et `roofH` viennent de la mise en page ; `antenna`
+// et `pipe` servent partout ; `ivy` et `laundry` seulement sur une façade de faubourg ; `roofKind`, `roof`, `balconyRow`,
+// `chimney`, `shutters` et `boxes` ne servent plus qu'au fond (toit, balcons, cheminées, volets et jardinières du premier plan
+// viennent de la mise en page).
 export type Look = {
   wall: Rgb;
   roof: Rgb;
@@ -26,10 +32,14 @@ export type Look = {
   pipe: boolean;
   laundry: boolean;
 };
-// `podiumTop` : haut du socle commun sous la tour (jumeaux), sinon null.
-export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; look: Look; podiumTop: number | null };
-// Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumWindows`.
-export type PaintPodium = { id: number; x: number; w: number; top: number; stone: Rgb; wins: Win[] };
+// `podiumTop` : haut du socle commun sous la tour (jumeaux), sinon null. `layout` : mise en page de la façade (premier plan ;
+// null au fond et pour un immeuble de moins de 12 px visibles) ; 2e tour d'un socle : mur et toit de la teinte voisine s'ils
+// égalent ceux de la 1re. `homes` : logements de la façade (index `home` des fenêtres de `layout`). `wins` du premier plan :
+// fenêtres d'étage de la mise en page (lucarnes exclues : peintes par le toit), rideau d'après le logement.
+export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; look: Look; podiumTop: number | null; layout: FacadeLayout | null; homes: Home[] };
+// Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumLayout` (`layout` :
+// la mise en page de son étage, fenêtres et logements, pour les peindre comme celles des façades ; null hors du monde).
+export type PaintPodium = { id: number; x: number; w: number; top: number; stone: Rgb; wins: Win[]; layout: PodiumLayout | null };
 export type Tree = { id: number; x: number; base: number; cy: number; r: number };
 export type Span = { x0: number; x1: number };
 // Maison du fond : `row` 0 (le plus loin) à 2 ; `base` = sol du rang ; `s` échelle ; `haze` brume ; `top` = haut du toit.
@@ -62,11 +72,9 @@ export type PlanDoor = { x: number; variant: 0 | 1 | 2; cx: number; base: number
 // Échelle de l'entrée peinte : cadre de pierre de 15 unités ≈ largeur de l'entrée (12 px) plus ses débords permis.
 export const entranceScale = (unit: number): number => unit * 0.92;
 
-// Hauteur du toit peint DANS l'immeuble : une rangée de fenêtres (grille de 14 px) ; ces fenêtres deviennent des lucarnes.
+// Hauteur du toit peint DANS l'immeuble : premier plan sans mise en page (moins de 12 px visibles), fond.
 export const ROOF_H = 14;
 export const FAR_ROOF_H = 6;
-// Lampe de la grille d'origine (facades.ts) : 5 × 7.
-const LAMP = { w: 5, h: 7 } as const;
 
 const STONES = ['#EDE2C8', '#E8DCC0', '#F0E6D0', '#E4D6BA'].map(hexRgb);
 const WALLS = ['#F6E2B4', '#F0A98A', '#CFE0B8', '#F4D89C', '#EEC79A', '#E6BCD0', '#FFF1D6', '#C4D6E6', '#F2CC8C', '#E0C8A0', '#F5B7A0', '#D8E6C8'].map(hexRgb);
@@ -105,10 +113,15 @@ function differ<T>(list: readonly T[], color: T, other: T): T {
   return color === other ? list[(list.indexOf(color) + 1) % list.length]! : color;
 }
 
-// Deuxième tour d'un socle : mur et toit forcés différents de ceux de la 1re (même palette, sans tirage aléatoire de plus).
-function twinLook(look: Look, first: Look): Look {
-  const roofs = look.roofKind === 'gable' ? TILE_ROOFS : look.roofKind === 'mansard' ? SLATE_ROOFS : ZINC_ROOFS;
-  return { ...look, wall: differ(WALLS, look.wall, first.wall), roof: differ(roofs, look.roof, first.roof) };
+const roofColor = (r: Roof): string => (r.kind === 'tile' ? r.tile : r.zinc);
+
+// Deuxième tour d'un socle : mur et toit de la mise en page forcés différents de ceux de la 1re (teinte voisine dans la même
+// palette de notes.md, sans tirage de plus).
+function twinLayout(l: FacadeLayout, first: FacadeLayout): FacadeLayout {
+  const wall = differ(LAYOUT_STONES.includes(l.wall) ? LAYOUT_STONES : PLASTERS, l.wall, first.wall);
+  const color = differ(l.roof.kind === 'tile' ? TILES : ZINCS, roofColor(l.roof), roofColor(first.roof));
+  const roof: Roof = l.roof.kind === 'tile' ? { ...l.roof, tile: color } : { ...l.roof, zinc: color };
+  return { ...l, wall, roof };
 }
 
 // y du haut de la silhouette des immeubles et des socles en x (le plus haut de ce qui couvre x) ; `ground` si rien.
@@ -117,6 +130,19 @@ export function silhouetteTop(plan: Pick<CityPaintPlan, 'buildings' | 'ground' |
   for (const b of plan.buildings) if (x >= b.x && x <= b.x + b.w) top = Math.min(top, b.top);
   for (const p of plan.podiums) if (x >= p.x && x <= p.x + p.w) top = Math.min(top, p.top);
   return top;
+}
+
+// Immeuble du même plan immédiatement à gauche (pour l'ombre portée et le trait des mitoyens) : à moins de LEFT_GAP px (les
+// immeubles du premier plan sont espacés de 8 à 22 px).
+export const LEFT_GAP = 26;
+export function leftOf(plan: Pick<CityPaintPlan, 'buildings'>, b: PaintBuilding): PaintBuilding | null {
+  let best: PaintBuilding | null = null;
+  for (const o of plan.buildings) {
+    if (o.far !== b.far || o === b || o.x >= b.x) continue;
+    if (o.x + o.w < b.x - LEFT_GAP) continue;
+    if (!best || o.x > best.x) best = o;
+  }
+  return best;
 }
 
 // ── Fond : colline de maisons empilées ────────────────────────────────────────────────────────────────────────────────
@@ -258,31 +284,38 @@ const TREE_STEP = 170;
 export function cityPaintPlan(width: number, height: number, seed: number): CityPaintPlan {
   const m = cityMetrics(height);
   const facades = cityFacades(width, height, seed);
-  const buildings: PaintBuilding[] = facades.map((f, id) => {
-    const top = m.ground - f.h;
-    const look = lookOf(seed, f.x, f.w, f.far);
-    const rng = mulberry32(seed ^ hashString('ghibli-curtain') ^ Math.round(f.x * 8));
-    const podiumTop = f.podium ? m.ground - f.podium.h : null;
-    // Les fenêtres du socle (rangée ajoutée aux lampes de la 1re tour) sont peintes sur le socle, pas sur la tour.
-    const lamps = podiumTop === null ? f.lamps : f.lamps.filter((l) => l.y + LAMP.h <= podiumTop);
-    const wins: Win[] = f.far
-      ? f.farWindows.map((v) => ({ x: v.x, y: v.y, w: FAR_WINDOW.w, h: FAR_WINDOW.h, dormer: false, curtain: false }))
-      : lamps.map((l) => ({ x: l.x, y: l.y, w: LAMP.w, h: LAMP.h, dormer: l.y < top + ROOF_H, curtain: rng() < 0.5 }));
-    return { id, x: f.x, w: f.w, top, far: f.far, wins, look, podiumTop };
-  });
-  // Les deux tours d'un socle n'ont ni le même mur ni le même toit.
+  // Mises en page des tours ; les deux tours d'un socle n'ont ni le même mur ni le même toit.
+  const layouts = facades.map((f) => f.layout);
   facades.forEach((f, i) => {
     if (!f.podium || f.x === f.podium.x) return;
     const first = facades.findIndex((g) => g.podium?.id === f.podium!.id && g.x === f.podium!.x);
-    if (first >= 0) buildings[i]!.look = twinLook(buildings[i]!.look, buildings[first]!.look);
+    const l = layouts[i];
+    const lf = first >= 0 ? layouts[first] : null;
+    if (l && lf) layouts[i] = twinLayout(l, lf);
+  });
+  const buildings: PaintBuilding[] = facades.map((f, id) => {
+    const top = m.ground - f.h;
+    const layout = layouts[id] ?? null;
+    const drawn = lookOf(seed, f.x, f.w, f.far);
+    const look = layout ? { ...drawn, wall: hexRgb(layout.wall), roofH: layout.roof.h } : drawn;
+    const podiumTop = f.podium ? m.ground - f.podium.h : null;
+    const homes = layout?.homes ?? [];
+    // Premier plan : fenêtres d'étage de la mise en page (les lucarnes sont peintes par le toit, la rangée du socle sur le socle).
+    const wins: Win[] = f.far
+      ? f.farWindows.map((v) => ({ x: v.x, y: v.y, w: FAR_WINDOW.w, h: FAR_WINDOW.h, dormer: false, curtain: false }))
+      : (layout?.windows ?? []).filter((v) => v.kind !== 'dormer').map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, dormer: false, curtain: v.home >= 0 && !!homes[v.home]?.curtain, kind: v.kind }));
+    return { id, x: f.x, w: f.w, top, far: f.far, wins, look, podiumTop, layout, homes };
   });
   const podiums: PaintPodium[] = [];
   for (const f of facades) {
     if (!f.podium || f.x !== f.podium.x) continue;
     const p = f.podium;
     const prng = mulberry32(seed ^ hashString('ghibli-podium') ^ Math.round(p.x * 8));
-    const wins = podiumWindows(p, m.ground, seed).map((l) => ({ x: l.x, y: l.y, w: LAMP.w, h: LAMP.h, dormer: false, curtain: prng() < 0.4 }));
-    podiums.push({ id: p.id, x: p.x, w: p.w, top: m.ground - p.h, stone: STONES[Math.floor(prng() * STONES.length)]!, wins });
+    const stone = STONES[Math.floor(prng() * STONES.length)]!;
+    // Fenêtres de la mise en page du socle (podiumLayout), à leur taille et position ; rideau d'après le logement.
+    const pl = f.podiumLayout;
+    const wins: Win[] = (pl?.windows ?? []).map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, dormer: false, curtain: !!pl!.homes[v.home]?.curtain }));
+    podiums.push({ id: p.id, x: p.x, w: p.w, top: m.ground - p.h, stone, wins, layout: pl });
   }
   const blocked: Span[] = [
     ...doorsFor(width, height, seed).map((d) => ({ x0: d.x - DOOR_MARGIN, x1: d.x + DOOR_WIDTH + DOOR_MARGIN })),

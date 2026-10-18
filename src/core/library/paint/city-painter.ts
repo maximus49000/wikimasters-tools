@@ -1,8 +1,10 @@
 import { hashString, mulberry32 } from '../scene-world';
 import { cellRng, type Box } from './brush';
-import { INK, SHADOW_K, TAU, disc, fillRect, groundShadow, ink, inkRect, light, pick, poly, shade } from './cel';
+import { INK, TAU, disc, fillRect, groundShadow, inkRect, light, shade } from './cel';
 import { GROUND_FLOOR } from '../city/facades';
-import { HILL_ROWS, type CityPaintPlan, type Furniture, type HillHouse, type Landmark, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree, type Win } from './city-plan';
+import { HILL_ROWS, LEFT_GAP, leftOf, type CityPaintPlan, type Furniture, type HillHouse, type Landmark, type Look, type PaintBuilding, type PaintPodium, type PlanDoor, type Tree } from './city-plan';
+import { paintDayWindow, paintFacade } from './facade-painter';
+import { paintParisRoof } from './roof-painter';
 import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
 import { paintFarWall, paintHillGround, paintHillHouse, paintLandmark } from './hill-painter';
@@ -13,14 +15,9 @@ import type { PaintCtx } from './paint-ctx';
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 7;
+export const PAINT_VERSION = 8;
 
-const CLOTH = ['#E8456B', '#FFFFFF', '#F6C62E', '#4E8ED8', '#6BB36B', '#F28CB4'].map(hexRgb);
-const FLOWERS = ['#3F8A3A', '#E8456B', '#F6C62E', '#FFFFFF', '#E070C0'].map(hexRgb);
-const IVY = ['#2A6A2E', '#4E9C3A', '#8CCB50'].map(hexRgb);
 const LEAVES = ['#2A6A2E', '#52A23C', '#A8DC58'].map(hexRgb);
-const GLASS = hexRgb('#7FB4E0');
-const BRICK = hexRgb('#C2724E');
 const BARK = hexRgb('#9A8468');
 const SIDEWALK = hexRgb('#E6D4AE');
 const COBBLE = hexRgb('#B49E7A');
@@ -58,8 +55,9 @@ export function tileKey(plan: CityPaintPlan, tile: number): string {
     tile,
     Math.min(TILE, plan.width - tile * TILE),
     // Sans l'id : celui d'un immeuble du fond (index dans les façades) change quand la pièce grandit.
-    it.buildings.map((b) => `${b.far ? 'f' : ''}@${b.x.toFixed(1)}`).join(','),
-    it.podiums.map((p) => p.x.toFixed(1)).join(','),
+    // Travées de la mise en page et fenêtres du socle : elles suivent la partie visible et la porte d'un lot coupé au bord.
+    it.buildings.map((b) => `${b.far ? 'f' : ''}@${b.x.toFixed(1)}${b.layout ? `:${b.layout.bays.map((c) => c.toFixed(1)).join(';')}` : ''}`).join(','),
+    it.podiums.map((p) => `${p.x.toFixed(1)}:${p.wins.map((w) => w.x.toFixed(1)).join(';')}`).join(','),
     it.trees.map((t) => `${t.x.toFixed(1)}:${t.r.toFixed(1)}`).join(','),
     it.houses.map((h) => `${h.row}${h.x.toFixed(1)}`).join(','),
     it.landmarks.map((l) => `${l.kind}${l.x.toFixed(1)}`).join(','),
@@ -70,264 +68,11 @@ export function tileKey(plan: CityPaintPlan, tile: number): string {
 
 const rngOf = (plan: CityPaintPlan, salt: string, x: number) => mulberry32(plan.seed ^ hashString(salt) ^ Math.round(x * 8));
 
-// Immeuble du même plan immédiatement à gauche (pour l'ombre portée) : à moins de LEFT_GAP px (les immeubles du premier plan
-// sont espacés de 8 à 22 px).
-export const LEFT_GAP = 26;
-export function leftOf(plan: CityPaintPlan, b: PaintBuilding): PaintBuilding | null {
-  let best: PaintBuilding | null = null;
-  for (const o of plan.buildings) {
-    if (o.far !== b.far || o === b || o.x >= b.x) continue;
-    if (o.x + o.w < b.x - LEFT_GAP) continue;
-    if (!best || o.x > best.x) best = o;
-  }
-  return best;
-}
-
-function roofPath(ctx: PaintCtx, b: PaintBuilding): void {
-  const { x, w, top } = b;
-  const eave = top + b.look.roofH;
-  ctx.beginPath();
-  if (b.look.roofKind === 'gable') {
-    ctx.moveTo(x - 2, eave);
-    ctx.lineTo(x + w / 2, top);
-    ctx.lineTo(x + w + 2, eave);
-  } else if (b.look.roofKind === 'mansard') {
-    ctx.moveTo(x - 2, eave);
-    ctx.lineTo(x + 2, top + 1);
-    ctx.lineTo(x + w - 2, top + 1);
-    ctx.lineTo(x + w + 2, eave);
-  } else {
-    ctx.moveTo(x - 1, eave);
-    ctx.lineTo(x - 1, top + 1);
-    ctx.lineTo(x + w + 1, top + 1);
-    ctx.lineTo(x + w + 1, eave);
-  }
-  ctx.closePath();
-}
-
-function paintRoof(ctx: PaintCtx, b: PaintBuilding): void {
-  const { x, w, top, look } = b;
-  const eave = top + look.roofH;
-  const rc = look.roof;
-  ctx.save();
-  roofPath(ctx, b);
-  ctx.fillStyle = rgba(rc, 1);
-  ctx.fill();
-  ctx.clip();
-  if (look.roofKind === 'gable') {
-    poly(ctx, light(rc, 0.35), [[x - 2, eave], [x + w / 2, top], [x + w / 2, eave]]);
-    poly(ctx, shade(rc, 0.35), [[x + w / 2, top], [x + w + 2, eave], [x + w / 2, eave]]);
-    ctx.strokeStyle = rgba(shade(rc, 0.5), 0.8);
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    for (let y = top + 3; y < eave; y += 2.6) {
-      ctx.moveTo(x - 2, y);
-      ctx.lineTo(x + w + 2, y);
-    }
-    ctx.stroke();
-    fillRect(ctx, light(rc, 0.5), x - 2, top, w + 4, 0.8);
-  } else if (look.roofKind === 'mansard') {
-    fillRect(ctx, light(rc, 0.35), x - 2, top, w * 0.5, look.roofH);
-    fillRect(ctx, shade(rc, 0.3), x + w * 0.72, top, w * 0.3, look.roofH);
-    ctx.strokeStyle = rgba(shade(rc, 0.5), 0.7);
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    for (let y = top + 3.5; y < eave; y += 3) {
-      ctx.moveTo(x - 2, y);
-      ctx.lineTo(x + w + 2, y);
-    }
-    ctx.stroke();
-  } else {
-    fillRect(ctx, light(rc, 0.4), x - 1, top + 1, w * 0.5, look.roofH);
-    fillRect(ctx, shade(rc, 0.3), x + w * 0.72, top, w * 0.3, look.roofH);
-    ctx.fillStyle = rgba(shade(rc, 0.5), 1);
-    for (let sx = x + 4; sx < x + w; sx += 6) ctx.fillRect(sx, top + 1, 0.7, look.roofH);
-  }
-  ctx.restore();
-  roofPath(ctx, b);
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 0.9;
-  ctx.stroke();
-}
-
+// Immeuble : le fond garde son peintre (hill-painter) ; le premier plan est peint d'après sa mise en page, façade puis toit.
 export function paintBuilding(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding): void {
   if (b.far) return paintFarWall(ctx, plan, b, leftOf(plan, b));
-  const rng = rngOf(plan, 'ghibli-building', b.x);
-  const { x, w, top, look } = b;
-  const { ground } = plan;
-  const eave = top + look.roofH;
-  const h = ground - eave;
-  const wall = look.wall;
-  const left = leftOf(plan, b);
-  fillRect(ctx, wall, x, eave, w, h);
-  // Ton d'ombre : bande droite (côté opposé au soleil) + ombre portée du voisin de gauche, bords nets.
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, eave, w, h);
-  ctx.clip();
-  fillRect(ctx, shade(wall, 0.28), x + w * 0.72, eave, w * 0.28, h);
-  if (left && left.top < top) poly(ctx, shade(wall, 0.28), [[x, left.top], [x + (ground - left.top) * SHADOW_K, ground], [x, ground]]);
-  // Rehaut : liseré clair côté soleil ; salissure du pied (pas sous une tour de jumeaux : le socle la couvrirait).
-  fillRect(ctx, light(wall, 0.45), x, eave, 1.6, h);
-  if (b.podiumTop === null) fillRect(ctx, shade(wall, 0.18), x, ground - 3, w, 3);
-  if (look.ivy) {
-    const side = look.ivy === 'left' ? x - 2 : x + w * 0.55;
-    const clumps: [number, number, number][] = [];
-    for (let i = 0; i < 14; i++) clumps.push([side + rng() * w * 0.45, eave + h * 0.3 + rng() * h * 0.68, 3 + rng() * 3.5]);
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    for (const [cx, cy, cr] of clumps) {
-      ctx.moveTo(cx + cr, cy);
-      ctx.arc(cx, cy, cr, 0, TAU);
-    }
-    ctx.stroke();
-    for (let t = 0; t < 3; t++) {
-      ctx.fillStyle = rgba(IVY[t]!, 1);
-      ctx.beginPath();
-      for (const [cx, cy, cr] of clumps) {
-        const rr = cr * (1 - t * 0.28);
-        ctx.moveTo(cx - t * 1.2 + rr, cy - t * 1.4);
-        ctx.arc(cx - t * 1.2, cy - t * 1.4, rr, 0, TAU);
-      }
-      ctx.fill();
-    }
-  }
-  ctx.restore();
-  paintRoof(ctx, b);
-  // Ombre nette sous le toit.
-  fillRect(ctx, shade(wall, 0.42), x, eave, w, 3.5);
-  // Cheminée à pots (posée sur le versant, dans la hauteur de l'immeuble : la silhouette ne change pas), antenne (seule à
-  // dépasser, de 9 px au plus).
-  if (look.chimney !== null) {
-    const cx = x + w * look.chimney;
-    const ch = look.roofKind === 'zinc' ? 7 : 9;
-    const cy = top + 1;
-    fillRect(ctx, BRICK, cx, cy + 2.4, 4, ch - 2.4);
-    fillRect(ctx, shade(BRICK, 0.35), cx + 2.6, cy + 2.4, 1.4, ch - 2.4);
-    fillRect(ctx, light(BRICK, 0.4), cx, cy + 2.4, 1, ch - 2.4);
-    fillRect(ctx, '#6E3A2A', cx - 0.6, cy + 2.4, 5.2, 1.3);
-    for (let p = 0; p < 2; p++) fillRect(ctx, '#9E6A4A', cx + 0.6 + p * 2, cy, 1.2, 2.6);
-    inkRect(ctx, cx, cy + 2.4, 4, ch - 2.4, 0.7);
-  }
-  if (look.antenna) {
-    const ax = x + w * 0.75;
-    const ay = look.roofKind === 'gable' ? top + (look.roofH * Math.abs(ax - (x + w / 2))) / (w / 2 + 2) : top + 1;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(ax, ay - 8);
-    ctx.moveTo(ax - 3, ay - 7);
-    ctx.lineTo(ax + 3, ay - 7);
-    ctx.moveTo(ax - 2, ay - 4.5);
-    ctx.lineTo(ax + 2, ay - 4.5);
-    ctx.stroke();
-  }
-  // Fenêtres.
-  for (const win of b.wins) {
-    if (win.dormer) {
-      if (look.roofKind === 'zinc') {
-        fillRect(ctx, light(look.roof, 0.45), win.x - 1.2, win.y - 1, win.w + 2.4, win.h + 1.6);
-        inkRect(ctx, win.x - 1.2, win.y - 1, win.w + 2.4, win.h + 1.6, 0.6);
-      } else {
-        poly(ctx, light(look.roof, 0.45), [[win.x - 1.4, win.y], [win.x + win.w / 2, Math.max(top, win.y - 3.4)], [win.x + win.w + 1.4, win.y]]);
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = 0.7;
-        ctx.beginPath();
-        ctx.moveTo(win.x - 1.4, win.y);
-        ctx.lineTo(win.x + win.w / 2, Math.max(top, win.y - 3.4));
-        ctx.lineTo(win.x + win.w + 1.4, win.y);
-        ctx.closePath();
-        ctx.stroke();
-        fillRect(ctx, shade(look.roof, 0.4), win.x - 0.9, win.y, win.w + 1.8, win.h + 0.6);
-      }
-    }
-    paintPane(ctx, win);
-    if (win.dormer) continue;
-    if (look.shutters && win.x - 3 >= x && win.x + win.w + 3 <= x + w) {
-      fillRect(ctx, light(look.shutters, 0.25), win.x - 2.6, win.y, 2.1, win.h);
-      fillRect(ctx, shade(look.shutters, 0.3), win.x + win.w + 0.5, win.y, 2.1, win.h);
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(win.x - 2.6, win.y, 2.1, win.h);
-      ctx.strokeRect(win.x + win.w + 0.5, win.y, 2.1, win.h);
-      ctx.fillStyle = rgba(shade(look.shutters, 0.5), 1);
-      for (let k = 1.5; k < win.h; k += 2) {
-        ctx.fillRect(win.x - 2.3, win.y + k, 1.5, 0.4);
-        ctx.fillRect(win.x + win.w + 0.8, win.y + k, 1.5, 0.4);
-      }
-    }
-    fillRect(ctx, '#FFF6E0', win.x - 0.9, win.y + win.h, win.w + 1.8, 1);
-    fillRect(ctx, shade(wall, 0.4), win.x - 0.9, win.y + win.h + 1, win.w + 1.8, 1);
-    if (look.boxes && rng() < 0.55 && win.y + win.h + 3 <= ground) {
-      fillRect(ctx, '#8A4A2E', win.x - 0.6, win.y + win.h + 1, win.w + 1.2, 1.6);
-      inkRect(ctx, win.x - 0.6, win.y + win.h + 1, win.w + 1.2, 1.6, 0.5);
-      for (let k = 0; k < 7; k++) disc(ctx, pick(FLOWERS, rng), win.x + 0.5 + rng() * (win.w - 1), win.y + win.h + 0.4 + rng() * 1.4, 0.7);
-    }
-  }
-  const rows = b.wins.filter((v) => !v.dormer);
-  // Linge tendu entre deux fenêtres d'un même rang.
-  if (look.laundry) {
-    const row = rows.find((v, i) => rows.filter((u) => u.y === v.y).length >= 2 && i > rows.length * 0.3);
-    if (row) {
-      const same = rows.filter((u) => u.y === row.y);
-      const a = same[0]!;
-      const bb = same[same.length - 1]!;
-      const y0 = a.y + a.h + 2.5;
-      const x0 = a.x + a.w;
-      const x1 = bb.x;
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 0.5;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.quadraticCurveTo((x0 + x1) / 2, y0 + 3, x1, y0);
-      ctx.stroke();
-      const n = Math.max(2, Math.floor((x1 - x0) / 4));
-      for (let k = 0; k < n; k++) {
-        const t = (k + 0.5) / n;
-        const px = x0 + (x1 - x0) * t;
-        const py = y0 + 1.5 * 4 * t * (1 - t);
-        const c = pick(CLOTH, rng);
-        fillRect(ctx, c, px - 1.3, py, 2.6, 3.5);
-        fillRect(ctx, shade(c, 0.3), px + 0.3, py, 1, 3.5);
-        inkRect(ctx, px - 1.3, py, 2.6, 3.5, 0.4);
-      }
-    }
-  }
-  // Balcon à barreaux avec plante en pot.
-  if (look.balconyRow !== null) {
-    const ys = [...new Set(rows.map((v) => v.y))].sort((p, q) => p - q);
-    const ry = ys[look.balconyRow];
-    if (ry !== undefined && ry + 12 < ground - 30) {
-      const by = ry + 8;
-      fillRect(ctx, shade(wall, 0.42), x + 2, by + 3.2, w - 4, 3.5);
-      ctx.fillStyle = INK;
-      ctx.fillRect(x + 2, by, w - 4, 0.7);
-      for (let bx = x + 2.5; bx < x + w - 2; bx += 1.5) ctx.fillRect(bx, by, 0.4, 3.2);
-      ctx.fillRect(x + 2, by + 2.8, w - 4, 0.8);
-      disc(ctx, '#3F8A3A', x + 4.5, by - 0.8, 1.6);
-      fillRect(ctx, '#A04A2E', x + 3.2, by - 0.2, 2.6, 1.4);
-    }
-  }
-  // Gouttière à colliers.
-  if (look.pipe) {
-    const px = x + w - 1.6;
-    fillRect(ctx, '#4A4A5A', px, eave + 2, 1.1, h - 2);
-    fillRect(ctx, 'rgba(255,255,255,0.4)', px, eave + 2, 0.4, h - 2);
-    ctx.fillStyle = INK;
-    for (let gy = eave + 8; gy < ground; gy += 22) ctx.fillRect(px - 0.6, gy, 2.3, 0.8);
-  }
-  inkRect(ctx, x, eave, w, h, 0.9);
-  // Mitoyens : trait encré appuyé à la jonction, du toit le plus bas des deux jusqu'au sol.
-  if (left && left.x + left.w >= x - 0.5) {
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.moveTo(x, left.top > top ? left.top + left.look.roofH : top + look.roofH);
-    ctx.lineTo(x, ground);
-    ctx.stroke();
-  }
+  paintFacade(ctx, plan, b);
+  paintParisRoof(ctx, plan, b);
 }
 
 function paintStreet(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number): void {
@@ -547,27 +292,17 @@ function paintFurniture(ctx: PaintCtx, plan: CityPaintPlan, f: Furniture): void 
   ctx.stroke();
 }
 
-// Fenêtre d'habitation (tour ou socle) : vitre, reflet, rideaux, trait et meneau.
-function paintPane(ctx: PaintCtx, win: Win): void {
-  fillRect(ctx, GLASS, win.x, win.y, win.w, win.h);
-  poly(ctx, 'rgba(255,255,255,0.75)', [[win.x, win.y + win.h * 0.55], [win.x + win.w * 0.55, win.y], [win.x + win.w, win.y], [win.x, win.y + win.h * 0.9]]);
-  fillRect(ctx, shade(GLASS, 0.45), win.x, win.y, win.w, 1.2);
-  if (win.curtain) {
-    fillRect(ctx, '#FFF4DC', win.x, win.y, 1.6, win.h);
-    fillRect(ctx, '#FFF4DC', win.x + win.w - 1.6, win.y, 1.6, win.h);
-  }
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 0.6;
-  ctx.strokeRect(win.x, win.y, win.w, win.h);
-  ctx.beginPath();
-  ctx.moveTo(win.x + win.w / 2, win.y);
-  ctx.lineTo(win.x + win.w / 2, win.y + win.h);
-  ctx.stroke();
+// Le socle tient lieu d'immeuble pour le peintre des fenêtres (mur = sa pierre, logements de son étage, sans mise en page de
+// façade : ni volets ni jardinières) ; l'allure ne sert pas.
+function podiumHost(p: PaintPodium): PaintBuilding {
+  const look: Look = { wall: p.stone, roof: p.stone, roofKind: 'zinc', roofH: 0, shutters: null, boxes: false, balconyRow: null, ivy: null, chimney: null, antenna: false, pipe: false, laundry: false };
+  return { id: p.id, x: p.x, w: p.w, top: p.top, far: false, wins: p.wins, look, podiumTop: null, layout: null, homes: p.layout?.homes ?? [] };
 }
 
 // Socle commun des jumeaux (maquette batiments-larges/rue.html) : pierre de taille claire d'un seul tenant sous les deux
 // tours, assises fines, corniche saillante à `p.top` (rehaut dessus, ombre nette dessous), rangée de fenêtres de l'étage
-// encadrées de pierre, bandeau au-dessus du rez-de-chaussée (les locaux et entrées sont peints par-dessus).
+// peintes comme celles des façades (encadrement, vitre de jour, rideaux du logement, appui), bandeau au-dessus du
+// rez-de-chaussée (les locaux et entrées sont peints par-dessus).
 export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium): void {
   const { x, w, top, stone } = p;
   const { ground } = plan;
@@ -588,13 +323,11 @@ export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium):
   ctx.stroke();
   fillRect(ctx, shade(stone, 0.3), x, band, w, 1);
   inkRect(ctx, x, top, w, h, 0.9);
-  // Ombre nette de la corniche, puis les fenêtres de l'étage (linteau et appui en pierre plus claire).
+  // Ombre nette de la corniche, puis les fenêtres de l'étage (celles de la mise en page du socle).
   fillRect(ctx, shade(stone, 0.42), x, top + CORNICE.h - CORNICE.up, w, CORNICE.drop);
-  for (const win of p.wins) {
-    fillRect(ctx, light(stone, 0.5), win.x - 1.2, win.y - 1, win.w + 2.4, 1);
-    paintPane(ctx, win);
-    fillRect(ctx, '#FFF6E0', win.x - 1.2, win.y + win.h, win.w + 2.4, 1);
-    fillRect(ctx, shade(stone, 0.4), win.x - 1.2, win.y + win.h + 1, win.w + 2.4, 1);
+  if (p.layout) {
+    const host = podiumHost(p);
+    for (const win of p.layout.windows) paintDayWindow(ctx, host, win);
   }
   // Corniche en débord : rehaut dessus, face à l'ombre légère, trait.
   const cx = x - CORNICE.over;
@@ -626,3 +359,5 @@ export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number):
 }
 
 export type { Box };
+// Voisin de gauche : défini dans city-plan.ts (partagé avec le peintre des façades).
+export { LEFT_GAP, leftOf };
