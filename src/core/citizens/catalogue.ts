@@ -115,7 +115,7 @@ const pick = <T>(R: Rnd, list: readonly T[]): T => list[Math.floor(R() * list.le
 
 // Couleur de cheveux vraisemblable selon la peau (indice 0 = la plus claire) : peaux foncées surtout noir ou brun foncé,
 // peaux claires toute la gamme (blond, roux…). Âgés : gris ou blancs, quelle que soit la peau.
-export function hairFor(skinIdx: number, aged: boolean, R: Rnd = Math.random): string {
+export function hairFor(skinIdx: number, aged: boolean, R: Rnd): string {
   if (aged) return R() < 0.5 ? CHEVEUX.blanc : CHEVEUX.gris;
   const table: ReadonlyArray<readonly [keyof typeof CHEVEUX, number]> = skinIdx >= 5 ? [['noir', 6], ['brunFonce', 3], ['chatain', 1]]
     : skinIdx >= 3 ? [['noir', 4], ['brunFonce', 4], ['chatain', 2]]
@@ -251,6 +251,10 @@ export function citizenFromOutfit(seed: number, o: Outfit, opts: { work?: Work; 
     if (o.hair === 'cap' && !B.aged) cap = [o.hatColor, o.hatColor];
   }
 
+  // Barbe : mêmes probabilités par base que `citizen` ; jamais pour les femmes ni les enfants (pas d'entrée BEARD).
+  let beard: [string, string] | null = null;
+  if (BEARD[base] && R() < BEARD[base]!) beard = [pickW(R, [['pleine', 3], ['courte', 4], ['moustache', 2], ['bouc', 2]] as const), B.aged ? PAL.blanc : hairColor];
+
   // Bas, puis haut : le manteau n'accompagne ni short ni jupe courte ; jupe et robe suivent la base.
   let lower: string;
   let top: string | null = null;
@@ -277,7 +281,7 @@ export function citizenFromOutfit(seed: number, o: Outfit, opts: { work?: Work; 
   if (opts.work === 'vest') items.push(item('gilet', GILET));
   if (opts.work === 'apron') items.push(item('tablier', PAL.creme));
 
-  return { base, skin: peauProche(o.skin), height: B.metres * (0.95 + R() * 0.1), hair, beard: null, cap, items, mood: 'neutre' };
+  return { base, skin: peauProche(o.skin), height: B.metres * (0.95 + R() * 0.1), hair, beard, cap, items, mood: 'neutre' };
 }
 
 // ——— Clé stable ———

@@ -159,6 +159,17 @@ describe("à partir d'une tenue", () => {
     expect(citizenFromOutfit(4, tenue({ skin: '#F2C9A5' }), {}).skin).toBe('#EEC6A6');
   });
 
+  it('barbes issues de tenues : possibles pour les hommes, jamais enfant ni jupe', () => {
+    const seeds = SEEDS.slice(0, 500);
+    expect(seeds.some((s) => citizenFromOutfit(s, base, { kind: 'adult' }).beard)).toBe(true);
+    for (const s of seeds) {
+      expect(citizenFromOutfit(s, base, { kind: 'child' }).beard).toBeNull();
+      expect(citizenFromOutfit(s, tenue({ bottom: 'skirt' }), { kind: 'any' }).beard).toBeNull();
+      const d = citizenFromOutfit(s, base, { kind: 'adult' });
+      if (d.beard) expect(['homme-fort', 'homme-maigre']).toContain(d.base);
+    }
+  });
+
   it('est déterministe', () => {
     const a = citizenFromOutfit(9, tenue({ top: 'suit' }), { kind: 'adult', work: 'vest' });
     const b = citizenFromOutfit(9, tenue({ top: 'suit' }), { kind: 'adult', work: 'vest' });
