@@ -513,7 +513,7 @@ export function CrossingLayer({ handle, metrics, sky, rainy, still, ghibli, froz
         const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
         return (
           <g key={p.id} data-crosser={p.id} transform={transform(p)}>
-            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} citizen={Math.floor(p.u * 1e9)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} citizen={Math.floor(p.u * 1e9)} waitFor3D /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
           </g>
         );
       })}
@@ -588,7 +588,7 @@ export function BusStopRiders({ handle, metrics, sky, rainy, still, ghibli, froz
         const outfit = outfitFor('ordinary', mulberry32(Math.floor(p.u * 1e9)));
         return (
           <g key={p.id} data-rider={p.id} data-stage={p.stage} transform={transform(p)}>
-            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} citizen={Math.floor(p.u * 1e9)} /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
+            {ghibli ? <GhibliFigure outfit={outfit} sky={sky} rainy={rainy} umbrella={false} initial={pose(p)} citizen={Math.floor(p.u * 1e9)} waitFor3D /> : <PersonSprite outfit={outfit} sky={sky} rainy={rainy} umbrella={false} />}
           </g>
         );
       })}

@@ -3,9 +3,9 @@
 // Branchement des habitants 3D dans le registre des figures : repli pantin, attente 3D, budget, accroches, interrupteur.
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it, vi } from 'vitest';
-import { BLANK_SPRITE, FigureContext, FigureRegistry, figureAnchors, paletteKey, phaseSet, spriteKey, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
-import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, hideFigure, poseFigure, rainOutfit, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
+import { describe, expect, it, vi, type Mock } from 'vitest';
+import { BLANK_SPRITE, CLOSE_UP_SPRITES_MAX, FIGURE_SPRITES_MAX, FigureContext, FigureRegistry, HOLD_3D_FRAMES, figureAnchors, paletteKey, phaseSet, sharedCitizen3D, spriteKey, viewFigureOptions, type Citizen3D, type SpriteAnchors } from '../../../src/content/figure/figure-host';
+import { GhibliFigure, citizenLight, figureHeadTop, figurePalette, hideFigure, poseFigure, rainOutfit, setShown3DFitter, type Held, type PoseIn } from '../../../src/content/figure/ghibli-figure';
 import { CitizenRenderer } from '../../../src/content/citizens/citizen-renderer';
 import { RENDER_BUDGET_MS, WAIT3D_FALLBACK_MS } from '../../../src/content/figure/citizen-config';
 import { keyString, type FigureKey } from '../../../src/core/library/figure/bake';
@@ -13,7 +13,7 @@ import { PHASES } from '../../../src/core/library/figure/skeleton';
 import { shapeOf, signatureOf } from '../../../src/core/library/figure/dress';
 import { skyAt, sunTimes, type Sky } from '../../../src/core/library/sky';
 import { hashString } from '../../../src/core/library/scene-world';
-import type { CitizenDesc } from '../../../src/core/citizens/catalogue';
+import { citizen, type CitizenDesc } from '../../../src/core/citizens/catalogue';
 import type { Outfit, Top } from '../../../src/core/library/city/people';
 import { tone } from '../../../src/content/city-sprites';
 
@@ -414,30 +414,256 @@ describe('file des rendus 3D', () => {
 });
 
 describe('visages', () => {
-  it('sans `faces` : visage neutre (aucun état dans la clé) ; avec : état du visage dans la clé, figures fixes suivies', () => {
+  const STAND: PoseIn = { yaw: 0, gait: 'stand', phase: 0, head: 0 };
+  // Faux visages : 'c' (émotion de fond), `state.v` quand le clignement est demandé (pose immobile).
+  type FaceFn = (a: string, m: string, t: number, s: number, blink: boolean) => string;
+  const faced = (clock: { t: number }, state: { v: string }): Fake & { faceOf: Mock<FaceFn> } => {
+    const f = Object.assign(new Fake(clock), { faceOf: vi.fn<FaceFn>((_a, _m, _t, _s, blink) => (blink ? state.v : 'c')) });
+    f.isReady = true;
+    return f;
+  };
+  it('sans `faces` : visage neutre (aucun état dans la clé) ; avec : cycle au visage de fond, clignement de la figure fixe ensuite', () => {
     const clock = { t: 0 };
     const plain = Object.assign(new Fake(clock), { faceOf: () => 'cb1' });
     plain.isReady = true;
-    const withFaces = Object.assign(new Fake(clock), { faceOf: vi.fn(() => 'cb1') });
-    withFaces.isReady = true;
+    const state = { v: 'cb1' };
+    const withFaces = faced(clock, state);
     const r1 = new FigureRegistry('t', { citizens: () => plain, now: () => clock.t });
     const a = mount(r1, fig());
     r1.flush();
     expect(a.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
     const r2 = new FigureRegistry('t', { citizens: () => withFaces, now: () => clock.t, faces: true });
-    const b = mount(r2, fig());
+    const b = mount(r2, <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={STAND} />);
     r2.flush();
-    // Cycle rendu au visage neutre ; l'état du visage est rendu ensuite et montré à la figure fixe.
-    expect(b.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    // Cycle rendu au visage de fond ; l'état du clignement est rendu ensuite et montré à la figure fixe.
+    expect(b.node.getAttribute('data-key')!.endsWith('@3dc')).toBe(true);
     r2.flush();
     expect(b.node.getAttribute('data-key')!.endsWith('@3dcb1')).toBe(true);
-    expect(withFaces.faceOf).toHaveBeenCalledWith('swing', 'neutre', 0, expect.any(Number));
+    expect(withFaces.faceOf).toHaveBeenCalledWith('swing', 'neutre', 0, expect.any(Number), true);
     // Clignement suivant : la figure fixe le suit.
-    withFaces.faceOf.mockReturnValue('');
+    state.v = 'c';
     r2.flush();
-    expect(b.node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    expect(b.node.getAttribute('data-key')!.endsWith('@3dc')).toBe(true);
     a.unmount();
     b.unmount();
+  });
+  it('marcheur : visage de son émotion seulement (jamais de clignement), aucune image seule rendue', () => {
+    const clock = { t: 0 };
+    const state = { v: 'cb1' };
+    const f = faced(clock, state);
+    const r = new FigureRegistry('t', { citizens: () => f, now: () => clock.t, faces: true });
+    const { node, unmount } = mount(r, fig());
+    for (let i = 0; i < 40; i++) {
+      clock.t += 16;
+      poseFigure(r, node, { ...POSE, phase: Math.floor(i / 2) % PHASES });
+      r.flush();
+    }
+    expect(f.renders).toBe(PHASES);
+    expect(f.faceOf.mock.calls.every((c) => c[4] === false)).toBe(true);
+    expect(node.getAttribute('data-key')!.endsWith('@3dc')).toBe(true);
+    unmount();
+  });
+  it('une image seule (visage) par flush au plus', () => {
+    const clock = { t: 0 };
+    const state = { v: 'c' };
+    const f = faced(clock, state);
+    const r = new FigureRegistry('t', { citizens: () => f, now: () => clock.t, faces: true });
+    const ws = OUTFITS.map((out) => mount(r, <GhibliFigure outfit={out} sky={sky} rainy={false} umbrella={false} initial={STAND} />));
+    r.flush();
+    expect(f.renders).toBe(3);
+    // Les trois clignent en même temps : un visage rendu par image au plus, tous rendus à la fin.
+    state.v = 'cb1';
+    let prev = f.renders;
+    for (let i = 0; i < 6; i++) {
+      r.flush();
+      expect(f.renders - prev).toBeLessThanOrEqual(1);
+      prev = f.renders;
+    }
+    expect(f.renders).toBe(6);
+    for (const w of ws) expect(w.node.getAttribute('data-key')!.endsWith('@3dcb1')).toBe(true);
+    for (const w of ws) w.unmount();
+  });
+});
+
+describe('budget : habillage à part et dette', () => {
+  // Faux rendu qui habille à part (comme CitizenRenderer) : `buildCost` ms pour habiller, `cost` ms par rendu.
+  class RigFake extends Fake {
+    builds = 0;
+    readonly rigs = new Set<string>();
+    constructor(
+      private readonly clk: { t: number },
+      cost: number,
+      private readonly buildCost: number,
+    ) {
+      super(clk, cost);
+    }
+    hasRig(d: CitizenDesc): boolean {
+      return this.rigs.has(JSON.stringify(d));
+    }
+    buildRig(d: CitizenDesc): boolean {
+      this.clk.t += this.buildCost;
+      this.builds++;
+      this.rigs.add(JSON.stringify(d));
+      return true;
+    }
+  }
+  const STAND: PoseIn = { yaw: 0, gait: 'stand', phase: 0, head: 0 };
+  it('habillage de 50 ms : seul dans son image, puis ceil(50/6) − 1 = 8 images sans 3D, puis le rendu', () => {
+    const clock = { t: 0 };
+    const f = new RigFake(clock, 4, 50);
+    f.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => f, now: () => clock.t });
+    const { node, unmount } = mount(r, <GhibliFigure outfit={o} sky={sky} rainy={false} umbrella={false} initial={STAND} />);
+    r.flush();
+    expect(f.builds).toBe(1);
+    expect(f.renders).toBe(0);
+    for (let i = 0; i < Math.ceil(50 / RENDER_BUDGET_MS) - 1; i++) {
+      r.flush();
+      expect(f.renders).toBe(0);
+    }
+    r.flush();
+    expect(f.renders).toBe(1);
+    expect(node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    unmount();
+  });
+  it('rendu de 20 ms : 3 images sautées après chacun, moyenne dans le budget', () => {
+    const clock = { t: 0 };
+    const f = new RigFake(clock, 20, 0);
+    f.isReady = true;
+    const r = new FigureRegistry('t', { citizens: () => f, now: () => clock.t });
+    const { node, unmount } = mount(r, fig());
+    const n = 40;
+    for (let i = 0; i < n; i++) {
+      poseFigure(r, node, POSE);
+      r.flush();
+    }
+    // Image 1 : habillage (0 ms) seul ; puis un rendu toutes les 4 images.
+    expect(f.renders).toBe(Math.ceil((n - 1) / 4));
+    expect((f.renders * 20) / n).toBeLessThanOrEqual(RENDER_BUDGET_MS);
+    unmount();
+  });
+});
+
+describe('priorités et attente', () => {
+  it('passant caché waitFor3D : sa première image 3D passe avant les cycles des figures déjà visibles', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const visible = OUTFITS.map((out) => mount(r, fig({ out: { ...out, topColor: '#123456' } })));
+    const waiter = mount(r, fig({ waitFor3D: true }));
+    expect(href(waiter.node)).toBeNull();
+    // 12 phases à 2 rendus par image : 6 images.
+    for (let i = 0; i < PHASES / 2; i++) {
+      for (const w of [...visible, waiter]) poseFigure(r, w.node, POSE);
+      r.flush();
+    }
+    expect(href(waiter.node)!.startsWith('data:image/png;base64,3D')).toBe(true);
+    for (const w of visible) expect(w.node.getAttribute('data-key')!.includes('@3d')).toBe(false);
+    for (const w of [...visible, waiter]) w.unmount();
+  });
+  it('figure waitFor3D déjà montrée : un demi-tour ne la fige pas (nouvelle image en ≤ HOLD_3D_FRAMES + 1 images)', () => {
+    const { r, fake } = setup(4);
+    fake.isReady = true;
+    const { node, unmount } = mount(r, fig({ waitFor3D: true }));
+    for (let i = 0; i < PHASES / 2; i++) {
+      poseFigure(r, node, POSE);
+      r.flush();
+    }
+    const before = node.getAttribute('data-key')!;
+    expect(before.endsWith('@3d')).toBe(true);
+    let changedAt = -1;
+    for (let i = 0; i < 4 && changedAt < 0; i++) {
+      poseFigure(r, node, { ...POSE, yaw: 8 });
+      expect(href(node)).not.toBeNull();
+      if (node.getAttribute('data-key') !== before) changedAt = i;
+      r.flush();
+    }
+    expect(changedAt).toBeGreaterThanOrEqual(0);
+    expect(changedAt).toBeLessThanOrEqual(HOLD_3D_FRAMES + 1);
+    unmount();
+  });
+  it('figure visible passée à un autre registre (bascule de la vue Dehors) : toujours dessinée, jamais figée', () => {
+    const clock = { t: 0 };
+    const f1 = new Fake(clock);
+    f1.isReady = true;
+    const r1 = new FigureRegistry('a', { citizens: () => f1, now: () => clock.t });
+    const f2 = new Fake(clock);
+    const r2 = new FigureRegistry('b', { citizens: () => f2, now: () => clock.t, pxPerUnit: 6 });
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    const draw = (r: FigureRegistry): void => act(() => root.render(<FigureContext.Provider value={r}><svg>{fig({ waitFor3D: true })}</svg></FigureContext.Provider>));
+    draw(r1);
+    r1.flush();
+    const node = host.querySelector('[data-figure]')!;
+    expect(href(node)!.startsWith('data:image/png;base64,3D')).toBe(true);
+    draw(r2);
+    expect(href(node)).not.toBeNull();
+    // Nouveau registre, 3D pas prête, la figure marche : le pantin du nouveau registre suit la marche, sans attendre
+    // WAIT3D_FALLBACK_MS.
+    for (let i = 1; i <= 3; i++) {
+      clock.t += 16;
+      poseFigure(r2, node, { ...POSE, phase: i });
+      expect(href(node)).not.toBeNull();
+      r2.flush();
+    }
+    poseFigure(r2, node, { ...POSE, phase: 3 });
+    expect(node.getAttribute('data-key')).toBe(spriteKey(node.getAttribute('data-palette')!, keyOf(o, { ...POSE, phase: 3 })));
+    act(() => root.unmount());
+  });
+});
+
+describe('rendu partagé et vue rapprochée', () => {
+  it('rendu partagé : détruit avec le dernier registre qui s’en sert, refait au suivant', async () => {
+    const disposed = vi.fn();
+    const create = vi.fn(async (): Promise<Citizen3D> => ({ ready: () => false, prepare() {}, render: () => null, dispose: disposed }));
+    const factory = sharedCitizen3D(create);
+    const d = citizen(7);
+    const a = new FigureRegistry('a', { citizens: factory, pxPerUnit: 6 });
+    const b = new FigureRegistry('b', { citizens: factory, pxPerUnit: 6 });
+    a.citizen(d, 1);
+    b.citizen(d, 1);
+    await new Promise((ok) => setTimeout(ok, 0));
+    expect(create).toHaveBeenCalledTimes(1);
+    a.dispose();
+    expect(disposed).not.toHaveBeenCalled();
+    b.dispose();
+    expect(disposed).toHaveBeenCalledTimes(1);
+    const c = new FigureRegistry('c', { citizens: factory, pxPerUnit: 6 });
+    c.citizen(d, 1);
+    expect(create).toHaveBeenCalledTimes(2);
+    // Registre libéré avant l'arrivée du rendu : libéré à l'arrivée.
+    c.dispose();
+    await vi.waitFor(() => expect(disposed).toHaveBeenCalledTimes(2));
+  });
+  it('réglages de la vue : rapprochée à 6 px avec visages ; interrupteur coupé : plafond d’avant dans les deux vues', async () => {
+    expect(viewFigureOptions(true)).toEqual({ max: CLOSE_UP_SPRITES_MAX, pxPerUnit: 6, faces: true });
+    expect(viewFigureOptions(false)).toEqual({ max: FIGURE_SPRITES_MAX });
+    vi.resetModules();
+    vi.doMock('../../../src/content/figure/citizen-config', async (orig) => ({ ...(await orig<object>()), CITIZENS_3D: false }));
+    const fh = await import('../../../src/content/figure/figure-host');
+    expect(fh.viewFigureOptions(true)).toEqual({ max: FIGURE_SPRITES_MAX });
+    expect(fh.viewFigureOptions(false)).toEqual({ max: FIGURE_SPRITES_MAX });
+    vi.doUnmock('../../../src/content/figure/citizen-config');
+    vi.resetModules();
+  });
+  it('réglage d’un groupe (charge portée à deux) rappelé dès qu’une de ses figures passe en 3D', () => {
+    const { r, fake } = setup();
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    act(() => root.render(<FigureContext.Provider value={r}><svg><g data-crew="">{fig()}</g></svg></FigureContext.Provider>));
+    const group = host.querySelector('[data-crew]')!;
+    const node = host.querySelector('[data-figure]')!;
+    const fit = vi.fn();
+    setShown3DFitter(group, fit);
+    r.flush();
+    expect(fit).not.toHaveBeenCalled();
+    fake.isReady = true;
+    r.flush();
+    expect(node.getAttribute('data-key')!.endsWith('@3d')).toBe(true);
+    expect(fit).toHaveBeenCalledTimes(1);
+    poseFigure(r, node, { ...POSE, phase: 3 });
+    expect(fit).toHaveBeenCalledTimes(1);
+    setShown3DFitter(group, null);
+    act(() => root.unmount());
   });
 });
 

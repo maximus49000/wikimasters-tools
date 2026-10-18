@@ -162,6 +162,27 @@ function placed(reg: FigureRegistry, pin: Anchor | null, sk: string, key: Figure
   return { a: moved, off };
 }
 const pinOf = (node: Element): Anchor | null => node.getAttribute('data-pin') as Anchor | null;
+
+// Réglages posés sur un groupe (charge portée à deux des équipes d'installation, CarryFitWatch) : rappelés dès qu'une figure du
+// groupe passe du pantin à la 3D ou l'inverse (ses accroches changent), sans attendre le prochain flush utile.
+const fitters = new WeakMap<Element, () => void>();
+let fitterCount = 0;
+export function setShown3DFitter(group: Element, fit: (() => void) | null): void {
+  const had = fitters.has(group);
+  if (fit) fitters.set(group, fit);
+  else fitters.delete(group);
+  fitterCount += (fit ? 1 : 0) - (had ? 1 : 0);
+}
+function shown3DChanged(node: Element): void {
+  if (fitterCount === 0) return;
+  for (let e = node.parentElement; e; e = e.parentElement) {
+    const f = fitters.get(e);
+    if (f) {
+      f();
+      return;
+    }
+  }
+}
 // Première image où une figure qui montrait de la 3D s'est vu servir un pantin (cycle 3D de la nouvelle pose incomplet).
 const missSince = new WeakMap<Element, number>();
 // Une figure qui montre de la 3D garde sa dernière image 3D au plus HOLD_3D_FRAMES images quand la nouvelle pose n'a qu'un
@@ -189,9 +210,11 @@ function showSprite(reg: FigureRegistry, node: Element, sk: string, href: string
   const img = node.firstElementChild;
   img?.setAttribute('href', href);
   shownPoses.set(node, key);
+  const was3D = shownAnchors.has(node);
   const pl = placed(reg, pinOf(node), sk, key);
   if (pl) shownAnchors.set(node, pl.a);
   else shownAnchors.delete(node);
+  if (was3D !== (pl !== null)) shown3DChanged(node);
   const tr = offTransform(pl?.off);
   if (tr) img?.setAttribute('transform', tr);
   else img?.removeAttribute('transform');
@@ -216,7 +239,7 @@ function refreshFigure(reg: FigureRegistry, node: Element): boolean {
   const shown = node.getAttribute('data-key');
   const want = reg.keyFor(pk, key);
   if (shown !== want) {
-    const got = reg.pick(pk, key, shown === null, node.hasAttribute('data-wait3d'), shows3D(reg, shown));
+    const got = reg.pick(pk, key, shown === null, shown === null && node.hasAttribute('data-wait3d'), shows3D(reg, shown));
     if (!got) return !reg.is3D(pk);
     if (got.sk !== shown && !holdLast3D(reg, node, shown, got)) {
       const href = reg.hold(node, got.sk);
@@ -294,7 +317,8 @@ export function GhibliFigure({
     const prevKey = node?.getAttribute('data-key') ?? null;
     const prevHref = node?.firstElementChild?.getAttribute('href') ?? null;
     const fresh = prevKey === null || prevHref === null;
-    const got = reg.pick(pk, key, fresh, waitFor3D, shows3D(reg, prevKey));
+    // waitFor3D : seulement à la première apparition ; une figure déjà dessinée (demi-tour, nouveau registre) n'est jamais figée.
+    const got = reg.pick(pk, key, fresh, fresh && waitFor3D, shows3D(reg, prevKey));
     if (got && !holdLast3D(reg, node, prevKey, got)) {
       shownKey = got.sk;
       href = got.url;
@@ -355,7 +379,7 @@ export function poseFigure(reg: FigureRegistry, node: Element | null, pose: Pose
   const want = reg.keyFor(pk, key);
   const shown = node.getAttribute('data-key');
   if (shown === want) return;
-  const got = reg.pick(pk, key, shown === null, node.hasAttribute('data-wait3d'), shows3D(reg, shown));
+  const got = reg.pick(pk, key, shown === null, shown === null && node.hasAttribute('data-wait3d'), shows3D(reg, shown));
   if (got && got.sk !== shown && !holdLast3D(reg, node, shown, got)) {
     const href = reg.hold(node, got.sk);
     if (href) showSprite(reg, node, got.sk, href, key);
@@ -373,7 +397,7 @@ export function hideFigure(reg: FigureRegistry, node: Element | null): void {
   img?.removeAttribute('href');
   node.removeAttribute('data-key');
   shownPoses.delete(node);
-  shownAnchors.delete(node);
+  if (shownAnchors.delete(node)) shown3DChanged(node);
   reg.hold(node, null);
   const kids = node.children;
   for (let i = 1; i < kids.length; i++) if (kids[i]!.hasAttribute('data-held')) kids[i]!.setAttribute('visibility', 'hidden');
