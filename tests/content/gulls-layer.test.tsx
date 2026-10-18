@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GULL_POOL, GullsLayer, gullPerches } from '../../src/content/gulls-layer';
+import { GULL_POOL, GullsLayer, assignGullNodes, gullPerches } from '../../src/content/gulls-layer';
 import { PropContext, PropRegistry, propKey } from '../../src/content/prop/prop-host';
 import { flocksAt } from '../../src/core/library/city/gulls';
 import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
@@ -106,6 +106,23 @@ describe('calque des mouettes', () => {
     await flush();
     expect(shown(svg)).toBe(flocksAt(T + 20, SEED, W, H, { ...ctx, closed: [[T + 10, T + 20]] }, perches).slice(0, GULL_POOL).length);
     expect(shown(svg)).toBeGreaterThan(0);
+  });
+  it('nœud par oiseau : un oiseau garde le sien quand une volée précédente sort ; réservoir plein → pas de nœud', () => {
+    expect(GULL_POOL).toBeGreaterThanOrEqual(24);
+    const slots: (string | null)[] = new Array<string | null>(4).fill(null);
+    expect(assignGullNodes(slots, ['a.0.0', 'a.0.1', 'a.1.0'])).toEqual([0, 1, 2]);
+    // La volée a.0 sort, une nouvelle arrive : a.1.0 reste au nœud 2, les nouveaux prennent les nœuds libérés.
+    expect(assignGullNodes(slots, ['a.1.0', 'b.0.0', 'b.0.1', 'b.0.2'])).toEqual([2, 0, 1, 3]);
+    expect(assignGullNodes(slots, ['a.1.0', 'b.0.0', 'b.0.1', 'b.0.2', 'c.0.0'])).toEqual([2, 0, 1, 3, -1]);
+    expect(slots).toEqual(['b.0.0', 'b.0.1', 'a.1.0', 'b.0.2']);
+  });
+  it('ciel vide : la boucle n’écrit rien sur les nœuds déjà cachés', async () => {
+    const { svg, flush, render } = mount(true, { still: false, s: night });
+    await flush();
+    const spy = vi.spyOn(Element.prototype, 'setAttribute');
+    render(night, 0.1);
+    const onGulls = spy.mock.contexts.filter((el) => (el as Element).closest?.('[data-gulls]') && svg.contains(el as Element));
+    expect(onGulls).toHaveLength(0);
   });
   it('cheminées : maisons visibles des rangs 1 et 2, au haut de la brique peinte', () => {
     const plan = cityPaintPlan(W, H, SEED);

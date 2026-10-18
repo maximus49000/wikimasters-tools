@@ -3,7 +3,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
-import { poseEventArt } from '../../src/content/city-event-art';
+import { contrailArt, poseEventArt } from '../../src/content/city-event-art';
 import { CityEventSprite } from '../../src/content/city-event-sprites';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { PropContext, PropRegistry } from '../../src/content/prop/prop-host';
@@ -116,6 +116,11 @@ describe('CityEventSprite Ghibli', () => {
     expect([...trail.querySelectorAll('circle')].map((c) => c.getAttribute('cy'))).not.toEqual(before);
     expect(trail.querySelectorAll('circle')).toHaveLength(84);
     expect(mount(ev('plane'), false, 3, skyAt(23 * 60, times)).svg.querySelector('[data-contrail]')).toBeNull();
+  });
+  it('traînée : toujours 84 disques sur une période complète (opacité 0 au lieu d’un disque retiré), aucun nœud recréé', () => {
+    const counts = new Set<number>();
+    for (let i = 0; i <= 4000; i++) counts.add(contrailArt(i * 0.002).length);
+    expect([...counts]).toEqual([84]);
   });
   it('feux d’artifice : à u = 0,3 d’une fusée, 12 brins ; à u = 0,8, aucun ; mouvement réduit → 12 brins par fusée ; aucun SMIL', () => {
     const e = ev('fireworks');

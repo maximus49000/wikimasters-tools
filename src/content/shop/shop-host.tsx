@@ -117,13 +117,14 @@ export function paintShopGlow(l: ShopLook, blobs: readonly LightBlob[]): string 
   return lit.canvas.toDataURL('image/png');
 }
 // Image de la lueur (null tant qu'elle n'est pas peinte ; `blobs` vide : rien).
-export function useShopGlow(look: ShopLook | null, blobs: readonly LightBlob[]): string | null {
+// `want` faux : l'image déjà cuite est rendue (fondu de sortie d'un lampadaire qui s'éteint) mais rien n'est demandé.
+export function useShopGlow(look: ShopLook | null, blobs: readonly LightBlob[], want = true): string | null {
   const reg = useContext(ShopContext);
   const [, bump] = useState(0);
   const key = look && blobs.length > 0 ? glowKey(look, blobs) : null;
   const url = reg && key ? reg.get(key) : null;
   useEffect(() => {
-    if (!reg || !key || !look || reg.get(key) !== null) return;
+    if (!want || !reg || !key || !look || reg.get(key) !== null) return;
     return reg.want(
       key,
       () => paintShopGlow(look, blobs),
@@ -131,6 +132,6 @@ export function useShopGlow(look: ShopLook | null, blobs: readonly LightBlob[]):
     );
     // `look` et `blobs` sont entièrement décrits par la clé.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reg, key]);
+  }, [reg, key, want]);
   return url;
 }

@@ -15,9 +15,9 @@ import { GhibliWindows } from './ghibli-windows';
 import { windowLit } from '../core/library/city/window-lights';
 import { GhibliNightLight } from './ghibli-night';
 import { lampLit, lampsFor } from '../core/library/city/lamps';
-import { lampBlobs, patchBox, type LightBlob } from '../core/library/city/night-light';
+import { lampBlobs, patchBox } from '../core/library/city/night-light';
 import { layerBox } from './shop/shop-host';
-import { shopLookOf, shopOrigin } from './shop/ghibli-shop-front';
+import { shopLookOf, shopOrigin, type GlowLamp } from './shop/ghibli-shop-front';
 import { usePaintedCity } from './painted-city';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
@@ -131,22 +131,23 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
   // ouverts sont éclairés. Jour de changement : le mobilier de l'ancien commerce sort par tranches, puis celui du nouveau
   // rentre (furnitureAt) ; il reste en place pendant le chantier d'enseigne. Personnel, premier plan de l'intérieur ouvert
   // (devant le personnel) et rideau roulant sont dans le calque animé (StaffLayer, city-shops-life.tsx).
-  // Ghibli, nuit : taches des lampadaires allumés (mêmes que ghibli-night.tsx), reprises sur les devantures qu'elles touchent.
-  const lampLight = useMemo(() => {
+  // Ghibli, nuit : taches de TOUS les lampadaires (mêmes que ghibli-night.tsx), reprises sur les devantures qu'elles touchent ;
+  // la lueur reste montée et fond (opacité) à l'allumage et à l'extinction, comme la découpe du décor.
+  const lampGeo = useMemo(() => {
     if (!ghibli) return [];
     const k = unit * STREET_SCALE.lamp;
-    return lampsFor(width, seed)
-      .filter((l) => lampLit(l, minutes, sky.daylight, forcedNight))
-      .map((l) => { const blobs = lampBlobs(l.x, metrics.curb, unit, k); return { blobs, box: patchBox(blobs) }; });
-  }, [ghibli, width, seed, minutes, sky.daylight, forcedNight, metrics.curb, unit]);
-  const glowFor = (view: (typeof views)[number], frame: NonNullable<ReturnType<typeof frames.get>>): { blobs: LightBlob[]; dim: number } | null => {
-    if (lampLight.length === 0) return null;
+    return lampsFor(width, seed).map((l) => { const blobs = lampBlobs(l.x, metrics.curb, unit, k); return { lamp: l, blobs, box: patchBox(blobs) }; });
+  }, [ghibli, width, seed, metrics.curb, unit]);
+  const glowFor = (view: (typeof views)[number], frame: NonNullable<ReturnType<typeof frames.get>>): { lamps: GlowLamp[]; dim: number } | null => {
+    if (lampGeo.length === 0) return null;
     const o = shopOrigin(frame);
     const fb = layerBox(shopLookOf(view, frame, sky), 'facade');
     const x0 = o.x + fb.x;
     const x1 = x0 + fb.w;
-    const blobs = lampLight.filter((l) => l.box.x < x1 && l.box.x + l.box.w > x0).flatMap((l) => l.blobs);
-    return blobs.length > 0 ? { blobs, dim } : null;
+    const lamps = lampGeo
+      .filter((l) => l.box.x < x1 && l.box.x + l.box.w > x0)
+      .map((l) => ({ id: l.lamp.id, blobs: l.blobs, lit: lampLit(l.lamp, minutes, sky.daylight, forcedNight) }));
+    return lamps.length > 0 ? { lamps, dim } : null;
   };
   const shopFronts =
   views.map((view, i) => {

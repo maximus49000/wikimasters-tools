@@ -18,7 +18,8 @@ import { hashString, mulberry32 } from '../scene-world';
 // repliées, s'envole en battant (6 s) puis rejoint la hauteur de sa volée et sort de la scène. En s'approchant de la colline il
 // rapetisse et pâlit jusqu'à l'échelle de la maison (perspective).
 
-export type GullPose = { x: number; y: number; s: number; far: number; wing: 'flap' | 'glide' | 'turn' | 'perched'; flap: number; dir: 1 | -1 };
+// `key` : clé stable de l'oiseau (« heure.volée.rang »), la même tant qu'il est dans la scène.
+export type GullPose = { x: number; y: number; s: number; far: number; wing: 'flap' | 'glide' | 'turn' | 'perched'; flap: number; dir: 1 | -1; key: string };
 // Haut d'une cheminée de la colline (centre de la brique, à son sommet), échelle et brume de la maison.
 export type GullPerch = { x: number; y: number; s: number; haze: number };
 // `minutes` : heure de la scène en minutes entières, alignée sur la minute murale (voir `gullMinutes`). `closed` : intervalles
@@ -92,7 +93,7 @@ function flight(b: Bird, f: Flock, tau: number): { wing: GullPose['wing']; flap:
 const flapAt = (tau: number): number => mod(Math.floor(tau * GULL_FLAP_HZ * GULL_FRAMES), GULL_FRAMES);
 
 // Oiseau qui se pose : null tant qu'il vole avec sa volée (ou si la cheminée est trop près de son entrée dans la scène).
-function lander(b: Bird, f: Flock, p: GullPerch, tau: number, x0: number, band: [number, number]): Omit<GullPose, 'dir'> | null {
+function lander(b: Bird, f: Flock, p: GullPerch, tau: number, x0: number, band: [number, number]): Omit<GullPose, 'dir' | 'key'> | null {
   const { dir, tier } = f;
   const tauA = (dir * (p.x - x0) - LAND_FROM - b.dx * tier.s) / tier.speed;
   if (tauA <= 0 || tau < tauA) return null;
@@ -157,7 +158,7 @@ export function flocksAt(t: number, seed: number, width: number, height: number,
   const longest = span / TIERS[1].speed + span / (0.8 * TIERS[1].speed) + APPROACH + PERCHED + TAKEOFF + 6;
   const H = Math.floor(t / HOUR);
   for (let h = H - Math.ceil(longest / HOUR); h <= H; h++) {
-    for (const f of flocksOfHour(h, seed, height, hourStartMinutes(t, h, ctx.minutes), perches.length)) {
+    for (const [fk, f] of flocksOfHour(h, seed, height, hourStartMinutes(t, h, ctx.minutes), perches.length).entries()) {
       const tau = t - f.start;
       if (tau < 0 || tau > longest || !departed(f.start)) continue;
       const x0 = f.dir > 0 ? -MARGIN : width + MARGIN;
@@ -165,13 +166,13 @@ export function flocksAt(t: number, seed: number, width: number, height: number,
         const p = i === 0 && f.perch !== null ? perches[f.perch] : undefined;
         const landed = p ? lander(b, f, p, tau, x0, band) : null;
         if (landed) {
-          if (landed.x >= -MARGIN && landed.x <= width + MARGIN) out.push({ ...landed, dir: f.dir });
+          if (landed.x >= -MARGIN && landed.x <= width + MARGIN) out.push({ ...landed, dir: f.dir, key: `${h}.${fk}.${i}` });
           return;
         }
         const x = x0 + f.dir * (tau * f.tier.speed + b.dx * f.tier.s);
         if (x < -MARGIN || x > width + MARGIN) return;
         const fl = flight(b, f, tau);
-        out.push({ x, y: Math.min(band[1], Math.max(band[0], fl.y)), s: b.s, far: f.tier.far, wing: fl.wing, flap: fl.flap, dir: f.dir });
+        out.push({ x, y: Math.min(band[1], Math.max(band[0], fl.y)), s: b.s, far: f.tier.far, wing: fl.wing, flap: fl.flap, dir: f.dir, key: `${h}.${fk}.${i}` });
       });
     }
   }

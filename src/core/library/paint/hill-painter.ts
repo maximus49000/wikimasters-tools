@@ -1,4 +1,4 @@
-import { INK, TAU, disc, fillRect, ink, light, poly, shade } from './cel';
+import { TAU, disc, fillRect, ink, light, poly, shade } from './cel';
 import { FAR_HAZE, hillCrestY, type CityPaintPlan, type HillHouse, type Landmark, type PaintBuilding } from './city-plan';
 import { hexRgb, mixRgb, rgba, type Rgb } from './color';
 import type { PaintCtx } from './paint-ctx';

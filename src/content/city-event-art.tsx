@@ -121,7 +121,7 @@ function poseFireworks(node: Element, e: CityEvent, t: number, still: boolean): 
   }
 }
 
-// ---------- Traînée de condensation (notes §9) : 2 × 42 disques nés derrière chaque réacteur (y 7 et 10), âge 0,32 s par
+// ---------- Traînée de condensation (notes §9) : 2 × 42 disques (toujours 84) nés derrière chaque réacteur (y 7 et 10), âge 0,32 s par
 // cran, rayon 0,5 + 0,26·âge, opacité 0,55·(1 − âge/13,5) modulée (effilochage), dérive vers le haut et ondulation
 // sin(1,7·âge + 0,8·t). Positions fixes, seules l'ordonnée et l'opacité bougent. `t` : secondes depuis le début de l'événement.
 export function contrailArt(t: number): Art[] {
@@ -131,8 +131,8 @@ export function contrailArt(t: number): Art[] {
       const age = k * 0.32;
       const wob = Math.sin(age * 1.7 + t * 0.8 + ey) * 0.4 * age;
       const a = 0.55 * Math.max(0, 1 - age / 13.5) * (0.8 + 0.2 * Math.sin(k * 2.3 + t * 2));
-      if (a <= 0.01) continue;
-      out.push({ tag: 'circle', attrs: { cx: f1(-14 - k * 3.3 - ey * 0.4), cy: f1(ey + 0.6 - age * 0.12 + wob * 0.35), r: f2(0.5 + age * 0.26), fill: '#FFFFFF', opacity: f2(a) } });
+      // Disque presque invisible : opacité 0 plutôt que retiré (un nombre de disques constant évite à syncArt de tout recréer).
+      out.push({ tag: 'circle', attrs: { cx: f1(-14 - k * 3.3 - ey * 0.4), cy: f1(ey + 0.6 - age * 0.12 + wob * 0.35), r: f2(0.5 + age * 0.26), fill: '#FFFFFF', opacity: a <= 0.01 ? 0 : f2(a) } });
     }
   }
   return out;

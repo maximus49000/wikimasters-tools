@@ -3,6 +3,7 @@ import type { FestiveMark } from '../core/library/city/people';
 import type { ArmPose } from '../core/library/figure/skeleton';
 import type { PropArgs } from '../core/library/paint/props/index';
 import { MARK_CYCLE_S } from '../core/library/paint/props/moving';
+import { hashString } from '../core/library/scene-world';
 import '../core/library/paint/props/moving';
 import { CycledInMirror, PropInMirror } from './prop/prop-host';
 
@@ -97,6 +98,9 @@ export const markArms = (mark: FestiveMark | null | undefined): ArmPose => (mark
 // et drapeau ont 8 poses choisies par la boucle des passants (city-life, placeCycles) sur la période MARK_CYCLE_S du signe,
 // décalées par `phase` (en cycles) ; mouvement réduit (`still`) : pose 0, drapeau plat. Le dessin SVG reste le repli tant
 // que l'image n'est pas cuite (ou sans registre).
+// Décalage du cycle du signe d'un passant, en cycles ([0, 1[) : hachage de son id (stable, propre à chaque passant).
+export const markPhase = (id: string): number => hashString(`mark|${id}`) / 2 ** 32;
+
 export function MarkHeld({ mark, t, dir, day, still = false, phase = 0 }: { mark: FestiveMark; t: (c: string) => string; dir: 1 | -1; day: number; still?: boolean; phase?: number }): ReactElement {
   const { dx, dy } = HELD_AT[mark];
   const fallback =

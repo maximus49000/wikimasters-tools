@@ -31,7 +31,7 @@ import { useFigureRegistry } from './figure/figure-host';
 import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
 import { poseEventArt } from './city-event-art';
 import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
-import { MarkHeld, markAnchor, markArms } from './festive-marks';
+import { MarkHeld, markAnchor, markArms, markPhase } from './festive-marks';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
 import { ShopScene, collectScene, muteScene, placeScene, sceneBudget, type SceneNodes } from './shop/shop-scene';
 import { staffSpans, type SceneShop } from './shop/scene-scores';
@@ -888,7 +888,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   umbrella={intensity.umbrellas}
                   initial={{ ...pedPose(p, metrics, t0, still), arms: markArms(mark) }}
                   hidden={!active}
-                  held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} day={sky.daylight} still={still} phase={p.phase} /> }] : undefined}
+                  held={mark ? [{ anchor: markAnchor(mark, intensity.umbrellas), node: <MarkHeld mark={mark} t={(c) => tone(c, sky)} dir={p.dir} day={sky.daylight} still={still} phase={markPhase(p.id)} /> }] : undefined}
                 />
               ) : (
                 <PersonSprite outfit={p.outfit} sky={sky} rainy={rainy} umbrella={intensity.umbrellas} mark={mark} />

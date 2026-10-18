@@ -62,7 +62,7 @@ describe('devantures Ghibli', () => {
     const blobs = [{ cx: frame.sign.x + 10, cy: frame.sign.y, rx: 44, ry: 40, peak: 1 }];
     const host = mount(
       <ShopContext.Provider value={reg}>
-        <GhibliShopFront view={view({ phase: 'closed' })} frame={frame} sky={night} curb={258} interior={null} glow={{ blobs, dim: 0.9 }}>
+        <GhibliShopFront view={view({ phase: 'closed' })} frame={frame} sky={night} curb={258} interior={null} glow={{ lamps: [{ id: 'l0', blobs, lit: true }], dim: 0.9 }}>
           <g data-shop="classic" />
         </GhibliShopFront>
       </ShopContext.Provider>,
@@ -75,6 +75,35 @@ describe('devantures Ghibli', () => {
     // Même cadre que la façade, juste après elle.
     for (const a of ['x', 'y', 'width', 'height']) expect(glow.getAttribute(a)).toBe(facade.getAttribute(a));
     expect(facade.nextElementSibling).toBe(glow);
+  });
+  it('bascule d’un lampadaire : la lueur reste montée, seule son opacité change (fondu de 4 s)', () => {
+    const queue: (() => void)[] = [];
+    const reg = new ShopRegistry('t', { schedule: (cb) => void queue.push(cb) });
+    const blobs = [{ cx: frame.sign.x + 10, cy: frame.sign.y, rx: 44, ry: 40, peak: 1 }];
+    const at = (lit: boolean): ReactElement => (
+      <svg>
+        <ShopContext.Provider value={reg}>
+          <GhibliShopFront view={view({ phase: 'closed' })} frame={frame} sky={night} curb={258} interior={null} glow={{ lamps: [{ id: 'l0', blobs, lit }], dim: 0.9 }}>
+            <g data-shop="classic" />
+          </GhibliShopFront>
+        </ShopContext.Provider>
+      </svg>
+    );
+    const host = document.createElement('div');
+    root = createRoot(host);
+    act(() => root!.render(at(true)));
+    drain(queue);
+    const glow = host.querySelector('image[data-shop-lamp-glow]')!;
+    expect(glow).not.toBeNull();
+    expect(glow.getAttribute('opacity')).toBe('0.9');
+    act(() => root!.render(at(false)));
+    const after = host.querySelector('image[data-shop-lamp-glow]');
+    expect(after).toBe(glow);
+    expect(after!.getAttribute('opacity')).toBe('0');
+    expect((after as SVGElement).style.transition).toContain('opacity 4s');
+    act(() => root!.render(at(true)));
+    expect(host.querySelector('image[data-shop-lamp-glow]')).toBe(glow);
+    expect(glow.getAttribute('opacity')).toBe('0.9');
   });
   it('sans lampadaire allumé : aucune lueur sur la façade', () => {
     const queue: (() => void)[] = [];

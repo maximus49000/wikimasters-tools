@@ -39,19 +39,29 @@ export function shopLookOf(view: ShopView, frame: ShopFrame, sky: Sky, type: Sho
 // Origine du local dans le monde.
 export const shopOrigin = (frame: ShopFrame): { x: number; y: number } => ({ x: frame.sign.x, y: frame.sign.y - 2 });
 
-// `glow` : taches des lampadaires allumés qui touchent la façade (repère du monde) et opacité des lumières de la ville ; la
-// façade de jour teinte ambre est révélée par-dessus (useShopGlow), comme la découpe du décor (ghibli-night.tsx).
-type Glow = { blobs: readonly LightBlob[]; dim: number };
+// `glow` : par lampadaire qui touche la façade (allumé ou non, clé stable `id`), ses taches (repère du monde) ; et opacité des
+// lumières de la ville. La façade de jour teinte ambre est révélée par-dessus (useShopGlow), une image par lampadaire, comme
+// la découpe du décor (ghibli-night.tsx) : image gardée montée, opacité `dim` allumé / 0 éteint, même fondu de 4 s.
+export type GlowLamp = { id: string; blobs: readonly LightBlob[]; lit: boolean };
+type Glow = { lamps: readonly GlowLamp[]; dim: number };
 type Props = { view: ShopView; frame: ShopFrame; sky: Sky; curb: number; interior: ShopTypeId | null; slices?: InteriorSlices; glow?: Glow | null; children?: ReactNode };
-const NO_BLOBS: readonly LightBlob[] = [];
+const FADE = 'opacity 4s ease';
+
+// Lueur d'un lampadaire sur la façade. Peinte dès que la ville s'assombrit (`dim` > 0) pour que l'allumage fonde depuis 0
+// au lieu d'apparaître d'un coup ; jamais demandée en plein jour.
+function LampGlow({ look, lamp, dim, origin, box }: { look: ShopLook; lamp: GlowLamp; dim: number; origin: { x: number; y: number }; box: { x: number; y: number; w: number; h: number } }): ReactElement | null {
+  const local = lamp.blobs.map((b) => ({ ...b, cx: b.cx - origin.x, cy: b.cy - origin.y, ...(b.clipTop !== undefined ? { clipTop: b.clipTop - origin.y } : {}) }));
+  const url = useShopGlow(look, local, lamp.lit || dim > 0);
+  if (url === null) return null;
+  return (
+    <image data-shop-lamp-glow={lamp.id} href={url} x={origin.x + box.x} y={origin.y + box.y} width={box.w} height={box.h} preserveAspectRatio="none" opacity={lamp.lit ? dim : 0} style={{ transition: FADE }} />
+  );
+}
 
 export function GhibliShopFront({ view, frame, sky, curb, interior, slices, glow = null, children }: Props): ReactElement {
   const look = shopLookOf(view, frame, sky);
   const back: ShopLook = { ...look, type: interior };
   const facade = useShopLayer(look, 'facade');
-  const o0 = shopOrigin(frame);
-  const localBlobs = glow ? glow.blobs.map((b) => ({ ...b, cx: b.cx - o0.x, cy: b.cy - o0.y, ...(b.clipTop !== undefined ? { clipTop: b.clipTop - o0.y } : {}) })) : NO_BLOBS;
-  const glowUrl = useShopGlow(glow ? look : null, localBlobs);
   const backUrl = useShopLayer(interior ? back : null, 'back');
   // Boutique pas ouverte (fermée, déménagement, travaux) : le premier plan (comptoir, vitre) est dans le décor, comme le
   // classique ; ouverte, le calque animé le dessine devant le personnel (GhibliShopGlass).
@@ -80,9 +90,7 @@ export function GhibliShopFront({ view, frame, sky, curb, interior, slices, glow
         {hidden > 0 && <rect data-slices-cover="" x={slices!.doorRight ? win.w - cut : 0} y={0} width={cut} height={win.h} fill={empty} />}
       </svg>
       <image data-shop-layer="facade" href={facade} x={o.x + fb.x} y={o.y + fb.y} width={fb.w} height={fb.h} preserveAspectRatio="none" />
-      {glow && glowUrl !== null && (
-        <image data-shop-lamp-glow="" href={glowUrl} x={o.x + fb.x} y={o.y + fb.y} width={fb.w} height={fb.h} preserveAspectRatio="none" opacity={glow.dim} style={{ transition: 'opacity 4s ease' }} />
-      )}
+      {glow?.lamps.map((l) => <LampGlow key={l.id} look={look} lamp={l} dim={glow.dim} origin={o} box={fb} />)}
       {pool && (
         <g data-shop-pool="" fill={pool}>
           <polygon points={`${win.x},${ground} ${win.x + win.w},${ground} ${win.x + win.w + 6},${curb} ${win.x - 6},${curb}`} opacity={family === 'F' ? 0.2 : 0.26} />

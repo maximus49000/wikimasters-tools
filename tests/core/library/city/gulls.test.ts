@@ -14,6 +14,18 @@ describe('mouettes', () => {
     for (let t = 0; t < 3600; t += 2) for (const g of flocksAt(t, 1, 1000, 400, day)) { expect(g.y).toBeGreaterThanOrEqual(20); expect(g.y).toBeLessThanOrEqual(120); seen.add(Math.floor(t / 600)); }
     expect(seen.size).toBeGreaterThanOrEqual(3);
   });
+  it('clé stable par oiseau (heure, volée, rang) : unique à chaque instant, gardée d’un instant à l’autre', () => {
+    let kept = 0;
+    for (let t = 0; t < 7200; t += 3) {
+      const a = flocksAt(t, 2, 1200, 400, day);
+      const keys = a.map((g) => g.key);
+      expect(new Set(keys).size).toBe(keys.length);
+      for (const k of keys) expect(k).toMatch(/^-?\d+\.\d+\.\d+$/);
+      const b = new Set(flocksAt(t + 1, 2, 1200, 400, day).map((g) => g.key));
+      kept += keys.filter((k) => b.has(k)).length;
+    }
+    expect(kept).toBeGreaterThan(0);
+  });
   it('déterministe', () => { expect(flocksAt(1234, 5, 800, 400, day)).toEqual(flocksAt(1234, 5, 800, 400, day)); });
 
   // Ajouts (branchement) : forme des poses, rythme des salves, cheminées.

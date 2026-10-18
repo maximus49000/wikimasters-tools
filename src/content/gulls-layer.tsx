@@ -10,16 +10,36 @@ import { useWallClockLoop } from './use-wallclock-loop';
 
 // Calque des mouettes (G5, tâche 14) : les volées du moteur pur `flocksAt` (city/gulls.ts) en images peintes `gull` du
 // registre d'accessoires, Ghibli seulement (le décor classique n'a jamais dessiné les mouettes figées du plan peint, qui était
-// propre à Ghibli : rien ne change en classique). Un réservoir fixe de nœuds (POOL oiseaux au plus à la fois) : la boucle de
+// propre à Ghibli : rien ne change en classique). Un réservoir fixe de nœuds (POOL oiseaux au plus à la fois), un nœud par oiseau
+// tenu par sa clé stable (`assignGullNodes`) : la boucle de
 // l'horloge murale pose chaque oiseau (transform `translate(x y) scale(s)`, opacité 1 − far pour la pâleur du lointain) et
 // choisit l'image de sa pose (aile, pose du battement, sens, lumière au 1/8 de jour) directement sur l'<image>, sans re-rendu ;
 // une pose pas encore cuite est demandée au registre et l'image précédente reste en attendant. Derrière les immeubles (masque
 // de leurs silhouettes, comme le père Noël sur la colline), sous les engins du ciel. Les oiseaux se posent sur les cheminées
 // des maisons visibles de la colline (rangs 1 et 2, même cheminée que `paintHillHouse`). Mouvement réduit : les oiseaux de
 // l'instant `frozenT`, pose 0 du battement, immobiles.
-export const GULL_POOL = 16;
+export const GULL_POOL = 24;
 const GATE_KEEP_S = 4 * 3600;
 
+
+// Nœud de chaque oiseau (`keys` : clés stables de l'instant) dans `slots` (clé tenue par chaque nœud, modifié sur place) : un
+// oiseau déjà là garde son nœud, un nouveau prend le premier nœud libre ; réservoir plein → −1 (pas montré).
+export function assignGullNodes(slots: (string | null)[], keys: readonly string[]): number[] {
+  const want = new Set(keys);
+  for (let i = 0; i < slots.length; i++) if (slots[i] !== null && !want.has(slots[i]!)) slots[i] = null;
+  return keys.map((k) => {
+    const held = slots.indexOf(k);
+    if (held >= 0) return held;
+    const free = slots.indexOf(null);
+    if (free >= 0) slots[free] = k;
+    return free;
+  });
+}
+
+// Attribut écrit seulement s'il change (la boucle tourne à chaque image, ciel vide compris).
+function setIfChanged(el: Element, name: string, value: string): void {
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+}
 
 // Oiseau posé entier hors du masque des façades : son image (cadre `gull` × PERCH_K·s, centrée 1,5·sP au-dessus de la
 // brique, comme `lander`) ne touche aucune silhouette de la rue.
@@ -56,6 +76,8 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
   // Sens de l'image montrée par nœud (gardé d'un rendu à l'autre : au changement de palier de lumière, l'image précédente
   // reste pendant la cuisson) ; une image de l'autre sens n'est jamais gardée en attendant.
   const shownDir = useRef<(1 | -1 | 0)[]>(new Array<1 | -1 | 0>(GULL_POOL).fill(0));
+  // Clé de l'oiseau tenu par chaque nœud (null : libre).
+  const slots = useRef<(string | null)[]>(new Array<string | null>(GULL_POOL).fill(null));
   // Intervalles de mauvais temps (nuit, forte pluie) vus par ce calque, passés à `flocksAt` (`closed`) : les volées en vol
   // finissent leur traversée, rien ne surgit au retour du beau temps, et une fermeture courte n'efface pas à la réouverture
   // une volée partie avant. État au montage : le temps du moment, « depuis toujours ». Les intervalles finis depuis plus de
@@ -85,12 +107,20 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
       // Mouvement réduit : rien ne bouge, le temps s'applique tel quel (pas de traversée à finir).
       const poses = flocksAt(t, seed, width, height, { minutes: c.minutes, daylight: day, rain, closed: still ? undefined : g.closed }, perches);
       const dirs = shownDir.current;
+      const before = slots.current.slice();
+      const at = assignGullNodes(slots.current, poses.map((p) => p.key));
+      const byNode = new Array<number>(GULL_POOL).fill(-1);
+      at.forEach((n, j) => {
+        if (n >= 0) byNode[n] = j;
+      });
       const nodes = el.querySelectorAll<SVGGElement>('[data-gull]');
       nodes.forEach((g, i) => {
-        const p = poses[i];
+        const p = byNode[i]! >= 0 ? poses[byNode[i]!] : undefined;
         const img = g.firstElementChild;
+        // Nœud passé à un autre oiseau : l'image de l'ancien n'est pas gardée en attendant.
+        if (slots.current[i] !== before[i]) dirs[i] = 0;
         if (!p || !img || !props) {
-          g.setAttribute('display', 'none');
+          setIfChanged(g, 'display', 'none');
           return;
         }
         const spec: PropSpec = { id: 'gull', args: { wing: p.wing }, day, dir: p.dir, frame: still ? 0 : p.flap };
@@ -99,20 +129,20 @@ export function GullsLayer({ width, height, seed, sky, facades, ground, minutes,
         if (url === null) props.want(key, () => paintProp(spec), again);
         if (url !== null) {
           const [bx, by, bw, bh] = PROPS.gull!.box(spec.args!);
-          img.setAttribute('href', url);
-          img.setAttribute('x', String(p.dir === -1 ? -(bx + bw) : bx));
-          img.setAttribute('y', String(by));
-          img.setAttribute('width', String(bw));
-          img.setAttribute('height', String(bh));
+          setIfChanged(img, 'href', url);
+          setIfChanged(img, 'x', String(p.dir === -1 ? -(bx + bw) : bx));
+          setIfChanged(img, 'y', String(by));
+          setIfChanged(img, 'width', String(bw));
+          setIfChanged(img, 'height', String(bh));
           dirs[i] = p.dir;
         }
         if (dirs[i] !== p.dir) {
-          g.setAttribute('display', 'none');
+          setIfChanged(g, 'display', 'none');
           return;
         }
-        g.setAttribute('display', 'inline');
-        g.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(${p.s.toFixed(3)})`);
-        g.setAttribute('opacity', (1 - p.far).toFixed(2));
+        setIfChanged(g, 'display', 'inline');
+        setIfChanged(g, 'transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) scale(${p.s.toFixed(3)})`);
+        setIfChanged(g, 'opacity', (1 - p.far).toFixed(2));
       });
     };
     current.current = run;

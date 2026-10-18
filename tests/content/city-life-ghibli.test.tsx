@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY, writeArt } from '../../src/content/art-setting';
 import { CityLifeLayer, pedPose } from '../../src/content/city-life';
+import { markPhase } from '../../src/content/festive-marks';
 import { dayContext } from '../../src/core/library/city/calendar';
 import type { CityContext } from '../../src/core/library/city/intensity';
 import { cityMetrics } from '../../src/core/library/city/metrics';
@@ -118,5 +119,18 @@ describe('ombres portées des passants la nuit (Ghibli)', () => {
     expect(make(12 * 60).querySelector('[data-actor-shades]')).toBeNull();
     localStorage.removeItem(ART_KEY);
     expect(make(23 * 60).querySelector('[data-actor-shades]')).toBeNull();
+  });
+});
+
+describe('signes festifs tenus : décalage du cycle', () => {
+  it('phase en cycles (fraction de [0, 1[), propre à chaque passant et stable', () => {
+    const peds = pedestriansFor(1000, 3);
+    const phases = peds.map((p) => markPhase(p.id));
+    for (const f of phases) {
+      expect(f).toBeGreaterThanOrEqual(0);
+      expect(f).toBeLessThan(1);
+    }
+    expect(new Set(phases.map((f) => f.toFixed(3))).size).toBeGreaterThan(peds.length / 2);
+    expect(markPhase(peds[0]!.id)).toBe(phases[0]);
   });
 });
