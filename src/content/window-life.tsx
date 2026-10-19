@@ -12,9 +12,9 @@ import { anchorsOf } from '../core/library/figure/bake';
 import { shapeOf, signatureOf } from '../core/library/figure/dress';
 import { INK } from '../core/library/paint/cel';
 import { hashString, mulberry32 } from '../core/library/scene-world';
-import type { Sky } from '../core/library/sky';
+import { mixHex, type Sky } from '../core/library/sky';
 import { GhibliFigure, figurePalette, hideFigure, poseFigure } from './figure/ghibli-figure';
-import { useFigureRegistry, type FigureRegistry } from './figure/figure-host';
+import { useFigureRegistry, type FigureRegistry, type Palette } from './figure/figure-host';
 import { BAR_STEP, balconyOf, joineryPath, type Balcony } from './ghibli-window-art';
 import { lifeStates, sceneMinute, type SceneLife } from './use-scene-life';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -258,17 +258,24 @@ type Look = { night: boolean; dark: number; sky: Sky };
 // Coupé par le <clipPath> rectangulaire de sa vitre (ou du cadre du penché ; aucun au balcon), posé par la boucle.
 // La nuit, `out` porte deux palettes : la silhouette unie (contre-jour devant une pièce allumée, `data-pk-backlit`) et le
 // pantin en couleurs teintées par l'ambiance de nuit (au balcon d'une pièce éteinte : rien ne l'éclaire par-derrière,
-// `data-pk-dim`, maquette « pantin sombre sur le balcon d'une pièce éteinte ») ; la boucle choisit (`data-palette`). Les
+// `data-pk-dim`, assombries par `dimPalette`, maquette « pantin sombre sur le balcon d'une pièce éteinte ») ; la boucle choisit
+// (`data-palette`). Les
 // penchés à la fenêtre gardent la silhouette : en couleurs, chaque tenue serait cuite à chaque palier de la nuit, sur
 // toute la ville (temps du test de la borne × 1,6).
 type Slot = 'still' | 'shade' | 'in' | 'out';
 const BAKED_SLOTS: readonly Slot[] = ['still', 'shade'];
 const SLOTS: readonly Slot[] = ['still', 'shade', 'in', 'out'];
+// Pantin au balcon d'une pièce éteinte : la teinte de nuit du moteur (`tone`, 55 % vers #0B1030) le laissait encore vif ;
+// chaque couleur est tirée de 60 % de plus vers un bleu-gris sombre #1E2240 — lisible (peau, chemise, pantalon distincts), mais
+// nettement plus sombre que de jour, entre la silhouette unie #1A1422 et la couleur (maquette 14 juillet 22 h 30).
+const DIM_NIGHT = '#1E2240';
+const DIM_MIX = 0.6;
+const dimPalette = (p: Palette): Palette => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, k.startsWith('f') ? mixHex(v, DIM_NIGHT, DIM_MIX) : v]));
 const FigNode = memo(function FigNode({ fm, look, slot }: { fm: FigM; look: Look; slot: Slot }): ReactElement {
   const reg = useFigureRegistry();
   const two = slot === 'out' && look.night;
   const pks = two
-    ? { 'data-pk-backlit': reg.addPalette(figurePalette(fm.outfit, look.sky, false, undefined, { silhouette: true })), 'data-pk-dim': reg.addPalette(figurePalette(fm.outfit, look.sky, false)) }
+    ? { 'data-pk-backlit': reg.addPalette(figurePalette(fm.outfit, look.sky, false, undefined, { silhouette: true })), 'data-pk-dim': reg.addPalette(dimPalette(figurePalette(fm.outfit, look.sky, false))) }
     : {};
   return (
     <g data-wl-fig={fm.key} data-slot={slot} data-anim="0" display="none" {...pks}>

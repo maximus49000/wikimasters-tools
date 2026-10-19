@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // tests/content/window-life-balcon-nuit.test.tsx — vie aux fenêtres (finitions du chantier « vie au-dessus de la rue ») :
-// pantin au balcon la nuit, en couleurs teintées de nuit devant une pièce éteinte, silhouette unie devant une pièce allumée.
+// pantin au balcon la nuit, en couleurs sombres (bleu-gris) devant une pièce éteinte, silhouette unie devant une pièce allumée.
 // Fichier à part : window-life.test.tsx est déjà au bord de la mémoire d'un processus de test.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -62,9 +62,17 @@ describe('pantins au balcon la nuit', () => {
     const width = 1440;
     const m = mount(width);
     const facades = cityFacades(width, H, SEED);
+    const palette = (g: Element): string[] => g.querySelector('[data-figure]')!.getAttribute('data-palette')!.split(',').filter(Boolean);
     const silh = (g: Element): boolean => {
-      const colors = new Set(g.querySelector('[data-figure]')!.getAttribute('data-palette')!.split(',').filter(Boolean));
+      const colors = new Set(palette(g));
       return colors.size === 1 && colors.has('#1A1422');
+    };
+    // Pantin sombre (maquette) : chaque couleur est un bleu-gris sombre (somme des canaux ≤ 260 ; la seule teinte de nuit du
+    // moteur laissait la peau à ≈ 312 et une chemise écrue à ≈ 360), et la palette garde plusieurs couleurs (pas la silhouette).
+    const sum = (hex: string): number => [1, 3, 5].reduce((acc, i) => acc + parseInt(hex.slice(i, i + 2), 16), 0);
+    const dim = (g: Element): boolean => {
+      const colors = palette(g);
+      return new Set(colors).size > 1 && colors.every((c) => /^#[0-9a-f]{6}$/i.test(c) && sum(c) <= 260);
     };
     let dimOut = 0, litOut = 0;
     const show = lifeOf(facades, BASTILLE).day.show!;
@@ -84,6 +92,7 @@ describe('pantins au balcon la nuit', () => {
         if (lit) litOut++;
         else dimOut++;
         expect(silh(g), `${id}/${room} à ${t} (${lit ? 'allumée' : 'éteinte'})`).toBe(lit);
+        if (!lit) expect(dim(g), `${id}/${room} à ${t} : pantin sombre ${palette(g).join(',')}`).toBe(true);
       }
     }
     expect(dimOut).toBeGreaterThan(0);
