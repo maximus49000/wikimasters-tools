@@ -5,7 +5,8 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WindowLifeLayer, bakeHooks, sirenPresent } from '../../src/content/window-life';
+import { SIREN_LOOK_S, WindowLifeLayer, bakeHooks, sirenLook, sirenPresent, sirenSegments } from '../../src/content/window-life';
+import type { Schedule, Segment } from '../../src/core/library/city/schedules';
 import { sharedSceneLife, type SceneLife } from '../../src/content/use-scene-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { dayContext } from '../../src/core/library/city/calendar';
@@ -275,6 +276,70 @@ describe('calque de la vie derrière les fenêtres', () => {
     }
   });
 
+
+  describe('sirène : qui réagit, et comment (emplois du temps construits)', () => {
+    const facades = cityFacades(2000, H, SEED);
+    const life = lifeOf(facades);
+    // Logement à volets avec un salon ; le membre 0 seul est candidat.
+    const d = life.dwellings.find((x) => x.shutters !== null && x.rooms.includes('salon'))!;
+    const M = 900;
+    const sched = (...segments: Segment[]): Schedule => ({ dwelling: d.id, segments: [{ k: 'lit', room: 'salon', t0: 480, t1: 1320, tone: 'warm' }, ...segments], shutUser: false, maxActors: 2 });
+    const o = { members: [0], room: 'salon' as const, balcony: false, wet: false };
+    // Ambulance dont le tirage fait réagir ce logement (le tirage seul, 45 % des clés).
+    const key = Array.from({ length: 50 }, (_, i) => `amb-${i}`).find((k) => sirenLook(d, sched(), null, M, SEED, k, o) !== null)!;
+    const look = (...segments: Segment[]) => sirenLook(d, sched(...segments), null, M, SEED, key, o);
+    it('membre libre : il réagit ; pas si une scène ou un départ commence avant la fin de la réaction', () => {
+      expect(key).toBeDefined();
+      const free = look()!;
+      expect(free.m).toBe(0);
+      expect(free.from).toBeUndefined();
+      expect(free.t1 - free.t0).toBeCloseTo(SIREN_LOOK_S / 60, 6);
+      // Scène qui commence pendant la réaction (ou pendant sa sortie) : il ne réagit pas.
+      expect(look({ k: 'act', t0: M + 0.6, t1: M + 10, room: 'cuisine', where: 'in', choreo: 'cook', m: 0 })).toBeNull();
+      expect(look({ k: 'act', t0: free.t1 + 0.1, t1: M + 10, room: 'cuisine', where: 'in', choreo: 'cook', m: 0 })).toBeNull();
+      // Départ pendant la réaction : non plus ; une scène bien après : si.
+      expect(look({ k: 'depart', t: M + 1, m: 0 })).toBeNull();
+      expect(look({ k: 'act', t0: M + 20, t1: M + 30, room: 'cuisine', where: 'in', choreo: 'cook', m: 0 })).not.toBeNull();
+    });
+    it('fenêtre fermée : ouverte puis refermée ; déjà ouverte : on n\'y touche pas', () => {
+      const shut = look()!;
+      expect(shut.opens).toBe(true);
+      expect(sirenSegments(shut).filter((g) => g.k === 'win')).toHaveLength(2);
+      const open = look({ k: 'win', room: 'salon', t: 800, to: 1, dur: 0.25 })!;
+      expect(open.opens).toBe(false);
+      const segs = sirenSegments(open);
+      expect(segs.filter((g) => g.k === 'win')).toHaveLength(0);
+      const merged = sched(...segs, { k: 'win', room: 'salon', t: 800, to: 1, dur: 0.25 });
+      for (let t = M; t < open.t1 + 2; t += 0.1) expect(homeState(d, merged, null, t).win.salon).toBeCloseTo(1, 6);
+    });
+    it('volets fermés : personne ne se penche', () => {
+      expect(look({ k: 'shut', room: 'salon', t: 800, to: 0, dur: 1.2 })).toBeNull();
+    });
+    it('membre assis : il se lève de sa place, va à la fenêtre et y revient ; sa scène reprend', () => {
+      const tv: Segment = { k: 'act', t0: 880, t1: 960, room: 'salon', where: 'in', choreo: 'tv', m: 0 };
+      const seat = look(tv)!;
+      expect(seat).not.toBeNull();
+      const before = homeState(d, sched(tv), null, M).actors.find((a) => a.m === 0)!;
+      expect(seat.from).toBeCloseTo(windowPose(before, d)!.dx, 6);
+      // Scène assise qui finit avant la réaction : il ne se lève pas.
+      expect(look({ ...tv, t1: M + 1 })).toBeNull();
+      const merged = sched(...sirenSegments(seat), tv);
+      const first = (t: number) => homeState(d, merged, null, t).actors.find((a) => a.m === 0)!;
+      // Début : il marche dans la pièce depuis sa place ; milieu : penché ; fin : il revient à sa place en marchant.
+      const p0 = windowPose(first(seat.t0 + 0.01), d)!;
+      expect(p0.gait).toBe('walk');
+      expect(p0.where).toBe('in');
+      expect(p0.dx).toBeCloseTo(seat.from!, 1);
+      expect(windowPose(first((seat.t0 + seat.t1) / 2), d)!.where).toBe('lean');
+      const p1 = windowPose(first(seat.t1 - 0.005), d)!;
+      expect(p1.gait).toBe('walk');
+      expect(p1.dx).toBeCloseTo(seat.from!, 1);
+      // Après : sa scène assise, à la même place.
+      const after = first(seat.t1 + 0.01);
+      expect(after.choreo).toBe('tv');
+      expect(windowPose(after, d)!.dx).toBeCloseTo(seat.from!, 6);
+    });
+  });
   it('changement de largeur ou de jour : remontage unique', () => {
     const m = mount(1080);
     m.render({ minutes: 12 * 60 });

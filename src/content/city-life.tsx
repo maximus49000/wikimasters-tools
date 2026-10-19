@@ -53,6 +53,7 @@ import { FrontSidewalk } from './front-sidewalk';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
 import { CROSS_HALF, xOfS, type ScheduledArrival, type TrafficEnv } from '../core/library/city/traffic/engine';
 import { FIREWORK_VARIANTS, fireworksShow, type FireworksShow } from '../core/library/city/fireworks-show';
+import { hillLandmarks } from '../core/library/paint/city-plan';
 import { SantaLayer } from './santa-layer';
 import { GullsLayer } from './gulls-layer';
 import { useCityEvents } from './use-city-events';
@@ -277,15 +278,46 @@ const eventOpacity = (e: CityEvent, t: number, still: boolean): string => (still
 // des événements (mêmes fusées, même masque des toits, 30 s), clé stable `show-<instant>`. Instants muraux : la salve de la
 // minute de scène `at` part à `nowS + (at − m) · 60`, où (m, nowS) est un repère de l'horloge de la scène (minute de scène
 // à l'instant mural nowS) : le spectacle se voit aussi quand l'heure de la scène est fixée.
+// `avoid` : intervalles de x0 interdits (colonnes des tours-horloges du fond, élargies de la portée du dessin, `towerColumns`) :
+// la position tirée `x` est répartie sur la seule partie libre de [40, width − 40], sans changer le nombre de salves.
 export const SHOW_BURST_S = 30;
-export function showEvents(show: FireworksShow, m: number, nowS: number, width: number): CityEvent[] {
+// Demi-largeur du dessin d'une salve (fusées à cx ± 120, gerbe de 22 × 1,15 et son halo), en unités de la scène.
+export const SHOW_REACH = 150;
+export function showEvents(show: FireworksShow, m: number, nowS: number, width: number, avoid: readonly (readonly [number, number])[] = []): CityEvent[] {
+  // Parties libres de [40, width − 40], de gauche à droite.
+  let free: [number, number][] = [[40, Math.max(40, width - 40)]];
+  for (const [a, b] of avoid) {
+    free = free.flatMap(([u, v]): [number, number][] => {
+      if (b <= u || a >= v) return [[u, v]];
+      const out: [number, number][] = [];
+      if (a > u) out.push([u, a]);
+      if (b < v) out.push([b, v]);
+      return out;
+    });
+  }
+  const total = free.reduce((s, [u, v]) => s + v - u, 0);
+  if (total <= 0) return [];
+  const xOf = (r: number): number => {
+    let rest = r * total;
+    for (const [u, v] of free) {
+      if (rest <= v - u) return u + rest;
+      rest -= v - u;
+    }
+    return free[free.length - 1]![1];
+  };
   return show.bursts.map((b): CityEvent => {
     const start = nowS + (b.at - m) * 60;
     return {
       key: `show-${Math.round(b.at * 600)}`, id: 'fireworks', layer: 'fixed', start, end: start + SHOW_BURST_S, dir: 1, track: null, speed: 0,
-      x0: 40 + b.x * Math.max(0, width - 80), y: b.y, pick: b.x, variant: b.variant / FIREWORK_VARIANTS, yields: [],
+      x0: xOf(b.x), y: b.y, pick: b.x, variant: b.variant / FIREWORK_VARIANTS, yields: [],
     };
   });
+}
+// Colonnes des tours-horloges peintes au fond (city-plan.ts), élargies de la portée d'une salve : x0 interdits au spectacle
+// (ses gerbes passaient devant le clocher ; le masque des toits ne prend que les façades).
+export function towerColumns(width: number, height: number, seed: number): [number, number][] {
+  const reach = SHOW_REACH * cityMetrics(height).unit;
+  return hillLandmarks(width, height, seed).filter((l) => l.kind === 'tower').map((l): [number, number] => [l.x - 2 * l.s - reach, l.x + l.w + 2 * l.s + reach]);
 }
 
 export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNight = false, weather }: CityLifeProps): ReactElement {
@@ -479,9 +511,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const tRender = still ? frozen.current! : Date.now() / 1000;
   if (!sceneClock.current || sceneClock.current.m !== city.minutes) sceneClock.current = { m: city.minutes, base: Math.floor(tRender / 60) * 60 };
   const anchor = sceneClock.current;
+  // Colonnes des tours-horloges du fond, calculées seulement un jour de spectacle.
+  const towers = useMemo(() => (shows.today || shows.prev ? towerColumns(width, height, seed) : []), [shows, width, height, seed]);
   const showList = useMemo(
-    () => [...(shows.today ? showEvents(shows.today, anchor.m, anchor.base, width) : []), ...(shows.prev ? showEvents(shows.prev, anchor.m + 1440, anchor.base, width) : [])],
-    [shows, anchor.m, anchor.base, width],
+    () => [...(shows.today ? showEvents(shows.today, anchor.m, anchor.base, width, towers) : []), ...(shows.prev ? showEvents(shows.prev, anchor.m + 1440, anchor.base, width, towers) : [])],
+    [shows, anchor.m, anchor.base, width, towers],
   );
   const events = useCityEvents({ seed, width, city, intensity, vehicles: NO_VEHICLES, still, frozenT: frozen.current, extra: showList });
 

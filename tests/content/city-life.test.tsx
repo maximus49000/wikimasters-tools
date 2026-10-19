@@ -3,7 +3,7 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CityLifeLayer, pedEdgePad, showEvents } from '../../src/content/city-life';
+import { CityLifeLayer, pedEdgePad, showEvents, towerColumns } from '../../src/content/city-life';
 import { lifeStates, sharedSceneLife } from '../../src/content/use-scene-life';
 import { fireworksShow } from '../../src/core/library/city/fireworks-show';
 import { dayContext } from '../../src/core/library/city/calendar';
@@ -583,10 +583,19 @@ describe('CityLifeLayer : réactions aux événements de la rue (vie au-dessus d
     const got = showNodes(c);
     expect(got.map((n) => n.getAttribute('data-life-id')).sort()).toEqual([...want].sort());
     // Mêmes sprites et même masque des toits que les salves isolées ; plus ou moins hautes, jamais plus bas qu'elles (y = 0).
+    // Aucune salve dans la colonne d'une tour-horloge du fond (élargie de la portée du dessin).
+    const towers = towerColumns(720, 340, 1);
+    expect(towers.length).toBeGreaterThan(0);
     for (const n of got) {
       expect(n.closest('[data-event-mask="skyline"]')).not.toBeNull();
-      expect(Number(/translate\([-\d.]+ ([-\d.]+)\)/.exec(n.getAttribute('transform')!)![1])).toBeLessThanOrEqual(0);
+      const [, x, y] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(n.getAttribute('transform')!)!.map(Number);
+      expect(y).toBeLessThanOrEqual(0);
+      for (const [a, b] of towers) expect(x! <= a + 0.1 || x! >= b - 0.1, `salve à x = ${x} dans la tour [${a}, ${b}]`).toBe(true);
     }
+    // Toutes les salves du spectacle (pas seulement celles de l'instant) évitent les tours, et gardent leur nombre.
+    const all = showEvents(show, minutes, NOW_S, 1080, towerColumns(1080, 340, 1));
+    expect(all).toHaveLength(show.bursts.length);
+    for (const e of all) for (const [a, b] of towerColumns(1080, 340, 1)) expect(e.x0 <= a || e.x0 >= b).toBe(true);
     // Avant le spectacle : aucune salve.
     expect(showNodes(at(Math.floor(show.start) - 3, D))).toHaveLength(0);
     // Salons éteints et habitants penchés ou au balcon (emplois du temps du jour de fête).

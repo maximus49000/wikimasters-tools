@@ -604,7 +604,8 @@ export function sirenPresent(d: Dwelling, today: Sched, yesterday: Sched | null,
 }
 
 // `from` : place du membre assis qui se lève (absente : il arrive de la pièce voisine).
-export type SirenLook = { m: number; room: Room; where: Where; choreo: 'lean' | 'leanRail'; t0: number; t1: number; from?: number };
+// `opens` : la fenêtre était fermée, la réaction l'ouvre et la referme (déjà ouverte, on n'y touche pas).
+export type SirenLook = { m: number; room: Room; where: Where; choreo: 'lean' | 'leanRail'; t0: number; t1: number; opens: boolean; from?: number };
 // Réaction d'un logement à la sirène `key` entendue à la minute m, ou null. `members` : membres qui ont un pantin (le calque
 // les monte pour la journée) ; `room` : pièce de la fenêtre où l'on se penche ; `balcony` : balcon devant le salon.
 // Qui y va : un membre chez lui sans scène en cours (il arrive de la pièce voisine), sinon un membre assis dans cette pièce
@@ -621,7 +622,13 @@ export function sirenLook(d: Dwelling, today: Schedule, yesterday: Schedule | nu
   if ((st.shut[o.room] ?? 1) < SIREN_SHUT_MIN) return null;
   const t0 = m + (delay * SIREN_DELAY_S) / 60;
   const t1 = t0 + SIREN_LOOK_S / 60;
-  const home = o.members.filter((x) => x < d.hh.members.length && memberHome(today, x, m, d.climb));
+  // Rien de prévu pour ce membre avant la fin de la réaction (sortie comprise) : aucune scène qui commence (elle serait cachée
+  // par la réaction, puis il reparaîtrait au milieu sans marche d'entrée), aucun départ (il descendrait la cage encore penché).
+  const busyUntil = t1 + IN_OUT_S / 60;
+  const planned = (x: number): boolean =>
+    today.segments.some((g) => (g.k === 'act' && g.m === x && g.t0 >= m && g.t0 < busyUntil) || (g.k === 'depart' && g.m === x && g.t - d.climb >= m && g.t - d.climb < t1)) ||
+    !!yesterday?.segments.some((g) => g.k === 'act' && g.m === x && g.t0 - 1440 >= m && g.t0 - 1440 < busyUntil);
+  const home = o.members.filter((x) => x < d.hh.members.length && memberHome(today, x, m, d.climb) && !planned(x));
   let mem = home.find((x) => !st.actors.some((a) => a.m === x));
   let from: number | undefined;
   if (mem === undefined) {
@@ -639,16 +646,18 @@ export function sirenLook(d: Dwelling, today: Schedule, yesterday: Schedule | nu
   }
   if (mem === undefined) return null;
   const out = o.balcony && o.room === 'salon' && !o.wet;
-  return { m: mem, room: o.room, where: out ? 'balcony' : 'lean', choreo: out ? 'leanRail' : 'lean', t0, t1, ...(from !== undefined ? { from } : {}) };
+  return { m: mem, room: o.room, where: out ? 'balcony' : 'lean', choreo: out ? 'leanRail' : 'lean', t0, t1, opens: (st.win[o.room] ?? 0) < 0.5, ...(from !== undefined ? { from } : {}) };
 }
 
 // Segments ajoutés à l'emploi du temps du jour pour une réaction : la scène (événement, priorité 5), la fenêtre ouverte à
-// l'arrivée devant elle et refermée au départ (balcon : la porte-fenêtre). Placés en tête : la scène de la réaction passe
+// l'arrivée devant elle et refermée au départ si elle était fermée (balcon : la porte-fenêtre). Placés en tête : la scène de la réaction passe
 // avant celle, en cours, du membre assis (le calque ne dessine que la première scène de chaque membre).
-function sirenSegments(s: SirenLook): Segment[] {
+export function sirenSegments(s: SirenLook): Segment[] {
   const walk = IN_OUT_S / 60;
+  const act: Segment = { k: 'act', t0: s.t0, t1: s.t1, room: s.room, where: s.where, choreo: s.choreo, m: s.m, slot: 0, event: true, ...(s.from !== undefined ? { from: s.from } : {}) };
+  if (!s.opens) return [act];
   return [
-    { k: 'act', t0: s.t0, t1: s.t1, room: s.room, where: s.where, choreo: s.choreo, m: s.m, slot: 0, event: true, ...(s.from !== undefined ? { from: s.from } : {}) },
+    act,
     { k: 'win', room: s.room, t: s.t0 + walk * 0.7, to: 1, dur: 0.15 },
     { k: 'win', room: s.room, t: s.t1 - walk, to: 0, dur: 0.15 },
   ];
