@@ -199,9 +199,10 @@ export function pigeonsOf(flocks: readonly PigeonFlock[], m: number, wet: boolea
         return;
       }
       const side = mode === 'takeoff' ? f.side : -f.side;
+      // Sens réel de la marche : vers `f.side` au départ comme au retour (au retour l'oiseau vient de l'autre côté).
       const far = [b.x + side * (95 + i * 12), SKY_Y - i * 4];
       const ctl = [b.x + side * 30, f.y - 60];
-      out.push({ id: b.id, x: bezier(b.x, ctl[0]!, far[0]!, away), y: bezier(f.y, ctl[1]!, far[1]!, away), pose: 'fly', phase: s * 9 + i, dir: (mode === 'takeoff' ? f.side : -f.side) as 1 | -1 });
+      out.push({ id: b.id, x: bezier(b.x, ctl[0]!, far[0]!, away), y: bezier(f.y, ctl[1]!, far[1]!, away), pose: 'fly', phase: s * 9 + i, dir: f.side });
     });
   }
   return out;

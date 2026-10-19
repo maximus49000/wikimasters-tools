@@ -97,7 +97,7 @@ function BirdSlot({ hub, id, dark }: { hub: Hub; id: string; dark: number }): Re
         <PigeonM pose={rest ? (v.pose as 'perch' | 'peck') : 'perch'} phase={rest ? v.phase : 0} dir={rest ? v.dir : 1} dark={dark} />
       </g>
       <g data-pose="fly" display={vis(v.pose === 'fly')}>
-        <PigeonM pose="fly" phase={v.pose === 'fly' ? v.phase : 0} dir={1} dark={dark} />
+        <PigeonM pose="fly" phase={v.pose === 'fly' ? v.phase : 0} dir={v.pose === 'fly' ? v.dir : 1} dark={dark} />
       </g>
     </g>
   );

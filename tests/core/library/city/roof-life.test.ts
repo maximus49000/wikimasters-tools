@@ -141,6 +141,30 @@ describe('pigeons des corniches', () => {
     expect(hadPerch && hadAway).toBe(true);
   });
 
+  it('en vol, la tête (dir) regarde le sens du mouvement, au départ comme au retour, des deux côtés', () => {
+    const sides = new Set<number>();
+    let flights = 0;
+    for (const day of [TUE, WED, THU, JUNE]) for (const l of fronts) for (const f of pigeonFlocks(l, SEED, day.iso)) {
+      sides.add(f.side);
+      const ids = new Set(f.birds.map((b) => b.id));
+      const prev = new Map<number, number>();
+      for (let s = f.open * 60; s < f.close * 60 + 600; s += 0.25) {
+        const now = pigeonsAt(l, SEED, day.iso, s / 60, false);
+        for (const id of ids) if (!now.some((p) => p.id === id)) prev.delete(id); // absent : le vol suivant repart de zéro
+        for (const b of now) {
+          if (!ids.has(b.id)) continue;
+          if (b.pose === 'fly' && prev.has(b.id) && b.x !== prev.get(b.id)) {
+            flights++;
+            expect(Math.sign(b.x - prev.get(b.id)!)).toBe(b.dir);
+          }
+          if (b.pose === 'fly') prev.set(b.id, b.x); else prev.delete(b.id);
+        }
+      }
+    }
+    expect(sides.size).toBe(2);
+    expect(flights).toBeGreaterThan(100);
+  });
+
   it('partent vers le coucher du soleil du lieu et arrivent après son lever', () => {
     // Paris le 15 décembre : lever 8 h 44, coucher 16 h 54.
     const sun = { sunrise: 524, sunset: 1014 };

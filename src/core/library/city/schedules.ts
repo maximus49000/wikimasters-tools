@@ -424,12 +424,14 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       bed = late(Math.max(1293 + Z * 0.3, tvStart + 40));
       const table = [...ms];
       for (let i = 0; i < guests; i++) table.push(guest(dinner - 12 + i * 3, bed - 8 + i));
-      lit(K, 1080 + E * 0.3, Math.max(dinner + 45, bed));
       meal(K, dinner, 36, table);
       // Volets à la tombée de la nuit du lieu (coucher + 20 min), après le dernier regard sur la rue de l'après-midi (on ne
       // ferme pas la fenêtre de celui qui est penché ou au balcon), ou avant d'aller se coucher quand la nuit tombe plus tard
       // (été, jour polaire).
       const nightfall = Math.min(Math.max(day.sunset + 20, lookEnd + 1), bed - 5);
+      // Cuisine allumée à 18 h, ou plus tôt si les volets se ferment avant (hiver) : il est chez lui (le retraité ne sort pas),
+      // pas question de rester dans le noir derrière des volets clos.
+      lit(K, Math.min(1080 + E * 0.3, nightfall), Math.max(dinner + 45, bed));
       closeShutters(K, nightfall, 0);
       closeShutters(L, nightfall + 1.6, 0);
       drawCurt(L, nightfall + 3.4, 0); // les rideaux ouverts le matin se tirent le soir

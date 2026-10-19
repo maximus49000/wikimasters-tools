@@ -27,7 +27,7 @@ const SUNS: readonly (readonly [number, number])[] = [
   [8.7, 17.3], [8.1, 18.2], [7.2, 19.0], [7.1, 20.7], [6.3, 21.4], [5.8, 21.9], [6.1, 21.8], [6.8, 21.1], [7.5, 20.1], [8.2, 19.0], [8.0, 17.3], [8.6, 16.9],
 ];
 // Aux pôles, lever et coucher fictifs (minutes locales) qui gardent les règles logiques : nuit polaire, une courte journée
-// sombre de 10 h à 14 h (on allume et l'on ferme tôt) ; jour polaire, coucher à minuit, après celui du foyer (les volets se
+// sombre de 10 h à 14 h (les volets se ferment tôt ; les lumières suivent l'emploi du temps et le ciel) ; jour polaire, coucher à minuit, après celui du foyer (les volets se
 // ferment à son coucher habituel, voir le retraité de `buildSchedule`) et lever à 4 h.
 const POLAR_NIGHT = { sunrise: 600, sunset: 840 } as const;
 const POLAR_DAY = { sunrise: 240, sunset: 1440 } as const;
