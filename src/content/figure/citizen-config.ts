@@ -4,7 +4,7 @@ import { RELAY_BASE } from '../../core/documentary/config';
  * Interrupteur des habitants 3D : `true` = les figures de la ville sont rendues en 3D (three.js),
  * `false` = retour au rendu 2D d'avant, sans autre changement de code.
  */
-export const CITIZENS_3D = true;
+export const CITIZENS_3D = false;
 
 /** Relais qui sert les persos (garde-robe et modèles). */
 export const RELAY_PERSOS = `${RELAY_BASE}/persos`;
