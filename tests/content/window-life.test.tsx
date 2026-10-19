@@ -479,6 +479,44 @@ describe('calque de la vie derrière les fenêtres', () => {
       expect(layer.getAttribute('display')).not.toBe('none');
     });
 
+    it('cuisson qui échoue toujours : après les essais, le groupe vivant revient dans la page (volets, rideaux, pantins)', () => {
+      setup();
+      const m = mount(1080);
+      m.render({ minutes: 21 * 60 });
+      const layer = m.layer();
+      const fail = (): number => {
+        const list = pending.splice(0);
+        act(() => { for (const p of list) p.onerror?.(); });
+        return list.length;
+      };
+      const fronts = layer.querySelectorAll('[data-wl-facade]').length;
+      expect(fronts).toBeGreaterThan(0);
+      // Hors du document tant que la cuisson est tentée.
+      expect(layer.querySelectorAll('[data-wl-live]')).toHaveLength(0);
+      fail();
+      for (let k = 1; k <= 3; k++) {
+        vi.spyOn(Date, 'now').mockReturnValue((NOW_S + 2 * k) * 1000);
+        m.render({ minutes: 21 * 60 + k });
+        fail();
+      }
+      expect(layer.getAttribute('display')).not.toBe('none');
+      // Chaque immeuble : groupe vivant dans la page, montré, image cuite cachée.
+      for (const g of layer.querySelectorAll('[data-wl-facade]')) {
+        const live = g.querySelector(':scope > [data-wl-live]');
+        expect(live, g.getAttribute('data-wl-facade')!).not.toBeNull();
+        expect(live!.getAttribute('display')).not.toBe('none');
+        expect(g.querySelector(':scope > [data-wl-baked]')!.getAttribute('display')).toBe('none');
+      }
+      expect(layer.querySelectorAll('[data-wl-live] [data-shutters]').length).toBeGreaterThan(0);
+      expect(layer.querySelectorAll('[data-wl-live] [data-curtain-panel]').length).toBeGreaterThan(0);
+      // Pantins en pose fixe montrés dans le groupe vivant (plus de double vivant qui attend une image).
+      expect(shown(layer).filter((f) => f.closest('[data-wl-live]')).length).toBeGreaterThan(0);
+      // Plus aucune tentative ensuite.
+      vi.spyOn(Date, 'now').mockReturnValue((NOW_S + 20) * 1000);
+      m.render({ minutes: 21 * 60 + 10 });
+      expect(pending).toHaveLength(0);
+    });
+
     it('image cuite : les nœuds cachés le restent (seule la racine perd son display)', () => {
       setup();
       const m = mount(1080);

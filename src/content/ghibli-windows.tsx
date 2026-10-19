@@ -9,6 +9,7 @@ import type { LightTone } from '../core/library/city/schedules';
 import { GlowDefs, LitWindow, NightGlass, glowBound, glowId, glowSize } from './ghibli-window-art';
 import { lifeStates, useToneMemory, windowLight, type SceneLife } from './use-scene-life';
 import type { HomeState } from '../core/library/city/home-state';
+import { windowShutters } from './window-life-art';
 
 // Calque des fenêtres de la ville peinte (vague Ghibli), hors filtre d'étalonnage, au-dessus des tranches du décor. Ordre :
 // 1. lumières du mur du fond (déjà privées de celles que cache le premier plan, facades.ts) ;
@@ -86,6 +87,13 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
   // Sombre : nuit, ou ciel de mauvais temps (comme l'allumage du chantier 1).
   const dark = gloom || nightness(daylight) > 0;
   const tones = useToneMemory(slots);
+  // Fenêtres qui portent des volets (même règle que leur montage dans le calque de la vie aux fenêtres) : seules leurs
+  // lueurs suivent les volets de la pièce. Persiennes comptées comme montées : une pièce qui ne les ferme jamais les a
+  // ouvertes (shut = 1), ce qui revient au même.
+  const shuttered = useMemo(() => slots.map(({ win, group }) => {
+    const d = life?.byFacadeHome.get(group);
+    return !!d && windowShutters(d.shutters, win, buildings[d.facade]?.layout, true) !== null;
+  }), [slots, life, buildings]);
   return (
     <g data-ghibli-windows="">
       <GlowDefs prefix={prefix} sizes={sizes} />
@@ -96,10 +104,11 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
         const lit = light ? light.lit : roomLit(win, minutes, day, daylight, gloom);
         const tone: LightTone = light ? light.tone : roomTone(home, win.main, minutes);
         // Lueur sous l'appui selon les volets et le rideau de la pièce (maquette : glowK = volets × (1 − 0,55 × rideau
-        // tiré) ; volets clos : aucune ; le rideau ne compte que si la fenêtre en a) ; sans la vie : entière.
+        // tiré) ; volets clos : aucune ; volets et rideau ne comptent que si la fenêtre en a) ; sans la vie : entière.
         const st = life && states ? states.get(group) : undefined;
         const room = st ? life!.byFacadeHome.get(group)?.roomOfWindow.get(win.bay) : undefined;
-        const glowK = st && room ? Number((Math.min(1, Math.max(0, st.shut[room] ?? 1)) * (1 - 0.55 * (home.curtain ? (st.curt[room] ?? 0) : 0))).toFixed(2)) : 1;
+        const shut = shuttered[k] ? Math.min(1, Math.max(0, st?.shut[room!] ?? 1)) : 1;
+        const glowK = st && room ? Number((shut * (1 - 0.55 * (home.curtain ? (st.curt[room] ?? 0) : 0))).toFixed(2)) : 1;
         return (
           <g key={k} data-lamp="" data-lit={lit ? 'true' : 'false'} data-home={group} data-main={win.main ? 'true' : 'false'} opacity={lit ? dim : 0} style={{ transition: FADE }}>
             <LitWindow win={win} home={home} level={level} facadeX={facadeX} tone={tone} glow={glowId(prefix, win.w, win.h, dMax)} curtains={!life} glowK={glowK} />

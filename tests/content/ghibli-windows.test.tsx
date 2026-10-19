@@ -3,7 +3,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GhibliWindows } from '../../src/content/ghibli-windows';
-import { LitWindow, NightGlass, amb, luminance, nightCurtain, nightGlass, nightVoile } from '../../src/content/ghibli-window-art';
+import { GLOW, LitWindow, NightGlass, amb, balconyOf, luminance, nightCurtain, nightGlass, nightVoile } from '../../src/content/ghibli-window-art';
+import { windowShutters } from '../../src/content/window-life-art';
 import { PLASTERS, STONES, type FacadeWindow } from '../../src/core/library/city/facade-layout';
 import { GROUND_FLOOR } from '../../src/core/library/city/metrics';
 import { FAR_WINDOW, cityFacades } from '../../src/core/library/city/facades';
@@ -262,6 +263,37 @@ describe('calque des fenêtres Ghibli', () => {
     expect(container.querySelector('[data-night-frames]')!.getAttribute('d')).toContain(traverse);
   });
 
+  it('balcon éclairé : aucun aplat clair derrière le garde-corps ; dalle et jardinière à la force de la lueur', () => {
+    // Fenêtres d'étage de la ville devant un balcon (balconnet et filant), et celles à jardinière.
+    const cities = [cityFacades(720, 340, 5), cityFacades(1440, 340, 11), cityFacades(2000, 340, 3)];
+    const found = { balconnet: 0, filant: 0, box: 0 };
+    for (const b of cities.flat()) {
+      if (b.far || !b.layout) continue;
+      for (const w of b.layout.windows) {
+        const level = w.level >= 0 ? (b.layout.levels[w.level] ?? null) : null;
+        const balcony = balconyOf(w, level, b.layout.x);
+        if (!balcony && !w.box) continue;
+        if (balcony) found[level!.balcony as 'balconnet' | 'filant']++;
+        if (w.box) found.box++;
+        for (const glowK of [0, 0.45, 1]) {
+          act(() => {
+            root.render(<svg><LitWindow win={w} home={null} level={level} facadeX={b.layout!.x} tone="warm" glow="g" glowK={glowK} /></svg>);
+          });
+          // Aucun rectangle de la couleur de la lueur (l'aplat de hauteur du garde-corps : bandes autour du cadre).
+          expect(container.querySelectorAll(`rect[fill="${GLOW}"]`)).toHaveLength(0);
+          if (balcony) expect([...container.querySelectorAll('rect')].some((r) => Number(r.getAttribute('height')) === balcony.rh)).toBe(false);
+          const slabs = [...container.querySelectorAll('rect[data-glow-slab]')];
+          expect(slabs).toHaveLength((balcony ? 1 : 0) + (w.box ? 1 : 0));
+          for (const r of slabs) expect(r.getAttribute('opacity')).toBe(String(glowK));
+          expect(container.querySelector('use[data-glow]')!.getAttribute('opacity')).toBe(String(glowK));
+        }
+      }
+    }
+    expect(found.balconnet).toBeGreaterThan(0);
+    expect(found.filant).toBeGreaterThan(0);
+    expect(found.box).toBeGreaterThan(0);
+  });
+
   it('vitres éteintes jamais plus claires que le mur : voilage et rideaux ambiants sous la luminance du mur ambiant', () => {
     // Rideaux de notes.md §Couleurs (palette privée de facade-layout).
     const curtains = ['#F4E6D0', '#C85A3A', '#5A7AA8', '#E8C890', '#8A5A8E'];
@@ -406,7 +438,11 @@ describe('calque des fenêtres Ghibli : lumières par présence', () => {
   it('lueur : jamais de liseré clair autour du cadre ; elle suit volets et rideau (volets clos : aucune)', () => {
     // États forgés à 21 h : volets clos dans une pièce, rideau tiré dans une autre, le reste tel quel.
     const states = lifeStates(life, 21 * 60);
-    const closed = slots.findIndex(({ win, group }) => states.get(group)?.lit[life.byFacadeHome.get(group)!.roomOfWindow.get(win.bay)!]);
+    const hasShutters = (win: FacadeWindow, group: string): boolean => {
+      const d = life.byFacadeHome.get(group)!;
+      return windowShutters(d.shutters, win, facades[d.facade]!.layout, true) !== null;
+    };
+    const closed = slots.findIndex(({ win, group }) => hasShutters(win, group) && states.get(group)?.lit[life.byFacadeHome.get(group)!.roomOfWindow.get(win.bay)!]);
     const { win, group } = slots[closed]!;
     const room = life.byFacadeHome.get(group)!.roomOfWindow.get(win.bay)!;
     states.get(group)!.shut[room] = 0;
@@ -414,13 +450,31 @@ describe('calque des fenêtres Ghibli : lumières par présence', () => {
     expect(layer().querySelectorAll('rect[fill="rgba(255,214,130,0.16)"]')).toHaveLength(0);
     const glowOf = (k: number): string | null => lamps()[k]!.querySelector('use[data-glow]')!.getAttribute('opacity');
     expect(glowOf(closed)).toBe('0');
-    // Ailleurs : volets × (1 − 0,55 × rideau tiré, seulement s'il y a des rideaux).
+    // Ailleurs : volets (s'il y en a) × (1 − 0,55 × rideau tiré, seulement s'il y a des rideaux).
     slots.forEach(({ win: w, group: g, home }, k) => {
       const st = states.get(g)!;
       const r = life.byFacadeHome.get(g)!.roomOfWindow.get(w.bay)!;
-      const want = Number((Math.min(1, Math.max(0, st.shut[r] ?? 1)) * (1 - 0.55 * (home.curtain ? (st.curt[r] ?? 0) : 0))).toFixed(2));
+      const shut = hasShutters(w, g) ? Math.min(1, Math.max(0, st.shut[r] ?? 1)) : 1;
+      const want = Number((shut * (1 - 0.55 * (home.curtain ? (st.curt[r] ?? 0) : 0))).toFixed(2));
       expect(Number(glowOf(k))).toBe(want);
     });
+  });
+
+  it('fenêtre sans volets (dernier étage d’un immeuble à battants) : garde sa lueur quand la pièce a ses volets fermés', () => {
+    // Fenêtre du dernier étage (`top`) d'un logement à volets battants : seules les fenêtres courantes en portent (le calque
+    // de la vie n'y monte aucun volet), alors que la pièce a ses volets fermés aux étages courants.
+    const k = slots.findIndex(({ win, group }) => life.byFacadeHome.get(group)!.shutters === 'battant' && win.kind === 'top');
+    expect(k).toBeGreaterThanOrEqual(0);
+    const { group, win } = slots[k]!;
+    const room = life.byFacadeHome.get(group)!.roomOfWindow.get(win.bay)!;
+    const states = lifeStates(life, 21 * 60);
+    const st = states.get(group)!;
+    st.lit[room] = true;
+    st.shut[room] = 0;
+    st.curt[room] = 0;
+    render({ minutes: 21 * 60, life, states });
+    expect(lit(lamps()[k]!)).toBe(true);
+    expect(lamps()[k]!.querySelector('use[data-glow]')!.getAttribute('opacity')).toBe('1');
   });
 
   it('sans life : lueur entière, sans liseré', () => {

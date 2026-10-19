@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useMemo, useRef, type ReactElement } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import type { FacadeWindow, Home, Level } from '../core/library/city/facade-layout';
 import type { Facade } from '../core/library/city/facades';
@@ -19,7 +19,7 @@ import { BAR_STEP, balconyOf, joineryPath, type Balcony } from './ghibli-window-
 import { lifeStates, sceneMinute, type SceneLife } from './use-scene-life';
 import { useWallClockLoop } from './use-wallclock-loop';
 import {
-  Curtains, HeldProp, InteriorProp, Sapin, Sash, Shutters, TvScreen, bulbOn, curtainAttrs, figureHeight, floorOf, puffAttrs, shutterLit, shutterTransform, tvGlow,
+  Curtains, HeldProp, InteriorProp, Sapin, Sash, Shutters, TvScreen, bulbOn, curtainAttrs, figureHeight, floorOf, puffAttrs, shutterLit, shutterTransform, tvGlow, windowShutters,
   type InteriorKind, type ShutterKind,
 } from './window-life-art';
 
@@ -189,10 +189,7 @@ function buildModel(facades: readonly Facade[], lives: readonly SceneLife[], min
       if (!room) return;
       const level = j < tower && win.level >= 0 ? (layout!.levels[win.level] ?? null) : null;
       if (room === 'salon') salonLevel = level;
-      // Volets battants : fenêtres courantes loin des bords du mur (maquette) ; persiennes : toutes, sauf l'entresol.
-      const shutters = d.shutters === 'battant'
-        ? (win.kind === 'std' && layout && win.x - 2.6 > layout.x + 1 && win.x + win.w + 2.6 < layout.x + layout.w - 1 ? 'battant' : null)
-        : d.shutters === 'persienne' && win.kind !== 'mezz' && closes(room) ? 'persienne' : null;
+      const shutters = windowShutters(d.shutters, win, layout, closes(room));
       const props = new Set<InteriorKind>();
       for (const a of acts) if (a.room === room) { const k = interiorOf(a.choreo, !!a.desk); if (k) props.add(k); }
       wins.push({
@@ -497,6 +494,7 @@ type Baked = { at: number; change: number; live: boolean; version: number; url: 
 // l'immeuble n'est plus attendu pour montrer le calque.
 const BAKE_RETRY_S = 1;
 const BAKE_TRIES = 2;
+const NO_FALLBACK: ReadonlySet<number> = new Set();
 // Cuisson possible : image, canvas et blobs réels (pas jsdom). Les tests forcent la cuisson (`bakeHooks.enabled`, avec
 // Image, canvas et blobs simulés) et lisent le SVG cuit (`onSvg`).
 export const bakeHooks: { enabled: boolean | null; onSvg: ((svg: string) => void) | null } = { enabled: null, onSvg: null };
@@ -596,7 +594,11 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
 
   // Conteneur hors du document des façades vivantes (voir FacadeFront), un par calque monté.
   const offstage = useMemo(() => (canBake() ? document.createElementNS(SVG_NS, 'svg') : null), []);
-  const refs = useRef<{ model: Model; el: Element; refs: Refs } | null>(null);
+  // Immeubles dont la cuisson a épuisé ses essais : groupe vivant remonté dans la page (comme le repli sans canvas), pour
+  // garder volets, rideaux et pantins ; oubliés quand les façades changent.
+  const [fallback, setFallback] = useState<{ facades: Facade[]; fis: ReadonlySet<number> } | null>(null);
+  const inPage = fallback?.facades === facades ? fallback.fis : NO_FALLBACK;
+  const refs = useRef<{ model: Model; el: Element; inPage: ReadonlySet<number>; refs: Refs } | null>(null);
   const clock = useRef<{ m: number; base: number } | null>(null);
   // États par logement (index du modèle), dernière relecture complète, logements à relire à chaque image.
   const states = useRef<{ model: Model | null; st: (HomeState | null)[]; active: boolean[]; full: number }>({ model: null, st: [], active: [], full: -Infinity });
@@ -632,6 +634,8 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
     const facChanged = new Map<number, { busy: boolean }>();
     const S = (): typeof states.current => states.current;
     const forget = set.forget;
+    // Conteneur du groupe vivant d'un immeuble : hors du document (cuit), ou null s'il est dans la page (repli).
+    const offOf = (fi: number): Element | null => (offstage && !inPage.has(fi) ? offstage : null);
     const index = new Map(model.dws.map((dm, i) => [dm, i]));
     // Nœud éteint (opacité nulle) : retiré du rendu (display none) plutôt que peint transparent.
     const vis = (el: Element | null | undefined, o: number): void => {
@@ -656,14 +660,16 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
       for (const [glow, phase] of tvOn.current) set(glow, 'opacity', String(tvGlow('tv', tSec + phase)));
       if (still && done) return;
       done = true;
-      if (!refs.current || refs.current.model !== model || refs.current.el !== el) {
+      if (!refs.current || refs.current.model !== model || refs.current.el !== el || refs.current.inPage !== inPage) {
         if (refs.current && refs.current.el !== el) {
           dropBakes(bakes.current);
           plans.current.clear();
           tvOn.current.clear();
           ready.current = false;
         }
-        refs.current = { model, el, refs: collectRefs(el, offstage, model) };
+        // Groupe vivant remonté dans la page (repli) : nœuds neufs, tout relu et réécrit.
+        if (refs.current && refs.current.inPage !== inPage) states.current.full = -Infinity;
+        refs.current = { model, el, inPage, refs: collectRefs(el, offstage, model) };
       }
       if (offstage && !ready.current) set(el, 'display', 'none');
       const R = refs.current.refs;
@@ -769,7 +775,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
       for (const fm of model.facades) {
         const c = facChanged.get(fm.fi);
         const b = bakes.current.get(fm.fi);
-        if (c || rebake.has(fm.fi) || !b || b.change > b.at || (!offstage && b.live)) bake(fm, R, !!c, c?.busy ?? false, now);
+        if (c || rebake.has(fm.fi) || !b || b.change > b.at || (!offOf(fm.fi) && b.live)) bake(fm, R, !!c, c?.busy ?? false, now);
       }
     };
 
@@ -780,7 +786,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
     function pageSlot(key: string, plan: FigPlan): Slot | null {
       if (!plan.want) return null;
       const baked = BAKED_SLOTS.includes(plan.want);
-      if (!offstage) return baked ? null : plan.want;
+      if (!offOf(plan.fi)) return baked ? null : plan.want;
       const shown = bakes.current.get(plan.fi)?.shown.has(key) ?? false;
       if (baked) return shown ? null : plan.mirror;
       return shown ? null : plan.want;
@@ -814,6 +820,13 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
       if (changed || rebake.has(fm.fi)) {
         b.change = now;
         rebake.delete(fm.fi);
+      }
+      if (inPage.has(fm.fi)) {
+        // Essais épuisés, groupe vivant dans la page : montré à la place de l'image (plus de cuisson).
+        set(F.live, 'display', 'inline');
+        set(F.img, 'display', 'none');
+        b.live = true;
+        return;
       }
       if (b.change <= b.at || now < b.retry) return;
       if (offstage) {
@@ -872,7 +885,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
         if (bb.fails <= BAKE_TRIES) {
           bb.change = Math.max(bb.change, bb.at + 1e-6);
           bb.retry = now + BAKE_RETRY_S;
-        }
+        } else if (offstage) setFallback((f) => ({ facades, fis: new Set([...(f?.facades === facades ? f.fis : []), fm.fi]) }));
         showWhenBaked();
       });
     }
@@ -962,7 +975,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
           vis(p.g, on && !living ? (lit ? 1 : alpha) : 0);
           const x0 = set.writes();
           // Meuble rendu à l'image cuite : le vivant reste montré jusqu'à l'image qui le contient (rideau d'attente).
-          const handBack = !!offstage && on && !living && p.live?.getAttribute('display') === 'inline';
+          const handBack = !!offOf(dm.d.facade) && on && !living && p.live?.getAttribute('display') === 'inline';
           if (handBack) waitingProps.add(p.live!);
           else {
             waitingProps.delete(p.live!);
@@ -1106,7 +1119,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
       const rail = R.rails.get(dm.d.id);
       if (rail) vis(rail, onBalcony ? 1 : 0);
     }
-  }, [model, life, still, minutes, night, lights, width, reg, offstage, look]);
+  }, [model, life, still, minutes, night, lights, width, reg, offstage, look, inPage, facades]);
   useWallClockLoop(place, [place], { frameMs: FRAME_MS });
   useEffect(() => () => dropBakes(bakes.current), []);
 
@@ -1133,7 +1146,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
         {model.dws.map((dm) => <DwInside key={dm.d.id} dm={dm} look={look} />)}
       </g>
       <g data-wl-pass="front">
-        {model.facades.map((fm) => <FacadeFront key={fm.fi} fm={fm} init={model.init} look={look} lights={lights} offstage={offstage} />)}
+        {model.facades.map((fm) => <FacadeFront key={fm.fi} fm={fm} init={model.init} look={look} lights={lights} offstage={inPage.has(fm.fi) ? null : offstage} />)}
       </g>
       <g data-wl-pass="outside">
         {model.dws.map((dm) => <DwOutside key={dm.d.id} dm={dm} look={look} />)}

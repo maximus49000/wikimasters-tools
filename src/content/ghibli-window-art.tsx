@@ -246,14 +246,14 @@ function barsPath(win: FacadeWindow, { by, rh, x0 }: Balcony): string {
   return bars;
 }
 
-// Lumière retombée d'une fenêtre allumée sur son balcon : garde-corps et dalle teintés, barreaux en silhouette sur la vitre.
-function LitBalcony({ win, balcony }: { win: FacadeWindow; balcony: Balcony }): ReactElement {
+// Lumière retombée d'une fenêtre allumée sur son balcon : dalle teintée (force `glowK`, comme la lueur sous l'appui), barreaux
+// en silhouette sur la vitre. Aucun aplat derrière le garde-corps (il débordait du cadre et ne suivait ni volets ni rideaux).
+function LitBalcony({ win, balcony, glowK }: { win: FacadeWindow; balcony: Balcony; glowK: number }): ReactElement {
   const { x, w } = win;
-  const { by, rh } = balcony;
+  const { by } = balcony;
   return (
     <>
-      <rect x={x - 1} y={by - rh} width={w + 2} height={rh} fill={GLOW} />
-      <rect x={x - 1.5} y={by - 0.4} width={w + 3} height={1.4} fill={GLOW_SLAB} />
+      <rect data-glow-slab="" x={x - 1.5} y={by - 0.4} width={w + 3} height={1.4} fill={GLOW_SLAB} opacity={glowK} />
       <path d={barsPath(win, balcony)} fill="none" stroke={INK} strokeWidth={0.5} />
     </>
   );
@@ -261,7 +261,7 @@ function LitBalcony({ win, balcony }: { win: FacadeWindow; balcony: Balcony }): 
 
 // Fenêtre allumée : lueur (<use> de la définition de sa taille), vitre teintée, reflet haut ou barre de télé (tous deux
 // montés, l'un transparent), voilage ou rideaux du logement, accessoire ou silhouette, menuiserie, appui éclairé,
-// jardinière et balcon éclairés. `level` : étage (balcon devant la fenêtre), null pour lucarnes et socle ; `facadeX` : x de
+// jardinière et dalle du balcon éclairées (à la force de la lueur). `level` : étage (balcon devant la fenêtre), null pour lucarnes et socle ; `facadeX` : x de
 // la façade (barreaux d'un balcon filant au même pas que ceux de la vitre éteinte : aucun saut pendant le fondu) ; `glow` :
 // définition de la lueur à sa taille, à hauteur bornée pour l'étage 0 et le socle (glowBound : rien sous le plancher) ;
 // `curtains` faux (logements vivants) : ni voilage ni rideau, dessinés par le calque de la vie aux fenêtres, ni silhouette
@@ -305,8 +305,8 @@ export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = tr
       )}
       <path d={joineryPath(win)} fill="none" stroke={INK} strokeWidth={0.55} />
       {sill && <rect x={x - 1.2} y={y + h} width={w + 2.4} height={1} fill={SILL_LIT} />}
-      {win.box && <rect x={x - 0.4} y={y + h + 0.2} width={w + 0.8} height={1.2} fill={GLOW_SLAB} />}
-      {balcony && <LitBalcony win={win} balcony={balcony} />}
+      {win.box && <rect data-glow-slab="" x={x - 0.4} y={y + h + 0.2} width={w + 0.8} height={1.2} fill={GLOW_SLAB} opacity={glowK} />}
+      {balcony && <LitBalcony win={win} balcony={balcony} glowK={glowK} />}
     </>
   );
 }

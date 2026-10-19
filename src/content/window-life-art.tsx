@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { FacadeWindow } from '../core/library/city/facade-layout';
+import type { FacadeLayout, FacadeWindow } from '../core/library/city/facade-layout';
 import type { LightTone } from '../core/library/city/schedules';
 import type { HandProp } from '../core/library/city/window-choreo';
 import { mulberry32 } from '../core/library/scene-world';
@@ -76,6 +76,14 @@ export const DARK_VEIL = '#1E2A5A';
 export const DARK_ALPHA = 0.64;
 
 export type ShutterKind = 'persienne' | 'battant';
+// Volets que porte une fenêtre d'un logement (`kind` : Dwelling.shutters ; `layout` : mise en page de sa façade) :
+// battants sur les fenêtres courantes loin des bords du mur (maquette) ; persiennes partout sauf l'entresol, montées
+// seulement si la pièce les ferme un jour (`closes` ; repliées toute la journée : invisibles). Règle partagée par le
+// calque de la vie aux fenêtres (montage des volets) et les fenêtres allumées (lueur selon les volets).
+export function windowShutters(kind: 'persienne' | 'battant' | null, win: FacadeWindow, layout: FacadeLayout | null | undefined, closes: boolean): ShutterKind | null {
+  if (kind === 'battant') return win.kind === 'std' && layout && win.x - 2.6 > layout.x + 1 && win.x + win.w + 2.6 < layout.x + layout.w - 1 ? 'battant' : null;
+  return kind === 'persienne' && win.kind !== 'mezz' && closes ? 'persienne' : null;
+}
 export type InteriorKind = 'table' | 'tv' | 'stove' | 'desk';
 
 const n = (v: number): number => Math.round(v * 100) / 100;
