@@ -112,6 +112,28 @@ describe('vie des logements de la scène', () => {
     expect(out.renders[2]).not.toBe(out.renders[0]);
   });
 
+  it('soleil du lieu : lever et coucher du contexte jusqu’au jour de scène, dans la clé du cache', () => {
+    const out = probe();
+    const day = dayContext(addDays(DATE, 60), []);
+    const paris = sunTimes(day.date, { lat: 48.85, lon: 2.35 }, 60);
+    const oslo = sunTimes(day.date, { lat: 59.91, lon: 10.75 }, 60);
+    renderLife(out, facades, cityOf(day));
+    renderLife(out, facades, cityOf(day, { sun: paris }));
+    renderLife(out, facades, cityOf(day, { minutes: 1201, sun: { ...paris } as typeof paris }));
+    renderLife(out, facades, cityOf(day, { sun: oslo }));
+    const [none, p1, p2, o] = out.renders;
+    // Sans lieu : table de Paris du mois (décembre : 16 h 54).
+    expect(none!.day.sunset).toBe(Math.round(16.9 * 60));
+    expect(p1!.day.sunset).toBe(Math.round((paris as { sunset: number }).sunset));
+    expect(p1).not.toBe(none);
+    // Même soleil (nouvel objet à la minute suivante) : même vie.
+    expect(p2).toBe(p1);
+    expect(o!.day.sunset).toBe(Math.round((oslo as { sunset: number }).sunset));
+    expect(o).not.toBe(p1);
+    // Le cache partagé reçoit le même soleil : même vie.
+    expect(sharedSceneLife(facades, day, false, 5, false, oslo)).toBe(o);
+  });
+
   it('cache partagé : deux calques aux façades identiques (tableaux distincts) reçoivent la même vie', () => {
     const day = dayContext(addDays(DATE, 40), []);
     const a = sharedSceneLife(cityFacades(720, 340, 5), day, false, 5, false);

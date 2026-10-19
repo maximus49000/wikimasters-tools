@@ -141,6 +141,23 @@ describe('pigeons des corniches', () => {
     expect(hadPerch && hadAway).toBe(true);
   });
 
+  it('partent vers le coucher du soleil du lieu et arrivent après son lever', () => {
+    // Paris le 15 décembre : lever 8 h 44, coucher 16 h 54.
+    const sun = { sunrise: 524, sunset: 1014 };
+    let any = 0;
+    for (const l of fronts) for (const f of pigeonFlocks(l, SEED, TUE.iso, sun)) {
+      any++;
+      expect(f.open).toBeGreaterThanOrEqual(sun.sunrise);
+      expect(f.close).toBeLessThanOrEqual(sun.sunset + 30);
+      expect(f.close).toBeGreaterThanOrEqual(sun.sunset - 15);
+    }
+    expect(any).toBeGreaterThan(0);
+    const late = fronts.flatMap((l) => pigeonsAt(l, SEED, TUE.iso, sun.sunset + 31, false, sun)).filter((b) => b.pose !== 'fly');
+    expect(late).toEqual([]);
+    // Un long jour d'été ne les garde pas plus tard qu'avant (19 h 30-20 h 45).
+    for (const l of fronts) for (const f of pigeonFlocks(l, SEED, JUNE.iso, { sunrise: 350, sunset: 1316 })) expect(f.close).toBeLessThanOrEqual(1245);
+  });
+
   it('posés sur la corniche, aucun la nuit ; sous la pluie ils ne picorent pas', () => {
     const flocks = pigeonFlocks(host, SEED, TUE.iso);
     expect(flocks.length).toBeLessThanOrEqual(2);

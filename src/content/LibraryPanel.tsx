@@ -427,10 +427,10 @@ export function LibraryPanel({ library, collection, kinds, onOpenCard, onOpenMar
       mode: sceneTime.mode,
       tz: sceneTime.tz,
       weather: { clock: weather.clock, flags: weather.flags },
-      city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames, busLines },
+      city: { day: cityDay, forcedNight: lib?.time.mode === 'night', shopNames, busLines, sun: sceneTime.times },
       deco: { state: weather.state, label: weather.label, tempC: weather.tempC },
     }),
-    [sceneTime.sky, sceneTime.minutes, sceneTime.mode, sceneTime.tz, weather.clock, weather.flags, weather.state, weather.label, weather.tempC, cityDay, shopNames, busLines, lib?.time.mode],
+    [sceneTime.sky, sceneTime.times, sceneTime.minutes, sceneTime.mode, sceneTime.tz, weather.clock, weather.flags, weather.state, weather.label, weather.tempC, cityDay, shopNames, busLines, lib?.time.mode],
   );
 
 

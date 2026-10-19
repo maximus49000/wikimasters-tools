@@ -2,6 +2,7 @@ import type { BusNetwork } from './traffic/bus-lines';
 import { activeFestivities, type DayContext, type FestivityId } from './calendar';
 import { roadClosed } from './parade';
 import type { NamePool } from './shops/lifecycle';
+import type { SunTimes } from '../sky';
 
 export type CityContext = {
   minutes: number;
@@ -14,6 +15,9 @@ export type CityContext = {
   shops?: { epochDay: number; names: NamePool };
   // Lignes de bus réelles autour de la position (relais /buslines) ; absent ou null = lignes de repli.
   buses?: BusNetwork | null;
+  // Lever et coucher du soleil du lieu de la scène (`SceneTime.times`) : jour de scène de la vie des logements (volets,
+  // pigeons) ; absent = table de Paris (aperçus).
+  sun?: SunTimes;
 };
 export type CityIntensity = {
   traffic: number;
