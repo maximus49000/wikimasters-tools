@@ -5,7 +5,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WindowLifeLayer } from '../../src/content/window-life';
+import { WindowLifeLayer, bakeHooks } from '../../src/content/window-life';
 import { sharedSceneLife, type SceneLife } from '../../src/content/use-scene-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { dayContext } from '../../src/core/library/city/calendar';
@@ -135,7 +135,8 @@ describe('calque de la vie derrière les fenêtres', () => {
     // De jour (pantins dedans visibles à 0,3 derrière la vitre), heure de pointe du matin.
     const minutes = 7 * 60 + 40;
     act(() => root.render(<FigureContext.Provider value={reg}><svg><WindowLifeLayer facades={facades} life={life} sky={skyOf(13 * 60)} minutes={minutes} still={false} width={width} /></svg></FigureContext.Provider>));
-    const STEP_MS = 2000;
+    // Pas de 0,5 s, plus fin que la relecture complète (2 s) : un marcheur qui surgirait entre deux relectures est vu.
+    const STEP_MS = 500;
     const WINDOW = Math.ceil(11_000 / STEP_MS);
     const history = new Map<string, boolean[]>(); // marche des dernières images visibles
     const wasShown = new Map<string, boolean>();
@@ -178,7 +179,7 @@ describe('calque de la vie derrière les fenêtres', () => {
       }
     };
     read(true);
-    for (let f = 0; f < 600; f++) {
+    for (let f = 0; f < 1200; f++) {
       now += STEP_MS;
       perf += STEP_MS;
       const cbs = queue.splice(0);
@@ -299,5 +300,128 @@ describe('calque de la vie derrière les fenêtres', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('rideau tiré : le marcheur passe derrière (ombre à 0,28 sur le tissu), jamais par-dessus un rideau ouvert', () => {
+    const m = mount(1080);
+    let checked = 0;
+    for (let t = 18 * 60; t < 23 * 60; t += 3) {
+      m.render({ minutes: t });
+      for (const g of shown(m.layer())) {
+        if (g.getAttribute('data-where') !== 'in') continue;
+        checked++;
+        // Sous la façade cuite (rideaux ouverts devant lui) : jamais l'ombre du rideau tiré ; par-dessus : seulement elle.
+        if (g.getAttribute('data-slot') === 'in') expect(g.getAttribute('data-alpha')).not.toBe('0.28');
+        if (g.getAttribute('data-slot') === 'out') expect(g.getAttribute('data-alpha')).toBe('0.28');
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('télé allumée : écran vivant hors de la façade cuite, qui scintille', () => {
+    const width = 2000;
+    let now = NOW_S * 1000;
+    let perf = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const queue: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queue.push(cb));
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const facades = cityFacades(width, H, SEED);
+    const life = lifeOf(facades);
+    const reg = new FigureRegistry('twltv', { perFrame: 400 });
+    act(() => root.render(<FigureContext.Provider value={reg}><svg><WindowLifeLayer facades={facades} life={life} sky={skyOf(21 * 60 + 30)} minutes={21 * 60 + 30} still={false} width={width} /></svg></FigureContext.Provider>));
+    const tvs = (): Element[] => [...host.querySelectorAll('[data-wl-tv]')].filter((g) => g.getAttribute('display') === 'inline');
+    expect(tvs().length).toBeGreaterThan(0);
+    // L'écran du meuble (cuit) est caché là où l'écran vivant est montré.
+    for (const g of tvs()) {
+      const prop = host.querySelector(`[data-wl-room="${g.getAttribute('data-wl-tv')}"] [data-wl-prop="tv"] [data-tv-screen]`)!;
+      expect(prop.getAttribute('display')).toBe('none');
+    }
+    const glow = tvs()[0]!.querySelector('[data-screen]')!;
+    const seen = new Set<string | null>();
+    for (let f = 0; f < 20; f++) {
+      now += 150;
+      perf += 150;
+      const cbs = queue.splice(0);
+      act(() => { for (const cb of cbs) cb(perf); });
+      seen.add(glow.getAttribute('opacity'));
+    }
+    expect(seen.size).toBeGreaterThan(3);
+  });
+
+  describe('façades cuites (cuisson simulée)', () => {
+    type Pic = { onload: (() => void) | null; onerror: (() => void) | null; removeAttribute: () => void };
+    let pending: Pic[] = [];
+    let svgs: string[] = [];
+    afterEach(() => {
+      bakeHooks.enabled = null;
+      bakeHooks.onSvg = null;
+      vi.unstubAllGlobals();
+    });
+    const setup = (): void => {
+      pending = [];
+      svgs = [];
+      bakeHooks.enabled = true;
+      bakeHooks.onSvg = (svg) => svgs.push(svg);
+      vi.stubGlobal('Image', class {
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        removeAttribute(): void {}
+        set src(_v: string) { pending.push(this); }
+      });
+      vi.stubGlobal('Blob', class { constructor(public parts: unknown[]) {} });
+      let n = 0;
+      vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:t${++n}`);
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage() {} } as unknown as RenderingContext);
+      (HTMLCanvasElement.prototype as unknown as { toBlob: (cb: (b: unknown) => void) => void }).toBlob = function (cb) { cb({}); };
+    };
+    const resolve = (): void => {
+      const list = pending.splice(0);
+      act(() => { for (const p of list) p.onload?.(); });
+    };
+
+    it('calque caché jusqu\'aux premières images ; pose fixe : le double vivant cède la place à l\'image qui le montre', () => {
+      setup();
+      const m = mount(1080);
+      m.render({ minutes: 21 * 60 });
+      const layer = m.layer();
+      expect(layer.getAttribute('display')).toBe('none');
+      expect(pending.length).toBeGreaterThan(0);
+      // Avant l'image : les pantins assis (pose fixe, cuite) sont montrés par leur double vivant.
+      const mirrors = (): Element[] => shown(layer).filter((g) => g.getAttribute('data-slot') === 'in' && g.getAttribute('data-gait') === 'seated');
+      expect(mirrors().length).toBeGreaterThan(0);
+      resolve();
+      expect(layer.getAttribute('display')).toBe('inline');
+      const imgs = [...layer.querySelectorAll('[data-wl-baked]')];
+      expect(imgs.length).toBeGreaterThan(0);
+      for (const img of imgs) {
+        expect(img.getAttribute('href')).toMatch(/^blob:/);
+        expect(img.getAttribute('display')).toBe('inline');
+      }
+      expect(mirrors()).toHaveLength(0);
+      // Minute suivante, même lumière : pas de rafale de cuissons (seulement ce qui a changé).
+      const before = svgs.length;
+      m.render({ minutes: 21 * 60 + 1 });
+      expect(svgs.length - before).toBeLessThan(imgs.length / 2);
+    });
+
+    it('image cuite : les nœuds cachés le restent (seule la racine perd son display)', () => {
+      setup();
+      const m = mount(1080);
+      m.render({ minutes: 21 * 60 });
+      expect(svgs.length).toBeGreaterThan(0);
+      for (const svg of svgs) {
+        // Chaque meuble et chaque pantin de la façade porte son display (inline ou none), tel que la boucle l'a écrit.
+        const tags = svg.match(/<g [^>]*data-(?:wl-prop|slot)="[^"]*"[^>]*>/g) ?? [];
+        expect(tags.length).toBeGreaterThan(0);
+        for (const t of tags) expect(t).toMatch(/display="(none|inline)"/);
+        expect(svg).toMatch(/display="none"/);
+      }
+    });
   });
 });

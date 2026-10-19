@@ -109,8 +109,8 @@ describe('interrupteur coupé : scène d’avant la branche', () => {
 // au-dessus de la rue », tâche 9) pour deux ajouts voulus, hors des habitants 3D : les cages d'escalier allumées au passage
 // (chantier 1 des façades, `StairLights` ; seul écart sur main, vérifié en les retirant) et le calque de la vie derrière
 // les fenêtres (`WindowLifeLayer`, pantins toujours en 2D quel que soit l'interrupteur).
-const ORDINARY = ['1097147:d2da3085', '1093982:cf4cd830', '1087386:3722495c', '1087641:6d9a456d'];
-const PARADE = ['1383349:5f289d7f', '1383306:997e5a55', '1371543:cbaed4e3', '1371524:f87efeee'];
+const ORDINARY = ['1329846:9f62dbbd', '1326681:80069278', '1320085:d4396884', '1320340:db843ee5'];
+const PARADE = ['1591557:73607cfd', '1591514:5335070f', '1579751:cbe8cdd5', '1579732:6a25136a'];
 // Unités du défilé montées à chaque image.
 const PARADE_UNITS = [
   ...Array<number>(39).fill(10), 9, 9, 9, 9, ...Array<number>(8).fill(10), ...Array<number>(18).fill(11), ...Array<number>(11).fill(10), 9,

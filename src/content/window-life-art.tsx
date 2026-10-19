@@ -309,6 +309,24 @@ export function Sapin({ win, night, blink }: { win: FacadeWindow; night: boolean
   );
 }
 
+// Écran de la télé (maquette : télé à 0,34 × 2,2 largeurs à gauche du spectateur assis à +0,22, près du bord gauche de la
+// vitre) : dalle éteinte, ambiance de nuit, lueur blanche d'opacité `glow` (`[data-screen]`, scintillement écrit par la
+// boucle du calque). Monté dans le meuble, ou seul (écran allumé tenu vivant hors de l'image cuite du calque).
+export function TvScreen({ win, glow, dark = 0 }: { win: Pick<FacadeWindow, 'x' | 'w' | 'y' | 'h' | 'kind'>; glow: number; dark?: number }): ReactElement {
+  const fl = floorOf(win);
+  const hh = figureHeight(win);
+  const tx = win.x + win.w / 2 - win.w * 0.4;
+  const ty = fl - hh * 0.55;
+  const r = { x: n(tx - 1.4), y: n(ty), width: 2.8, height: n(hh * 0.22) };
+  return (
+    <g data-tv-screen="">
+      <rect {...r} fill={SCREEN_OFF} />
+      <rect data-dark-veil="" {...r} fill={DARK_VEIL} opacity={veil(dark)} />
+      <rect data-screen="" {...r} fill="#FFFFFF" opacity={n(glow)} />
+    </g>
+  );
+}
+
 // Meuble lié à une pose, en silhouette dans la pièce (le calque règle l'opacité du groupe selon la lumière) : table avec
 // assiettes et bouteille, bureau et son écran froid, télé sur son meuble (écran qui scintille quand la pièce est à la télé :
 // `flicker` en secondes), plan de cuisson. Placé sur le plancher, au centre de la vitre (l'acteur est à ±0,22 largeur).
@@ -341,16 +359,11 @@ export function InteriorProp({ win, kind, tone, flicker, dark = 0 }: { win: Faca
     );
   }
   if (kind === 'tv') {
-    // Maquette : télé à 0,34 × 2,2 largeurs à gauche du spectateur assis à +0,22 : près du bord gauche de la vitre.
     const tx = ax - w * 0.4;
-    const ty = fl - hh * 0.55;
-    const glow = tvGlow(tone, flicker);
     return (
       <g data-interior-prop="tv">
         <rect x={n(tx - 1.6)} y={n(fl - hh * 0.3)} width={3.2} height={n(hh * 0.3)} fill={SILH} />
-        <rect x={n(tx - 1.4)} y={n(ty)} width={2.8} height={n(hh * 0.22)} fill={SCREEN_OFF} />
-        <rect data-dark-veil="" x={n(tx - 1.4)} y={n(ty)} width={2.8} height={n(hh * 0.22)} fill={DARK_VEIL} opacity={veil(dark)} />
-        <rect data-screen="" x={n(tx - 1.4)} y={n(ty)} width={2.8} height={n(hh * 0.22)} fill="#FFFFFF" opacity={n(glow)} />
+        <TvScreen win={win} glow={tvGlow(tone, flicker)} dark={dark} />
       </g>
     );
   }
