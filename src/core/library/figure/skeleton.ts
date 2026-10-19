@@ -48,16 +48,21 @@ export type PoseOpts = { headYaw?: number; umbrella?: boolean; arms?: ArmPose; l
 // Commerces (G4b, portés de la cinématique inverse de la maquette du 2026-10-12) : gestes d'employés et de clients. Les gestes
 // animés ont leurs poses clés en variantes `-1` / `-2` (le metteur en scène alterne) : essuyer, s'étirer, trinquer, emballer,
 // ciseaux. `pick` va avec l'allure `crouch` (main droite vers le sol).
+// Fenêtres (vie au-dessus de la rue, portées de `POSE` de la maquette vie-etages/src/06-pantins.js) : volets à bout de bras,
+// rideau tiré, avant-bras sur l'appui, mains au garde-corps, fumeur (main à la bouche / bras baissé), arrosoir, tapis secoué
+// (`-1` bas / `-2` haut), cuisine (remue, `-1` / `-2`), à table, télé (mains sur les genoux), danse (bras levés en alternance).
 export type ArmPose =
   | 'swing' | 'down' | 'reach' | 'hold' | 'up' | 'work' | 'crossed' | 'raise' | 'cheer' | 'cup' | 'carry' | 'overhead' | 'tow' | 'guitar' | 'mic' | 'drum' | 'handlebar' | 'horn' | 'rifle' | 'flag'
   | 'give' | 'take' | 'point' | 'chin' | 'wave' | 'beckon' | 'pay-card' | 'pay-cash' | 'wipe-1' | 'wipe-2' | 'shelve' | 'phone' | 'yawn' | 'stretch-1' | 'stretch-2' | 'read' | 'toast-1' | 'toast-2'
   | 'weigh' | 'wrap-1' | 'wrap-2' | 'scissors-1' | 'scissors-2' | 'shampoo' | 'taste' | 'sniff' | 'pour' | 'notepad' | 'plates' | 'mirror' | 'frames' | 'hold-child' | 'tug' | 'sneeze' | 'pick'
-  | 'handlebar-reach';
+  | 'handlebar-reach'
+  | 'shutters' | 'curtain' | 'sill' | 'rail' | 'smoke-up' | 'smoke-down' | 'water' | 'shake-1' | 'shake-2' | 'cook-1' | 'cook-2' | 'table' | 'tv' | 'dance-1' | 'dance-2';
 export const ARM_POSES: readonly ArmPose[] = [
   'swing', 'down', 'reach', 'hold', 'up', 'work', 'crossed', 'raise', 'cheer', 'cup', 'carry', 'overhead', 'tow', 'guitar', 'mic', 'drum', 'handlebar', 'horn', 'rifle', 'flag',
   'give', 'take', 'point', 'chin', 'wave', 'beckon', 'pay-card', 'pay-cash', 'wipe-1', 'wipe-2', 'shelve', 'phone', 'yawn', 'stretch-1', 'stretch-2', 'read', 'toast-1', 'toast-2',
   'weigh', 'wrap-1', 'wrap-2', 'scissors-1', 'scissors-2', 'shampoo', 'taste', 'sniff', 'pour', 'notepad', 'plates', 'mirror', 'frames', 'hold-child', 'tug', 'sneeze', 'pick',
   'handlebar-reach',
+  'shutters', 'curtain', 'sill', 'rail', 'smoke-up', 'smoke-down', 'water', 'shake-1', 'shake-2', 'cook-1', 'cook-2', 'table', 'tv', 'dance-1', 'dance-2',
 ];
 // Penché vers l'avant par niveau (gestes des commerces).
 export const LEAN_DEG = 8;
@@ -124,6 +129,23 @@ const TARGETS: Readonly<Record<ArmPose, readonly [T3 | null, T3 | null]>> = {
   pick: [[6, -7, 0.5], [7.5, -18.6, -2.2]], // ramasse au sol (allure `crouch`), bras droit vers le sol
   // Deux-roues motorisés (revue du 2026-10-13) : guidon loin devant la selle, bras presque tendus, mains sur les poignées.
   'handlebar-reach': [[10.4, -3, -0.6], [10.4, -3, -0.6]],
+  // Fenêtres. La maquette dessinait ses poses de face dans le plan de l'écran (angles d'épaule / de coude, bras de 6 + 5,6
+  // unités comme ici) : les écarts latéraux passent en `o`, les gestes de profil (cuisine, arrosage, table) en `f`.
+  shutters: [[1.5, 9.2, 7.3], [1.5, 9.2, 7.3]], // volets : bras levés en V ouvert, mains aux vantaux (armsUp 150°, coude −18°)
+  curtain: [DOWN, [1.5, 3.7, 11]], // tire le rideau : bras droit tendu de côté à hauteur d'épaule (116°, coude −16°)
+  sill: [[5.5, -7.5, -1.5], [5.5, -7.5, -1.5]], // penché à la fenêtre : avant-bras croisés devant soi sur l'appui (la maquette écartait les coudes dans le plan de l'écran ; vus de face ils se lisaient mal)
+  rail: [[4, -9.5, 2], [4, -9.5, 2]], // au balcon : mains posées devant soi sur le garde-corps, bras presque tendus (32°, coude −42°)
+  'smoke-up': [DOWN, [4, 3, -2.4]], // cigarette à la bouche (la maquette la tenait à la poitrine : remontée pour la lecture)
+  'smoke-down': [DOWN, [3, -10.8, 0.6]], // … bras baissé, cigarette au bout des doigts (16°, coude −28°)
+  water: [[-1.3, -11.4, 0.8], [10.4, -4.5, 0.5]], // arrose : arrosoir tendu devant et en bas, bras gauche un peu en arrière (74° / −14°)
+  'shake-1': [[9.5, -4.1, 3.5], [9.5, -4.1, 3.5]], // secoue le tapis par-dessus l'appui, bras tendus bas (76°)
+  'shake-2': [[10.5, 0.7, 3.5], [10.5, 0.7, 3.5]], // … bras tendus haut (100°)
+  'cook-1': [[6.5, -8.5, -1], [7.5, -7.5, -1.5]], // cuisine : main gauche à la casserole, cuillère avancée
+  'cook-2': [[6.5, -8.5, -1], [6.5, -8.6, -2.6]], // … cuillère ramenée vers soi (remue)
+  table: [[6, -4, -1.5], [6.5, -3.5, -2]], // à table (assis) : avant-bras sur la table, main droite à la fourchette
+  tv: [[5, -9, -0.8], [5, -9, -0.8]], // télé (assis) : mains sur les genoux
+  'dance-1': [[1, 9.5, 6.7], [1, 2.5, 11.3]], // danse : bras gauche haut, bras droit tendu de côté (156° / 108°, coude −24°)
+  'dance-2': [[1, 2.5, 11.3], [1, 9.5, 6.7]], // … l'inverse
 };
 // side : -1 bras gauche (l < 0), +1 bras droit.
 export const armTarget = (pose: ArmPose, side: -1 | 1): T3 | null => TARGETS[pose][side < 0 ? 0 : 1];
