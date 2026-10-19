@@ -51,18 +51,21 @@ export type PoseOpts = { headYaw?: number; umbrella?: boolean; arms?: ArmPose; l
 // Fenêtres (vie au-dessus de la rue, portées de `POSE` de la maquette vie-etages/src/06-pantins.js) : volets à bout de bras,
 // rideau tiré, avant-bras sur l'appui, mains au garde-corps, fumeur (main à la bouche / bras baissé), arrosoir, tapis secoué
 // (`-1` bas / `-2` haut), cuisine (remue, `-1` / `-2`), à table, télé (mains sur les genoux), danse (bras levés en alternance).
+// Toits : couvreur à genoux (allure `crouch`) qui martèle le zinc, marteau levé (`hammer-1`) / coup porté (`hammer-2`).
 export type ArmPose =
   | 'swing' | 'down' | 'reach' | 'hold' | 'up' | 'work' | 'crossed' | 'raise' | 'cheer' | 'cup' | 'carry' | 'overhead' | 'tow' | 'guitar' | 'mic' | 'drum' | 'handlebar' | 'horn' | 'rifle' | 'flag'
   | 'give' | 'take' | 'point' | 'chin' | 'wave' | 'beckon' | 'pay-card' | 'pay-cash' | 'wipe-1' | 'wipe-2' | 'shelve' | 'phone' | 'yawn' | 'stretch-1' | 'stretch-2' | 'read' | 'toast-1' | 'toast-2'
   | 'weigh' | 'wrap-1' | 'wrap-2' | 'scissors-1' | 'scissors-2' | 'shampoo' | 'taste' | 'sniff' | 'pour' | 'notepad' | 'plates' | 'mirror' | 'frames' | 'hold-child' | 'tug' | 'sneeze' | 'pick'
   | 'handlebar-reach'
-  | 'shutters' | 'curtain' | 'sill' | 'rail' | 'smoke-up' | 'smoke-down' | 'water' | 'shake-1' | 'shake-2' | 'cook-1' | 'cook-2' | 'table' | 'tv' | 'dance-1' | 'dance-2';
+  | 'shutters' | 'curtain' | 'sill' | 'rail' | 'smoke-up' | 'smoke-down' | 'water' | 'shake-1' | 'shake-2' | 'cook-1' | 'cook-2' | 'table' | 'tv' | 'dance-1' | 'dance-2'
+  | 'hammer-1' | 'hammer-2';
 export const ARM_POSES: readonly ArmPose[] = [
   'swing', 'down', 'reach', 'hold', 'up', 'work', 'crossed', 'raise', 'cheer', 'cup', 'carry', 'overhead', 'tow', 'guitar', 'mic', 'drum', 'handlebar', 'horn', 'rifle', 'flag',
   'give', 'take', 'point', 'chin', 'wave', 'beckon', 'pay-card', 'pay-cash', 'wipe-1', 'wipe-2', 'shelve', 'phone', 'yawn', 'stretch-1', 'stretch-2', 'read', 'toast-1', 'toast-2',
   'weigh', 'wrap-1', 'wrap-2', 'scissors-1', 'scissors-2', 'shampoo', 'taste', 'sniff', 'pour', 'notepad', 'plates', 'mirror', 'frames', 'hold-child', 'tug', 'sneeze', 'pick',
   'handlebar-reach',
   'shutters', 'curtain', 'sill', 'rail', 'smoke-up', 'smoke-down', 'water', 'shake-1', 'shake-2', 'cook-1', 'cook-2', 'table', 'tv', 'dance-1', 'dance-2',
+  'hammer-1', 'hammer-2',
 ];
 // Penché vers l'avant par niveau (gestes des commerces).
 export const LEAN_DEG = 8;
@@ -146,6 +149,9 @@ const TARGETS: Readonly<Record<ArmPose, readonly [T3 | null, T3 | null]>> = {
   tv: [[5, -9, -0.8], [5, -9, -0.8]], // télé (assis) : mains sur les genoux
   'dance-1': [[1, 9.5, 6.7], [1, 2.5, 11.3]], // danse : bras gauche haut, bras droit tendu de côté (156° / 108°, coude −24°)
   'dance-2': [[1, 2.5, 11.3], [1, 9.5, 6.7]], // … l'inverse
+  // Toits (maquette vie-etages : aR = [80 − 50·hit, −60 + 30·hit] sur la pose `kneel`) : main gauche posée sur le genou.
+  'hammer-1': [[6, -7, 0.5], [7.5, -3, -1.5]], // marteau levé devant soi, à hauteur de poitrine
+  'hammer-2': [[6, -7, 0.5], [8.5, -14, -1.5]], // … coup porté : bras tendu vers le zinc devant les genoux
 };
 // side : -1 bras gauche (l < 0), +1 bras droit.
 export const armTarget = (pose: ArmPose, side: -1 | 1): T3 | null => TARGETS[pose][side < 0 ? 0 : 1];
