@@ -20,6 +20,7 @@ export type Dwelling = {
   floorIdx: number; // 0 = premier étage au-dessus du rez-de-chaussée (socle : 0, lucarnes : levels.length)
   bays: number[]; rooms: Room[]; roomOfWindow: Map<number, Room>; // clé : `FacadeWindow.bay` (la `key` d'une fenêtre est celle du logement)
   balcony: boolean; // le salon donne sur un balcon filant ou un balconnet de l'étage
+  balconnet?: boolean; // ce balcon est un balconnet d'une seule travée (deux personnes au plus, côte à côte)
   shutters: 'persienne' | 'battant' | null; // haussmann → persienne ; faubourg avec `layout.shutters` → battant ; lucarne, socle → null (le peintre n'en met pas au socle)
   doorX: number | null; // `layout.doorCx` de l'immeuble (socle des jumeaux : celui de la 1re tour)
   climb: number; // minutes de montée : 0,35 + 0,22 × (floorIdx + 1)
@@ -98,6 +99,7 @@ export function cityDwellings(facades: readonly Facade[], seed: number): Dwellin
         rooms,
         roomOfWindow: new Map(home.bays.map((bay, i) => [bay, rooms[i]!])),
         balcony: level !== null && level.balcony !== 'none',
+        balconnet: level?.balcony === 'balconnet',
         shutters,
         doorX: layout?.doorCx ?? null,
         climb: CLIMB.base + CLIMB.perFloor * (floorIdx + 1),

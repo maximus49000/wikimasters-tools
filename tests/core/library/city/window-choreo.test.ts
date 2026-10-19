@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
-import type { Actor } from '../../../../src/core/library/city/home-state';
+import { homeState, type Actor } from '../../../../src/core/library/city/home-state';
+import { dayContext } from '../../../../src/core/library/city/calendar';
+import { dayDraw, sceneDay } from '../../../../src/core/library/city/scene-day';
+import { buildSchedule } from '../../../../src/core/library/city/schedules';
 import type { Choreo, Where } from '../../../../src/core/library/city/schedules';
 import { WINDOW_ARM_POSES, windowPose, type WindowPose } from '../../../../src/core/library/city/window-choreo';
 import { YAW_FRONT, YAW_LEFT, YAW_RIGHT } from '../../../../src/core/library/figure/gait';
@@ -176,12 +179,52 @@ describe('poses des pantins de fenêtre', () => {
     expect(windowPose(actor('drawCurtains', 0.5, 1), home, true)!.arms).toBe('curtain');
     expect(windowPose(actor('cook', 0.5, 8), home, true)!.arms).toBe('cook-1');
     expect(windowPose(actor('smoke', 0.5, 4, { where: 'balcony' }), home, true)!.arms).toBe('smoke-down');
-    expect(windowPose(actor('water', 0.5, 4, { where: 'balcony' }), home, true)).toMatchObject({ arms: 'water', dx: 0.5 });
+    expect(windowPose(actor('water', 0.5, 4, { where: 'balcony' }), home, true)).toMatchObject({ arms: 'water', dx: home.balconnet ? 0.05 : 0.4 }); // pot du milieu
   });
 
   it('traversée : hors champ aux deux bouts, marche au milieu', () => {
     expect(windowPose(actor('cross', 0.01, 0.3), home)).toBeNull();
     expect(windowPose(actor('cross', 0.5, 0.3), home)).toMatchObject({ gait: 'walk', yaw: YAW_RIGHT, dx: 0 });
     expect(windowPose(actor('cross', 0.99, 0.3), home)).toBeNull();
+  });
+
+  it('balcon : le pied de chaque occupant reste dans la largeur du balcon de son logement (balconnet : deux côte à côte au plus)', () => {
+    // Garde-corps : balconnet de x − 1,2 à x + w + 1,2 ; filant de x − w/2 à x + 2,2 w (sans dépasser la façade), comme `railPath`.
+    const FOOT = 0.8; // demi-largeur des pieds d'un pantin, en px
+    let checked = 0, balconnets = 0;
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const facades = cityFacades(W, H, seed);
+      const dws = cityDwellings(facades, seed).filter((d) => d.balcony);
+      for (const date of [{ y: 2026, m: 7, d: 14 }, { y: 2026, m: 6, d: 9 }, { y: 2026, m: 6, d: 13 }]) {
+        const day = sceneDay(dayContext(date, []), { precip: 0, snow: false, storm: false }, seed);
+        for (const d of dws) {
+          const f = facades[d.facade]!;
+          const layout = f.layout!;
+          const salon = f.lamps.filter((w) => w.home === d.home && w.kind !== 'stair' && d.roomOfWindow.get(w.bay) === 'salon').at(-1);
+          if (!salon) continue;
+          const level = layout.levels[salon.level];
+          const balconnet = level?.balcony === 'balconnet';
+          const [x0, x1] = balconnet ? [salon.x - 1.2, salon.x + salon.w + 1.2] : [salon.x - salon.w * 0.5, Math.min(layout.x + layout.w - 1, salon.x + salon.w * 2.2)];
+          const sched = buildSchedule(d, day, dayDraw(d, day, seed));
+          for (const g of sched.segments) {
+            if (g.k !== 'act' || g.where !== 'balcony') continue;
+            for (let m = g.t0; m < g.t1; m += 0.05) {
+              const st = homeState(d, sched, null, m);
+              const onRail = st.actors.filter((a) => a.where === 'balcony').map((a) => ({ a, pose: windowPose(a, d) })).filter((x) => x.pose?.where === 'balcony');
+              for (const { a, pose } of onRail) {
+                const x = salon.x + salon.w / 2 + pose!.dx * salon.w;
+                checked++;
+                if (balconnet) balconnets++;
+                expect(x - FOOT, `${d.id} ${a.choreo} créneau ${a.slot} à ${m.toFixed(2)}`).toBeGreaterThanOrEqual(x0);
+                expect(x + FOOT, `${d.id} ${a.choreo} créneau ${a.slot} à ${m.toFixed(2)}`).toBeLessThanOrEqual(x1);
+              }
+              if (balconnet) expect(onRail.length).toBeLessThanOrEqual(2);
+            }
+          }
+        }
+      }
+    }
+    expect(balconnets).toBeGreaterThan(0);
+    expect(checked).toBeGreaterThan(balconnets);
   });
 });

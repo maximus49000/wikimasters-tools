@@ -34,9 +34,15 @@ const SMOKE_CYCLE_S = 11;
 const WALK_CYCLE_S = 0.9;
 // Au-delà de cette distance au centre de la fenêtre, le pantin est dans la pièce voisine : rien à dessiner.
 const OUT_OF_VIEW = 1.4;
-// Place au balcon par créneau (maquette : 0,3 + 0,55 × slot) ; seuil de la vitre (côté intérieur).
-const BALCONY_SLOT0 = 0.3;
-const BALCONY_STEP = 0.55;
+// Places au balcon par créneau, en largeurs de fenêtre depuis son centre ; seuil de la vitre (côté intérieur). Balcon filant
+// (maquette : 0,3 + 0,55 × slot) : deux places à droite de la porte-fenêtre, la troisième à sa gauche (la quatrième, à
+// 1,4, sortait du champ d'un coup). Balconnet (une travée, garde-corps de x − 1,2 à x + w + 1,2) : deux places côte à côte
+// dans sa largeur, de part et d'autre de la porte-fenêtre. Au-delà, l'occupant reste dans l'embrasure, derrière les autres
+// (dedans). L'arrosoir va d'un pot à l'autre sans sortir du garde-corps.
+const BALCONY_SLOTS: readonly number[] = [0.3, 0.85, -0.25];
+const BALCONNET_SLOTS: readonly number[] = [0.3, -0.25];
+const BALCONY_POTS: readonly number[] = [0.05, 0.4, 0.7]; // le dernier reste en deçà du bord de la façade
+const BALCONNET_POTS: readonly number[] = [-0.3, 0.05, 0.38];
 const GLASS_DX = 0.05;
 // Penché du moteur (niveaux × LEAN_DEG) : appui de fenêtre, garde-corps et tapis à 2, cuisine à 1.
 const LEAN_SILL = 2;
@@ -64,8 +70,7 @@ const walk = (s: number, q: number, from: number, to: number, where?: Where): St
 // Sortie sur le balcon par la porte-fenêtre : marche dedans jusqu'au seuil, traversée du plan de la vitre (dedans → dehors)
 // jusqu'au créneau, et retour par le même chemin en fin de scène ; null entre les deux (le geste du balcon prend la suite).
 // `from` : place de départ et de retour dans la pièce (largeurs de fenêtre ; un membre assis qui se lève pour la sirène).
-function balconyInOut(p: number, s: number, tIn: number, tOut: number, slot: number, from = -1.5): Step | null {
-  const target = BALCONY_SLOT0 + slot * BALCONY_STEP;
+function balconyInOut(p: number, s: number, tIn: number, tOut: number, target: number, from = -1.5): Step | null {
   if (p < tIn * 0.55) return walk(s, p / (tIn * 0.55), from, GLASS_DX, 'in');
   if (p < tIn) return walk(s, (p - tIn * 0.55) / (tIn * 0.45), GLASS_DX, target, 'balcony');
   if (p > 1 - tOut * 0.45) return walk(s, (p - 1 + tOut * 0.45) / (tOut * 0.45), GLASS_DX, from, 'in');
@@ -75,15 +80,18 @@ function balconyInOut(p: number, s: number, tIn: number, tOut: number, slot: num
 
 // Pose à l'instant de l'acteur. `reduced` (mouvement réduit) : pose clé centrale de la chorégraphie, immobile, sans
 // dépendance au temps écoulé ; l'entrée et la sortie sont hors champ.
-function step(a: Actor, reduced: boolean): Step {
+function step(a: Actor, reduced: boolean, balconnet: boolean): Step {
   const { p, slot } = a;
   const s = a.t * 60;
   // Durée de la scène (s) : lue dans t / p ; à p = 0 (tout début) l'entrée occupe sa part maximale.
   const durS = p > 0 ? (a.t / p) * 60 : IN_OUT_S / IN_OUT_MAX;
   const tIn = Math.min(IN_OUT_MAX, IN_OUT_S / durS);
   const tOut = tIn;
-  const bal = a.where === 'balcony';
-  const balDx = BALCONY_SLOT0 + slot * BALCONY_STEP;
+  // Balcon plein : l'occupant de trop regarde depuis l'embrasure, dedans, derrière les autres.
+  const places = balconnet ? BALCONNET_SLOTS : BALCONY_SLOTS;
+  const recess = a.where === 'balcony' && slot >= places.length;
+  const bal = a.where === 'balcony' && !recess;
+  const balDx = places[slot] ?? 0;
   // Variante `-1` / `-2` d'un geste animé (la première en mouvement réduit).
   const v = (name: 'cook' | 'shake' | 'dance', off = 0): ArmPose => `${name}-${reduced ? '1' : alt(s, off)}`;
   // Marche d'entrée depuis `from` vers la place `at`, de sortie vers `to` ; sinon null (le corps de la scène).
@@ -101,7 +109,12 @@ function step(a: Actor, reduced: boolean): Step {
     if (p > 1 - tOut) return reduced ? OUT : walk(s, (p - 1 + tOut) / tOut, at, a.from, 'in');
     return null;
   };
-  const balcony = (): Step | null => (bal ? (reduced ? seatInOut(balDx) : balconyInOut(p, s, tIn, tOut, slot, a.from)) : seatInOut(0));
+  const balcony = (): Step | null => {
+    if (bal) return reduced ? seatInOut(balDx) : balconyInOut(p, s, tIn, tOut, balDx, a.from);
+    const st = seatInOut(recess ? GLASS_DX : 0);
+    // Dans l'embrasure, on vient et l'on repart dedans (la scène est notée au balcon).
+    return st && recess ? { where: 'in', ...st } : st;
+  };
   switch (a.choreo) {
     case 'cross':
       // Traversée fugace : rien à montrer en pose fixe (hors champ sur toute la scène en mouvement réduit).
@@ -151,22 +164,24 @@ function step(a: Actor, reduced: boolean): Step {
     case 'lean':
       return seatInOut(0) ?? fixed('sill', { lean: LEAN_SILL, where: 'lean', head: headOf(slot), still: true });
     case 'leanRail':
+      if (recess) return balcony() ?? fixed('down', { dx: GLASS_DX, where: 'in', head: headOf(slot), still: true });
       return balcony() ?? fixed('rail', { lean: LEAN_SILL, dx: bal ? balDx : 0, where: bal ? 'balcony' : 'lean', head: headOf(slot), still: true });
     case 'smoke': {
       const out = balcony();
       if (out) return out;
       // Cycle de 11 s : main à la bouche pendant les 30 % du début (bouffée), bras baissé le reste du temps.
       const up = !reduced && mod(s / SMOKE_CYCLE_S + slot, 1) < 0.3;
-      return fixed(up ? 'smoke-up' : 'smoke-down', { lean: bal ? 0 : LEAN_SILL, dx: bal ? balDx : 0, where: bal ? 'balcony' : 'lean', props: ['cigarette'], still: reduced });
+      return fixed(up ? 'smoke-up' : 'smoke-down', { lean: bal || recess ? 0 : LEAN_SILL, dx: bal ? balDx : recess ? GLASS_DX : 0, where: bal ? 'balcony' : recess ? 'in' : 'lean', props: ['cigarette'], still: reduced });
     }
     case 'water': {
-      const out = bal ? (reduced ? inOut(0.5) : balconyInOut(p, s, tIn, tOut, 0)) : inOut(0);
+      const pots = balconnet ? BALCONNET_POTS : BALCONY_POTS;
+      const out = bal ? (reduced ? inOut(pots[1]!) : balconyInOut(p, s, tIn, tOut, pots[0]!)) : inOut(0);
       if (out) return out;
-      if (reduced) return fixed('water', { yaw: facingYaw(1), lean: LEAN_SILL, dx: bal ? 0.5 : 0, where: bal ? 'balcony' : 'lean', props: ['watering-can'], still: true });
+      if (reduced) return fixed('water', { yaw: facingYaw(1), lean: LEAN_SILL, dx: bal ? pots[1]! : 0, where: bal ? 'balcony' : 'lean', props: ['watering-can'], still: true });
       // Trois pots l'un après l'autre : on se redresse entre deux (bras baissés), on verse penché au-dessus du pot.
       const q = (p - tIn) / (1 - tIn - tOut), pot = Math.min(2, Math.floor(q * 3)), ph = (q * 3) % 1;
       const pouring = ph > 0.1 && ph < 0.85;
-      return fixed(pouring ? 'water' : 'down', { yaw: facingYaw(1), lean: pouring ? LEAN_SILL : 0, dx: bal ? [0.1, 0.5, 0.9][pot]! : 0, where: bal ? 'balcony' : 'lean', props: ['watering-can'] });
+      return fixed(pouring ? 'water' : 'down', { yaw: facingYaw(1), lean: pouring ? LEAN_SILL : 0, dx: bal ? pots[pot]! : 0, where: bal ? 'balcony' : 'lean', props: ['watering-can'] });
     }
     case 'shake':
       return inOut(0) ?? fixed(v('shake'), { lean: LEAN_SILL, where: 'lean', props: ['rug'], still: reduced });
@@ -183,7 +198,7 @@ const sizeOf = (a: Actor, d: Dwelling): number => d.hh.members[a.m]?.size ?? 1;
 // Pose du pantin d'un acteur à l'instant de l'acteur ; null quand il est hors champ (dans la pièce voisine). `reduced` :
 // mouvement réduit, pose clé centrale immobile (voir `step`).
 export function windowPose(a: Actor, d: Dwelling, reduced = false): WindowPose | null {
-  const st = step(a, reduced);
+  const st = step(a, reduced, !!d.balconnet);
   if (Math.abs(st.dx) >= OUT_OF_VIEW) return null;
   const { where, ...rest } = st;
   return { ...rest, room: a.room, where: where ?? a.where, size: sizeOf(a, d) };
