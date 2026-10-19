@@ -24,9 +24,8 @@ export type HomeState = {
 // Chorégraphies animées à la fois, sur toute la ville (les poses fixes ne sont pas bornées).
 export const MAX_ANIM = 8;
 const DAY = 1440;
-// Rideaux tirés avant toute la piste : chaque foyer les tire le soir (même le foyer absent, parti un lundi après les avoir
-// tirés le dimanche soir), contrairement à la maquette qui partait de rideaux ouverts.
-const CURT_INIT = 1;
+// Seule pièce dont les emplois du temps tirent les rideaux (le soir) ; cuisine et chambre n'en ont pas qui bougent.
+const CURTAIN_ROOM: Room = 'salon';
 const ANIMATED: ReadonlySet<Choreo> = new Set(['openShutters', 'closeShutters', 'armsUp', 'drawCurtains', 'cross', 'water', 'shake', 'smoke', 'dance', 'cook']);
 // Priorités de la borne : événement 5 > traversée, rideaux 4 > volets, arrosage, tapis, fumeur 3 > penché, balcon, danse 2 >
 // cuisine 1 (et poses fixes).
@@ -66,7 +65,10 @@ export function homeState(d: Dwelling, today: Schedule, yesterday: Schedule | nu
   };
   for (const room of d.rooms) {
     st.shut[room] = d.shutters === null ? 1 : trackValue(tracks('shut', room), m, shutInit);
-    st.curt[room] = trackValue(tracks('curt', room), m, CURT_INIT);
+    // Rideaux tirés avant toute la piste dans une pièce qui en a une, ou au salon même sans piste ces deux jours (foyer
+    // absent toute la semaine après les avoir tirés le dimanche soir) ; ouverts ailleurs, comme dans la maquette.
+    const curt = tracks('curt', room);
+    st.curt[room] = trackValue(curt, m, curt.length || room === CURTAIN_ROOM ? 1 : 0);
     st.win[room] = trackValue(tracks('win', room), m, 0);
     st.lit[room] = false;
   }

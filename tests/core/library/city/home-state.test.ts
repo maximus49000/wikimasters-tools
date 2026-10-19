@@ -163,6 +163,25 @@ describe('état d\'un logement à la minute', () => {
     }
   });
 
+  it('cuisine et chambre : rideaux ouverts à midi pour un foyer réel', () => {
+    let seen = 0;
+    for (const seed of [1, 2]) {
+      for (const dw of dwellingsOf(seed)) {
+        const y = scheduleOf(dw, addDays(TUESDAY, -1), seed), t = scheduleOf(dw, TUESDAY, seed);
+        const st = homeState(dw, t, y, 720);
+        for (const room of ['cuisine', 'chambre'] as const) {
+          if (!dw.rooms.includes(room) || [...y.segments, ...t.segments].some((g) => g.k === 'curt' && g.room === room)) continue;
+          seen++;
+          expect(st.curt[room]).toBe(0);
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(50);
+    // Pièce fictive : rideaux de cuisine ouverts sans piste, tirés au salon avant le premier événement.
+    const st = homeState(fake('r'), sch('r', []), null, 720);
+    expect(st.curt).toEqual({ cuisine: 0, chambre: 0, salon: 1 });
+  });
+
   it('part allumée proche de la courbe horaire', () => {
     const day = { weekday: 2, kind: 'school' as const };
     const rows: string[] = [];
