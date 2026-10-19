@@ -4,7 +4,7 @@
 // EXACTEMENT celle d'avant la branche des habitants 3D. Ville vivante (passants, habitants, commerces, circulation, bus) un jour
 // ordinaire et grand défilé du 14 juillet, image par image (100 ms) : empreintes du DOM relevées avec le code d'avant
 // (e53e9565, même scénario ; relevées à nouveau sur la tête de G5 partie 2, 79bd348c, à sa fusion avec main, puis pour les
-// cages d'escalier et la vie aux fenêtres, voir ORDINARY) ; aucune
+// cages d'escalier, la vie aux fenêtres et les toits vivants, voir ORDINARY) ; aucune
 // demande d'avance, aucun portillon d'entrée, aucun attribut `visibility` posé.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -108,9 +108,12 @@ describe('interrupteur coupé : scène d’avant la branche', () => {
 // Relevés avec le code d'avant la branche (e53e9565), même scénario, puis relevés à nouveau (2026-10-19, chantier « vie
 // au-dessus de la rue », tâche 9) pour deux ajouts voulus, hors des habitants 3D : les cages d'escalier allumées au passage
 // (chantier 1 des façades, `StairLights` ; seul écart sur main, vérifié en les retirant) et le calque de la vie derrière
-// les fenêtres (`WindowLifeLayer`, pantins toujours en 2D quel que soit l'interrupteur).
-const ORDINARY = ['1428547:602cf329', '1425382:733d201c', '1418786:5a5b2738', '1419041:d57e9df9'];
-const PARADE = ['1685668:bed9747', '1685625:ad3d59bb', '1673862:ba335c4f', '1673843:c8e0cda4'];
+// les fenêtres (`WindowLifeLayer`, pantins toujours en 2D quel que soit l'interrupteur). Relevés encore (finitions du
+// chantier, branche fix/ville-vie-finitions) pour les changements voulus du DOM des tâches 10 à 12, vérifiés commit par
+// commit (l'empreinte d'avant tient jusqu'à b3c0ac00) : silhouettes de la cage d'escalier (8df72a9b), réactions des
+// habitants aux événements (04678a68) et calque des toits vivants (bd57a856, edce0c22) ; stables sur deux passages.
+const ORDINARY = ['1445691:1b4d5da5', '1442528:2b8bc9e2', '1435932:569eca10', '1436193:8018b532'];
+const PARADE = ['1734098:a83d8ab4', '1734229:f4e25933', '1722458:2c157bcd', '1722441:4312da29'];
 // Unités du défilé montées à chaque image.
 const PARADE_UNITS = [
   ...Array<number>(39).fill(10), 9, 9, 9, 9, ...Array<number>(8).fill(10), ...Array<number>(18).fill(11), ...Array<number>(11).fill(10), 9,
