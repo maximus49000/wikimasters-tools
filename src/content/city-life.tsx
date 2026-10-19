@@ -278,11 +278,15 @@ const eventOpacity = (e: CityEvent, t: number, still: boolean): string => (still
 // des événements (mêmes fusées, même masque des toits, 30 s), clé stable `show-<instant>`. Instants muraux : la salve de la
 // minute de scène `at` part à `nowS + (at − m) · 60`, où (m, nowS) est un repère de l'horloge de la scène (minute de scène
 // à l'instant mural nowS) : le spectacle se voit aussi quand l'heure de la scène est fixée.
-// `avoid` : intervalles de x0 interdits (colonnes des tours-horloges du fond, élargies de la portée du dessin, `towerColumns`) :
-// la position tirée `x` est répartie sur la seule partie libre de [40, width − 40], sans changer le nombre de salves.
+// `avoid` : intervalles de x0 interdits (colonnes des tours-horloges du fond, élargies de la portée de la gerbe centrale,
+// `towerColumns`) : la position tirée `x` est répartie sur la seule partie libre de [40, width − 40], sans changer le nombre
+// de salves. Filet (écran étroit, téléphone en portrait) : si la partie libre fait moins de SHOW_FREE_MIN de la plage,
+// l'exclusion est ignorée (un feu devant le clocher vaut mieux que pas de feu, ou des gerbes empilées au bord). Les fusées
+// latérales d'une salve (cx ± 60, ± 120) qui tombent sur une tour passent derrière elle (masque du spectacle, `towerRects`).
 export const SHOW_BURST_S = 30;
-// Demi-largeur du dessin d'une salve (fusées à cx ± 120, gerbe de 22 × 1,15 et son halo), en unités de la scène.
-export const SHOW_REACH = 150;
+// Portée de la gerbe centrale d'une salve (gerbe de 22 × 1,15 et son halo, avec une marge), en unités de la scène.
+export const SHOW_REACH = 45;
+export const SHOW_FREE_MIN = 0.35;
 export function showEvents(show: FireworksShow, m: number, nowS: number, width: number, avoid: readonly (readonly [number, number])[] = []): CityEvent[] {
   // Parties libres de [40, width − 40], de gauche à droite.
   let free: [number, number][] = [[40, Math.max(40, width - 40)]];
@@ -296,6 +300,7 @@ export function showEvents(show: FireworksShow, m: number, nowS: number, width: 
     });
   }
   const total = free.reduce((s, [u, v]) => s + v - u, 0);
+  if (avoid.length && total < SHOW_FREE_MIN * Math.max(0, width - 80)) return showEvents(show, m, nowS, width);
   if (total <= 0) return [];
   const xOf = (r: number): number => {
     let rest = r * total;
@@ -313,11 +318,15 @@ export function showEvents(show: FireworksShow, m: number, nowS: number, width: 
     };
   });
 }
-// Colonnes des tours-horloges peintes au fond (city-plan.ts), élargies de la portée d'une salve : x0 interdits au spectacle
+// Colonnes des tours-horloges peintes au fond (city-plan.ts), élargies de la portée de la gerbe : x0 interdits au spectacle
 // (ses gerbes passaient devant le clocher ; le masque des toits ne prend que les façades).
 export function towerColumns(width: number, height: number, seed: number): [number, number][] {
   const reach = SHOW_REACH * cityMetrics(height).unit;
   return hillLandmarks(width, height, seed).filter((l) => l.kind === 'tower').map((l): [number, number] => [l.x - 2 * l.s - reach, l.x + l.w + 2 * l.s + reach]);
+}
+// Silhouettes des tours-horloges du fond (cadre de `hillTopY` : tour, flèche et boule, du sommet au pied de la rangée).
+export function towerSilhouettes(width: number, height: number, seed: number): { x: number; y: number; w: number; h: number }[] {
+  return hillLandmarks(width, height, seed).filter((l) => l.kind === 'tower').map((l) => ({ x: l.x - 2 * l.s, y: l.top, w: l.w + 4 * l.s, h: l.base - l.top }));
 }
 
 export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNight = false, weather }: CityLifeProps): ReactElement {
@@ -513,6 +522,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const anchor = sceneClock.current;
   // Colonnes des tours-horloges du fond, calculées seulement un jour de spectacle.
   const towers = useMemo(() => (shows.today || shows.prev ? towerColumns(width, height, seed) : []), [shows, width, height, seed]);
+  const towerRects = useMemo(() => (shows.today || shows.prev ? towerSilhouettes(width, height, seed) : []), [shows, width, height, seed]);
   const showList = useMemo(
     () => [...(shows.today ? showEvents(shows.today, anchor.m, anchor.base, width, towers) : []), ...(shows.prev ? showEvents(shows.prev, anchor.m + 1440, anchor.base, width, towers) : [])],
     [shows, anchor.m, anchor.base, width, towers],
@@ -962,6 +972,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             <mask id={`${maskBase}-skyline`} maskUnits="userSpaceOnUse" x={0} y={0} width={width} height={height}>
               <rect x={0} y={0} width={width} height={height} fill="#fff" />
               {silhouette(facades)}
+              {/* Jour de spectacle : les tours-horloges du fond aussi (les fusées latérales d'une salve passent derrière). */}
+              {fireworks.some((e) => e.key.startsWith('show-')) && towerRects.map((r, i) => <rect key={`t${i}`} data-tower-mask="" x={r.x} y={r.y} width={r.w} height={r.h} fill="#000" />)}
             </mask>
           )}
           {cranes.length > 0 && (

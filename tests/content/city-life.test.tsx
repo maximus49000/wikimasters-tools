@@ -3,7 +3,7 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CityLifeLayer, pedEdgePad, showEvents, towerColumns } from '../../src/content/city-life';
+import { CityLifeLayer, SHOW_FREE_MIN, pedEdgePad, showEvents, towerColumns, towerSilhouettes } from '../../src/content/city-life';
 import { lifeStates, sharedSceneLife } from '../../src/content/use-scene-life';
 import { fireworksShow } from '../../src/core/library/city/fireworks-show';
 import { dayContext } from '../../src/core/library/city/calendar';
@@ -596,6 +596,9 @@ describe('CityLifeLayer : réactions aux événements de la rue (vie au-dessus d
     const all = showEvents(show, minutes, NOW_S, 1080, towerColumns(1080, 340, 1));
     expect(all).toHaveLength(show.bursts.length);
     for (const e of all) for (const [a, b] of towerColumns(1080, 340, 1)) expect(e.x0 <= a || e.x0 >= b).toBe(true);
+    // Les fusées latérales d'une salve qui tombent sur une tour passent derrière elle : la tour est dans le masque.
+    expect(c.querySelectorAll('[data-event-mask="skyline"]').length).toBeGreaterThan(0);
+    expect(c.querySelectorAll('mask [data-tower-mask]').length).toBe(towerSilhouettes(720, 340, 1).length);
     // Avant le spectacle : aucune salve.
     expect(showNodes(at(Math.floor(show.start) - 3, D))).toHaveLength(0);
     // Salons éteints et habitants penchés ou au balcon (emplois du temps du jour de fête).
@@ -612,6 +615,28 @@ describe('CityLifeLayer : réactions aux événements de la rue (vie au-dessus d
     expect(watchers).toBeGreaterThan(0);
   });
 
+
+  it('écran étroit (téléphone en portrait) : toutes les salves, dispersées, même quand une tour est visible', () => {
+    const show = fireworksShow(1, { y: 2026, m: 7, d: 14 })!;
+    for (const width of [390, 430]) {
+      // Graines dont une tour-horloge du fond est dans l'écran.
+      const seeds = Array.from({ length: 200 }, (_, i) => i + 1).filter((s) => towerColumns(width, 340, s).some(([a, b]) => b > 40 && a < width - 40)).slice(0, 5);
+      expect(seeds.length).toBeGreaterThan(0);
+      for (const seed of seeds) {
+        const avoid = towerColumns(width, 340, seed);
+        const all = showEvents(show, 1360, NOW_S, width, avoid);
+        expect(all).toHaveLength(show.bursts.length);
+        const xs = all.map((e) => e.x0);
+        const span = width - 80;
+        // Dispersion : les x0 couvrent plus de la moitié de la plage, et pas plus d'un quart des salves collées à un bord.
+        expect(Math.max(...xs) - Math.min(...xs), `largeur ${width}, graine ${seed}`).toBeGreaterThan(span * 0.5);
+        expect(xs.filter((x) => x < 45 || x > width - 45).length).toBeLessThan(xs.length / 4);
+        // Exclusion gardée quand il reste assez de place ; ignorée sinon (filet).
+        const free = span - avoid.reduce((s, [a, b]) => s + Math.max(0, Math.min(b, width - 40) - Math.max(a, 40)), 0);
+        if (free >= SHOW_FREE_MIN * span) for (const x of xs) for (const [a, b] of avoid) expect(x <= a || x >= b).toBe(true);
+      }
+    }
+  });
   it('Nouvel An : le spectacle du 31 décembre continue après minuit', () => {
     const show = fireworksShow(1, { y: 2026, m: 12, d: 31 })!;
     // Après minuit (le 1er janvier n'a pas de spectacle à lui) : minute de scène du lendemain.
