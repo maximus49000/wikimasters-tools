@@ -43,11 +43,13 @@ const MIN_POSE = 2;
 const ROUTINE_SMOKE = 0.85;
 // Teinte de base d'un foyer (maquette : warm, warm, cream, orange), tirée de la graine du foyer.
 const TONES: readonly LightTone[] = ['warm', 'warm', 'cream', 'orange'];
+// Extinctions du coucher (minutes) : fenêtre autour de `bed`, écart tiré entre deux pièces, durée minimale d'une lumière.
+const OFF = { before: 15, after: 40, gap: [1.5, 7], minLit: 3 } as const;
 const SHUT_USERS = new Set(['couple', 'famille', 'retraite', 'solo']);
 
 // Plan des feux pour la seconde passe : qui regarde (membres présents pendant tout le spectacle), si le foyer réagit.
 type ShowPlan = { who: number[] };
-type Composed = { segments: Segment[]; shutUser: boolean; bed: number; gone: [number, number, number][] };
+type Composed = { segments: Segment[]; shutUser: boolean; bed: number; kidBed: number; gone: [number, number, number][] };
 
 const pri = (tone: LightTone, base: LightTone): number => (tone === 'tv' ? 3 : tone === 'orange' && base !== 'orange' ? 2 : 1);
 
@@ -262,6 +264,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
   }
 
   let shutUser = true;
+  let kidBed = Infinity; // enfants couchés (ils ne regardent plus les feux)
   let bed = 0; // extinction du salon (la famille et le retraité ne voient les feux que s'ils veillent encore)
   let firstBack = 0; // premier retour du soir (le sapin s'allume)
   switch (hh.type) {
@@ -358,7 +361,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       const back2 = back1 + 105 + r() * 30, tB = arrive(back2, 1);
       const dinner = Math.max(1167 + E * 0.6, tB + 10);
       const guests = draw.presence === 'guests' ? 1 + (r() < 0.5 ? 1 : 0) : 0;
-      const kidBed = dinner + 65 + r() * 10;
+      kidBed = dinner + 65 + r() * 10;
       bed = late(Math.max(1355 + Z * 0.6, kidBed + 25));
       lit(K, tA, dinner + 60);
       if (C) {
@@ -599,7 +602,24 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       else S.push((prev = { k: 'lit', room, t0: p, t1: q, tone: top.tone }));
     }
   }
-  return { segments: S, shutUser, bed, gone };
+  // Extinctions du coucher : les pièces encore allumées au coucher (dernière lumière finissant entre bed − 15 et bed + 40)
+  // s'éteignent dans l'ordre tiré du jour (`draw.offOrder`), à quelques minutes d'écart, à partir de la première extinction
+  // prévue ; une pièce où une scène est en cours ne s'éteint qu'à la fin de la scène.
+  const lastLit = new Map<Room, Extract<Segment, { k: 'lit' }>>();
+  for (const g of S) if (g.k === 'lit' && g.t1 >= bed - OFF.before && g.t1 <= bed + OFF.after && g.t1 > (lastLit.get(g.room)?.t1 ?? -1)) lastLit.set(g.room, g);
+  if (lastLit.size) {
+    const rooms = draw.offOrder.filter((room) => lastLit.has(room));
+    let t = Math.min(...[...lastLit.values()].map((g) => g.t1));
+    for (const room of rooms) {
+      const g = lastLit.get(room)!;
+      const later = S.some((x) => x.k === 'lit' && x.room === room && x.t0 >= g.t1);
+      let end = Math.max(t, g.t0 + OFF.minLit);
+      for (const a of S) if (a.k === 'act' && a.room === room && a.t0 < Math.max(end, g.t1) && a.t1 > end) end = a.t1;
+      if (!later) g.t1 = end;
+      t = end + OFF.gap[0] + r() * (OFF.gap[1] - OFF.gap[0]);
+    }
+  }
+  return { segments: S, shutUser, bed, kidBed, gone };
 }
 
 // Bornes du jour : une scène hors de [0, 1800] est rognée, une scène vide retirée.
@@ -636,7 +656,12 @@ export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw): Schedu
   if (show) {
     const awake = (d.hh.type !== 'famille' && d.hh.type !== 'retraite') || res.bed > show.start;
     const a = show.start - 2, b = show.end + 1;
-    const who = d.hh.members.map((_, i) => i).filter((m) => !res.gone.some(([g, from, to]) => g === m && from - d.climb < b && to + d.climb > a));
+    // Adultes d'abord (trois places au balcon) ; les enfants déjà couchés ne regardent pas.
+    const kid = (m: number) => d.hh.members[m]!.size < 0.8;
+    const who = d.hh.members.map((_, i) => i)
+      .filter((m) => !res.gone.some(([g, from, to]) => g === m && from - d.climb < b && to + d.climb > a))
+      .filter((m) => !kid(m) || res.kidBed > show.start)
+      .sort((p, q) => Number(kid(p)) - Number(kid(q)) || p - q);
     if (awake && who.length) res = compose(d, day, draw, { who });
   }
   const segments = clamp(res.segments);

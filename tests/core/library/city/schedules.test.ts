@@ -124,6 +124,52 @@ describe('emplois du temps', () => {
     }
   });
 
+  it("ordre des extinctions du soir variable d'un jour à l'autre pour un même logement", () => {
+    const days = Array.from({ length: 10 }, (_, i) => dayOf({ y: 2026, m: 11, d: 2 + i }));
+    let varied = 0;
+    let checked = 0;
+    for (const type of ['couple', 'retraite'] as const) {
+      for (const i of [0, 1, 2, 3]) {
+        const d = { ...ofType(type, i), rooms: ['cuisine', 'chambre', 'salon'] as Dwelling['rooms'] };
+        const orders = new Set<string>();
+        for (const day of days) {
+          const s = sched(d, day);
+          if (!s.segments.length) continue;
+          const last = new Map<string, number>();
+          for (const g of s.segments) if (g.k === 'lit') last.set(g.room, Math.max(last.get(g.room) ?? 0, g.t1));
+          const evening = [...last].filter(([, t]) => t > 20 * 60).sort((a, b) => a[1] - b[1]).map(([room]) => room);
+          orders.add(evening.join('>'));
+        }
+        checked++;
+        if (orders.size >= 2) varied++;
+      }
+    }
+    expect(varied).toBeGreaterThanOrEqual(checked * 0.75);
+  });
+
+  it('aucune pièce éteinte pendant qu’un acteur y joue', () => {
+    for (const d of mixed(150).map((x) => ({ ...x, rooms: ['cuisine', 'chambre', 'salon'] as Dwelling['rooms'] }))) {
+      for (const day of [...WEEK, dayOf({ y: 2026, m: 12, d: 31 }), dayOf({ y: 2026, m: 7, d: 14 })]) {
+        const s = sched(d, day);
+        const lits = s.segments.filter((g): g is Extract<Segment, { k: 'lit' }> => g.k === 'lit');
+        for (const l of lits) {
+          if (l.t1 < 18 * 60 || lits.some((x) => x.room === l.room && x.t0 === l.t1)) continue; // extinctions du soir
+          for (const a of acts(s)) if (a.room === l.room && a.where === 'in') expect(a.t0 < l.t1 && a.t1 > l.t1).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('feux : adultes d’abord, enfants couchés absents', () => {
+    const day = dayOf({ y: 2026, m: 7, d: 14 });
+    for (const d of pool('famille', 80)) {
+      const fam = { ...d, hh: { ...d.hh, members: [...d.hh.members.slice(0, 2).map((m) => ({ ...m, size: 1, kid: false })), { ...d.hh.members[0]!, size: 0.62, kid: true }] } };
+      const watchers = acts(sched(fam, day)).filter((a) => a.event).map((a) => a.m);
+      if (watchers.length) expect(watchers.slice(0, 2).every((m) => m < 2)).toBe(true);
+      expect(watchers.includes(2)).toBe(false); // couché vers 20 h 30, bien avant 22 h 15
+    }
+  });
+
   it('absent : aucun lit ni act ; malade : aucun depart', () => {
     let away = 0;
     let sick = 0;
