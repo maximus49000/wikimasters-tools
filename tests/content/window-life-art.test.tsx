@@ -3,8 +3,9 @@ import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FacadeWindow } from '../../src/core/library/city/facade-layout';
+import { amb as nightAmb } from '../../src/content/ghibli-window-art';
 import {
-  Curtains, FlowerBox, HeldProp, InteriorProp, Sapin, Sash, Shutters, curtainOpenWidth, flowerPalette, shutterTransform,
+  Curtains, DARK_ALPHA, DARK_VEIL, FlowerBox, HeldProp, InteriorProp, Sapin, Sash, Shutters, curtainOpenWidth, flowerPalette, shutterTransform,
 } from '../../src/content/window-life-art';
 
 // Dessins de la façade vivante (chantier « vie au-dessus de la rue ») : composants à nœuds constants, seuls transform /
@@ -110,6 +111,61 @@ describe('rideaux', () => {
     expect(svg().querySelector('[data-voile-lit]')!.getAttribute('opacity')).toBe('1');
     render(<Curtains win={win} style="voile" color="#F4E6D0" drawn={0.8} lit={true} wall="#EDE2C8" />);
     expect(svg().querySelector('[data-voile-lit]')!.getAttribute('opacity')).toBe('0');
+  });
+});
+
+describe('ambiance de nuit (dark)', () => {
+  const amb = (c: string): string => {
+    const a = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+    const b = [1, 3, 5].map((i) => parseInt(DARK_VEIL.slice(i, i + 2), 16));
+    return `#${a.map((v, i) => Math.round(v + (b[i]! - v) * DARK_ALPHA).toString(16).padStart(2, '0')).join('')}`;
+  };
+  const views: [string, (dark: number) => ReactElement][] = [
+    ['Shutters persienne', (d) => <Shutters win={win} kind="persienne" color="#C4CCC8" open={0} litBehind={true} dark={d} />],
+    ['Shutters battant', (d) => <Shutters win={win} kind="battant" color="#8FA88C" open={1} litBehind={false} dark={d} />],
+    ['Sash', (d) => <Sash win={win} open={1} night={true} dark={d} />],
+    ['FlowerBox', (d) => <FlowerBox win={win} month={7} seed={2} dark={d} />],
+    ['InteriorProp', (d) => <InteriorProp win={win} kind="desk" tone="cool" flicker={0} dark={d} />],
+    ['HeldProp', (d) => <HeldProp kind="watering-can" at={[1, 2]} phase={1} night={false} dark={d} />],
+  ];
+
+  it('nœuds constants pour dark 0 / 0,5 / 1 ; seule l’opacité du voile change', () => {
+    for (const [, view] of views) {
+      render(view(0));
+      const day = shape();
+      const count = all().length;
+      for (const d of [0.5, 1]) {
+        render(view(d));
+        expect(shape()).toEqual(day);
+        expect(all().length).toBe(count);
+      }
+    }
+  });
+
+  it('le voile compose exactement amb(c) à la nuit pleine : #1E2A5A à 0,64 sur les formes colorées, 0 de jour', () => {
+    expect(amb('#C4CCC8')).toBe(nightAmb('#C4CCC8'));
+    expect(amb('#8FA88C')).toBe(nightAmb('#8FA88C'));
+    for (const [name, view] of views) {
+      render(view(1));
+      const veils = [...svg().querySelectorAll('[data-dark-veil]')];
+      expect(veils.length, name).toBeGreaterThan(0);
+      for (const v of veils) {
+        expect(v.getAttribute('fill') ?? v.getAttribute('stroke')).toBe(DARK_VEIL);
+        expect(v.getAttribute('opacity')).toBe('0.64');
+      }
+      render(view(0));
+      for (const v of svg().querySelectorAll('[data-dark-veil]')) expect(v.getAttribute('opacity')).toBe('0');
+    }
+  });
+
+  it('les lames éclairées des persiennes restent claires au-dessus du voile ; la braise n’est pas voilée', () => {
+    render(<Shutters win={win} kind="persienne" color="#C4CCC8" open={0} litBehind={true} dark={1} />);
+    const leaf = svg().querySelector('[data-shutter-leaf]')!;
+    const order = [...leaf.querySelectorAll('*')].map((el) => (el.hasAttribute('data-dark-veil') ? 'veil' : el.hasAttribute('data-slats-lit') ? 'lit' : '-'));
+    expect(order.indexOf('veil')).toBeLessThan(order.indexOf('lit'));
+    render(<HeldProp kind="cigarette" at={[1, 2]} phase={0.3} night={false} dark={1} />);
+    const ember = svg().querySelector('circle[fill="#FF6A2A"]')!;
+    expect(ember.nextElementSibling?.hasAttribute('data-dark-veil') ?? false).toBe(false);
   });
 });
 

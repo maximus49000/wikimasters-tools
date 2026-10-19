@@ -65,6 +65,11 @@ const SASH_SKEW = 17.745;
 const SASH_W = 0.95;
 // Nombre d'ampoules de la guirlande et seuil d'allumage de leur cycle de 2 s.
 const BULBS = 7;
+// Ambiance de nuit (notes.md : amb(c) = mix(c, #1E2A5A, 0,64)) : un voile de cette couleur à l'opacité 0,64 × `dark`,
+// superposé aux seules formes colorées d'un composant, compose exactement amb(c) à la nuit pleine — un nœud, sans
+// changer les couleurs des formes ; ce qui éclaire (lames éclairées, braise, fumée, eau, écrans allumés) reste au-dessus.
+export const DARK_VEIL = '#1E2A5A';
+export const DARK_ALPHA = 0.64;
 
 export type ShutterKind = 'persienne' | 'battant';
 export type InteriorKind = 'table' | 'tv' | 'stove' | 'desk';
@@ -76,6 +81,7 @@ const css = (c: readonly [number, number, number]): string => rgba(c, 1);
 const rectPath = (x: number, y: number, w: number, h: number): string => `M${n(x)} ${n(y)}h${n(w)}v${n(h)}h${n(-w)}z`;
 const disc = (cx: number, cy: number, r: number): string => `M${n(cx - r)} ${n(cy)}a${r} ${r} 0 1 0 ${n(2 * r)} 0a${r} ${r} 0 1 0 ${n(-2 * r)} 0z`;
 const on = (v: boolean): number => (v ? 1 : 0);
+const veil = (dark: number): number => n(DARK_ALPHA * Math.min(1, Math.max(0, dark)));
 
 // Plancher de la pièce derrière une fenêtre (maquette : bas de l'étage − 0,5 ; porte-fenêtre : bas de la vitre + 0,5),
 // retrouvé depuis la vitre seule (facade-layout : std = 62 % de l'étage à 42 % du jeu, top = 56 %, french = 72 %).
@@ -101,7 +107,7 @@ export const shutterTransform = (open: number, kind: ShutterKind = 'persienne'):
   kind === 'persienne' ? `scale(${n(1 - open)} 1)` : `translate(${n(-BATTANT_GAP * open)} 0) scale(${n(1 - BATTANT_FOLD * open)} 1)`;
 
 // Un vantail : face, lames sombres et lames éclairées (l'une transparente), ombre du bord intérieur (persienne), contour.
-function Leaf({ kind, lw, h, face, slat, lit, edge }: { kind: ShutterKind; lw: number; h: number; face: string; slat: string; lit: number; edge: string }): ReactElement {
+function Leaf({ kind, lw, h, face, slat, lit, edge, dark }: { kind: ShutterKind; lw: number; h: number; face: string; slat: string; lit: number; edge: string; dark: number }): ReactElement {
   let slats = '';
   const step = kind === 'persienne' ? 1.6 : 2;
   const sh = kind === 'persienne' ? 0.35 : 0.4;
@@ -113,14 +119,16 @@ function Leaf({ kind, lw, h, face, slat, lit, edge }: { kind: ShutterKind; lw: n
       <rect width={n(lw)} height={n(h)} fill={face} stroke={INK} strokeWidth={kind === 'persienne' ? 0.4 : 0.45} {...stroke} />
       {kind === 'persienne' && <rect x={n(lw - 0.5)} width={0.5} height={n(h)} fill={edge} />}
       <path data-slats-dark="" d={slats} fill={slat} opacity={1 - lit} />
+      <rect data-dark-veil="" width={n(lw)} height={n(h)} fill={DARK_VEIL} opacity={veil(dark)} />
       <path data-slats-lit="" d={slats} fill={SLAT_LIT} opacity={lit} />
     </>
   );
 }
 
 // Volets d'une fenêtre : persiennes métalliques repliables (haussmann, lames qui laissent filtrer la lumière) ou volets
-// battants (faubourg, lames éclairées seulement quand ils sont plus fermés qu'ouverts). `open` 0 fermé … 1 replié.
-export function Shutters({ win, kind, color, open, litBehind }: { win: FacadeWindow; kind: ShutterKind; color: string; open: number; litBehind: boolean }): ReactElement {
+// battants (faubourg, lames éclairées seulement quand ils sont plus fermés qu'ouverts). `open` 0 fermé … 1 replié ;
+// `dark` : obscurité 0-1 (ambiance de nuit sur les vantaux, lames éclairées au-dessus).
+export function Shutters({ win, kind, color, open, litBehind, dark = 0 }: { win: FacadeWindow; kind: ShutterKind; color: string; open: number; litBehind: boolean; dark?: number }): ReactElement {
   const { x, y, w, h } = win;
   const c = hex(color);
   const lw = w / 2;
@@ -134,12 +142,12 @@ export function Shutters({ win, kind, color, open, litBehind }: { win: FacadeWin
     <g data-shutters={kind}>
       <g transform={`translate(${n(x)} ${n(y)})`}>
         <g data-shutter-leaf={kind} transform={t}>
-          <Leaf kind={kind} lw={lw} h={h} face={faceL} slat={slat} lit={lit} edge={edge} />
+          <Leaf kind={kind} lw={lw} h={h} face={faceL} slat={slat} lit={lit} edge={edge} dark={dark} />
         </g>
       </g>
       <g transform={`translate(${n(x + w)} ${n(y)}) scale(-1 1)`}>
         <g data-shutter-leaf={kind} transform={t}>
-          <Leaf kind={kind} lw={lw} h={h} face={faceR} slat={slat} lit={lit} edge={edge} />
+          <Leaf kind={kind} lw={lw} h={h} face={faceR} slat={slat} lit={lit} edge={edge} dark={dark} />
         </g>
       </g>
     </g>
@@ -147,8 +155,8 @@ export function Shutters({ win, kind, color, open, litBehind }: { win: FacadeWin
 }
 
 // Battant gauche de la fenêtre ouvert vers l'extérieur : vitre (jour / nuit, l'une transparente), reflet, contour et
-// meneau ; dessiné à pleine ouverture dans le repère de la charnière biaisé, mis à l'échelle par `open`.
-export function Sash({ win, open, night }: { win: FacadeWindow; open: number; night: boolean }): ReactElement {
+// meneau ; dessiné à pleine ouverture dans le repère de la charnière biaisé, mis à l'échelle par `open` ; `dark` : ambiance.
+export function Sash({ win, open, night, dark = 0 }: { win: FacadeWindow; open: number; night: boolean; dark?: number }): ReactElement {
   const { x, y, w, h } = win;
   const L = (w / 2) * SASH_W;
   const shine = `M${n(-L)} 0H${n(-L * 0.4)}V${n(h * 0.5)}L${n(-L)} ${n(h * 0.6)}z`;
@@ -160,6 +168,7 @@ export function Sash({ win, open, night }: { win: FacadeWindow; open: number; ni
         <rect x={n(-L)} width={n(L)} height={n(h)} fill={GLASS_NIGHT} opacity={on(night)} />
         <path d={shine} fill={SHINE_DAY} opacity={on(!night)} />
         <path d={shine} fill={SHINE_NIGHT} opacity={on(night)} />
+        <rect data-dark-veil="" x={n(-L)} width={n(L)} height={n(h)} fill={DARK_VEIL} opacity={veil(dark)} />
         <rect x={n(-L)} width={n(L)} height={n(h)} strokeWidth={0.55} {...ink} />
         <path d={`M${n(-L / 2)} 0v${n(h)}`} strokeWidth={0.4} {...ink} />
       </g>
@@ -206,7 +215,7 @@ export function Curtains({ win, style, color, drawn, lit, wall, night = lit }: {
           <rect data-voile-lit="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={VOILE_LIT} opacity={on(sheer && lit)} />
           <rect data-voile-day="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={VOILE_DAY} opacity={on(sheer && !lit && !night)} />
           <rect data-voile-night="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={nightVoile(wall)} opacity={on(sheer && !lit && night)} />
-          <path d={lines} fill="none" stroke={VOILE_LINES} strokeWidth={0.4} opacity={on(sheer && !night)} />
+          <path d={lines} fill="none" stroke={VOILE_LINES} strokeWidth={0.4} opacity={on(sheer && (lit || !night))} />
         </>
       )}
       <g data-curtain-panel="" transform={`translate(${n(x)} ${n(y)}) scale(${sx} 1)`}>
@@ -223,8 +232,9 @@ export function Curtains({ win, style, color, drawn, lit, wall, night = lit }: {
 export const flowerPalette = (month: number): readonly string[] =>
   month >= 11 || month <= 2 ? FLOWERS.winter : month <= 4 ? FLOWERS.spring : month <= 9 ? FLOWERS.summer : FLOWERS.autumn;
 
-// Jardinière sous l'appui (faubourg, `win.box`) : bac et touches de couleur de la saison, tirage fixe par `seed`.
-export function FlowerBox({ win, month, seed }: { win: FacadeWindow; month: number; seed: number }): ReactElement {
+// Jardinière sous l'appui (faubourg, `win.box`) : bac et touches de couleur de la saison, tirage fixe par `seed` ;
+// `dark` : ambiance de nuit (voile aux formes du bac et des fleurs).
+export function FlowerBox({ win, month, seed, dark = 0 }: { win: FacadeWindow; month: number; seed: number; dark?: number }): ReactElement {
   const { x, y, w, h } = win;
   const bx = x - 0.4;
   const by = y + h + 1;
@@ -241,6 +251,7 @@ export function FlowerBox({ win, month, seed }: { win: FacadeWindow; month: numb
     <g data-flower-box="">
       <rect x={n(bx)} y={n(by)} width={n(bw)} height={1.6} fill={BOX} stroke={INK} strokeWidth={0.4} />
       {flowers.map((f, i) => <circle key={i} data-flower="" cx={n(f.cx)} cy={n(f.cy)} r={0.7} fill={f.c} />)}
+      <path data-dark-veil="" d={rectPath(bx, by, bw, 1.6) + flowers.map((f) => disc(f.cx, f.cy, 0.7)).join('')} fill={DARK_VEIL} opacity={veil(dark)} />
     </g>
   );
 }
@@ -278,7 +289,8 @@ export function Sapin({ win, night, blink }: { win: FacadeWindow; night: boolean
 // Meuble lié à une pose, en silhouette dans la pièce (le calque règle l'opacité du groupe selon la lumière) : table avec
 // assiettes et bouteille, bureau et son écran froid, télé sur son meuble (écran qui scintille quand la pièce est à la télé :
 // `flicker` en secondes), plan de cuisson. Placé sur le plancher, au centre de la vitre (l'acteur est à ±0,22 largeur).
-export function InteriorProp({ win, kind, tone, flicker }: { win: FacadeWindow; kind: InteriorKind; tone: LightTone; flicker: number }): ReactElement {
+// `dark` : ambiance de nuit sur les parties claires (assiettes, écrans éteints) ; les silhouettes sont déjà sombres.
+export function InteriorProp({ win, kind, tone, flicker, dark = 0 }: { win: FacadeWindow; kind: InteriorKind; tone: LightTone; flicker: number; dark?: number }): ReactElement {
   const { x, w } = win;
   const ax = x + w / 2;
   const fl = floorOf(win);
@@ -290,6 +302,7 @@ export function InteriorProp({ win, kind, tone, flicker }: { win: FacadeWindow; 
       <g data-interior-prop="table">
         <path d={rectPath(ax - tw / 2, ty, tw, hh * 0.05) + rectPath(ax - tw / 2 + 0.6, ty, 0.5, hh * 0.46) + rectPath(ax + tw / 2 - 1.1, ty, 0.5, hh * 0.46) + rectPath(ax - 0.5, ty - hh * 0.14, 1, hh * 0.14)} fill={SILH} />
         <path d={rectPath(ax - tw * 0.36, ty - 0.5, tw * 0.22, 0.5) + rectPath(ax + tw * 0.14, ty - 0.5, tw * 0.22, 0.5)} fill="#FFFFFF" opacity={0.5} />
+        <path data-dark-veil="" d={rectPath(ax - tw * 0.36, ty - 0.5, tw * 0.22, 0.5) + rectPath(ax + tw * 0.14, ty - 0.5, tw * 0.22, 0.5)} fill={DARK_VEIL} opacity={veil(dark)} />
       </g>
     );
   }
@@ -300,6 +313,7 @@ export function InteriorProp({ win, kind, tone, flicker }: { win: FacadeWindow; 
       <g data-interior-prop="desk">
         <path d={rectPath(ax - tw * 0.1, ty, tw, hh * 0.05) + rectPath(ax + tw * 0.75, ty, 0.5, hh * 0.46)} fill={SILH} />
         <rect x={n(ax + tw * 0.35)} y={n(ty - hh * 0.2)} width={n(tw * 0.3)} height={n(hh * 0.19)} fill={SCREEN_DESK} />
+        <rect data-dark-veil="" x={n(ax + tw * 0.35)} y={n(ty - hh * 0.2)} width={n(tw * 0.3)} height={n(hh * 0.19)} fill={DARK_VEIL} opacity={veil(dark)} />
       </g>
     );
   }
@@ -312,6 +326,7 @@ export function InteriorProp({ win, kind, tone, flicker }: { win: FacadeWindow; 
       <g data-interior-prop="tv">
         <rect x={n(tx - 1.6)} y={n(fl - hh * 0.3)} width={3.2} height={n(hh * 0.3)} fill={SILH} />
         <rect x={n(tx - 1.4)} y={n(ty)} width={2.8} height={n(hh * 0.22)} fill={SCREEN_OFF} />
+        <rect data-dark-veil="" x={n(tx - 1.4)} y={n(ty)} width={2.8} height={n(hh * 0.22)} fill={DARK_VEIL} opacity={veil(dark)} />
         <rect data-screen="" x={n(tx - 1.4)} y={n(ty)} width={2.8} height={n(hh * 0.22)} fill="#FFFFFF" opacity={n(glow)} />
       </g>
     );
@@ -321,6 +336,7 @@ export function InteriorProp({ win, kind, tone, flicker }: { win: FacadeWindow; 
     <g data-interior-prop="stove">
       <rect x={n(sx)} y={n(fl - hh * 0.46)} width={n(hh * 0.3)} height={n(hh * 0.46)} fill={SILH} />
       <rect x={n(sx + 0.3)} y={n(fl - hh * 0.5)} width={n(hh * 0.2)} height={n(hh * 0.05)} fill="#FFFFFF" opacity={0.35} />
+      <rect data-dark-veil="" x={n(sx + 0.3)} y={n(fl - hh * 0.5)} width={n(hh * 0.2)} height={n(hh * 0.05)} fill={DARK_VEIL} opacity={veil(dark)} />
     </g>
   );
 }
@@ -328,14 +344,17 @@ export function InteriorProp({ win, kind, tone, flicker }: { win: FacadeWindow; 
 // Accessoire dans la main (`at` : main droite du pantin, en coordonnées de la scène) ; la nuit, en silhouette.
 // `phase` : cigarette = avancement de la bouffée (0 → 1 : la volute monte et se dilue ; < 0 : pas de fumée) ; arrosoir =
 // 1 quand il verse (filet d'eau) ; tapis = phase de l'ondulation (radians) ; sans effet pour la cuillère, le livre, la tasse.
-export function HeldProp({ kind, at, phase, night }: { kind: HandProp; at: readonly [number, number]; phase: number; night: boolean }): ReactElement {
+// `dark` : ambiance de nuit (crépuscule) sur l'objet ; la braise, la fumée et l'eau restent claires.
+export function HeldProp({ kind, at, phase, night, dark = 0 }: { kind: HandProp; at: readonly [number, number]; phase: number; night: boolean; dark?: number }): ReactElement {
   const t = `translate(${n(at[0])} ${n(at[1])})`;
-  const dark = night ? SILH : null;
+  const sil = night ? SILH : null;
+  const dv = { 'data-dark-veil': '', fill: DARK_VEIL, opacity: veil(dark) } as const;
   if (kind === 'cigarette') {
     const puff = Math.min(1, Math.max(0, phase));
     return (
       <g data-held-prop="cigarette" transform={t}>
-        <path d={`M0 -0.3h1.8`} stroke={night ? CUP : '#F4F0E0'} strokeWidth={0.4} />
+        <path d="M0 -0.3h1.8" stroke={sil ?? CUP} strokeWidth={0.4} />
+        <path d="M0 -0.3h1.8" stroke={DARK_VEIL} strokeWidth={0.4} opacity={veil(dark)} />
         <circle cx={1.9} cy={-0.3} r={0.45} fill={EMBER} />
         <circle data-puff="" r={1} fill={night ? SMOKE_NIGHT : SMOKE_DAY} transform={`translate(${n(1.5 + puff * 4)} ${n(-4 - puff * 5)}) scale(${n(0.8 + puff * 2)})`} opacity={n(phase < 0 ? 0 : 0.5 * (1 - puff))} />
       </g>
@@ -344,7 +363,8 @@ export function HeldProp({ kind, at, phase, night }: { kind: HandProp; at: reado
   if (kind === 'watering-can') {
     return (
       <g data-held-prop="watering-can" transform={t}>
-        <path d="M-1.2 0H1.4L1.1 2.2H-0.9z" fill={dark ?? CAN} />
+        <path d="M-1.2 0H1.4L1.1 2.2H-0.9z" fill={sil ?? CAN} />
+        <path d="M-1.2 0H1.4L1.1 2.2H-0.9z" {...dv} />
         <path d="M1.2 0.6L3 2.6" stroke={INK} strokeWidth={0.6} />
         <path data-pour="" d="M3 2.8Q3.6 4 3.4 5.5" fill="none" stroke={WATER} strokeWidth={0.5} opacity={on(phase > 0)} />
       </g>
@@ -359,8 +379,9 @@ export function HeldProp({ kind, at, phase, night }: { kind: HandProp; at: reado
     return (
       <g data-held-prop="rug" transform={t}>
         <g transform={`skewX(${skew})`}>
-          <path d={`M${lx} 0H${rx}V4.2Q0 5 ${lx} 4.2z`} fill={dark ?? RUG} stroke={INK} strokeWidth={0.4} strokeLinejoin="round" />
+          <path d={`M${lx} 0H${rx}V4.2Q0 5 ${lx} 4.2z`} fill={sil ?? RUG} stroke={INK} strokeWidth={0.4} strokeLinejoin="round" />
           <path d={rectPath(lx + 0.6, 1.2, rx - lx - 1.2, 0.5) + rectPath(lx + 0.6, 2.8, rx - lx - 1.2, 0.5)} fill={RUG_STRIPE} opacity={on(!night)} />
+          <path d={`M${lx} 0H${rx}V4.2Q0 5 ${lx} 4.2z`} {...dv} />
         </g>
         {[0, 1, 2, 3].map((k) => <circle key={k} data-dust="" r={0.5} fill={DUST} transform={`translate(${n(Math.sin(phase * 0.7 + k) * 2.5)} ${n(5.5 + k * 1.1)})`} />)}
       </g>
@@ -369,23 +390,26 @@ export function HeldProp({ kind, at, phase, night }: { kind: HandProp; at: reado
   if (kind === 'spoon') {
     return (
       <g data-held-prop="spoon" transform={t}>
-        <path d="M0 0L2.2 -2.2" stroke={dark ?? SPOON} strokeWidth={0.5} />
-        <circle cx={2.5} cy={-2.5} r={0.6} fill={dark ?? SPOON} />
+        <path d="M0 0L2.2 -2.2" stroke={sil ?? SPOON} strokeWidth={0.5} />
+        <circle cx={2.5} cy={-2.5} r={0.6} fill={sil ?? SPOON} />
+        <path d={`M0 0L2.2 -2.2${disc(2.5, -2.5, 0.6)}`} stroke={DARK_VEIL} strokeWidth={0.5} {...dv} />
       </g>
     );
   }
   if (kind === 'book') {
     return (
       <g data-held-prop="book" transform={t}>
-        <path d="M-1.6 -1.4L0 -1.1L1.6 -1.4V0.6L0 0.9L-1.6 0.6z" fill={dark ?? BOOK} stroke={INK} strokeWidth={0.3} strokeLinejoin="round" />
+        <path d="M-1.6 -1.4L0 -1.1L1.6 -1.4V0.6L0 0.9L-1.6 0.6z" fill={sil ?? BOOK} stroke={INK} strokeWidth={0.3} strokeLinejoin="round" />
         <path d="M0 -1.1V0.9" stroke={INK} strokeWidth={0.3} />
+        <path d="M-1.6 -1.4L0 -1.1L1.6 -1.4V0.6L0 0.9L-1.6 0.6z" {...dv} />
       </g>
     );
   }
   return (
     <g data-held-prop="cup" transform={t}>
-      <rect x={-0.7} y={-1.6} width={1.4} height={1.6} fill={dark ?? CUP} stroke={INK} strokeWidth={0.3} />
+      <rect x={-0.7} y={-1.6} width={1.4} height={1.6} fill={sil ?? CUP} stroke={INK} strokeWidth={0.3} />
       <path d="M0.7 -1.2Q1.6 -0.8 0.7 -0.4" fill="none" stroke={INK} strokeWidth={0.35} />
+      <rect x={-0.7} y={-1.6} width={1.4} height={1.6} {...dv} />
     </g>
   );
 }
