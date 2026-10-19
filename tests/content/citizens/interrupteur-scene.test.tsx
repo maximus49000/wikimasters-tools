@@ -3,7 +3,8 @@
 // Interrupteur des habitants 3D coupé (CITIZENS_3D = false) = retour arrière de l'utilisateur : la scène Ghibli doit être
 // EXACTEMENT celle d'avant la branche des habitants 3D. Ville vivante (passants, habitants, commerces, circulation, bus) un jour
 // ordinaire et grand défilé du 14 juillet, image par image (100 ms) : empreintes du DOM relevées avec le code d'avant
-// (e53e9565, même scénario ; relevées à nouveau sur la tête de G5 partie 2, 79bd348c, à sa fusion avec main) ; aucune
+// (e53e9565, même scénario ; relevées à nouveau sur la tête de G5 partie 2, 79bd348c, à sa fusion avec main, puis pour les
+// cages d'escalier et la vie aux fenêtres, voir ORDINARY) ; aucune
 // demande d'avance, aucun portillon d'entrée, aucun attribut `visibility` posé.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -104,9 +105,12 @@ describe('interrupteur coupé : scène d’avant la branche', () => {
   });
 });
 
-// Relevés avec le code d'avant la branche (e53e9565), même scénario.
-const ORDINARY = ['139615:1af950c2', '136450:d81c18f1', '129854:6fbcb741', '130109:c4aa3b52'];
-const PARADE = ['449288:b2bdd41e', '449255:547571c4', '437479:8298202d', '437455:a0abb837'];
+// Relevés avec le code d'avant la branche (e53e9565), même scénario, puis relevés à nouveau (2026-10-19, chantier « vie
+// au-dessus de la rue », tâche 9) pour deux ajouts voulus, hors des habitants 3D : les cages d'escalier allumées au passage
+// (chantier 1 des façades, `StairLights` ; seul écart sur main, vérifié en les retirant) et le calque de la vie derrière
+// les fenêtres (`WindowLifeLayer`, pantins toujours en 2D quel que soit l'interrupteur).
+const ORDINARY = ['1097147:d2da3085', '1093982:cf4cd830', '1087386:3722495c', '1087641:6d9a456d'];
+const PARADE = ['1383349:5f289d7f', '1383306:997e5a55', '1371543:cbaed4e3', '1371524:f87efeee'];
 // Unités du défilé montées à chaque image.
 const PARADE_UNITS = [
   ...Array<number>(39).fill(10), 9, 9, 9, 9, ...Array<number>(8).fill(10), ...Array<number>(18).fill(11), ...Array<number>(11).fill(10), 9,

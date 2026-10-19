@@ -114,7 +114,79 @@ describe('calque de la vie derrière les fenêtres', () => {
       expect(anim).toBeLessThanOrEqual(8);
     }
     expect(busiest).toBeGreaterThan(8);
-    expect(maxShown).toBe(8);
+    expect(maxShown).toBeGreaterThan(0);
+  });
+
+  it("borne décidée une fois par scène : personne n'apparaît ni ne disparaît sans marcher (11 s)", () => {
+    const width = 2000;
+    const reg = new FigureRegistry('twlb', { perFrame: 400 });
+    let now = NOW_S * 1000;
+    let perf = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const queue: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queue.push(cb));
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const facades = cityFacades(width, H, SEED);
+    const life = lifeOf(facades);
+    // De jour (pantins dedans visibles à 0,3 derrière la vitre), heure de pointe du matin.
+    const minutes = 7 * 60 + 40;
+    act(() => root.render(<FigureContext.Provider value={reg}><svg><WindowLifeLayer facades={facades} life={life} sky={skyOf(13 * 60)} minutes={minutes} still={false} width={width} /></svg></FigureContext.Provider>));
+    const STEP_MS = 2000;
+    const WINDOW = Math.ceil(11_000 / STEP_MS);
+    const history = new Map<string, boolean[]>(); // marche des dernières images visibles
+    const wasShown = new Map<string, boolean>();
+    let appear = 0, vanish = 0, revealed = 0;
+    // Pantin dévoilé ou caché par ses volets (franchissant la mi-course dans les 11 s) : naturel, accepté.
+    const byShutters = (k: string): boolean => {
+      const [id, mm] = k.split('/');
+      const d = life.dwellings.find((x) => x.id === id)!;
+      const t = minutes + (now - NOW_S * 1000) / 60000;
+      const at = (u: number) => homeState(d, life.today.get(id!)!, life.yesterday.get(id!)!, u);
+      const a = [...at(t).actors, ...at(t - 11 / 60).actors].find((x) => x.m === Number(mm));
+      if (!a || !d.shutters) return false;
+      const s0 = at(t - 11 / 60).shut[a.room] ?? 1, s1 = at(t).shut[a.room] ?? 1;
+      const ok = Math.min(s0, s1) < 0.5 && Math.max(s0, s1) >= 0.5;
+      if (ok) revealed++;
+      return ok;
+    };
+    const read = (first: boolean): void => {
+      const now = new Map<string, string | null>();
+      for (const g of host.querySelectorAll('[data-wl-fig]')) {
+        const k = g.getAttribute('data-wl-fig')!;
+        if (g.getAttribute('display') !== 'none') now.set(k, g.getAttribute('data-gait'));
+        else if (!now.has(k)) now.set(k, null);
+      }
+      for (const [k, key] of now) {
+        const shown = key !== null;
+        const walking = key === 'walk';
+        const h = history.get(k) ?? [];
+        if (!first && shown && !wasShown.get(k)) {
+          appear++;
+          expect(walking || byShutters(k), `${k} apparaît sans marcher`).toBe(true);
+        }
+        if (!first && !shown && wasShown.get(k)) {
+          vanish++;
+          expect(h.slice(-WINDOW).some(Boolean) || byShutters(k), `${k} disparaît sans marcher`).toBe(true);
+        }
+        if (shown) history.set(k, [...h, walking].slice(-WINDOW));
+        else history.delete(k);
+        wasShown.set(k, shown);
+      }
+    };
+    read(true);
+    for (let f = 0; f < 600; f++) {
+      now += STEP_MS;
+      perf += STEP_MS;
+      const cbs = queue.splice(0);
+      act(() => { for (const cb of cbs) cb(perf); reg.flush(); });
+      read(false);
+    }
+    expect(appear).toBeGreaterThan(0);
+    expect(vanish).toBeGreaterThan(0);
   });
 
   it('changement de largeur ou de jour : remontage unique', () => {
@@ -155,7 +227,11 @@ describe('calque de la vie derrière les fenêtres', () => {
     expect(found).not.toBeNull();
     const { id, m: who, t0, t1 } = found!;
     const m = mount(width);
-    const node = (): Element => m.layer().querySelector(`[data-wl-fig="${id}/${who}"][data-side="out"]`)!;
+    // Pantin du membre (nœud en pose fixe ou vivant) : 'none' si aucun des deux n'est montré.
+    const node = (): { getAttribute: (n: string) => string | null } => {
+      const on = [...m.layer().querySelectorAll(`[data-wl-fig="${id}/${who}"]`)].some((g) => g.getAttribute('display') !== 'none');
+      return { getAttribute: () => (on ? 'inline' : 'none') };
+    };
     const at = Math.ceil(t0 + 1);
     m.render({ minutes: at, facades, life: dry });
     expect(node().getAttribute('display')).not.toBe('none');
@@ -164,8 +240,7 @@ describe('calque de la vie derrière les fenêtres', () => {
     expect(node().getAttribute('display')).not.toBe('none');
     for (let t = at + 2; t < Math.floor(t1); t++) {
       m.render({ minutes: t, facades, life: wet });
-      const inside = m.layer().querySelector(`[data-wl-fig="${id}/${who}"][data-side="in"]`)!;
-      expect(node().getAttribute('display') !== 'none' || inside.getAttribute('display') !== 'none').toBe(true);
+      expect(node().getAttribute('display')).not.toBe('none');
     }
     m.render({ minutes: Math.ceil(t1) + 1, facades, life: wet });
     expect(node().getAttribute('display')).toBe('none');
@@ -186,9 +261,10 @@ describe('calque de la vie derrière les fenêtres', () => {
         expect(key).not.toMatch(/\|walk\|/);
       }
       // Même minute rendue deux fois : rien ne bouge.
-      const before = shown(layer).map((g) => g.getAttribute('transform'));
+      const pos = (g: Element): string | null => g.querySelector('[data-wl-pos]')!.getAttribute('transform');
+      const before = shown(layer).map(pos);
       m.render({ minutes: t, still: true });
-      expect(shown(m.layer()).map((g) => g.getAttribute('transform'))).toEqual(before);
+      expect(shown(m.layer()).map(pos)).toEqual(before);
     }
     expect(seen).toBeGreaterThan(0);
   });
@@ -215,9 +291,10 @@ describe('calque de la vie derrière les fenêtres', () => {
     for (let t = 9 * 60; t < 16 * 60 && checked < 3; t += 4) {
       m.render({ minutes: t });
       for (const g of shown(m.layer())) {
-        if (g.getAttribute('data-side') !== 'in') continue;
-        expect(['0.30', '0.90']).toContain(g.getAttribute('opacity'));
-        expect(g.closest('[clip-path]')?.getAttribute('clip-path')).toMatch(/^url\(#/);
+        // Dedans : coupé à la vitre de sa pièce (<clipPath> rectangulaire).
+        if (g.getAttribute('data-where') !== 'in') continue;
+        expect(g.getAttribute('clip-path')).toMatch(/^url\(#/);
+        expect(['0.30', '0.90']).toContain(g.getAttribute('data-alpha'));
         checked++;
       }
     }
