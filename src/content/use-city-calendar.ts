@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { dayContext, type DayContext, type HolidayPeriod, type YMD } from '../core/library/city/calendar';
+import { addDays, dayContext, holidayWeekOf, type DayContext, type HolidayPeriod, type YMD } from '../core/library/city/calendar';
 import { createSchoolCalendar, DEPARTMENT_RELAY } from '../core/library/city/school-calendar';
 import { DEFAULT_ZONE, isAlsaceMoselle, zoneOfDepartment, type Zone } from '../core/library/city/zones';
 import { currentPosition, isPositionKnown, subscribePosition } from './scene-position';
@@ -113,5 +113,11 @@ export function useCityDay(date: YMD, enabled = true): DayContext {
     };
   }, [calendar, zone, enabled]);
   const { y, m, d } = date;
-  return useMemo(() => dayContext({ y, m, d }, periods, alsace), [y, m, d, periods, alsace]);
+  // Semaine de vacances et veille (mêmes périodes) pour la vie des logements (use-scene-life.ts).
+  return useMemo(() => {
+    const date = { y, m, d };
+    const prev = addDays(date, -1);
+    const yesterday: DayContext = { ...dayContext(prev, periods, alsace), holidayWeek: holidayWeekOf(prev, periods) };
+    return { ...dayContext(date, periods, alsace), holidayWeek: holidayWeekOf(date, periods), yesterday };
+  }, [y, m, d, periods, alsace]);
 }

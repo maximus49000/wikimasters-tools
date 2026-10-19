@@ -3,7 +3,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HallLights } from '../../src/content/hall-lights';
-import { StairLights, stairTransition } from '../../src/content/stair-lights';
+import { StairLights, placeStairFigures, stairTransition } from '../../src/content/stair-lights';
+import { climbRun, stairFigureAt } from '../../src/core/library/city/hall-lights';
 import { cityFacades, stairsFor } from '../../src/core/library/city/facades';
 import { DOOR_WIDTH } from '../../src/core/library/city/metrics';
 import { doorsFor } from '../../src/core/library/city/doors';
@@ -47,10 +48,11 @@ describe('lumières des halls (minuterie)', () => {
 describe('cage d’escalier (minuterie des halls)', () => {
   const stairs = stairsFor(cityFacades(1080, 340, 1));
   const [doorX, wins] = [...stairs].find(([, w]) => w.length >= 2)!;
+  const sky = { daylight: 0.1 } as Parameters<typeof StairLights>[0]['sky'];
   const mountStairs = (ghibli: boolean, still: boolean, lit: (x: number, k: number) => boolean): HTMLElement => {
     const host = document.createElement('div');
     root = createRoot(host);
-    act(() => root!.render(<svg><StairLights stairs={stairs} ghibli={ghibli} still={still} lit={lit} /></svg>));
+    act(() => root!.render(<svg><StairLights stairs={stairs} ghibli={ghibli} still={still} lit={lit} sky={sky} /></svg>));
     return host;
   };
   const nodesOf = (host: HTMLElement, x: number): SVGElement[] =>
@@ -96,5 +98,42 @@ describe('cage d’escalier (minuterie des halls)', () => {
     expect(rects[0]!.getAttribute('fill')).toBe('#F4F0D8');
     expect(Number(rects[0]!.getAttribute('width'))).toBe(wins[0]!.w);
     expect(Number(rects[0]!.getAttribute('y'))).toBe(wins[0]!.y);
+  });
+
+  it('silhouette : une par fenêtre de cage, cachée, découpée par la vitre ; aucune en mouvement réduit ni en dessin classique', () => {
+    const total = [...stairs.values()].reduce((s, w) => s + w.length, 0);
+    const host = mountStairs(true, false, () => false);
+    const figs = host.querySelectorAll<SVGElement>('[data-stair-figure]');
+    expect(figs).toHaveLength(total);
+    expect([...figs].every((n) => n.getAttribute('opacity') === '0')).toBe(true);
+    // Pantin 2D en silhouette, coupé par le <clipPath> SVG de sa fenêtre (pas de clip-path CSS).
+    const f0 = host.querySelector<SVGElement>(`[data-stair-figure="${doorX}"][data-floor="0"]`)!;
+    expect(f0.querySelector('[data-figure]')).not.toBeNull();
+    const clip = f0.getAttribute('clip-path')!;
+    expect(clip).toMatch(/^url\(#.+\)$/);
+    const rect = host.querySelector(`${clip.slice(4, -1).replace(/:/g, '\:')} rect`)!;
+    expect(Number(rect.getAttribute('y'))).toBe(wins[0]!.y);
+    expect(f0.style.clipPath).toBe('');
+    act(() => root?.unmount());
+    expect(mountStairs(true, true, () => true).querySelectorAll('[data-stair-figure]')).toHaveLength(0);
+    act(() => root?.unmount());
+    expect(mountStairs(false, false, () => true).querySelectorAll('[data-stair-figure]')).toHaveLength(0);
+  });
+
+  it('silhouette qui monte : un étage à la fois, du rez-de-chaussée à l’étage du foyer, en n’écrivant qu’aux changements', () => {
+    const host = mountStairs(true, false, () => true);
+    const nodes = [...host.querySelectorAll<SVGElement>(`[data-stair-figure="${doorX}"]`)].sort((a, b) => Number(a.getAttribute('data-floor')) - Number(b.getAttribute('data-floor')));
+    const run = climbRun({ climb: 0.35 + 0.22 * 3 }, 2, 100, 'in');
+    let shown = -1;
+    const seen: number[] = [];
+    for (let t = 100; t < run.start + run.dur + 5; t += 0.5) {
+      const k = stairFigureAt(run, t);
+      shown = placeStairFigures(nodes, shown, k);
+      const on = nodes.map((n, i) => (n.getAttribute('opacity') === '1' ? i : -1)).filter((i) => i >= 0);
+      expect(on.length).toBeLessThanOrEqual(1);
+      const cur = on[0] ?? -1;
+      if (seen[seen.length - 1] !== cur) seen.push(cur);
+    }
+    expect(seen).toEqual([-1, 0, 1, -1]);
   });
 });

@@ -5,14 +5,21 @@ import { PODIUM_H } from '../core/library/scene-world';
 import type { FacadeWindow, Home, Level } from '../core/library/city/facade-layout';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import type { Rgb } from '../core/library/paint/color';
+import type { LightTone } from '../core/library/city/schedules';
 import { GlowDefs, LitWindow, NightGlass, glowBound, glowId, glowSize } from './ghibli-window-art';
+import { lifeStates, useToneMemory, windowLight, type SceneLife } from './use-scene-life';
+import type { HomeState } from '../core/library/city/home-state';
+import { windowShutters } from './window-life-art';
 
 // Calque des fenêtres de la ville peinte (vague Ghibli), hors filtre d'étalonnage, au-dessus des tranches du décor. Ordre :
 // 1. lumières du mur du fond (déjà privées de celles que cache le premier plan, facades.ts) ;
 // 2. vitres éteintes de nuit, un groupe par immeuble proche puis par socle de jumeaux (opacité = obscurité du ciel, jamais
 //    le mauvais temps : un ciel couvert à midi ne bleuit pas les vitres) ;
-// 3. fenêtres allumables (logements), une par fenêtre : allumées par logement (seuil commun), pièce principale seule selon
-//    l'heure (city/window-lights.ts), teinte du logement et télé le soir.
+// 3. fenêtres allumables (logements), une par fenêtre. Avec `life` (use-scene-life.ts) : allumée si la pièce de la fenêtre
+//    l'est dans l'état du logement à la minute (homeState, présence des habitants) et qu'il fait nuit (nightness > 0 : pas
+//    de lumière dessinée de jour), teinte de la pièce ; rideaux et voilages laissés au calque de la vie aux fenêtres. Sans
+//    `life` (aperçus) : allumage du chantier 1, par logement (seuil commun), pièce principale seule selon l'heure
+//    (city/window-lights.ts), teinte du logement et télé le soir.
 // Rien n'apparaît ni ne disparaît sur place : tous les nœuds restent montés, seule l'opacité bascule (fondu de 4 s). La cage
 // d'escalier (minuterie des halls) est dans le calque des halls ; l'entresol ne s'allume jamais.
 const FADE = 'opacity 4s ease';
@@ -53,7 +60,9 @@ function slotsOf(buildings: readonly Facade[]): Slot[] {
 }
 
 // `plan` : plan peint de la ville (mur recoloré de la 2e tour d'un socle, pierre du socle) ; sans plan, mur de la mise en page.
-export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, farLight, plan }: { buildings: Facade[]; minutes: number; day: WindowDay | undefined; daylight: number; gloom: boolean; dim: number; farLight: number; plan?: Pick<CityPaintPlan, 'buildings' | 'podiums'> | null }): ReactElement {
+// `life` : vie des logements (mêmes `buildings`) ; null ou absent : allumage du chantier 1. `states` : états des logements à
+// `minutes` déjà calculés par l'appelant (lifeStates, une fois par minute) ; absents, calculés ici.
+export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, farLight, plan, life, states: given }: { buildings: Facade[]; minutes: number; day: WindowDay | undefined; daylight: number; gloom: boolean; dim: number; farLight: number; plan?: Pick<CityPaintPlan, 'buildings' | 'podiums'> | null; life?: SceneLife | null; states?: ReadonlyMap<string, HomeState> | null }): ReactElement {
   const prefix = `w${useId().replace(/:/g, '')}`;
   const slots = useMemo(() => slotsOf(buildings), [buildings]);
   // Une lueur par taille de fenêtre (arrondie au demi-pixel) et hauteur bornée, partagée par <use>.
@@ -72,16 +81,37 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
     return [...towers, ...podiums];
   }, [buildings, plan]);
   const glass = Number(nightness(daylight).toFixed(3));
+  // État de chaque logement à la minute de la scène : celui de l'appelant, sinon recalculé quand la minute change.
+  const own = useMemo(() => (life && !given ? lifeStates(life, minutes) : null), [life, given, minutes]);
+  const states = life ? (given ?? own) : null;
+  // Sombre : nuit, ou ciel de mauvais temps (comme l'allumage du chantier 1).
+  const dark = gloom || nightness(daylight) > 0;
+  const tones = useToneMemory(slots);
+  // Fenêtres qui portent des volets (même règle que leur montage dans le calque de la vie aux fenêtres) : seules leurs
+  // lueurs suivent les volets de la pièce. Persiennes comptées comme montées : une pièce qui ne les ferme jamais les a
+  // ouvertes (shut = 1), ce qui revient au même.
+  const shuttered = useMemo(() => slots.map(({ win, group }) => {
+    const d = life?.byFacadeHome.get(group);
+    return !!d && windowShutters(d.shutters, win, buildings[d.facade]?.layout, true) !== null;
+  }), [slots, life, buildings]);
   return (
     <g data-ghibli-windows="">
       <GlowDefs prefix={prefix} sizes={sizes} />
       {buildings.map((b, i) => b.farWindows.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} />))}
-      {panes.map((p) => <NightGlass key={p.key} layout={p.layout} wall={p.wall} opacity={glass} />)}
+      {panes.map((p) => <NightGlass key={p.key} layout={p.layout} wall={p.wall} opacity={glass} curtains={!life} />)}
       {slots.map(({ win, home, level, facadeX, dMax, group }, k) => {
-        const lit = roomLit(win, minutes, day, daylight, gloom);
+        const light = life && states ? windowLight(life, states, group, win.bay, dark, tones, String(k), home.tone) : null;
+        const lit = light ? light.lit : roomLit(win, minutes, day, daylight, gloom);
+        const tone: LightTone = light ? light.tone : roomTone(home, win.main, minutes);
+        // Lueur sous l'appui selon les volets et le rideau de la pièce (maquette : glowK = volets × (1 − 0,55 × rideau
+        // tiré) ; volets clos : aucune ; volets et rideau ne comptent que si la fenêtre en a) ; sans la vie : entière.
+        const st = life && states ? states.get(group) : undefined;
+        const room = st ? life!.byFacadeHome.get(group)?.roomOfWindow.get(win.bay) : undefined;
+        const shut = shuttered[k] ? Math.min(1, Math.max(0, st?.shut[room!] ?? 1)) : 1;
+        const glowK = st && room ? Number((shut * (1 - 0.55 * (home.curtain ? (st.curt[room] ?? 0) : 0))).toFixed(2)) : 1;
         return (
           <g key={k} data-lamp="" data-lit={lit ? 'true' : 'false'} data-home={group} data-main={win.main ? 'true' : 'false'} opacity={lit ? dim : 0} style={{ transition: FADE }}>
-            <LitWindow win={win} home={home} level={level} facadeX={facadeX} tone={roomTone(home, win.main, minutes)} glow={glowId(prefix, win.w, win.h, dMax)} />
+            <LitWindow win={win} home={home} level={level} facadeX={facadeX} tone={tone} glow={glowId(prefix, win.w, win.h, dMax)} curtains={!life} glowK={glowK} />
           </g>
         );
       })}

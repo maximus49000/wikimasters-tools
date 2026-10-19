@@ -176,6 +176,9 @@ export function hillTopY(plan: Pick<CityPaintPlan, 'height' | 'hill'>, x: number
   return top;
 }
 
+// Repères du fond (tour-horloge, dômes) seuls : le calque de la ville évite d'y faire éclater le spectacle de feux d'artifice.
+export const hillLandmarks = (width: number, height: number, seed: number): Landmark[] => hillPlan(width, height, seed).landmarks;
+
 function hillPlan(width: number, height: number, seed: number): Hill {
   const phaseRng = mulberry32(seed ^ hashString('ghibli-crest'));
   const phase: [number, number] = [phaseRng() * Math.PI * 2, phaseRng() * Math.PI * 2];

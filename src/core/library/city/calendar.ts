@@ -5,7 +5,10 @@ export type DayKind = 'school' | 'wednesday' | 'weekend' | 'holiday' | 'public-h
 // Fêtes de la scène Ville (vague 1b-ii) : `hours` en minutes, [début, fin) ; une plage ne passe pas minuit (on écrit une ligne par jour).
 export type FestivityId = 'new-year' | 'bastille' | 'christmas-eve' | 'epiphany' | 'valentine' | 'easter' | 'may-day' | 'music' | 'armistice';
 export type Festivity = { id: FestivityId; hours: readonly (readonly [number, number])[] };
-export type DayContext = { date: YMD; iso: string; weekday: number; kind: DayKind; schoolOn: boolean; publicHoliday: string | null; festivities: Festivity[] };
+// `holidayWeek` : la semaine (lundi-dimanche) est en vacances scolaires, d'après son mercredi (holidayWeekOf) ; `yesterday` : contexte
+// de la veille, mêmes périodes (vie des logements : la soirée de la veille déborde après minuit). Renseignés par useCityDay ;
+// absents ailleurs (repli : genre du jour, veille sans périodes).
+export type DayContext = { date: YMD; iso: string; weekday: number; kind: DayKind; schoolOn: boolean; publicHoliday: string | null; festivities: Festivity[]; holidayWeek?: boolean; yesterday?: DayContext };
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 export const isoDate = ({ y, m, d }: YMD): string => `${y}-${pad(m)}-${pad(d)}`;
@@ -92,6 +95,13 @@ export const festivityStartsOn = (date: YMD, id: FestivityId): boolean =>
 export function activeFestivities(list: readonly Festivity[], minute: number): FestivityId[] {
   const ids = list.filter((f) => f.hours.some(([a, b]) => minute >= a && minute < b)).map((f) => f.id);
   return ids.filter((id, i) => ids.indexOf(id) === i);
+}
+
+// Semaine de vacances scolaires : le mercredi de la semaine (lundi-dimanche) de `date` est dans une période de vacances. Lu sur les
+// périodes plutôt que sur le genre du mercredi : un mercredi férié (1er novembre) pendant les vacances compte aussi.
+export function holidayWeekOf(date: YMD, periods: readonly HolidayPeriod[]): boolean {
+  const wed = isoDate(addDays(date, 2 - ((weekdayOf(date) + 6) % 7)));
+  return periods.some((p) => wed >= p.start && wed < p.end);
 }
 
 export function dayContext(date: YMD, periods: HolidayPeriod[], alsaceMoselle = false): DayContext {

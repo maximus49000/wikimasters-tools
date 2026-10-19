@@ -3,7 +3,9 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CityLifeLayer, pedEdgePad } from '../../src/content/city-life';
+import { CityLifeLayer, SHOW_FREE_MIN, pedEdgePad, showEvents, towerColumns, towerSilhouettes } from '../../src/content/city-life';
+import { lifeStates, sharedSceneLife } from '../../src/content/use-scene-life';
+import { fireworksShow } from '../../src/core/library/city/fireworks-show';
 import { dayContext } from '../../src/core/library/city/calendar';
 import { doorsFor, residentFlow, tripAt, tripHappens, tripsFor } from '../../src/core/library/city/doors';
 import { HYPER_S, activeEvents, cityEventSchedule, eventConditions } from '../../src/core/library/city/events';
@@ -552,5 +554,120 @@ describe('passants : contournement léger (revue du 2026-10-13)', () => {
     expect(mid).toBeLessThan(60);
     // Continu : pas de saut d'un pas au suivant.
     for (let x = 70; x < 170; x += 0.5) expect(Math.abs(dodgeY(x + 0.5, 60, zones, 1) - dodgeY(x, 60, zones, 1))).toBeLessThan(0.7);
+  });
+});
+
+describe('CityLifeLayer : réactions aux événements de la rue (vie au-dessus de la rue, tâche 11)', () => {
+  // Instant mural multiple de 60 s, sans rapport avec l'heure de la scène (heure fixée par le réglage) : 3 h du matin.
+  const NOW_S = Math.floor(1.8e9 / 86400) * 86400 + 3 * 3600;
+  const at = (minutes: number, ymd: { y: number; m: number; d: number }) => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW_S * 1000);
+    const sky = skyAt(minutes, sunTimes(ymd, { lat: 48.85, lon: 2.35 }, 120));
+    const city: CityContext = { minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight: sky.daylight };
+    return render(
+      <svg>
+        <CityLifeLayer width={720} height={340} sky={sky} seed={1} city={city} rainy={false} />
+      </svg>,
+    ).container;
+  };
+  const showNodes = (c: HTMLElement): Element[] => [...c.querySelectorAll('[data-event="fireworks"]')].filter((n) => n.getAttribute('data-life-id')!.startsWith('show-'));
+
+  it('14 juillet : salves pendant le spectacle tiré, salons éteints, habitants aux fenêtres', () => {
+    const D = { y: 2026, m: 7, d: 14 };
+    const show = fireworksShow(1, D)!;
+    const minutes = Math.floor(show.start) + 4;
+    const c = at(minutes, D);
+    // Salves actives à cet instant (repère : minute de scène `minutes` à l'instant mural NOW_S).
+    const want = showEvents(show, minutes, NOW_S, 720).filter((e) => e.start <= NOW_S && NOW_S < e.end).map((e) => e.key);
+    expect(want.length).toBeGreaterThan(0);
+    const got = showNodes(c);
+    expect(got.map((n) => n.getAttribute('data-life-id')).sort()).toEqual([...want].sort());
+    // Mêmes sprites et même masque des toits que les salves isolées ; plus ou moins hautes, jamais plus bas qu'elles (y = 0).
+    // Aucune salve dans la colonne d'une tour-horloge du fond (élargie de la portée du dessin).
+    const towers = towerColumns(720, 340, 1);
+    expect(towers.length).toBeGreaterThan(0);
+    for (const n of got) {
+      expect(n.closest('[data-event-mask="skyline"]')).not.toBeNull();
+      const [, x, y] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(n.getAttribute('transform')!)!.map(Number);
+      expect(y).toBeLessThanOrEqual(0);
+      for (const [a, b] of towers) expect(x! <= a + 0.1 || x! >= b - 0.1, `salve à x = ${x} dans la tour [${a}, ${b}]`).toBe(true);
+    }
+    // Toutes les salves du spectacle (pas seulement celles de l'instant) évitent les tours, et gardent leur nombre.
+    const all = showEvents(show, minutes, NOW_S, 1080, towerColumns(1080, 340, 1));
+    expect(all).toHaveLength(show.bursts.length);
+    for (const e of all) for (const [a, b] of towerColumns(1080, 340, 1)) expect(e.x0 <= a || e.x0 >= b).toBe(true);
+    // Les fusées latérales d'une salve qui tombent sur une tour passent derrière elle : la tour est dans le masque.
+    expect(c.querySelectorAll('[data-event-mask="skyline"]').length).toBeGreaterThan(0);
+    expect(c.querySelectorAll('mask [data-tower-mask]').length).toBe(towerSilhouettes(720, 340, 1).length);
+    // Avant le spectacle : aucune salve.
+    expect(showNodes(at(Math.floor(show.start) - 3, D))).toHaveLength(0);
+    // Salons éteints et habitants penchés ou au balcon (emplois du temps du jour de fête).
+    const life = sharedSceneLife(cityFacades(720, 340, 1), dayContext(D, []), false, 1, false);
+    let dim = 0, watchers = 0;
+    for (const [id, st] of lifeStates(life, minutes)) {
+      if (st.dim) {
+        dim++;
+        expect(st.lit.salon ?? false, id).toBe(false);
+      }
+      watchers += st.actors.filter((a) => a.where !== 'in' && (a.choreo === 'lean' || a.choreo === 'leanRail')).length;
+    }
+    expect(dim).toBeGreaterThan(0);
+    expect(watchers).toBeGreaterThan(0);
+  });
+
+
+  it('écran étroit (téléphone en portrait) : toutes les salves, dispersées, même quand une tour est visible', () => {
+    const show = fireworksShow(1, { y: 2026, m: 7, d: 14 })!;
+    for (const width of [390, 430]) {
+      // Graines dont une tour-horloge du fond est dans l'écran.
+      const seeds = Array.from({ length: 200 }, (_, i) => i + 1).filter((s) => towerColumns(width, 340, s).some(([a, b]) => b > 40 && a < width - 40)).slice(0, 5);
+      expect(seeds.length).toBeGreaterThan(0);
+      for (const seed of seeds) {
+        const avoid = towerColumns(width, 340, seed);
+        const all = showEvents(show, 1360, NOW_S, width, avoid);
+        expect(all).toHaveLength(show.bursts.length);
+        const xs = all.map((e) => e.x0);
+        const span = width - 80;
+        // Dispersion : les x0 couvrent plus de la moitié de la plage, et pas plus d'un quart des salves collées à un bord.
+        expect(Math.max(...xs) - Math.min(...xs), `largeur ${width}, graine ${seed}`).toBeGreaterThan(span * 0.5);
+        expect(xs.filter((x) => x < 45 || x > width - 45).length).toBeLessThan(xs.length / 4);
+        // Exclusion gardée quand il reste assez de place ; ignorée sinon (filet).
+        const free = span - avoid.reduce((s, [a, b]) => s + Math.max(0, Math.min(b, width - 40) - Math.max(a, 40)), 0);
+        if (free >= SHOW_FREE_MIN * span) for (const x of xs) for (const [a, b] of avoid) expect(x <= a || x >= b).toBe(true);
+      }
+    }
+  });
+  it('Nouvel An : le spectacle du 31 décembre continue après minuit', () => {
+    const show = fireworksShow(1, { y: 2026, m: 12, d: 31 })!;
+    // Après minuit (le 1er janvier n'a pas de spectacle à lui) : minute de scène du lendemain.
+    const minutes = Math.max(1, Math.ceil(show.end - 1440) - 2);
+    expect(show.end - 1440).toBeGreaterThan(minutes);
+    const want = showEvents(show, minutes + 1440, NOW_S, 720).filter((e) => e.start <= NOW_S && NOW_S < e.end).map((e) => e.key);
+    expect(want.length).toBeGreaterThan(0);
+    expect(showNodes(at(minutes, { y: 2027, m: 1, d: 1 })).map((n) => n.getAttribute('data-life-id')).sort()).toEqual([...want].sort());
+  });
+
+  it('jour ordinaire : aucune salve de spectacle', () => {
+    for (const minutes of [1335, 1350, 1380, 1439]) expect(showNodes(at(minutes, { y: 2026, m: 10, d: 10 }))).toHaveLength(0);
+    expect(showNodes(at(5, { y: 2026, m: 10, d: 11 }))).toHaveLength(0);
+  });
+
+  it('déménagement : des voisins regardent entre 8 h et 10 h', () => {
+    const D = { y: 2026, m: 10, d: 13 };
+    const facades = cityFacades(2000, 340, 1);
+    // Règle de la pièce (CityScene et city-life) : un commerce de la rue change aujourd'hui.
+    const looks = (moving: boolean) => {
+      const life = sharedSceneLife(facades, dayContext(D, []), false, 1, moving);
+      expect(life.day.moving).toBe(moving);
+      return life.dwellings.flatMap((d) => life.today.get(d.id)!.segments.filter((g) => g.k === 'act' && g.event && (g.choreo === 'lean' || g.choreo === 'leanRail')));
+    };
+    const seen = looks(true);
+    expect(seen.length).toBeGreaterThan(2);
+    for (const g of seen) {
+      if (g.k !== 'act') continue;
+      expect(g.t0).toBeGreaterThanOrEqual(480);
+      expect(g.t1).toBeLessThanOrEqual(600);
+    }
+    expect(looks(false)).toHaveLength(0);
   });
 });

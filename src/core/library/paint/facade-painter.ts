@@ -9,8 +9,9 @@ import type { PaintCtx } from './paint-ctx';
 // Peintre des façades du premier plan (façades parisiennes, d'après la mise en page `PaintBuilding.layout`) : décor fixe de
 // jour, peint une fois par tranche ; la nuit vient du filtre et du calque SVG des fenêtres. Port du dessin cellulo de la
 // maquette (docs/superpowers/maquettes/facades-parisiennes) : mur de pierre à assises ou enduit, bandeaux d'étage, fenêtres
-// de jour encadrées (linteau clair, tableau à l'ombre, vitre reflet du ciel, rideaux du logement, menuiserie), volets
-// persiennés et jardinières du faubourg, balcons filants et balconnets en fer forgé. Le rez-de-chaussée (devantures,
+// de jour encadrées (linteau clair, tableau à l'ombre, vitre reflet du ciel, menuiserie), jardinières du faubourg, balcons
+// filants et balconnets en fer forgé. Volets et rideaux ne sont pas peints : ils bougent avec la vie des logements (calque
+// de la vie aux fenêtres, spec 2026-10-19 « vie au-dessus de la rue » §5.2). Le rez-de-chaussée (devantures,
 // entrées) et le toit (corniche, lucarnes) ont leurs propres peintres. Tout reste dans la boîte de l'immeuble.
 // Chaque immeuble a son propre générateur (`ghibli-building`, x du lot) : peint depuis deux tranches, il est identique.
 
@@ -24,7 +25,7 @@ const POT = hexRgb('#A04A2E');
 const LEAF = hexRgb('#3F8A3A');
 
 const rngOf = (plan: CityPaintPlan, b: PaintBuilding) => mulberry32(plan.seed ^ hashString('ghibli-building') ^ Math.round(b.x * 8));
-// Fenêtre à volets ou balconnet : étage courant ou dernier étage (la porte-fenêtre, la cage et l'entresol n'en ont pas).
+// Fenêtre à balconnet : étage courant ou dernier étage (la porte-fenêtre, la cage et l'entresol n'en ont pas).
 const plain = (win: FacadeWindow): boolean => win.kind === 'std' || win.kind === 'top';
 
 export function paintFacade(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding): void {
@@ -109,27 +110,17 @@ export function paintFacade(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding
 }
 
 // Fenêtre éteinte de jour : encadrement (linteau de pierre claire, tableau à l'ombre), vitre #7FB4E0 reflet du ciel (on voit
-// peu l'intérieur), rideaux du logement (teinte et style partagés par ses fenêtres), menuiserie (cadre, meneau, traverse),
-// volets persiennés de la mise en page (faubourg), appui (pas sous une porte-fenêtre). Sert aussi à l'étage du socle des
-// jumeaux. La jardinière est peinte à part (`paintFlowerBox`, tirée de la graine du plan).
+// peu l'intérieur), menuiserie (cadre, meneau, traverse), appui (pas sous une porte-fenêtre) ; ni rideaux ni volets (calque
+// de la vie aux fenêtres). Sert aussi à l'étage du socle des jumeaux. La jardinière est peinte à part (`paintFlowerBox`, tirée de la graine du plan).
 export function paintDayWindow(ctx: PaintCtx, b: PaintBuilding, win: FacadeWindow): void {
   const { x, y, w, h } = win;
   const wall = b.look.wall;
-  const home = win.home >= 0 ? b.homes[win.home] : undefined;
   fillRect(ctx, light(wall, 0.5), x - 1.2, y - 1.2, w + 2.4, 1.2);
   fillRect(ctx, shade(wall, 0.5), x - 0.9, y, 0.9, h);
   fillRect(ctx, shade(wall, 0.5), x + w, y, 0.9, h);
   fillRect(ctx, GLASS_DAY, x, y, w, h);
   poly(ctx, 'rgba(255,255,255,0.72)', [[x, y + h * 0.55], [x + w * 0.5, y], [x + w * 0.7, y], [x, y + h * 0.95]]);
   fillRect(ctx, shade(GLASS_DAY, 0.45), x, y, w, 1);
-  if (home?.curtain && win.kind !== 'stair') {
-    const cw = Math.min(1.8, Math.max(1, w * 0.22));
-    if (home.curtain.style === 'voile') fillRect(ctx, 'rgba(255,248,230,0.35)', x, y, w, h);
-    else {
-      fillRect(ctx, home.curtain.color, x, y, cw, h);
-      fillRect(ctx, home.curtain.color, x + w - cw, y, cw, h);
-    }
-  }
   ctx.strokeStyle = INK;
   ctx.lineWidth = 0.55;
   ctx.strokeRect(x, y, w, h);
@@ -141,22 +132,6 @@ export function paintDayWindow(ctx: PaintCtx, b: PaintBuilding, win: FacadeWindo
     ctx.lineTo(x + w, y + h * 0.33);
   }
   ctx.stroke();
-  // Volets (faubourg) : persiennes colorées de part et d'autre, lames dans le ton d'ombre ; jamais contre le bord du mur.
-  const shutters = b.layout?.shutters ?? null;
-  if (shutters && plain(win) && x - 2.6 > b.x + 1 && x + w + 2.6 < b.x + b.w - 1) {
-    const sc = hexRgb(shutters);
-    fillRect(ctx, light(sc, 0.2), x - 2.6, y, 2, h);
-    fillRect(ctx, shade(sc, 0.3), x + w + 0.6, y, 2, h);
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 0.45;
-    ctx.strokeRect(x - 2.6, y, 2, h);
-    ctx.strokeRect(x + w + 0.6, y, 2, h);
-    ctx.fillStyle = rgba(shade(sc, 0.5), 1);
-    for (let k = 1.5; k < h; k += 2) {
-      ctx.fillRect(x - 2.3, y + k, 1.4, 0.4);
-      ctx.fillRect(x + w + 0.9, y + k, 1.4, 0.4);
-    }
-  }
   // Appui : pierre claire + ombre nette.
   if (win.kind !== 'french') {
     fillRect(ctx, light(wall, 0.55), x - 1.2, y + h, w + 2.4, 1);

@@ -184,8 +184,51 @@ describe('peintre de tranche', () => {
     expect(found).toBeGreaterThan(0);
   });
 
-  it('PAINT_VERSION vaut 8', () => {
-    expect(PAINT_VERSION).toBe(8);
+  it('PAINT_VERSION vaut 9', () => {
+    expect(PAINT_VERSION).toBe(9);
+  });
+
+  it('tranches : aucun volet ni rideau peint (le calque de la vie aux fenêtres les dessine)', () => {
+    let shutters = 0;
+    let curtains = 0;
+    for (const seed of [1, 4, 9]) {
+      const plan = cityPaintPlan(2160, 340, seed);
+      for (let t = 0; t < tileCount(2160); t++) {
+        const ctx = recordingCtx();
+        paintCityTile(ctx, plan, t);
+        // Rectangles remplis (géométrie + couleur) et tracés de la tranche.
+        const filled: string[] = [];
+        const stroked = new Set<string>();
+        let k = 0;
+        for (const o of ctx.ops) {
+          // `fills` reçoit une couleur par `fill` et par `fillRect`, dans l'ordre des appels.
+          if (o.op === 'fillRect') filled.push(`${o.args.join(',')}|${ctx.fills[k++]}`);
+          else if (o.op === 'fill') k++;
+          if (o.op === 'strokeRect') stroked.add(o.args.join(','));
+        }
+        const rects = new Set(filled.map((f) => f.split('|')[0]));
+        expect(ctx.fills).not.toContain('rgba(255,248,230,0.35)');
+        for (const b of tileItems(plan, t).buildings) {
+          if (b.far || !b.layout) continue;
+          for (const win of b.layout.windows) {
+            const { x, y, w, h } = win;
+            if (b.layout.shutters && (win.kind === 'std' || win.kind === 'top')) {
+              shutters++;
+              expect(rects.has([x - 2.6, y, 2, h].join(','))).toBe(false);
+              expect(stroked.has([x + w + 0.6, y, 2, h].join(','))).toBe(false);
+            }
+            const home = win.home >= 0 ? b.homes[win.home] : undefined;
+            if (home?.curtain?.style === 'side' && win.kind !== 'stair' && win.kind !== 'dormer') {
+              curtains++;
+              const cw = Math.min(1.8, Math.max(1, w * 0.22));
+              expect(filled).not.toContain(`${[x, y, cw, h].join(',')}|${home.curtain.color}`);
+            }
+          }
+        }
+      }
+    }
+    expect(shutters).toBeGreaterThan(0);
+    expect(curtains).toBeGreaterThan(0);
   });
 
   it('premier plan : chaque fenêtre de la mise en page (étages et lucarnes) a sa vitre à sa taille', () => {

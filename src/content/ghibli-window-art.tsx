@@ -1,5 +1,6 @@
 import { useMemo, type ReactElement } from 'react';
-import type { FacadeLayout, FacadeWindow, Home, HomeTone, Level } from '../core/library/city/facade-layout';
+import type { FacadeLayout, FacadeWindow, Home, Level } from '../core/library/city/facade-layout';
+import type { LightTone } from '../core/library/city/schedules';
 
 // Dessin des fenêtres du calque de nuit (vague Ghibli, décor cellulo) : composants de présentation seuls, branchés par
 // ghibli-windows.tsx (calque animé) et, pour la cage d'escalier, par le calque des halls. Port de la branche allumée de
@@ -9,17 +10,17 @@ import type { FacadeLayout, FacadeWindow, Home, HomeTone, Level } from '../core/
 //   l'un transparent quand l'autre est visible) : seule l'opacité du groupe parent bascule ; les nœuds varient d'une
 //   fenêtre à l'autre (rideaux, accessoire, silhouette, balcon, appui, jardinière), jamais pour une même fenêtre ;
 // - budget : le calque entier reste sous la borne mesurée sur main (≈ 18 nœuds par fenêtre allumable, lueur comprise) ;
-//   ici 7 à 14 nœuds par fenêtre, la lueur (deux paliers + liseré) étant une définition partagée par taille et hauteur
+//   ici 7 à 14 nœuds par fenêtre, la lueur (deux paliers) étant une définition partagée par taille et hauteur
 //   bornée (<use>) ;
 // - aucune animation, aucun dégradé, aucun filtre.
 const INK = '#2A1A18';
 export const GLOW = 'rgba(255,214,130,0.22)';
-// Liseré fin autour du cadre, appui éclairé, lumière sur la jardinière et la dalle du balcon (notes.md §Lumière).
-const GLOW_RIM = 'rgba(255,214,130,0.16)';
+// Appui éclairé, lumière sur la jardinière et la dalle du balcon (notes.md §Lumière).
 const GLOW_SLAB = 'rgba(255,214,130,0.3)';
 const SILL_LIT = '#FFE8B0';
-const TONES: Record<HomeTone, string> = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF' };
-export const toneColor = (tone: HomeTone): string => TONES[tone];
+// Teintes d'une pièce allumée : celles des logements du chantier 1 (HomeTone) et la lumière froide des emplois du temps (cool).
+const TONES: Record<LightTone, string> = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF', cool: '#C8DCFF' };
+export const toneColor = (tone: LightTone): string => TONES[tone];
 // Cage d'escalier allumée (minuterie), bois des accessoires, feuillage.
 const STAIR = '#F4F0D8';
 const LAMP_WOOD = '#6E3A2A';
@@ -29,8 +30,8 @@ const SHELF = 'rgba(60,30,30,0.6)';
 const SHELF_BACK = 'rgba(60,30,30,0.45)';
 const VOILE = 'rgba(255,248,230,0.45)';
 // Garde-corps : hauteur de la rambarde (filant / balconnet) et pas des barreaux, comme `paintBalcony`.
-const RAIL_H = { filant: 5.5, balconnet: 4 } as const;
-const BAR_STEP = 1.5;
+export const RAIL_H = { filant: 5.5, balconnet: 4 } as const;
+export const BAR_STEP = 1.5;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 // Taille de la lueur arrondie au demi-pixel : une définition partagée par toutes les fenêtres de même gabarit.
@@ -62,13 +63,13 @@ function glowPath(w: number, h: number, k: number, dMax?: number): string {
   return `M-0.5 ${h}H${w + 0.5}L${w + 1.5 + 1.5 * k} ${h + d * k * 0.8}Q${w / 2} ${h + d * k + r * k} ${-1.5 - 1.5 * k} ${h + d * k * 0.8}Z`;
 }
 
-// Lueur d'une fenêtre allumée : deux paliers plats (forme douce à bord net) + liseré fin autour du cadre, par taille.
+// Lueur d'une fenêtre allumée : deux paliers plats (forme douce à bord net) sous l'appui, par taille. Pas de liseré autour
+// du cadre (règle du projet : jamais de rectangle clair autour d'une fenêtre).
 function Glow({ w, h, dMax }: { w: number; h: number; dMax?: number }): ReactElement {
   return (
     <>
       <path d={glowPath(w, h, 1, dMax)} fill={GLOW} />
       <path d={glowPath(w, h, 0.55, dMax)} fill={GLOW} />
-      <rect x={-1.6} y={-1.2} width={w + 3.2} height={h + 1.2} fill={GLOW_RIM} />
     </>
   );
 }
@@ -118,10 +119,10 @@ export function nightCurtain(color: string, wall: string): string {
 }
 
 const rectPath = (x: number, y: number, w: number, h: number): string => `M${x} ${y}h${w}v${h}h${-w}z`;
-const curtainWidth = (w: number): number => clamp(w * 0.22, 1, 1.8);
+export const curtainWidth = (w: number): number => clamp(w * 0.22, 1, 1.8);
 // Menuiserie d'une fenêtre : cadre, meneau, traverse si h ≥ 8 (comme `paintDayWindow`) ; lucarne : jamais de traverse
 // (comme sa vitre de jour, `paintGlass` de roof-painter).
-const joineryPath = ({ x, y, w, h, kind }: FacadeWindow): string => `${rectPath(x, y, w, h)}M${x + w / 2} ${y}v${h}${h >= 8 && kind !== 'dormer' ? `M${x} ${y + h * 0.33}h${w}` : ''}`;
+export const joineryPath = ({ x, y, w, h, kind }: FacadeWindow): string => `${rectPath(x, y, w, h)}M${x + w / 2} ${y}v${h}${h >= 8 && kind !== 'dormer' ? `M${x} ${y + h * 0.33}h${w}` : ''}`;
 
 // Vitres éteintes d'un immeuble la nuit : chemins couvrant toutes ses vitres et lucarnes (`windows` : étages, cage,
 // entresol, lucarnes vitrées ; œils-de-bœuf de `dormers`) : vitre sombre, reflet, ombre du linteau, rideaux des logements
@@ -129,9 +130,10 @@ const joineryPath = ({ x, y, w, h, kind }: FacadeWindow): string => `${rectPath(
 // puis, par-dessus (le calque couvre le décor peint), la menuiserie de toutes les fenêtres en un seul chemin et les
 // barreaux des garde-corps devant les vitres (portes-fenêtres d'un étage filant, balconnets) quand `levels` et `x` sont
 // fournis. `layout` du socle des jumeaux : fenêtres et logements seuls, sans lucarnes ni balcons. Les chemins ne dépendent
-// que de la mise en page et du mur : mémorisés, seule l'opacité change au fil des minutes.
+// que de la mise en page et du mur : mémorisés, seule l'opacité change au fil des minutes. `curtains` faux (logements vivants,
+// use-scene-life.ts) : ni voilage ni rideau, le calque de la vie aux fenêtres les dessine selon leur position.
 type GlassLayout = Pick<FacadeLayout, 'windows' | 'dormers'> & Partial<Pick<FacadeLayout, 'homes' | 'levels' | 'x'>>;
-export function NightGlass({ layout, wall, opacity }: { layout: GlassLayout; wall: string; opacity: number }): ReactElement {
+export function NightGlass({ layout, wall, opacity, curtains: withCurtains = true }: { layout: GlassLayout; wall: string; opacity: number; curtains?: boolean }): ReactElement {
   const paths = useMemo(() => {
     let glass = '';
     let shine = '';
@@ -148,7 +150,7 @@ export function NightGlass({ layout, wall, opacity }: { layout: GlassLayout; wal
       frames += joineryPath(win);
       const balcony = balconyOf(win, layout.levels?.[win.level] ?? null, layout.x);
       if (balcony) bars += barsPath(win, balcony);
-      const curtain = win.kind !== 'stair' && win.home >= 0 ? (layout.homes?.[win.home]?.curtain ?? null) : null;
+      const curtain = withCurtains && win.kind !== 'stair' && win.home >= 0 ? (layout.homes?.[win.home]?.curtain ?? null) : null;
       if (!curtain) continue;
       if (curtain.style === 'voile') voile += rectPath(x, y, w, h);
       else {
@@ -167,7 +169,7 @@ export function NightGlass({ layout, wall, opacity }: { layout: GlassLayout; wal
       frames += `M${cx - r} ${cy}h${2 * r}M${cx} ${cy - r}v${2 * r}`;
     }
     return { glass, shine, top, voile, frames, bars, curtains: [...curtains.entries()] };
-  }, [layout, wall]);
+  }, [layout, wall, withCurtains]);
   return (
     <g data-night-glass="" opacity={opacity} style={{ transition: 'opacity 4s ease' }}>
       <path d={paths.glass} fill={nightGlass(wall)} />
@@ -222,8 +224,8 @@ function Prop({ kind, x, y, w, h }: { kind: 'lamp' | 'plant' | 'shelf'; x: numbe
 // Balcon devant une fenêtre (étage noble ou filant : porte-fenêtre ; balconnet : fenêtre courante) : `by` dessus de la
 // dalle, `rh` hauteur du garde-corps, `x0` premier barreau devant la vitre (pas 1,5 ; filant : barreaux depuis
 // `x de la façade + 1,5 + 0,8` comme `paintBalcony`, approchés depuis la fenêtre quand ce x n'est pas connu).
-type Balcony = { by: number; rh: number; x0: number };
-function balconyOf(win: FacadeWindow, level: Level | null, facadeX?: number): Balcony | null {
+export type Balcony = { by: number; rh: number; x0: number };
+export function balconyOf(win: FacadeWindow, level: Level | null, facadeX?: number): Balcony | null {
   if (!level || level.balcony === 'none') return null;
   if (level.balcony === 'filant' && win.kind === 'french') {
     const first = facadeX !== undefined ? facadeX + 2.3 : win.x + 0.35;
@@ -244,14 +246,14 @@ function barsPath(win: FacadeWindow, { by, rh, x0 }: Balcony): string {
   return bars;
 }
 
-// Lumière retombée d'une fenêtre allumée sur son balcon : garde-corps et dalle teintés, barreaux en silhouette sur la vitre.
-function LitBalcony({ win, balcony }: { win: FacadeWindow; balcony: Balcony }): ReactElement {
+// Lumière retombée d'une fenêtre allumée sur son balcon : dalle teintée (force `glowK`, comme la lueur sous l'appui), barreaux
+// en silhouette sur la vitre. Aucun aplat derrière le garde-corps (il débordait du cadre et ne suivait ni volets ni rideaux).
+function LitBalcony({ win, balcony, glowK }: { win: FacadeWindow; balcony: Balcony; glowK: number }): ReactElement {
   const { x, w } = win;
-  const { by, rh } = balcony;
+  const { by } = balcony;
   return (
     <>
-      <rect x={x - 1} y={by - rh} width={w + 2} height={rh} fill={GLOW} />
-      <rect x={x - 1.5} y={by - 0.4} width={w + 3} height={1.4} fill={GLOW_SLAB} />
+      <rect data-glow-slab="" x={x - 1.5} y={by - 0.4} width={w + 3} height={1.4} fill={GLOW_SLAB} opacity={glowK} />
       <path d={barsPath(win, balcony)} fill="none" stroke={INK} strokeWidth={0.5} />
     </>
   );
@@ -259,13 +261,16 @@ function LitBalcony({ win, balcony }: { win: FacadeWindow; balcony: Balcony }): 
 
 // Fenêtre allumée : lueur (<use> de la définition de sa taille), vitre teintée, reflet haut ou barre de télé (tous deux
 // montés, l'un transparent), voilage ou rideaux du logement, accessoire ou silhouette, menuiserie, appui éclairé,
-// jardinière et balcon éclairés. `level` : étage (balcon devant la fenêtre), null pour lucarnes et socle ; `facadeX` : x de
+// jardinière et dalle du balcon éclairées (à la force de la lueur). `level` : étage (balcon devant la fenêtre), null pour lucarnes et socle ; `facadeX` : x de
 // la façade (barreaux d'un balcon filant au même pas que ceux de la vitre éteinte : aucun saut pendant le fondu) ; `glow` :
-// définition de la lueur à sa taille, à hauteur bornée pour l'étage 0 et le socle (glowBound : rien sous le plancher).
-export function LitWindow({ win, home, level, facadeX, tone, glow }: { win: FacadeWindow; home: Home | null; level: Level | null; facadeX?: number; tone: HomeTone; glow: string }): ReactElement {
+// définition de la lueur à sa taille, à hauteur bornée pour l'étage 0 et le socle (glowBound : rien sous le plancher) ;
+// `curtains` faux (logements vivants) : ni voilage ni rideau, dessinés par le calque de la vie aux fenêtres, ni silhouette
+// tirée du chantier 1 (les pantins de ce calque l'habitent) ; `glowK` : force de la lueur (maquette : volets × (1 − 0,55 ×
+// rideau tiré) ; 1 sans la vie des logements).
+export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = true, glowK = 1 }: { win: FacadeWindow; home: Home | null; level: Level | null; facadeX?: number; tone: LightTone; glow: string; curtains?: boolean; glowK?: number }): ReactElement {
   const { x, y, w, h } = win;
   const tv = tone === 'tv';
-  const curtain = home?.curtain ?? null;
+  const curtain = curtains ? (home?.curtain ?? null) : null;
   const prop = home ? (home.props[home.bays.indexOf(win.bay)] ?? null) : null;
   const balcony = balconyOf(win, level, facadeX);
   // Appui éclairé : seules les fenêtres d'étage en ont un de peint (pas la porte-fenêtre ; les lucarnes non plus, roof-painter).
@@ -275,7 +280,7 @@ export function LitWindow({ win, home, level, facadeX, tone, glow }: { win: Faca
   const cw = curtainWidth(w);
   return (
     <>
-      <use href={`#${glow}`} x={x} y={y} />
+      <use data-glow="" href={`#${glow}`} x={x} y={y} opacity={glowK} />
       <rect x={x} y={y} width={w} height={h} fill={toneColor(tone)} />
       <rect x={x} y={y} width={w} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0 : tone === 'cream' ? 0.3 : 0.2} />
       <rect x={x + 0.6} y={y + h * 0.35} width={Math.max(0, w - 1.2)} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0.35 : 0} />
@@ -286,7 +291,7 @@ export function LitWindow({ win, home, level, facadeX, tone, glow }: { win: Faca
         </>
       )}
       {prop && <Prop kind={prop} x={x} y={y} w={w} h={h} />}
-      {windowFigure(win, home) && (
+      {curtains && windowFigure(win, home) && (
         <g data-figure="" fill="#3A2018">
           <circle cx={x + w / 2} cy={y + h * 0.45} r={Math.min(w, h) * 0.16} />
           <rect x={x + w * 0.3} y={y + h * 0.6} width={w * 0.4} height={h * 0.4} />
@@ -300,8 +305,8 @@ export function LitWindow({ win, home, level, facadeX, tone, glow }: { win: Faca
       )}
       <path d={joineryPath(win)} fill="none" stroke={INK} strokeWidth={0.55} />
       {sill && <rect x={x - 1.2} y={y + h} width={w + 2.4} height={1} fill={SILL_LIT} />}
-      {win.box && <rect x={x - 0.4} y={y + h + 0.2} width={w + 0.8} height={1.2} fill={GLOW_SLAB} />}
-      {balcony && <LitBalcony win={win} balcony={balcony} />}
+      {win.box && <rect data-glow-slab="" x={x - 0.4} y={y + h + 0.2} width={w + 0.8} height={1.2} fill={GLOW_SLAB} opacity={glowK} />}
+      {balcony && <LitBalcony win={win} balcony={balcony} glowK={glowK} />}
     </>
   );
 }

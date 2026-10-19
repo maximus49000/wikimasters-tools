@@ -30,6 +30,10 @@ export function pullOver(amb: CityEvent, xv: number, width: number, t: number): 
 
 // Fondu (s) d'apparition et de disparition des événements fixes (grue, cerf-volant, appartement).
 export const FIXED_FADE_S = 2;
+// Salves du spectacle : hauteur tirée (fraction du ciel, 0,15-0,45), vers le haut seulement (jamais plus bas que les salves
+// isolées, qui éclatent juste au-dessus des toits du fond) : jusqu'à 7,5 % de la hauteur de la scène.
+const SHOW_LOW_Y = 0.15;
+const SHOW_SPREAD = 0.25;
 
 // Opacité d'un événement fixe à l'instant t : monte en FIXED_FADE_S au début, descend autant à la fin. Le feu d'artifice
 // (qui a ses propres fusées) et les traversées (qui entrent et sortent hors champ) restent à 1.
@@ -86,7 +90,8 @@ export function placeEvent(e: CityEvent, t: number, f: EventFrame): EventPlaceme
         const lamp = apartmentLamp(e, f);
         return { x: lamp.x, y: lamp.y, sx: lamp.w / APT_W, sy: lamp.h / APT_H };
       }
-      if (e.id === 'fireworks') return { x, y: 0, sx: m.unit, sy: m.unit };
+      // Feu d'artifice : salves isolées à hauteur fixe (y = 0) ; salves du spectacle (fireworks-show.ts) plus ou moins hautes.
+      if (e.id === 'fireworks') return { x, y: e.key.startsWith('show-') ? -(e.y - SHOW_LOW_Y) * f.height * SHOW_SPREAD : 0, sx: m.unit, sy: m.unit };
       if (e.id === 'crane') return { x, y: m.ground, sx: m.unit, sy: m.unit };
       return { x, y: e.y * f.height, sx: m.unit, sy: m.unit };
     default: {
