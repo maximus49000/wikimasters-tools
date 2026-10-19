@@ -1,5 +1,6 @@
 import { useMemo, type ReactElement } from 'react';
-import type { FacadeLayout, FacadeWindow, Home, HomeTone, Level } from '../core/library/city/facade-layout';
+import type { FacadeLayout, FacadeWindow, Home, Level } from '../core/library/city/facade-layout';
+import type { LightTone } from '../core/library/city/schedules';
 
 // Dessin des fenêtres du calque de nuit (vague Ghibli, décor cellulo) : composants de présentation seuls, branchés par
 // ghibli-windows.tsx (calque animé) et, pour la cage d'escalier, par le calque des halls. Port de la branche allumée de
@@ -18,8 +19,9 @@ export const GLOW = 'rgba(255,214,130,0.22)';
 const GLOW_RIM = 'rgba(255,214,130,0.16)';
 const GLOW_SLAB = 'rgba(255,214,130,0.3)';
 const SILL_LIT = '#FFE8B0';
-const TONES: Record<HomeTone, string> = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF' };
-export const toneColor = (tone: HomeTone): string => TONES[tone];
+// Teintes d'une pièce allumée : celles des logements du chantier 1 (HomeTone) et la lumière froide des emplois du temps (cool).
+const TONES: Record<LightTone, string> = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF', cool: '#C8DCFF' };
+export const toneColor = (tone: LightTone): string => TONES[tone];
 // Cage d'escalier allumée (minuterie), bois des accessoires, feuillage.
 const STAIR = '#F4F0D8';
 const LAMP_WOOD = '#6E3A2A';
@@ -129,9 +131,10 @@ const joineryPath = ({ x, y, w, h, kind }: FacadeWindow): string => `${rectPath(
 // puis, par-dessus (le calque couvre le décor peint), la menuiserie de toutes les fenêtres en un seul chemin et les
 // barreaux des garde-corps devant les vitres (portes-fenêtres d'un étage filant, balconnets) quand `levels` et `x` sont
 // fournis. `layout` du socle des jumeaux : fenêtres et logements seuls, sans lucarnes ni balcons. Les chemins ne dépendent
-// que de la mise en page et du mur : mémorisés, seule l'opacité change au fil des minutes.
+// que de la mise en page et du mur : mémorisés, seule l'opacité change au fil des minutes. `curtains` faux (logements vivants,
+// use-scene-life.ts) : ni voilage ni rideau, le calque de la vie aux fenêtres les dessine selon leur position.
 type GlassLayout = Pick<FacadeLayout, 'windows' | 'dormers'> & Partial<Pick<FacadeLayout, 'homes' | 'levels' | 'x'>>;
-export function NightGlass({ layout, wall, opacity }: { layout: GlassLayout; wall: string; opacity: number }): ReactElement {
+export function NightGlass({ layout, wall, opacity, curtains: withCurtains = true }: { layout: GlassLayout; wall: string; opacity: number; curtains?: boolean }): ReactElement {
   const paths = useMemo(() => {
     let glass = '';
     let shine = '';
@@ -148,7 +151,7 @@ export function NightGlass({ layout, wall, opacity }: { layout: GlassLayout; wal
       frames += joineryPath(win);
       const balcony = balconyOf(win, layout.levels?.[win.level] ?? null, layout.x);
       if (balcony) bars += barsPath(win, balcony);
-      const curtain = win.kind !== 'stair' && win.home >= 0 ? (layout.homes?.[win.home]?.curtain ?? null) : null;
+      const curtain = withCurtains && win.kind !== 'stair' && win.home >= 0 ? (layout.homes?.[win.home]?.curtain ?? null) : null;
       if (!curtain) continue;
       if (curtain.style === 'voile') voile += rectPath(x, y, w, h);
       else {
@@ -167,7 +170,7 @@ export function NightGlass({ layout, wall, opacity }: { layout: GlassLayout; wal
       frames += `M${cx - r} ${cy}h${2 * r}M${cx} ${cy - r}v${2 * r}`;
     }
     return { glass, shine, top, voile, frames, bars, curtains: [...curtains.entries()] };
-  }, [layout, wall]);
+  }, [layout, wall, withCurtains]);
   return (
     <g data-night-glass="" opacity={opacity} style={{ transition: 'opacity 4s ease' }}>
       <path d={paths.glass} fill={nightGlass(wall)} />
@@ -261,11 +264,12 @@ function LitBalcony({ win, balcony }: { win: FacadeWindow; balcony: Balcony }): 
 // montés, l'un transparent), voilage ou rideaux du logement, accessoire ou silhouette, menuiserie, appui éclairé,
 // jardinière et balcon éclairés. `level` : étage (balcon devant la fenêtre), null pour lucarnes et socle ; `facadeX` : x de
 // la façade (barreaux d'un balcon filant au même pas que ceux de la vitre éteinte : aucun saut pendant le fondu) ; `glow` :
-// définition de la lueur à sa taille, à hauteur bornée pour l'étage 0 et le socle (glowBound : rien sous le plancher).
-export function LitWindow({ win, home, level, facadeX, tone, glow }: { win: FacadeWindow; home: Home | null; level: Level | null; facadeX?: number; tone: HomeTone; glow: string }): ReactElement {
+// définition de la lueur à sa taille, à hauteur bornée pour l'étage 0 et le socle (glowBound : rien sous le plancher) ;
+// `curtains` faux (logements vivants) : ni voilage ni rideau, dessinés par le calque de la vie aux fenêtres.
+export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = true }: { win: FacadeWindow; home: Home | null; level: Level | null; facadeX?: number; tone: LightTone; glow: string; curtains?: boolean }): ReactElement {
   const { x, y, w, h } = win;
   const tv = tone === 'tv';
-  const curtain = home?.curtain ?? null;
+  const curtain = curtains ? (home?.curtain ?? null) : null;
   const prop = home ? (home.props[home.bays.indexOf(win.bay)] ?? null) : null;
   const balcony = balconyOf(win, level, facadeX);
   // Appui éclairé : seules les fenêtres d'étage en ont un de peint (pas la porte-fenêtre ; les lucarnes non plus, roof-painter).

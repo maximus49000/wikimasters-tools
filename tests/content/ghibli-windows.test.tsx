@@ -11,6 +11,10 @@ import { cityMetrics } from '../../src/core/library/city/metrics';
 import { PODIUM_H } from '../../src/core/library/scene-world';
 import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
 import empreinte from '../core/library/fixtures/city-skyline-empreinte.json';
+import { buildSceneLife, type SceneLife } from '../../src/content/use-scene-life';
+import { dayContext } from '../../src/core/library/city/calendar';
+import { homeState } from '../../src/core/library/city/home-state';
+import { roomLit } from '../../src/core/library/city/window-lights';
 
 // Calque des fenêtres de la ville peinte : vitres sombres de nuit par immeuble, fenêtres allumées par logement (pièce
 // seule, télé), lueur partagée par taille, lumières du fond hors de l'emprise du premier plan.
@@ -19,12 +23,12 @@ import empreinte from '../core/library/fixtures/city-skyline-empreinte.json';
 let container: HTMLDivElement;
 let root: Root;
 const facades = cityFacades(720, 340, 5);
-type Opts = { minutes?: number; daylight?: number; gloom?: boolean; dim?: number; buildings?: typeof facades; plan?: ReturnType<typeof cityPaintPlan> };
+type Opts = { minutes?: number; daylight?: number; gloom?: boolean; dim?: number; buildings?: typeof facades; plan?: ReturnType<typeof cityPaintPlan>; life?: SceneLife | null };
 const render = (o: Opts = {}) =>
   act(() => {
     root.render(
       <svg>
-        <GhibliWindows buildings={o.buildings ?? facades} minutes={o.minutes ?? 1320} day={undefined} daylight={o.daylight ?? 0} gloom={o.gloom ?? false} dim={o.dim ?? 1} farLight={0.5} plan={o.plan} />
+        <GhibliWindows buildings={o.buildings ?? facades} minutes={o.minutes ?? 1320} day={undefined} daylight={o.daylight ?? 0} gloom={o.gloom ?? false} dim={o.dim ?? 1} farLight={0.5} plan={o.plan} life={o.life} />
       </svg>,
     );
   });
@@ -320,5 +324,81 @@ describe('calque des fenêtres Ghibli', () => {
       act(() => refRoot.unmount());
     }
     expect(found).toBe(true);
+  });
+});
+
+describe('calque des fenêtres Ghibli : lumières par présence', () => {
+  const life = buildSceneLife(facades, dayContext({ y: 2026, m: 10, d: 14 }, []), { precip: 0, snow: false, storm: false }, 5, false);
+  // Fenêtres allumables dans l'ordre du calque, avec leur logement.
+  const slots = facades.flatMap((b, i) => (b.far ? [] : b.lamps.flatMap((win) => (win.home < 0 ? [] : [{ win, group: `${i}:${win.home}` }]))));
+  const TONE_FILL: Record<string, string> = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF', cool: '#C8DCFF' };
+
+  it('avec life, data-lit suit homeState', () => {
+    let on = 0;
+    let off = 0;
+    for (const minutes of [6 * 60 + 30, 7 * 60 + 15, 19 * 60, 20 * 60 + 30, 22 * 60, 23 * 60 + 30, 30, 2 * 60]) {
+      render({ minutes, life });
+      const els = lamps();
+      expect(els.length).toBe(slots.length);
+      slots.forEach(({ win, group }, k) => {
+        const d = life.byFacadeHome.get(group)!;
+        const st = homeState(d, life.today.get(d.id)!, life.yesterday.get(d.id)!, minutes);
+        const room = d.roomOfWindow.get(win.bay)!;
+        const want = !!st.lit[room];
+        const el = els[k]!;
+        expect(el.getAttribute('data-home')).toBe(group);
+        expect(lit(el), `${group} ${room} ${minutes}`).toBe(want);
+        if (want) {
+          on++;
+          // Teinte de la pièce (vitre teintée, premier rectangle après la lueur).
+          expect(el.querySelector('rect')!.getAttribute('fill')).toBe(TONE_FILL[st.tone[room]!]);
+        } else off++;
+      });
+    }
+    expect(on).toBeGreaterThan(0);
+    expect(off).toBeGreaterThan(0);
+  });
+
+  it('avec life : rien d’allumé de jour, même sous un ciel couvert', () => {
+    render({ minutes: 12 * 60, daylight: 1, gloom: true, dim: 0.7, life });
+    expect(lamps().every((el) => !lit(el))).toBe(true);
+  });
+
+  it('même nombre de nœuds de 6 h à 2 h', () => {
+    render({ minutes: 6 * 60, life });
+    const before = [...layer().querySelectorAll('*')];
+    for (let minutes = 6 * 60; minutes <= 26 * 60; minutes += 17) {
+      render({ minutes: minutes % 1440, life });
+      const now = [...layer().querySelectorAll('*')];
+      expect(now.length).toBe(before.length);
+      expect(now.every((el, i) => el === before[i])).toBe(true);
+    }
+  });
+
+  it('avec life : ni rideau ni voilage dans les vitres éteintes et allumées (le calque de la vie les dessine)', () => {
+    render({ minutes: 22 * 60, life });
+    expect(container.querySelectorAll('[data-night-curtain], [data-night-voile]').length).toBe(0);
+    for (const el of lamps()) expect([...el.querySelectorAll('rect')].some((r) => r.getAttribute('fill') === 'rgba(255,248,230,0.45)')).toBe(false);
+    render({ minutes: 22 * 60 });
+    expect(container.querySelectorAll('[data-night-curtain], [data-night-voile]').length).toBeGreaterThan(0);
+  });
+
+  it('sans life : allumage du chantier 1 inchangé', () => {
+    for (const minutes of [19 * 60, 22 * 60, 30]) {
+      render({ minutes, life: null });
+      const els = lamps();
+      slots.forEach(({ win }, k) => expect(lit(els[k]!)).toBe(roomLit(win, minutes, undefined, 0, false)));
+    }
+  });
+
+  it('fond : fenêtres du fond identiques avec et sans life', () => {
+    for (const minutes of [19 * 60, 23 * 60, 2 * 60]) {
+      render({ minutes });
+      const without = [...container.querySelectorAll('[data-far-lamp]')].map((el) => el.outerHTML);
+      render({ minutes, life });
+      const withLife = [...container.querySelectorAll('[data-far-lamp]')].map((el) => el.outerHTML);
+      expect(without.length).toBeGreaterThan(0);
+      expect(withLife).toEqual(without);
+    }
   });
 });

@@ -148,4 +148,14 @@ describe('useCityDay', () => {
     await waitFor(() => expect(calls(f, 'school-calendar').some((u) => u.includes('zone=C'))).toBe(true));
     expect(calls(f, 'department')).toHaveLength(0);
   });
+  it('semaine de vacances (mercredi de la semaine) et veille, avec les mêmes périodes', async () => {
+    writeZone('C');
+    vi.stubGlobal('fetch', relay(null));
+    // Dimanche 8 mars 2026 : week-end d'une semaine dont le mercredi 4 est en vacances (période du 2 au 10 mars).
+    const result = renderCityDay({ y: 2026, m: 3, d: 8 });
+    await waitFor(() => expect(result.current.holidayWeek).toBe(true));
+    expect(result.current.kind).toBe('weekend');
+    expect(result.current.yesterday?.iso).toBe('2026-03-07');
+    expect(result.current.yesterday?.holidayWeek).toBe(true);
+  });
 });
