@@ -27,6 +27,10 @@ const FRAME_MS = 66;
 export const PIGEON_MAX = 8;
 // Fondu d'une fumée qui prend ou s'éteint (s).
 const SMOKE_FADE_S = 40;
+// Pas des bouffées de fumée (s) : elles montent de 0,9 px/s, un pas de 0,5 s reste fluide à cette taille.
+const SMOKE_STEP_S = 0.5;
+// Fumées montées au plus sur la scène.
+export const SMOKE_MAX = 8;
 const NIGHT_AT = 0.2;
 
 const CatM = memo(Cat);
@@ -154,10 +158,15 @@ function buildModel(facades: readonly Facade[], life: SceneLife, seed: number): 
     const l = facades[fi]!.layout!;
     return { fi, l, outings: catOutings(seed, day.iso, fi), walk: catWalkMinutes(l) };
   });
-  // Fumées montées : souches qui fumeraient ce jour-là si quelqu'un était chez soi (aucune hors de l'hiver).
-  const smokes = layouts.flatMap(({ fi, l }) =>
-    smokeAt(l, day, true).flatMap((on, k) => (on ? [{ id: `smoke:${fi}:${k}`, fi, k, x: l.chimneys[k]!.x + 2, y: l.chimneys[k]!.top - 1.3, l }] : [])),
-  );
+  // Fumées montées : souches qui fumeraient ce jour-là si quelqu'un était chez soi (aucune hors de l'hiver), SMOKE_MAX au
+  // plus, tirées du jour (écritures de la boucle : 6 bouffées × 2 attributs par fumée à chaque pas).
+  const smokePick = mulberry32(seed ^ hashString(day.iso) ^ hashString('smoke-pick'));
+  const smokes = layouts
+    .flatMap(({ fi, l }) => smokeAt(l, day, true, seed).flatMap((on, k) => (on ? [{ id: `smoke:${fi}:${k}`, fi, k, x: l.chimneys[k]!.x + 2, y: l.chimneys[k]!.top - 1.3, l }] : [])))
+    .map((sm) => ({ sm, r: smokePick() }))
+    .sort((a, b) => a.r - b.r)
+    .slice(0, SMOKE_MAX)
+    .map((o) => o.sm);
   const flocks = new Map<number, PigeonFlock[]>();
   const birds: Model['birds'] = [];
   // Toits visités dans un ordre tiré du jour (les PIGEON_MAX pigeons ne se massent pas toujours à gauche de la scène).
@@ -187,7 +196,7 @@ export function RoofLifeLayer({ facades, life, sky, minutes, still, seed }: { fa
   const clock = useRef<{ m: number; base: number } | null>(null);
   // Pluie vue par le calque ce jour-là : intervalles [début, fin] (fin = Infinity si elle dure), première minute de pluie
   // (couvreur) ; jour humide dès le montage : pluie « depuis toujours ». Sorties du chat maintenues, recalculées à la bascule.
-  const rain = useRef<{ iso: string; last: boolean; wet: [number, number][]; from: number | undefined; cats: Outing[][] | null }>({ iso: '', last: false, wet: [], from: undefined, cats: null });
+  const rain = useRef<{ model: Model | null; iso: string; last: boolean; wet: [number, number][]; from: number | undefined; cats: Outing[][] | null }>({ model: null, iso: '', last: false, wet: [], from: undefined, cats: null });
   const homeAt = useRef<{ model: Model | null; minute: number; occupied: Map<number, boolean> }>({ model: null, minute: NaN, occupied: new Map() });
   const smoke = useRef<{ model: Model | null; level: Map<string, number>; at: number }>({ model: null, level: new Map(), at: 0 });
 
@@ -210,6 +219,11 @@ export function RoofLifeLayer({ facades, life, sky, minutes, still, seed }: { fa
         R.from ??= m;
       } else if (R.wet.length > 0) R.wet[R.wet.length - 1]![1] = m;
       R.last = day.wet;
+      R.cats = null;
+    }
+    // Autre modèle (largeur, façades) : les toits à chat ont changé, leurs sorties sont refaites.
+    if (R.model !== model) {
+      R.model = model;
       R.cats = null;
     }
     R.cats ??= model.cats.map((c) => dryOutings(c.outings, R.wet, c.walk));
@@ -243,7 +257,9 @@ export function RoofLifeLayer({ facades, life, sky, minutes, still, seed }: { fa
           push(hub, b.id, { pose: 'perch', x: r2(perch.x), y: r2(perch.y), phase: 0, dir: perch.dir });
           continue;
         }
-        const phase = p.pose === 'fly' ? q(p.phase, 0.5) : p.pose === 'peck' ? q(p.phase, 1 / 15) : q(p.phase, 0.25);
+        // Seul ce que le dessin lit est poussé : tête qui pointe (sin(phase) > 0,8), plongée du bec en 4 crans (max(0, sin 6·phase)),
+        // battement d'ailes en vol.
+        const phase = p.pose === 'fly' ? q(p.phase, 0.7) : p.pose === 'peck' ? Math.asin(Math.round(Math.max(0, Math.sin(p.phase * 6)) * 3) / 3) / 6 : Math.sin(p.phase) > 0.8 ? Math.PI / 2 : 0;
         push(hub, b.id, { pose: p.pose, x: q(p.x, 0.05), y: q(p.y, 0.05), phase: r2(phase), dir: p.dir });
       }
     }
@@ -271,11 +287,13 @@ export function RoofLifeLayer({ facades, life, sky, minutes, still, seed }: { fa
     const dt = first ? 0 : Math.max(0, now - S.at);
     S.at = now;
     for (const sm of model.smokes) {
-      const target = smokeAt(sm.l, day, H.occupied.get(sm.fi) ?? false)[sm.k] ? 1 : 0;
+      // Le modèle ne monte que les souches qui fument ce jour-là (hiver, tirage) : reste la présence sous ce toit.
+      const target = H.occupied.get(sm.fi) ? 1 : 0;
       const cur = S.level.get(sm.id);
       const level = cur === undefined || still ? target : target > cur ? Math.min(target, cur + dt / SMOKE_FADE_S) : Math.max(target, cur - dt / SMOKE_FADE_S);
       S.level.set(sm.id, level);
-      push(hub, sm.id, { level: r2(level), phase: r2(q(s, 0.2)) });
+      // Bouffées avancées toutes les SMOKE_STEP_S ; fumée éteinte : phase 0 (rien n'est réécrit).
+      push(hub, sm.id, { level: r2(level), phase: level > 0 ? r2(q(s, SMOKE_STEP_S)) : 0 });
     }
 
     // Couvreur.
@@ -284,7 +302,8 @@ export function RoofLifeLayer({ facades, life, sky, minutes, still, seed }: { fa
       if (!rf) push(hub, 'roofer', NO_ROOFER);
       else if (still) push(hub, 'roofer', { pose: 'kneel', x: r2(rf.x), y: r2(walkY(model.roofer.l)), phase: 0, dir: rf.dir });
       else {
-        const phase = rf.pose === 'kneel' ? q(rf.phase, 1 / 15) : q(rf.phase, 0.9 / 12);
+        // À genoux, le dessin ne lit que le coup porté (sin(5·phase) > 0,5) : marteau levé (phase 0) ou coup (π/10).
+        const phase = rf.pose === 'kneel' ? (Math.sin(rf.phase * 5) > 0.5 ? Math.PI / 10 : 0) : q(rf.phase, 0.9 / 12);
         push(hub, 'roofer', { pose: rf.pose, x: q(rf.x, 0.05), y: q(Math.min(rf.y, walkY(model.roofer.l) + ROOFER_HIDE), 0.05), phase: r2(phase), dir: rf.dir });
       }
     }

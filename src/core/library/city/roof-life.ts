@@ -210,8 +210,8 @@ export function pigeonsAt(l: FacadeLayout, seed: number, iso: string, m: number,
 const SMOKE_P = 0.5; // part des souches qui fument (feu allumé), tirée par jour (maquette : 0,7, trop chargé à 20 souches)
 
 // Par souche visible : fume en hiver (`cold`) si quelqu'un est chez soi sous ce toit ; la moitié des souches, tirées par jour.
-export function smokeAt(l: FacadeLayout, day: SceneDay, anyoneHome: boolean): boolean[] {
-  const rng = mulberry32(hashString(day.iso) ^ hashString('smoke') ^ Math.round(l.x * 8));
+export function smokeAt(l: FacadeLayout, day: SceneDay, anyoneHome: boolean, seed: number): boolean[] {
+  const rng = mulberry32(seed ^ hashString(day.iso) ^ hashString('smoke') ^ Math.round(l.x * 8));
   return l.chimneys.map((_, k) => rng() < SMOKE_P && day.cold && anyoneHome && chimneyVisible(l, k));
 }
 

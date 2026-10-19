@@ -138,4 +138,40 @@ describe('calque des toits vivants', () => {
     m.render({ minutes: o.start + 13, life: wet });
     expect(pose()).toEqual([]);
   });
+
+  it('largeur qui change pendant une sortie du chat : sorties refaites pour les nouveaux toits, aucune erreur', () => {
+    const wide = cityFacades(1440, H, SEED);
+    const wideLife = sharedSceneLife(wide, dayContext(DEC, []), false, SEED, false);
+    const wideCats = catRoofs(wide.map((f) => f.layout), SEED);
+    expect(wideCats.length).toBeGreaterThan(0);
+    const fi = wideCats.at(-1)!;
+    const o = catOutings(SEED, '2026-12-15', fi)[0]!;
+    const m = mount();
+    m.render({ minutes: o.start + 10 });
+    expect(() => m.render({ minutes: o.start + 10, fs: wide, life: wideLife })).not.toThrow();
+    const slot = m.layer().querySelector(`[data-roof-cat-slot="${fi}"]`)!;
+    expect(shown(slot, '[data-pose]').map((e) => e.getAttribute('data-pose'))).toEqual(['sit']);
+  });
+
+  it('écritures d’attributs bornées : 3 s de boucle à 11 h (fumées, couvreur à genoux, pigeons posés)', () => {
+    let cb: FrameRequestCallback | null = null;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((f) => {
+      cb = f;
+      return 1;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    const m = mount();
+    m.render({ minutes: 660 });
+    const layer = m.layer();
+    const obs = new MutationObserver(() => undefined);
+    obs.observe(layer, { attributes: true, subtree: true });
+    const now = vi.mocked(Date.now);
+    for (let k = 1; k <= 45; k++) {
+      now.mockReturnValue(NOW_S * 1000 + k * 67);
+      act(() => cb!(k * 67));
+    }
+    const writes = obs.takeRecords().length;
+    // Huit fumées au plus, à 2 Hz (6 bouffées × transform + opacité), dominent ; le couvreur n'écrit qu'aux coups de marteau.
+    expect(writes).toBeLessThan(800);
+  });
 });

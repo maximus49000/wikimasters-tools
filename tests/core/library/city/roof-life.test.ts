@@ -173,22 +173,22 @@ describe('pigeons des corniches', () => {
 
 describe('fumées', () => {
   it('fumées seulement en hiver', () => {
-    const l = fronts.find((f) => smokeAt(f, TUE, true).some(Boolean))!;
+    const l = fronts.find((f) => smokeAt(f, TUE, true, SEED).some(Boolean))!;
     expect(l).toBeDefined();
-    expect(smokeAt(l, TUE, true)).toHaveLength(l.chimneys.length);
-    expect(smokeAt(l, JUNE, true).some(Boolean)).toBe(false);
+    expect(smokeAt(l, TUE, true, SEED)).toHaveLength(l.chimneys.length);
+    expect(smokeAt(l, JUNE, true, SEED).some(Boolean)).toBe(false);
     // Et seulement si quelqu'un est à la maison sous ce toit.
-    expect(smokeAt(l, TUE, false).some(Boolean)).toBe(false);
+    expect(smokeAt(l, TUE, false, SEED).some(Boolean)).toBe(false);
   });
 
   it('jamais de fumée d’une souche cachée par une lucarne (tabatière peinte par-dessus)', () => {
-    const l = fronts.find((f) => smokeAt(f, TUE, true).some(Boolean))!;
-    const k = smokeAt(l, TUE, true).findIndex(Boolean);
+    const l = fronts.find((f) => smokeAt(f, TUE, true, SEED).some(Boolean))!;
+    const k = smokeAt(l, TUE, true, SEED).findIndex(Boolean);
     const c = l.chimneys[k]!;
     const covered: FacadeLayout = { ...l, dormers: [...l.dormers, { type: 'tabatiere', bay: 0, cx: c.x + 2, y: c.top + 1, w: 5, h: 2.6 }] };
     expect(chimneyVisible(l, k)).toBe(true);
     expect(chimneyVisible(covered, k)).toBe(false);
-    expect(smokeAt(covered, TUE, true)[k]).toBe(false);
+    expect(smokeAt(covered, TUE, true, SEED)[k]).toBe(false);
   });
 
   it('quelqu’un à la maison : membres sortis par la porte et pas revenus, logement parti', () => {
