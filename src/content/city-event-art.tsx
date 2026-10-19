@@ -1,5 +1,6 @@
 import type { ReactElement, SVGProps } from 'react';
 import type { CityEvent } from '../core/library/city/events';
+import { FIREWORK_VARIANTS } from '../core/library/city/fireworks-show';
 
 // Parties vectorielles des événements Ghibli (G5) qui restent des particules SVG, calculées en `t` par la couche : feux
 // d'artifice en cellulo (gerbes à bord net, brins qui retombent, pointe blanche, étincelle secondaire, halo), traînée de
@@ -74,8 +75,10 @@ const haloArt = (cx: number, cy: number, r: number, c: string, a: number): Art[]
   { tag: 'circle', attrs: { cx: f1(cx), cy: f1(cy), r: f1(r), fill: c, opacity: f2(a * 0.55) } },
   { tag: 'circle', attrs: { cx: f1(cx), cy: f1(cy), r: f1(r * 0.5), fill: c, opacity: f2(a) } },
 ];
-export function rocketArt(k: number, u: number): Art[] {
-  const col = ROCKET_COLORS[k % ROCKET_COLORS.length]!;
+// `shift` : couleurs décalées d'une salve du spectacle des jours de fête (`variant` de la salve) ; 0 pour les salves isolées.
+export const rocketShift = (e: CityEvent): number => (e.key.startsWith('show-') ? Math.floor(e.variant * FIREWORK_VARIANTS) : 0);
+export function rocketArt(k: number, u: number, shift = 0): Art[] {
+  const col = ROCKET_COLORS[(k + shift) % ROCKET_COLORS.length]!;
   const cx = -120 + k * 60;
   const cy = 40 + (k % 3) * 20;
   if (u < 0.13) {
@@ -109,7 +112,7 @@ export function GhibliFireworks({ event: e, t, still }: { event: CityEvent; t: n
   return (
     <g data-fireworks-ghibli="">
       {ROCKET_COLORS.map((_, k) => (
-        <ArtGroup key={k} data-rocket={k} arts={rocketArt(k, rocketU(e, t, k, still))} />
+        <ArtGroup key={k} data-rocket={k} arts={rocketArt(k, rocketU(e, t, k, still), rocketShift(e))} />
       ))}
     </g>
   );
@@ -117,7 +120,7 @@ export function GhibliFireworks({ event: e, t, still }: { event: CityEvent; t: n
 function poseFireworks(node: Element, e: CityEvent, t: number, still: boolean): void {
   for (const g of node.querySelectorAll('[data-rocket]')) {
     const k = Number(g.getAttribute('data-rocket'));
-    syncArt(g, rocketArt(k, rocketU(e, t, k, still)));
+    syncArt(g, rocketArt(k, rocketU(e, t, k, still), rocketShift(e)));
   }
 }
 

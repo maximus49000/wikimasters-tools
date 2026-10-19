@@ -12,6 +12,7 @@ import type { Choreo, LightTone, Schedule, Segment, Where } from './schedules';
 export type Actor = {
   dwelling: string; room: Room; where: Where; m: number; choreo: Choreo; p: number; t: number;
   seat: number; party: number; desk: boolean; slot: number; reverse: boolean;
+  from?: number; // place (en largeurs de fenêtre) d'où part et où revient le pantin (réaction à la sirène d'un membre assis)
   animated: boolean; prio: number; culled: boolean;
 };
 // shut / curt / win : 0 fermé → 1 ouvert (persiennes ou battants, rideaux tirés à 1, fenêtre ouverte à 1).
@@ -89,7 +90,7 @@ export function homeState(d: Dwelling, today: Schedule, yesterday: Schedule | nu
           dwelling: d.id, room: span.room, where: span.where, m: span.m, choreo: span.choreo,
           p: (T - span.t0) / (span.t1 - span.t0), t: T - span.t0,
           seat: span.seat ?? 0, party: span.party ?? 1, desk: !!span.desk, slot: span.slot ?? 0, reverse: !!span.reverse,
-          animated, prio: span.event ? EVENT_PRIO : (PRIO[span.choreo] ?? 1), culled: false,
+          animated, prio: span.event ? EVENT_PRIO : (PRIO[span.choreo] ?? 1), culled: false, ...(span.from !== undefined ? { from: span.from } : {}),
         });
       }
     }

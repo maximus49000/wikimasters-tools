@@ -63,11 +63,12 @@ const walk = (s: number, q: number, from: number, to: number, where?: Where): St
 
 // Sortie sur le balcon par la porte-fenêtre : marche dedans jusqu'au seuil, traversée du plan de la vitre (dedans → dehors)
 // jusqu'au créneau, et retour par le même chemin en fin de scène ; null entre les deux (le geste du balcon prend la suite).
-function balconyInOut(p: number, s: number, tIn: number, tOut: number, slot: number): Step | null {
+// `from` : place de départ et de retour dans la pièce (largeurs de fenêtre ; un membre assis qui se lève pour la sirène).
+function balconyInOut(p: number, s: number, tIn: number, tOut: number, slot: number, from = -1.5): Step | null {
   const target = BALCONY_SLOT0 + slot * BALCONY_STEP;
-  if (p < tIn * 0.55) return walk(s, p / (tIn * 0.55), -1.5, GLASS_DX, 'in');
+  if (p < tIn * 0.55) return walk(s, p / (tIn * 0.55), from, GLASS_DX, 'in');
   if (p < tIn) return walk(s, (p - tIn * 0.55) / (tIn * 0.45), GLASS_DX, target, 'balcony');
-  if (p > 1 - tOut * 0.45) return walk(s, (p - 1 + tOut * 0.45) / (tOut * 0.45), GLASS_DX, -1.5, 'in');
+  if (p > 1 - tOut * 0.45) return walk(s, (p - 1 + tOut * 0.45) / (tOut * 0.45), GLASS_DX, from, 'in');
   if (p > 1 - tOut) return walk(s, (p - 1 + tOut) / (tOut * 0.55), target, GLASS_DX, 'balcony');
   return null;
 }
@@ -93,7 +94,14 @@ function step(a: Actor, reduced: boolean): Step {
   };
   // Même chose avec des seuils propres à la scène (volets, rideaux).
   const walkIf = (cond: boolean, q: number, from: number, to: number): Step | null => (cond ? (reduced ? OUT : walk(s, q, from, to)) : null);
-  const balcony = (): Step | null => (bal ? (reduced ? inOut(balDx) : balconyInOut(p, s, tIn, tOut, slot)) : inOut(0));
+  // Membre qui se lève de sa place (`from`, réaction à la sirène) : il marche dans la pièce de sa place à la fenêtre, puis y revient.
+  const seatInOut = (at: number): Step | null => {
+    if (a.from === undefined) return inOut(at);
+    if (p < tIn) return reduced ? OUT : walk(s, p / tIn, a.from, at, 'in');
+    if (p > 1 - tOut) return reduced ? OUT : walk(s, (p - 1 + tOut) / tOut, at, a.from, 'in');
+    return null;
+  };
+  const balcony = (): Step | null => (bal ? (reduced ? seatInOut(balDx) : balconyInOut(p, s, tIn, tOut, slot, a.from)) : seatInOut(0));
   switch (a.choreo) {
     case 'cross':
       // Traversée fugace : rien à montrer en pose fixe (hors champ sur toute la scène en mouvement réduit).
@@ -141,7 +149,7 @@ function step(a: Actor, reduced: boolean): Step {
       return walk(s, (p - 0.75) / 0.25, 0.45 * rev, 1.5 * rev);
     }
     case 'lean':
-      return inOut(0) ?? fixed('sill', { lean: LEAN_SILL, where: 'lean', head: headOf(slot), still: true });
+      return seatInOut(0) ?? fixed('sill', { lean: LEAN_SILL, where: 'lean', head: headOf(slot), still: true });
     case 'leanRail':
       return balcony() ?? fixed('rail', { lean: LEAN_SILL, dx: bal ? balDx : 0, where: bal ? 'balcony' : 'lean', head: headOf(slot), still: true });
     case 'smoke': {

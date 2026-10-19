@@ -5,8 +5,8 @@ import type { Facade } from '../core/library/city/facades';
 import { MAX_ANIM, homeState, type Actor, type HomeState } from '../core/library/city/home-state';
 import type { Dwelling, Room } from '../core/library/city/households';
 import { outfitFor, type Outfit } from '../core/library/city/people';
-import type { Choreo, Segment } from '../core/library/city/schedules';
-import { windowPose, type HandProp, type WindowPose } from '../core/library/city/window-choreo';
+import type { Choreo, Schedule, Segment, Where } from '../core/library/city/schedules';
+import { IN_OUT_S, windowPose, type HandProp, type WindowPose } from '../core/library/city/window-choreo';
 import { nightness } from '../core/library/city/window-lights';
 import { anchorsOf } from '../core/library/figure/bake';
 import { shapeOf, signatureOf } from '../core/library/figure/dress';
@@ -123,6 +123,7 @@ type DwM = {
   balcony: { win: FacadeWindow; bal: Balcony; rail: string } | null; joinery: string; held: HandProp[];
   box: [number, number, number, number]; // cadre de la façade cuite (vitres + vantaux rabattus et battant biaisé)
   starts: number[]; // débuts des scènes, triés, en minutes du jour (ceux de la veille décalés de −1440)
+  leanRoom: Room; // fenêtre de la réaction à la sirène
 };
 // Immeuble : ses logements et le cadre de sa façade cuite (union de ceux des logements).
 type FacM = { fi: number; dws: DwM[]; box: [number, number, number, number] };
@@ -202,6 +203,9 @@ function buildModel(facades: readonly Facade[], lives: readonly SceneLife[], min
     });
     if (wins.length === 0) continue;
     const byRoom = new Map(wins.map((w) => [w.room, w]));
+    // Fenêtre où l'on se penche au passage d'une sirène (salon, sinon la première) : son battant est monté même sans scène prévue.
+    const leanWin = byRoom.get('salon') ?? wins[0]!;
+    leanWin.sash = true;
     const members = new Map<number, Set<HandProp>>();
     for (const a of acts) {
       if (!byRoom.has(a.room)) continue;
@@ -226,6 +230,7 @@ function buildModel(facades: readonly Facade[], lives: readonly SceneLife[], min
       held: [...new Set(figs.flatMap((f) => f.props))],
       box: frontBox(wins),
       starts: lives[0] ? startsOf(lives[0], d.id) : [],
+      leanRoom: leanWin.room,
     });
   }
   const byFacade = new Map<number, DwM[]>();
@@ -559,12 +564,105 @@ function dropBakes(map: Map<number, Baked>): void {
   map.clear();
 }
 
+// ---------- Sirène (spec §5.1 : seule exception à la pureté) ----------
+// Quand une ambulance du trafic entre dans la scène, SIREN_SHARE des foyers présents et éveillés vont à la fenêtre (ou au
+// balcon) la regarder passer : SIREN_LOOK_S secondes, marche d'entrée et de sortie comprises (la scène commence et finit
+// dans la pièce, comme toutes les autres). Tirage déterministe par (graine, ambulance, logement) ; l'état (réactions en
+// cours) est gardé par le calque, le temps de la scène.
+export const SIREN_LOOK_S = 72;
+export const SIREN_SHARE = 0.45;
+// Nuit profonde (minutes du jour) : personne ne se lève pour une sirène.
+const SIREN_QUIET: readonly [number, number] = [30, 360];
+// Temps de réaction tiré (s), avant de se mettre en marche vers la fenêtre.
+const SIREN_DELAY_S = 8;
+// Volets assez ouverts pour se pencher (sinon on ne les ouvre pas pour une sirène).
+const SIREN_SHUT_MIN = 0.9;
+
+type Sched = { segments: readonly Segment[] };
+// Membre chez lui à la minute T du jour : ni sorti (de son départ moins la montée de l'escalier à son retour plus la montée).
+function memberHome(today: Sched, mem: number, T: number, climb: number): boolean {
+  let home = true;
+  const evts = today.segments.filter((g): g is Extract<Segment, { k: 'return' | 'depart' }> => (g.k === 'return' || g.k === 'depart') && g.m === mem).sort((a, b) => a.t - b.t);
+  for (const g of evts) {
+    if (g.k === 'depart' && T >= g.t - climb) home = false;
+    else if (g.k === 'return' && T >= g.t + climb) home = true;
+  }
+  return home;
+}
+
+// Foyer présent et éveillé à la minute m : un de ses membres est chez lui, entre la première lumière du jour (lever) et la
+// dernière (coucher), ou dans la soirée de la veille qui déborde après minuit ; jamais en nuit profonde. Un foyer parti
+// (aucune lumière) ne l'est jamais.
+export function sirenPresent(d: Dwelling, today: Sched, yesterday: Sched | null, m: number): boolean {
+  const md = ((m % 1440) + 1440) % 1440;
+  if (md >= SIREN_QUIET[0] && md < SIREN_QUIET[1]) return false;
+  let first = Infinity, last = -Infinity;
+  for (const g of today.segments) if (g.k === 'lit') { first = Math.min(first, g.t0); last = Math.max(last, g.t1); }
+  let awake = m >= first && m < last;
+  if (!awake && yesterday) for (const g of yesterday.segments) if (g.k === 'lit' && g.t1 > 1440 && m + 1440 >= g.t0 && m + 1440 < g.t1) awake = true;
+  return awake && d.hh.members.some((_, x) => memberHome(today, x, m, d.climb));
+}
+
+// `from` : place du membre assis qui se lève (absente : il arrive de la pièce voisine).
+export type SirenLook = { m: number; room: Room; where: Where; choreo: 'lean' | 'leanRail'; t0: number; t1: number; from?: number };
+// Réaction d'un logement à la sirène `key` entendue à la minute m, ou null. `members` : membres qui ont un pantin (le calque
+// les monte pour la journée) ; `room` : pièce de la fenêtre où l'on se penche ; `balcony` : balcon devant le salon.
+// Qui y va : un membre chez lui sans scène en cours (il arrive de la pièce voisine), sinon un membre assis dans cette pièce
+// (télé, lecture, table) dont la scène dure au-delà de la réaction : il se lève, va à la fenêtre et revient s'asseoir (sa
+// scène reprend telle quelle). Personne ne quitte une autre pièce où on le voit, ni un geste en cours.
+export function sirenLook(d: Dwelling, today: Schedule, yesterday: Schedule | null, m: number, seed: number, key: string, o: { members: readonly number[]; room: Room; balcony: boolean; wet: boolean }): SirenLook | null {
+  const rng = mulberry32(seed ^ hashString(key) ^ d.key);
+  // Toujours deux tirages : la présence ne décale pas le reste.
+  const r = rng(), delay = rng();
+  if (r >= SIREN_SHARE || !sirenPresent(d, today, yesterday, m)) return null;
+  const st = homeState(d, today, yesterday, m);
+  // Quelqu'un est déjà dehors (penché, balcon) : il regarde déjà la rue.
+  if (st.actors.some((a) => a.where !== 'in')) return null;
+  if ((st.shut[o.room] ?? 1) < SIREN_SHUT_MIN) return null;
+  const t0 = m + (delay * SIREN_DELAY_S) / 60;
+  const t1 = t0 + SIREN_LOOK_S / 60;
+  const home = o.members.filter((x) => x < d.hh.members.length && memberHome(today, x, m, d.climb));
+  let mem = home.find((x) => !st.actors.some((a) => a.m === x));
+  let from: number | undefined;
+  if (mem === undefined) {
+    for (const x of home) {
+      const acts = st.actors.filter((a) => a.m === x);
+      const a = acts[0];
+      if (acts.length !== 1 || !a || a.room !== o.room || a.where !== 'in' || a.p <= 0) continue;
+      const pose = windowPose(a, d);
+      // Fin de sa scène (minutes) : t / p est sa durée.
+      if (!pose || !pose.still || m - a.t + a.t / a.p < t1 + 0.5) continue;
+      mem = x;
+      from = pose.dx;
+      break;
+    }
+  }
+  if (mem === undefined) return null;
+  const out = o.balcony && o.room === 'salon' && !o.wet;
+  return { m: mem, room: o.room, where: out ? 'balcony' : 'lean', choreo: out ? 'leanRail' : 'lean', t0, t1, ...(from !== undefined ? { from } : {}) };
+}
+
+// Segments ajoutés à l'emploi du temps du jour pour une réaction : la scène (événement, priorité 5), la fenêtre ouverte à
+// l'arrivée devant elle et refermée au départ (balcon : la porte-fenêtre). Placés en tête : la scène de la réaction passe
+// avant celle, en cours, du membre assis (le calque ne dessine que la première scène de chaque membre).
+function sirenSegments(s: SirenLook): Segment[] {
+  const walk = IN_OUT_S / 60;
+  return [
+    { k: 'act', t0: s.t0, t1: s.t1, room: s.room, where: s.where, choreo: s.choreo, m: s.m, slot: 0, event: true, ...(s.from !== undefined ? { from: s.from } : {}) },
+    { k: 'win', room: s.room, t: s.t0 + walk * 0.7, to: 1, dur: 0.15 },
+    { k: 'win', room: s.room, t: s.t1 - walk, to: 0, dur: 0.15 },
+  ];
+}
+
 type Placed = { a: Actor; pose: WindowPose };
 type Carry = { life: SceneLife; since: number | null };
+// Réaction à la sirène en cours d'un logement : segments ajoutés et emploi du temps du jour complété (refait si celui-ci change).
+type SirenRx = { look: SirenLook; extra: Segment[]; base: Schedule | null; merged: Schedule | null };
 // Décision de l'instant pour un pantin : nœud voulu, et son double vivant tant que l'image cuite ne le montre pas.
 type FigPlan = { fi: number; want: Slot | null; mirror: Slot | null };
 
-export function WindowLifeLayer({ facades, life, sky, minutes, still, width, gloom = false }: { facades: Facade[]; life: SceneLife; sky: Sky; minutes: number; still: boolean; width: number; gloom?: boolean }): ReactElement {
+// `sirens` : clés des ambulances dans la scène à l'instant (city-life.tsx, trafic) ; `seed` : graine de la ville (tirage des réactions).
+export function WindowLifeLayer({ facades, life, sky, minutes, still, width, gloom = false, seed = 0, sirens }: { facades: Facade[]; life: SceneLife; sky: Sky; minutes: number; still: boolean; width: number; gloom?: boolean; seed?: number; sirens?: () => readonly string[] }): ReactElement {
   const reg = useFigureRegistry();
   const prefix = `wl${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const root = useRef<SVGGElement | null>(null);
@@ -617,6 +715,8 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
   // Calque montré : hors du document, seulement quand chaque immeuble a sa première image (pas d'éclair sans volets ni
   // rideaux au montage) ; dans la page (repli), tout de suite.
   const ready = useRef(false);
+  // Sirène : ambulances déjà entendues (clés), réactions en cours par logement (voir sirenLook).
+  const siren = useRef({ key: '', heard: new Set<string>(), live: new Map<string, SirenRx>() });
 
   const place = useMemo(() => {
     const set = writer();
@@ -689,6 +789,41 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
       }
       const full = still || Math.abs(m - S.full) >= FULL_EVERY;
       if (full) S.full = m;
+      // Sirène : une ambulance qui entre dans la scène fait réagir les foyers tirés (une fois par ambulance) ; réactions
+      // finies oubliées à la relecture complète. Remis à zéro au changement de jour ou de largeur.
+      const SR = siren.current;
+      const skey = `${width}|${life.day.iso}`;
+      if (SR.key !== skey) {
+        SR.key = skey;
+        SR.heard.clear();
+        SR.live.clear();
+      }
+      if (sirens && !still) {
+        for (const key of sirens()) {
+          if (SR.heard.has(key)) continue;
+          SR.heard.add(key);
+          model.dws.forEach((dm, i) => {
+            const id = dm.d.id;
+            if (SR.live.has(id)) return;
+            const look = sirenLook(dm.d, life.today.get(id)!, life.yesterday.get(id) ?? null, m, seed, key, { members: dm.figs.map((f) => f.m), room: dm.leanRoom, balcony: !!dm.balcony, wet: life.day.wet });
+            if (!look) return;
+            SR.live.set(id, { look, extra: sirenSegments(look), base: null, merged: null });
+            S.active[i] = true;
+          });
+        }
+      }
+      if (full) for (const [id, rx] of SR.live) if (m > rx.look.t1 + 1) SR.live.delete(id);
+      // Emploi du temps du jour d'un logement, complété de sa réaction à la sirène en cours.
+      const todayOf = (id: string): Schedule => {
+        const base = life.today.get(id)!;
+        const rx = SR.live.get(id);
+        if (!rx) return base;
+        if (rx.base !== base) {
+          rx.base = base;
+          rx.merged = { ...base, segments: [...rx.extra, ...base.segments] };
+        }
+        return rx.merged!;
+      };
       const cr = carry.current;
       if (cr && cr.since === null) cr.since = m;
       let carried = false;
@@ -696,7 +831,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
       model.dws.forEach((dm, i) => {
         if (!full && !S.active[i]) return;
         const d = dm.d;
-        const st = homeState(d, life.today.get(d.id)!, life.yesterday.get(d.id) ?? null, m);
+        const st = homeState(d, todayOf(d.id), life.yesterday.get(d.id) ?? null, m);
         if (cr && cr.since !== null) {
           const old = cr.life.today.get(d.id);
           if (old) {
@@ -972,6 +1107,8 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
           // Le meuble d'une scène écartée par la borne reste dessiné : seul le pantin ne l'est pas.
           let on = false;
           for (const { a } of byM.values()) if (a.room === w.room && interiorOf(a.choreo, a.desk) === p.kind) on = true;
+          // Membre assis levé pour la sirène : sa scène continue (télé, table), son meuble reste dessiné.
+          if (!on) for (const a of st.actors) if (a.room === w.room && byM.get(a.m)?.a.from !== undefined && interiorOf(a.choreo, a.desk) === p.kind) on = true;
           vis(p.g, on && !living ? (lit ? 1 : alpha) : 0);
           const x0 = set.writes();
           // Meuble rendu à l'image cuite : le vivant reste montré jusqu'à l'image qui le contient (rideau d'attente).
@@ -1119,7 +1256,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
       const rail = R.rails.get(dm.d.id);
       if (rail) vis(rail, onBalcony ? 1 : 0);
     }
-  }, [model, life, still, minutes, night, lights, width, reg, offstage, look, inPage, facades]);
+  }, [model, life, still, minutes, night, lights, width, reg, offstage, look, inPage, facades, seed, sirens]);
   useWallClockLoop(place, [place], { frameMs: FRAME_MS });
   useEffect(() => () => dropBakes(bakes.current), []);
 

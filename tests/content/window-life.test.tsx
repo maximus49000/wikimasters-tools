@@ -5,7 +5,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WindowLifeLayer, bakeHooks } from '../../src/content/window-life';
+import { WindowLifeLayer, bakeHooks, sirenPresent } from '../../src/content/window-life';
 import { sharedSceneLife, type SceneLife } from '../../src/content/use-scene-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
 import { dayContext } from '../../src/core/library/city/calendar';
@@ -188,6 +188,91 @@ describe('calque de la vie derrière les fenêtres', () => {
     }
     expect(appear).toBeGreaterThan(0);
     expect(vanish).toBeGreaterThan(0);
+  });
+
+  it('ambulance : environ 45 % des foyers présents se penchent, puis rentrent en marchant', () => {
+    const width = 2000;
+    let now = NOW_S * 1000;
+    let perf = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const queue: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queue.push(cb));
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const facades = cityFacades(width, H, SEED);
+    // Dimanche après-midi : foyers chez eux, volets ouverts (le soir, volets fermés et cuisiniers à la cuisine en retiennent
+    // une partie : la part visible tombe vers 30 %).
+    const SUNDAY = { y: 2026, m: 10, d: 25 };
+    const life = lifeOf(facades, SUNDAY);
+    const reg = new FigureRegistry('twlsir', { perFrame: 400 });
+    const minutes = 15 * 60;
+    let keys: string[] = [];
+    act(() => root.render(<FigureContext.Provider value={reg}><svg><WindowLifeLayer facades={facades} life={life} sky={skyOf(minutes, SUNDAY)} minutes={minutes} still={false} width={width} seed={SEED} sirens={() => keys} /></svg></FigureContext.Provider>));
+    // Pantins montrés (où, allure), et ceux de dehors (penchés, balcon).
+    const shownAll = (): Map<string, { where: string | null; gait: string | null }> => {
+      const out = new Map<string, { where: string | null; gait: string | null }>();
+      for (const g of host.querySelectorAll('[data-wl-fig]')) {
+        if (g.getAttribute('display') !== 'none') out.set(g.getAttribute('data-wl-fig')!, { where: g.getAttribute('data-where'), gait: g.getAttribute('data-gait') });
+      }
+      return out;
+    };
+    const isOut = (s: { where: string | null } | undefined): boolean => s?.where === 'lean' || s?.where === 'balcony';
+    const tick = (ms: number): void => {
+      now += ms;
+      perf += ms;
+      const cbs = queue.splice(0);
+      act(() => { for (const cb of cbs) cb(perf); reg.flush(); });
+    };
+    // Allures des 11 dernières secondes par pantin (toutes places : un membre assis qui se lève marche dans la pièce).
+    const WINDOW = 22;
+    const history = new Map<string, string[]>();
+    const record = (all: Map<string, { gait: string | null }>): void => {
+      for (const k of new Set([...history.keys(), ...all.keys()])) history.set(k, [...(history.get(k) ?? []), all.get(k)?.gait ?? ''].slice(-WINDOW));
+    };
+    for (let f = 0; f < 6; f++) { tick(500); record(shownAll()); }
+    const before = new Set([...shownAll()].filter(([, s]) => isOut(s)).map(([k]) => k));
+    // Foyers présents et éveillés à cet instant (sans la sirène, personne ne réagit).
+    const m0 = minutes + (now / 1000 - NOW_S) / 60;
+    const awake = life.dwellings.filter((d) => sirenPresent(d, life.today.get(d.id)!, life.yesterday.get(d.id)!, m0)).length;
+    expect(awake).toBeGreaterThan(20);
+    keys = ['amb-1'];
+    // Arrivées : chacun a marché jusqu'à sa fenêtre (au plus 8 s de réaction + 11 s de marche).
+    const reactors = new Set<string>();
+    for (let f = 0; f < 50; f++) {
+      tick(500);
+      const all = shownAll();
+      record(all);
+      for (const [k, s] of all) {
+        if (!isOut(s) || before.has(k) || reactors.has(k)) continue;
+        expect(history.get(k)!.includes('walk'), `${k} arrive sans marcher`).toBe(true);
+        reactors.add(k);
+      }
+    }
+    const homes = new Set([...reactors].map((k) => k.split('/')[0]));
+    const share = homes.size / awake;
+    expect(share).toBeGreaterThan(0.33);
+    expect(share).toBeLessThan(0.57);
+    // Départs : après 72 s, chacun repart en marchant (dehors ou dans la pièce, vers sa place).
+    const back = new Set<string>();
+    for (let f = 0; f < 140; f++) {
+      tick(500);
+      const all = shownAll();
+      record(all);
+      for (const k of reactors) {
+        if (back.has(k) || isOut(all.get(k))) continue;
+        back.add(k);
+        expect(history.get(k)!.includes('walk'), `${k} rentre sans marcher`).toBe(true);
+      }
+    }
+    expect(back.size).toBe(reactors.size);
+    // La même ambulance, encore dans le champ, ne refait réagir personne.
+    for (let f = 0; f < 20; f++) {
+      tick(500);
+      for (const [k, s] of shownAll()) if (isOut(s)) expect(back.has(k), `${k} ressort`).toBe(false);
+    }
   });
 
   it('changement de largeur ou de jour : remontage unique', () => {

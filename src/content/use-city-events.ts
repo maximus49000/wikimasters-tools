@@ -6,7 +6,10 @@ import type { CityContext, CityIntensity } from '../core/library/city/intensity'
 import { laneSpeeds, type Vehicle } from '../core/library/city/vehicles';
 
 export type CityEventsState = { schedule: CityEvent[]; active: CityEvent[]; yielded: ReadonlySet<string>; ambulances: CityEvent[]; check: (t: number) => void };
-type Args = { seed: number; width: number; city: CityContext; intensity: CityIntensity; vehicles: Vehicle[]; still: boolean; frozenT: number };
+// `extra` : événements calculés ailleurs (salves du spectacle de feux d'artifice, `showEvents` de city-life.tsx), ajoutés tels
+// quels aux événements actifs (ni fusion ni recalcul : leurs instants ne dépendent pas du grand créneau).
+type Args = { seed: number; width: number; city: CityContext; intensity: CityIntensity; vehicles: Vehicle[]; still: boolean; frozenT: number; extra?: readonly CityEvent[] };
+const NO_EXTRA: readonly CityEvent[] = [];
 
 // Minute de la scène au début du grand créneau (« ancre ») : le programme est recalculé quand elle change. En heure réelle,
 // elle est constante pendant tout le grand créneau ; un changement d'heure à la main la fait sauter. Aux heures fixes
@@ -28,7 +31,7 @@ type Kept = { hyper: number; seed: number; width: number; vehicles: Vehicle[]; s
 // Après un rechargement, la partie passée du grand créneau suit les conditions du moment (le programme n'est pas
 // enregistré). `clock` = instant du dernier changement de l'ensemble des événements actifs : la boucle d'animation
 // appelle `check(t)` à chaque image et ne provoque un re-rendu que lorsque cet ensemble change.
-export function useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT }: Args): CityEventsState {
+export function useCityEvents({ seed, width, city, intensity, vehicles, still, frozenT, extra = NO_EXTRA }: Args): CityEventsState {
   const [clock, setClock] = useState(() => (still ? frozenT : Date.now() / 1000));
   const hyper = Math.floor(clock / HYPER_S);
   const cond = useMemo(() => eventConditions(city, intensity), [city, intensity]);
@@ -57,22 +60,23 @@ export function useCityEvents({ seed, width, city, intensity, vehicles, still, f
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed, width, hyper, key, anchor, vehicles, still, frozenT]);
   const active = useMemo(() => {
-    const now = activeEvents(schedule, clock);
+    const now = extra.length ? [...activeEvents(schedule, clock), ...extra.filter((e) => e.start <= clock && clock < e.end)] : activeEvents(schedule, clock);
     return still ? now.filter((e) => STILL_EVENTS.has(e.id)) : now;
-  }, [schedule, clock, still]);
+  }, [schedule, extra, clock, still]);
   const activeKey = active.map((e) => e.key).join(',');
   const keyRef = useRef(activeKey);
   keyRef.current = activeKey;
   const check = useCallback(
     (t: number): void => {
       if (still) return;
-      const next = activeEvents(schedule, t).map((e) => e.key).join(',');
+      let next = activeEvents(schedule, t).map((e) => e.key).join(',');
+      for (const e of extra) if (e.start <= t && t < e.end) next += `,${e.key}`;
       if (next !== keyRef.current || Math.floor(t / HYPER_S) !== hyper) {
         keyRef.current = next;
         setClock(t);
       }
     },
-    [schedule, hyper, still],
+    [schedule, extra, hyper, still],
   );
   const yielded = useMemo(() => new Set(active.flatMap((e) => e.yields)), [active]);
   const ambulances = useMemo(() => active.filter((e) => e.id === 'ambulance'), [active]);

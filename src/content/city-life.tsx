@@ -51,7 +51,8 @@ import { citizenSeed, kindOfProfile } from '../core/citizens/identity';
 import { LampSprite, PersonSprite, tone } from './city-sprites';
 import { FrontSidewalk } from './front-sidewalk';
 import { BusStopRiders, CrossingLayer, Crosswalk, TrafficFixtures, TrafficLane, useTraffic } from './traffic-layer';
-import { CROSS_HALF, type ScheduledArrival, type TrafficEnv } from '../core/library/city/traffic/engine';
+import { CROSS_HALF, xOfS, type ScheduledArrival, type TrafficEnv } from '../core/library/city/traffic/engine';
+import { FIREWORK_VARIANTS, fireworksShow, type FireworksShow } from '../core/library/city/fireworks-show';
 import { SantaLayer } from './santa-layer';
 import { GullsLayer } from './gulls-layer';
 import { useCityEvents } from './use-city-events';
@@ -272,6 +273,21 @@ const EXIT_LEAD_S = TRIP_CYCLE - 2;
 // Opacité d'un événement : fondu des événements fixes, aucun fondu en mouvement réduit (opacité 1).
 const eventOpacity = (e: CityEvent, t: number, still: boolean): string => (still ? '1' : fixedFade(e, t).toFixed(2));
 
+// Spectacle de feux d'artifice des jours de fête (fireworks-show.ts) : chaque salve devient un événement 'fireworks' du calque
+// des événements (mêmes fusées, même masque des toits, 30 s), clé stable `show-<instant>`. Instants muraux : la salve de la
+// minute de scène `at` part à `nowS + (at − m) · 60`, où (m, nowS) est un repère de l'horloge de la scène (minute de scène
+// à l'instant mural nowS) : le spectacle se voit aussi quand l'heure de la scène est fixée.
+export const SHOW_BURST_S = 30;
+export function showEvents(show: FireworksShow, m: number, nowS: number, width: number): CityEvent[] {
+  return show.bursts.map((b): CityEvent => {
+    const start = nowS + (b.at - m) * 60;
+    return {
+      key: `show-${Math.round(b.at * 600)}`, id: 'fireworks', layer: 'fixed', start, end: start + SHOW_BURST_S, dir: 1, track: null, speed: 0,
+      x0: 40 + b.x * Math.max(0, width - 80), y: b.y, pick: b.x, variant: b.variant / FIREWORK_VARIANTS, yields: [],
+    };
+  });
+}
+
 export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNight = false, weather }: CityLifeProps): ReactElement {
   const root = useRef<SVGGElement | null>(null);
   // Présence affichée de chaque passant, gardée entre les minutes : elle ne suit la présence voulue qu'au bord du monde.
@@ -456,7 +472,18 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const fests = useMemo(() => activeFestivities(city.day.festivities, city.minutes), [city.day, city.minutes]);
   // Fêtes du jour (toute la journée) : route fermée et grand défilé du 14 juillet (parade-layer.tsx, flypast-sprite.tsx).
   const dayFests = useMemo(() => city.day.festivities.map((f) => f.id), [city.day]);
-  const events = useCityEvents({ seed, width, city, intensity, vehicles: NO_VEHICLES, still, frozenT: frozen.current });
+  // Spectacle de feux d'artifice du jour, et celui de la veille qui déborde après minuit (Nouvel An : le spectacle du
+  // 31 décembre est en minutes de scène au-delà de 1440). Salves placées dans le repère de l'horloge de la scène (posé ici,
+  // avant les événements), recalculées quand ce repère change (à la minute de scène).
+  const shows = useMemo(() => ({ today: fireworksShow(seed, date), prev: fireworksShow(seed, addDays(date, -1)) }), [seed, date.y, date.m, date.d]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tRender = still ? frozen.current! : Date.now() / 1000;
+  if (!sceneClock.current || sceneClock.current.m !== city.minutes) sceneClock.current = { m: city.minutes, base: Math.floor(tRender / 60) * 60 };
+  const anchor = sceneClock.current;
+  const showList = useMemo(
+    () => [...(shows.today ? showEvents(shows.today, anchor.m, anchor.base, width) : []), ...(shows.prev ? showEvents(shows.prev, anchor.m + 1440, anchor.base, width) : [])],
+    [shows, anchor.m, anchor.base, width],
+  );
+  const events = useCityEvents({ seed, width, city, intensity, vehicles: NO_VEHICLES, still, frozenT: frozen.current, extra: showList });
 
   // Décors de fête posés par des équipes (calendrier : jour de la scène et minute) ; les travailleurs (data-worker) comptent
   // dans le plafond des figurants (shopSpriteBudget).
@@ -526,6 +553,20 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     [intensity, arrivals, deliveries, metrics, vanLabels, city.buses],
   );
   const traffic = useTraffic({ width, seed, unit: metrics.unit, env: trafficEnv, startS: still ? (frozen.current ?? 0) : Date.now() / 1000 });
+  // Sirène (vie aux fenêtres) : ambulances du trafic dans le champ à l'instant, relues par la boucle du calque des fenêtres
+  // (tableau réutilisé, sans allocation par image).
+  const sirenBuf = useRef<string[]>([]);
+  const sirens = useCallback((): readonly string[] => {
+    const out = sirenBuf.current;
+    out.length = 0;
+    const w = traffic.world;
+    for (const a of w.agents) {
+      if (a.kind !== 'ambulance') continue;
+      const x = xOfS(w, a.track, a.s);
+      if (x > 0 && x < width) out.push(a.id);
+    }
+    return out;
+  }, [traffic, width]);
 
   const pedActive = useMemo(() => new Set(peds.filter((p) => p.u < pedestrianGate(p, intensity)).map((p) => p.id)), [peds, intensity]);
   // Zones à contourner fixes pour la minute : terrasses (devant) et déménagements (derrière).
@@ -901,7 +942,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         {/* Cages d'escalier (minuterie des halls) : fenêtres de la façade, donc sous tout le ciel qui peut passer devant. */}
         <StairLights stairs={stairs} ghibli={ghibli} still={still} lit={(x, k) => k < stairFloors(x, t0!)} sky={sky} />
         {/* Vie derrière les fenêtres (pantins, volets, rideaux) : sur les fenêtres du décor, sous tout le ciel animé. */}
-        {ghibli && life && <WindowLifeLayer facades={facades} life={life} sky={sky} minutes={city.minutes} still={still} width={width} gloom={gloom} />}
+        {ghibli && life && <WindowLifeLayer facades={facades} life={life} sky={sky} minutes={city.minutes} still={still} width={width} gloom={gloom} seed={seed} sirens={sirens} />}
         {/* Mouettes (G5) : derrière les immeubles, au fond du ciel, sous la grue, les engins du ciel (cerf-volant, ballons, père Noël,
             défilé aérien) et le feu d'artifice. */}
         <GullsLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} minutes={city.minutes} rain={gullRain} still={still} frozenT={frozen.current ?? 0} ghibli={ghibli} />

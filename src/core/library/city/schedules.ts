@@ -25,7 +25,7 @@ export type Choreo = 'cook' | 'openShutters' | 'closeShutters' | 'armsUp' | 'dra
 export type Segment =
   | { k: 'lit'; room: Room; t0: number; t1: number; tone: LightTone }
   | { k: 'shut' | 'curt' | 'win'; room: Room; t: number; to: number; dur: number }
-  | { k: 'act'; t0: number; t1: number; room: Room; where: Where; choreo: Choreo; m: number; seat?: number; party?: number; desk?: boolean; slot?: number; reverse?: boolean; event?: boolean }
+  | { k: 'act'; t0: number; t1: number; room: Room; where: Where; choreo: Choreo; m: number; seat?: number; party?: number; desk?: boolean; slot?: number; reverse?: boolean; event?: boolean; from?: number }
   | { k: 'return' | 'depart'; t: number; m: number }
   | { k: 'sapin' | 'party' | 'dim'; t0: number; t1: number };
 // shutUser : volets fermés la nuit (valeur au début du jour) ; maxActors : scènes `act` simultanées au plus fort du jour.
@@ -570,8 +570,10 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
     look(900 + r() * 60, 8 + r() * 8, 0);
   }
   // ─── événements de la rue ───
+  // Déménagement d'un commerce (shops/moving.ts : camion de 8 h-8 h 30 à 9 h 30-10 h) : les curieux regardent pendant qu'on porte
+  // les meubles, entre 8 h 25 et 9 h 15 (une scène décalée de 30 min au plus quand le membre est occupé finit avant 10 h).
   if (day.moving && (hh.type === 'retraite' || (hh.type === 'etudiant' && off) || r() < 0.25)) {
-    const t = 594 + r() * 18, dur = 6 + r() * 8;
+    const t = 505 + r() * 50, dur = 6 + r() * 8;
     for (const m of ms) if (look(t, dur, m, L, { event: true }) !== null) break;
   }
   const [y, mo, dd] = day.iso.split('-').map(Number) as [number, number, number];
