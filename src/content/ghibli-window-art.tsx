@@ -118,7 +118,7 @@ export function nightCurtain(color: string, wall: string): string {
 }
 
 const rectPath = (x: number, y: number, w: number, h: number): string => `M${x} ${y}h${w}v${h}h${-w}z`;
-const curtainWidth = (w: number): number => clamp(w * 0.22, 1, 1.8);
+export const curtainWidth = (w: number): number => clamp(w * 0.22, 1, 1.8);
 // Menuiserie d'une fenêtre : cadre, meneau, traverse si h ≥ 8 (comme `paintDayWindow`) ; lucarne : jamais de traverse
 // (comme sa vitre de jour, `paintGlass` de roof-painter).
 const joineryPath = ({ x, y, w, h, kind }: FacadeWindow): string => `${rectPath(x, y, w, h)}M${x + w / 2} ${y}v${h}${h >= 8 && kind !== 'dormer' ? `M${x} ${y + h * 0.33}h${w}` : ''}`;
