@@ -13,7 +13,7 @@ import { shapeOf, signatureOf } from '../core/library/figure/dress';
 import { INK } from '../core/library/paint/cel';
 import { hashString, mulberry32 } from '../core/library/scene-world';
 import type { Sky } from '../core/library/sky';
-import { GhibliFigure, hideFigure, poseFigure } from './figure/ghibli-figure';
+import { GhibliFigure, figurePalette, hideFigure, poseFigure } from './figure/ghibli-figure';
 import { useFigureRegistry, type FigureRegistry } from './figure/figure-host';
 import { BAR_STEP, balconyOf, joineryPath, type Balcony } from './ghibli-window-art';
 import { lifeStates, sceneMinute, type SceneLife } from './use-scene-life';
@@ -256,12 +256,22 @@ type Look = { night: boolean; dark: number; sky: Sky };
 //   derrière) ;
 // - `out` : penché, au balcon, ou en mouvement derrière un rideau tiré (ombre à 0,28), dans la page sur la façade cuite.
 // Coupé par le <clipPath> rectangulaire de sa vitre (ou du cadre du penché ; aucun au balcon), posé par la boucle.
+// La nuit, `out` porte deux palettes : la silhouette unie (contre-jour devant une pièce allumée, `data-pk-backlit`) et le
+// pantin en couleurs teintées par l'ambiance de nuit (au balcon d'une pièce éteinte : rien ne l'éclaire par-derrière,
+// `data-pk-dim`, maquette « pantin sombre sur le balcon d'une pièce éteinte ») ; la boucle choisit (`data-palette`). Les
+// penchés à la fenêtre gardent la silhouette : en couleurs, chaque tenue serait cuite à chaque palier de la nuit, sur
+// toute la ville (temps du test de la borne × 1,6).
 type Slot = 'still' | 'shade' | 'in' | 'out';
 const BAKED_SLOTS: readonly Slot[] = ['still', 'shade'];
 const SLOTS: readonly Slot[] = ['still', 'shade', 'in', 'out'];
 const FigNode = memo(function FigNode({ fm, look, slot }: { fm: FigM; look: Look; slot: Slot }): ReactElement {
+  const reg = useFigureRegistry();
+  const two = slot === 'out' && look.night;
+  const pks = two
+    ? { 'data-pk-backlit': reg.addPalette(figurePalette(fm.outfit, look.sky, false, undefined, { silhouette: true })), 'data-pk-dim': reg.addPalette(figurePalette(fm.outfit, look.sky, false)) }
+    : {};
   return (
-    <g data-wl-fig={fm.key} data-slot={slot} data-anim="0" display="none">
+    <g data-wl-fig={fm.key} data-slot={slot} data-anim="0" display="none" {...pks}>
       <g data-wl-pos="">
         <GhibliFigure outfit={fm.outfit} sky={look.sky} rainy={false} umbrella={false} initial={STAND} hidden flat silhouette={look.night} />
       </g>
@@ -1169,6 +1179,8 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
           let scale = k;
           let alpha = 1;
           let pageClip = 'none';
+          // Au balcon : à contre-jour seulement devant une pièce allumée (voir `Slot`).
+          let backlit = true;
           if (pose.where === 'in') {
             // Dedans, vu à travers la vitre (rien derrière des volets plus fermés qu'ouverts). Rideau tiré : son ombre à
             // travers le tissu (à 0,28, par-dessus le rideau) ; sinon sous les rideaux (cuit en pose fixe, vivant sous
@@ -1185,6 +1197,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
           } else if (bal) {
             want = 'out';
             onBalcony = true;
+            backlit = lights && !!st.lit[a.room];
             fy = bal.by - 0.4;
           } else {
             want = 'out';
@@ -1215,6 +1228,8 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
               set(F.wrap, 'data-gait', pose.gait);
               set(F.wrap, 'data-anim', a.animated && !a.culled ? '1' : '0');
               if (baked) set(F.wrap, 'display', 'inline');
+              const pk = s === 'out' ? F.wrap.getAttribute(backlit ? 'data-pk-backlit' : 'data-pk-dim') : null;
+              if (pk) set(F.fig, 'data-palette', pk);
               poseFigure(reg, F.fig, pose);
               if (baked && (set.writes() !== w0 || F.img?.getAttribute('href') !== href0)) frontWrites++;
             }
