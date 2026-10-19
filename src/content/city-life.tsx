@@ -59,7 +59,7 @@ import { GullsLayer } from './gulls-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
 import { useWallClockLoop } from './use-wallclock-loop';
-import { HALL_TIMER_S, STAIR_RETURN_S, climbRun, crossingDoorX, hallLit, passageDir, passageFloors, seedHallTimers, seedStairFloors, stairFigureAt, stairFloorsLit, stairNewPassage, type StairRun } from '../core/library/city/hall-lights';
+import { HALL_TIMER_S, STAIR_RETURN_S, climbRun, crossingDoorX, hallLit, keepStairPick, passageDir, passageFloors, seedHallTimers, seedStairFloors, stairFigureAt, stairFloorsLit, stairNewPassage, type StairRun } from '../core/library/city/hall-lights';
 import { HallLights, hallTransition } from './hall-lights';
 import { StairLights, placeStairFigures, stairTransition } from './stair-lights';
 import { useSceneLife, type SceneLife } from './use-scene-life';
@@ -673,7 +673,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     const stairNodes = new Map<number, Element[]>();
     // Dernier nombre d'étages écrit par porte : on ne parcourt ses fenêtres qu'au changement.
     const stairShown = new Map<number, number>();
-    // Silhouettes de cage par porte, rangées par étage, et fenêtre montrée (-1 : aucune).
+    // Silhouettes de cage par porte, rangées par étage, et fenêtre montrée (-1 : aucune ; absente : inconnue, la table vient
+    // d'être refaite alors que le DOM garde les opacités de la boucle précédente, tous les nœuds sont alors écrits).
     const stairFigNodes = new Map<number, Element[]>();
     const stairFigShown = new Map<number, number>();
     let muted: Set<string> = new Set();
@@ -806,7 +807,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             const plan = exitPlanned.current.get(trip.id);
             const planned = dir === 'out' && plan !== undefined && plan.turn === Math.floor((t + trip.phase) / TRIP_CYCLE);
             const got = planned ? { floors: plan.floors, home: null } : hookPassage(life, wins, x, next, sceneMinuteAt(t), dir, usedHooks());
-            stairPick.current.set(x, got.floors);
+            // Montée ou descente en cours à cette porte : la cage reste allumée au moins jusqu'à sa silhouette.
+            stairPick.current.set(x, keepStairPick(got.floors, stairRuns.current.get(x), t));
             if (got.home && dir === 'in') {
               stairUntil.current.set(x, Math.max(stairUntil.current.get(x) ?? -Infinity, t + STAIR_RETURN_S));
               stairRuns.current.set(x, climbRun(got.home, got.floors, t, 'in'));
@@ -878,8 +880,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         stairPlans.current = stairPlans.current.filter((p) => {
           if (t < p.run.start) return true;
           if (t < p.run.start + p.run.dur) {
+            stairPick.current.set(p.x, keepStairPick(p.run.floors, stairRuns.current.get(p.x), t));
             stairRuns.current.set(p.x, p.run);
-            stairPick.current.set(p.x, p.run.floors);
             stairUntil.current.set(p.x, Math.max(stairUntil.current.get(p.x) ?? -Infinity, p.exitAt + HALL_TIMER_S));
           }
           return false;
@@ -889,7 +891,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       for (const [x, list] of stairFigNodes) {
         const run = stairRuns.current.get(x);
         const k = run && stairFloors(x, t) > 0 ? stairFigureAt(run, t) : -1;
-        stairFigShown.set(x, placeStairFigures(list, stairFigShown.get(x) ?? -1, k));
+        stairFigShown.set(x, placeStairFigures(list, stairFigShown.get(x), k));
         if (run && t >= run.start + run.dur) stairRuns.current.delete(x);
       }
       // Cages d'escalier : même minuterie ; n'écrire qu'à la bascule (allumage étage par étage, extinction douce).

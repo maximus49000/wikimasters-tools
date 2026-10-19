@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { doorsFor, tripAt, tripsFor, type Trip } from '../../../../src/core/library/city/doors';
-import { HALL_TIMER_S, RETURN_WINDOW_MIN, STAIR_RETURN_S, climbRun, crossingDoorX, hookKey, hallLit, passageDir, passageFloors, returnFloor, seedHallTimers, seedStairFloors, stairCountTo, stairFigureAt, stairFloorsLit, stairNewPassage } from '../../../../src/core/library/city/hall-lights';
+import { HALL_TIMER_S, RETURN_WINDOW_MIN, STAIR_RETURN_S, climbRun, crossingDoorX, hookKey, hallLit, keepStairPick, passageDir, passageFloors, returnFloor, seedHallTimers, seedStairFloors, stairCountTo, stairFigureAt, stairFloorsLit, stairNewPassage } from '../../../../src/core/library/city/hall-lights';
 import type { Dwelling } from '../../../../src/core/library/city/households';
 import type { Schedule, Segment } from '../../../../src/core/library/city/schedules';
 
@@ -178,5 +178,18 @@ describe('retours accrochés aux passages', () => {
     expect(seq2).toEqual([-1, 2, 1, 0, -1]);
     // Sans fenêtre de cage : jamais de silhouette.
     expect(stairFigureAt(climbRun(b, 0, 1000, 'in'), 1015)).toBe(-1);
+  });
+
+  it('second passage pendant une montée : la cage reste allumée au moins jusqu’à la silhouette', () => {
+    const run = climbRun(dws[1]!, 4, 1000, 'in');
+    const mid = run.start + run.dur / 2;
+    // Montée en cours : un passage qui tirerait 2 étages garde les 4 de la montée ; jamais moins que l'étage de la silhouette.
+    expect(keepStairPick(2, run, mid)).toBe(4);
+    expect(keepStairPick(5, run, mid)).toBe(5);
+    for (let t = run.start; t < run.start + run.dur; t += 0.5) expect(stairFigureAt(run, t)).toBeLessThan(keepStairPick(0, run, t));
+    // Avant la montée (la silhouette monte 10 s après le seuil), après elle, ou sans montée : le tirage du passage.
+    expect(keepStairPick(2, run, run.start - 5)).toBe(4);
+    expect(keepStairPick(2, run, run.start + run.dur)).toBe(2);
+    expect(keepStairPick(2, undefined, mid)).toBe(2);
   });
 });

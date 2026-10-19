@@ -198,3 +198,20 @@ describe('état d\'un logement à la minute', () => {
     expect(worst, rows.join('\n')).toBeLessThanOrEqual(0.12);
   });
 });
+
+describe('retraité en hiver', () => {
+  it('à la fermeture des volets de la cuisine, la cuisine du retraité présent est allumée', () => {
+    const DEC: YMD = { y: 2026, m: 12, d: 15 };
+    let checked = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) for (const d of dwellingsOf(seed)) {
+      if (d.hh.type !== 'retraite' || !d.shutters) continue;
+      const sc = scheduleOf(d, DEC, seed);
+      const kitchen = d.rooms.includes('cuisine') ? 'cuisine' : 'salon';
+      const close = sc.segments.find((g) => g.k === 'shut' && g.room === kitchen && g.to === 0 && g.t > 900 && g.t < 1300);
+      if (!close || close.k !== 'shut') continue;
+      checked++;
+      expect(sc.segments.some((g) => g.k === 'lit' && g.room === kitchen && g.t0 <= close.t && close.t < g.t1)).toBe(true);
+    }
+    expect(checked).toBeGreaterThan(3);
+  });
+});

@@ -4,7 +4,7 @@
 // EXACTEMENT celle d'avant la branche des habitants 3D. Ville vivante (passants, habitants, commerces, circulation, bus) un jour
 // ordinaire et grand défilé du 14 juillet, image par image (100 ms) : empreintes du DOM relevées avec le code d'avant
 // (e53e9565, même scénario ; relevées à nouveau sur la tête de G5 partie 2, 79bd348c, à sa fusion avec main, puis pour les
-// cages d'escalier et la vie aux fenêtres, voir ORDINARY) ; aucune
+// cages d'escalier, la vie aux fenêtres et les toits vivants, voir ORDINARY) ; aucune
 // demande d'avance, aucun portillon d'entrée, aucun attribut `visibility` posé.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -108,9 +108,16 @@ describe('interrupteur coupé : scène d’avant la branche', () => {
 // Relevés avec le code d'avant la branche (e53e9565), même scénario, puis relevés à nouveau (2026-10-19, chantier « vie
 // au-dessus de la rue », tâche 9) pour deux ajouts voulus, hors des habitants 3D : les cages d'escalier allumées au passage
 // (chantier 1 des façades, `StairLights` ; seul écart sur main, vérifié en les retirant) et le calque de la vie derrière
-// les fenêtres (`WindowLifeLayer`, pantins toujours en 2D quel que soit l'interrupteur).
-const ORDINARY = ['1428547:602cf329', '1425382:733d201c', '1418786:5a5b2738', '1419041:d57e9df9'];
-const PARADE = ['1685668:bed9747', '1685625:ad3d59bb', '1673862:ba335c4f', '1673843:c8e0cda4'];
+// les fenêtres (`WindowLifeLayer`, pantins toujours en 2D quel que soit l'interrupteur). Relevés encore (finitions du
+// chantier, branche fix/ville-vie-finitions) pour les changements voulus du DOM des tâches 10 à 12, vérifiés commit par
+// commit (l'empreinte d'avant tient jusqu'à b3c0ac00) : silhouettes de la cage d'escalier (8df72a9b), réactions des
+// habitants aux événements (04678a68) et calque des toits vivants (bd57a856, edce0c22) ; stables sur deux passages.
+// Relevés une dernière fois (2026-10-19) après les finitions, vérifiées commit par commit dans un worktree temporaire : l'empreinte
+// précédente tient encore en 235c2b0a ; a043d865 (pigeons redessinés) change les deux scénarios, c0cd4244 (sens de vol des
+// pigeons, cuisine du retraité) change encore le défilé ; 928a82b6 (palette sombre des balcons) et la fusion de main 3c80d352
+// (interrupteur 3D coupé) ne changent plus rien à ces scénarios ; stables sur deux passages.
+const ORDINARY = ['1452518:e01ba710', '1449355:42dc9f37', '1442746:23fa7756', '1443006:b7e934d3'];
+const PARADE = ['1744312:efc98d1e', '1744455:7b9f3167', '1732690:59c2eda2', '1732665:d1e5e80f'];
 // Unités du défilé montées à chaque image.
 const PARADE_UNITS = [
   ...Array<number>(39).fill(10), 9, 9, 9, 9, ...Array<number>(8).fill(10), ...Array<number>(18).fill(11), ...Array<number>(11).fill(10), 9,

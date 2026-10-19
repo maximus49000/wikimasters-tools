@@ -37,6 +37,21 @@ describe('jour de scène', () => {
     expect(nye.show!.start).toBeGreaterThanOrEqual(1438);
     expect(sceneDay(dayContext({ y: 2026, m: 10, d: 13 }, []), dry, SEED, true).moving).toBe(true);
   });
+
+  it('soleil du lieu : lever et coucher réels, table de Paris en repli, valeurs fictives aux pôles', () => {
+    const ctx = dayContext({ y: 2026, m: 12, d: 15 }, []);
+    // Sans lieu (aperçus) : table de Paris du mois.
+    expect(sceneDay(ctx, dry, SEED).sunset).toBe(Math.round(16.9 * 60));
+    const real = sceneDay(ctx, dry, SEED, false, undefined, { kind: 'normal', sunrise: 523.6, sunset: 1014.4 });
+    expect(real.sunrise).toBe(524);
+    expect(real.sunset).toBe(1014);
+    const night = sceneDay(ctx, dry, SEED, false, undefined, { kind: 'polar', polar: 'night' });
+    const day = sceneDay(ctx, dry, SEED, false, undefined, { kind: 'polar', polar: 'day' });
+    // Nuit polaire : journée courte et sombre ; jour polaire : le soleil ne se couche pas avant minuit.
+    expect(night.sunset - night.sunrise).toBeLessThanOrEqual(300);
+    expect(night.sunset).toBeLessThan(900);
+    expect(day.sunset).toBeGreaterThanOrEqual(1440);
+  });
 });
 
 describe('tirage du jour', () => {

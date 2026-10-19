@@ -138,7 +138,9 @@ const PECK_P = 0.35;
 const SKY_Y = -14; // au-dessus du haut de la scène
 
 // Jusqu'à deux volées de 1 à 3 pigeons sur la corniche (eave − 0,8, de la corniche au toit), tirées par jour et par toit.
-export function pigeonFlocks(l: FacadeLayout, seed: number, iso: string): PigeonFlock[] {
+// `sun` : lever et coucher du lieu (`SceneDay`) ; les pigeons arrivent après le lever (7 h-7 h 45 au plus tôt) et partent
+// vers le coucher (de 15 min avant à 30 min après, 19 h 30-20 h 45 au plus tard : un long jour d'été ne les garde pas).
+export function pigeonFlocks(l: FacadeLayout, seed: number, iso: string, sun?: { sunrise: number; sunset: number }): PigeonFlock[] {
   const rng = mulberry32(seed ^ hashString(iso) ^ hashString('pigeons') ^ Math.round(l.x * 8));
   if (rng() >= PIGEON_HOST || l.w < 20) return [];
   const flocks: PigeonFlock[] = [];
@@ -152,7 +154,10 @@ export function pigeonFlocks(l: FacadeLayout, seed: number, iso: string): Pigeon
     const cx = l.x + 3 + k * seg + span / 2 + rng() * Math.max(0, seg - span);
     const birds = Array.from({ length: count }, (_, i) => ({ id: id++, x: cx - span / 2 + i * 3.2, dir: (rng() < 0.5 ? 1 : -1) as 1 | -1 }));
     const P = 11 + rng() * 6;
-    flocks.push({ birds, y: l.eave - 0.8, P, phase: rng() * P, open: 420 + rng() * 45, close: 1170 + rng() * 75, side: rng() < 0.5 ? 1 : -1 });
+    const phase = rng() * P, rOpen = rng(), rClose = rng();
+    const open = Math.max(420 + rOpen * 45, sun ? sun.sunrise + rOpen * 30 : 0);
+    const close = Math.min(1170 + rClose * 75, sun ? sun.sunset - 15 + rClose * 45 : Infinity);
+    flocks.push({ birds, y: l.eave - 0.8, P, phase, open, close, side: rng() < 0.5 ? 1 : -1 });
   }
   return flocks;
 }
@@ -194,16 +199,17 @@ export function pigeonsOf(flocks: readonly PigeonFlock[], m: number, wet: boolea
         return;
       }
       const side = mode === 'takeoff' ? f.side : -f.side;
+      // Sens réel de la marche : vers `f.side` au départ comme au retour (au retour l'oiseau vient de l'autre côté).
       const far = [b.x + side * (95 + i * 12), SKY_Y - i * 4];
       const ctl = [b.x + side * 30, f.y - 60];
-      out.push({ id: b.id, x: bezier(b.x, ctl[0]!, far[0]!, away), y: bezier(f.y, ctl[1]!, far[1]!, away), pose: 'fly', phase: s * 9 + i, dir: (mode === 'takeoff' ? f.side : -f.side) as 1 | -1 });
+      out.push({ id: b.id, x: bezier(b.x, ctl[0]!, far[0]!, away), y: bezier(f.y, ctl[1]!, far[1]!, away), pose: 'fly', phase: s * 9 + i, dir: f.side });
     });
   }
   return out;
 }
 
-export function pigeonsAt(l: FacadeLayout, seed: number, iso: string, m: number, wet: boolean): PigeonBird[] {
-  return pigeonsOf(pigeonFlocks(l, seed, iso), m, wet);
+export function pigeonsAt(l: FacadeLayout, seed: number, iso: string, m: number, wet: boolean, sun?: { sunrise: number; sunset: number }): PigeonBird[] {
+  return pigeonsOf(pigeonFlocks(l, seed, iso, sun), m, wet);
 }
 
 // ───────────── fumées ─────────────

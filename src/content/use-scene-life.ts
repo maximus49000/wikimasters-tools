@@ -7,6 +7,7 @@ import { cityDwellings, type Dwelling } from '../core/library/city/households';
 import type { CityContext } from '../core/library/city/intensity';
 import { dayDraw, sceneDay, type SceneDay } from '../core/library/city/scene-day';
 import { buildSchedule, type LightTone, type Schedule } from '../core/library/city/schedules';
+import type { SunTimes } from '../core/library/sky';
 
 // Vie des logements d'une scène Ville (spec 2026-10-19 « vie au-dessus de la rue » §5.1) : foyers des façades, emplois du
 // temps du jour et de la veille (la soirée de la veille déborde après minuit), calculés une fois par (façades, graine, jour,
@@ -22,11 +23,13 @@ const schedulesOf = (dwellings: readonly Dwelling[], day: SceneDay, seed: number
   new Map(dwellings.map((d) => [d.id, buildSchedule(d, day, dayDraw(d, day, seed))]));
 
 // Calcul pur (tests, cache) : la veille vient de `day.yesterday` (useCityDay, mêmes périodes de vacances), à défaut d'un
-// contexte sans périodes ; même météo que le jour (celle de la veille n'est pas connue), aucun déménagement.
-export function buildSceneLife(facades: readonly Facade[], day: DayContext, weather: Weather, seed: number, moving: boolean, dwellings = cityDwellings(facades, seed)): SceneLife {
-  const today = sceneDay(day, weather, seed, moving, day.holidayWeek);
+// contexte sans périodes ; même météo que le jour (celle de la veille n'est pas connue), aucun déménagement. `sun` : lever et
+// coucher du lieu (`CityContext.sun`), repris pour la veille (quelques minutes d'écart d'un jour à l'autre) ; absent, table de
+// Paris (`sceneDay`).
+export function buildSceneLife(facades: readonly Facade[], day: DayContext, weather: Weather, seed: number, moving: boolean, dwellings = cityDwellings(facades, seed), sun?: SunTimes): SceneLife {
+  const today = sceneDay(day, weather, seed, moving, day.holidayWeek, sun);
   const prevCtx = day.yesterday ?? dayContext(addDays(day.date, -1), []);
-  const prev = sceneDay(prevCtx, weather, seed, false, prevCtx.holidayWeek);
+  const prev = sceneDay(prevCtx, weather, seed, false, prevCtx.holidayWeek, sun);
   return {
     dwellings,
     today: schedulesOf(dwellings, today, seed),
@@ -44,7 +47,8 @@ const CACHE_MAX = 4;
 // tâche 9) calculent chacun leurs façades (`cityFacades` : tableaux distincts mais identiques) ; via `useSceneLife` ou
 // `sharedSceneLife`, ils obtiennent le MÊME objet SceneLife, sans recalculer les emplois du temps, tant que la clé ne change
 // pas : signature des logements (tout ce que les emplois du temps lisent d'un logement ; le foyer vient de la graine et de
-// `key`), graine, jour et veille (iso, genre, semaine de vacances), humide, déménagement. Les valeurs sont des fonctions
+// `key`), graine, jour et veille (iso, genre, semaine de vacances), humide, déménagement, soleil du lieu (minutes arrondies,
+// comme `sceneDay`). Les valeurs sont des fonctions
 // pures de la clé : le cache ne change aucun résultat, il évite seulement de les refaire.
 const perFacades = new WeakMap<readonly Facade[], Map<number, { dwellings: Dwelling[]; sig: string }>>();
 function dwellingsOf(facades: readonly Facade[], seed: number): { dwellings: Dwelling[]; sig: string } {
@@ -60,15 +64,16 @@ function dwellingsOf(facades: readonly Facade[], seed: number): { dwellings: Dwe
 }
 const lives = new Map<string, SceneLife>();
 const dayKey = (d: DayContext | undefined): string => (d ? [d.iso, d.kind, d.holidayWeek ?? '-'].join('/') : '-');
+const sunKey = (s: SunTimes | undefined): string => (!s ? '-' : s.kind === 'polar' ? s.polar : `${Math.round(s.sunrise)}-${Math.round(s.sunset)}`);
 
-export function sharedSceneLife(facades: readonly Facade[], day: DayContext, wet: boolean, seed: number, moving: boolean): SceneLife {
+export function sharedSceneLife(facades: readonly Facade[], day: DayContext, wet: boolean, seed: number, moving: boolean, sun?: SunTimes): SceneLife {
   const { dwellings, sig } = dwellingsOf(facades, seed);
-  const key = [sig, seed, dayKey(day), dayKey(day.yesterday), wet, moving].join('#');
+  const key = [sig, seed, dayKey(day), dayKey(day.yesterday), wet, moving, sunKey(sun)].join('#');
   let life = lives.get(key);
   if (life) lives.delete(key); // replacée en dernier : la plus récente
   else {
     // sceneDay ne lit de la météo que l'état humide (même seuil) : précipitations 1 ou 0 suffisent.
-    life = buildSceneLife(facades, day, { precip: wet ? 1 : 0, snow: false, storm: false }, seed, moving, dwellings);
+    life = buildSceneLife(facades, day, { precip: wet ? 1 : 0, snow: false, storm: false }, seed, moving, dwellings, sun);
     while (lives.size >= CACHE_MAX) lives.delete(lives.keys().next().value!);
   }
   lives.set(key, life);
@@ -79,11 +84,13 @@ export function useSceneLife(facades: readonly Facade[], city: CityContext | und
   const day = city?.day;
   // Seule la bascule humide / sec change les emplois du temps (sceneDay : même seuil) : pas de recalcul à chaque goutte.
   const wet = city ? city.precip >= WET_PRECIP || city.storm : false;
+  const sun = city?.sun;
+  const sunSig = sunKey(sun);
   return useMemo(
-    () => (day ? sharedSceneLife(facades, day, wet, seed, moving) : null),
-    // `day` est lu par ce qui fait le jour de scène (date, genre, semaine de vacances, et de même pour la veille) : un nouvel
-    // objet du même jour ne recalcule rien.
-    [facades, seed, day?.iso, day?.kind, day?.holidayWeek, day?.yesterday?.iso, day?.yesterday?.kind, day?.yesterday?.holidayWeek, wet, moving], // eslint-disable-line react-hooks/exhaustive-deps
+    () => (day ? sharedSceneLife(facades, day, wet, seed, moving, sun) : null),
+    // `day` est lu par ce qui fait le jour de scène (date, genre, semaine de vacances, et de même pour la veille) et `sun` par
+    // sa signature (minutes arrondies) : un nouvel objet du même jour ou du même soleil ne recalcule rien.
+    [facades, seed, day?.iso, day?.kind, day?.holidayWeek, day?.yesterday?.iso, day?.yesterday?.kind, day?.yesterday?.holidayWeek, wet, moving, sunSig], // eslint-disable-line react-hooks/exhaustive-deps
   );
 }
 

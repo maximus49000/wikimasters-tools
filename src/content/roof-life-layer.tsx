@@ -71,7 +71,7 @@ const NO_BIRD: BirdV = { pose: null, x: 0, y: 0, phase: 0, dir: 1 };
 const NO_SMOKE: SmokeV = { level: 0, phase: 0 };
 const NO_ROOFER: RooferV = { pose: null, x: 0, y: 0, phase: 0, dir: 1 };
 const CAT_POSES = ['emerge', 'walk', 'sit'] as const;
-// Le chat qui sort : ses oreilles dépassent déjà de la tabatière à l'avancement 0 ; il prend corps sur le premier quart.
+// Le chat qui sort : tout entier sous le zinc à l'avancement 0 (CAT_RISE) ; il prend corps sur le premier quart.
 const CAT_FADE = 0.25;
 const vis = (on: boolean): 'inline' | 'none' => (on ? 'inline' : 'none');
 
@@ -97,7 +97,7 @@ function BirdSlot({ hub, id, dark }: { hub: Hub; id: string; dark: number }): Re
         <PigeonM pose={rest ? (v.pose as 'perch' | 'peck') : 'perch'} phase={rest ? v.phase : 0} dir={rest ? v.dir : 1} dark={dark} />
       </g>
       <g data-pose="fly" display={vis(v.pose === 'fly')}>
-        <PigeonM pose="fly" phase={v.pose === 'fly' ? v.phase : 0} dir={1} dark={dark} />
+        <PigeonM pose="fly" phase={v.pose === 'fly' ? v.phase : 0} dir={v.pose === 'fly' ? v.dir : 1} dark={dark} />
       </g>
     </g>
   );
@@ -173,7 +173,7 @@ function buildModel(facades: readonly Facade[], life: SceneLife, seed: number): 
   const pick = mulberry32(seed ^ hashString(day.iso) ^ hashString('pigeon-pick'));
   const order = layouts.map((x) => ({ x, r: pick() })).sort((a, b) => a.r - b.r).map((o) => o.x);
   for (const { fi, l } of order) {
-    const fl = pigeonFlocks(l, seed, day.iso);
+    const fl = pigeonFlocks(l, seed, day.iso, day);
     const n = fl.reduce((s, f) => s + f.birds.length, 0);
     if (n === 0 || birds.length + n > PIGEON_MAX) continue;
     flocks.set(fi, fl);
@@ -188,8 +188,9 @@ function buildModel(facades: readonly Facade[], life: SceneLife, seed: number): 
 }
 
 export function RoofLifeLayer({ facades, life, sky, minutes, still, seed }: { facades: Facade[]; life: SceneLife; sky: Sky; minutes: number; still: boolean; seed: number }): ReactElement {
-  // Nœuds de la journée : remontés quand les façades, le jour ou la graine changent (pas à la bascule humide).
-  const model = useMemo(() => buildModel(facades, life, seed), [facades, life.day.iso, seed]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Nœuds de la journée : remontés quand les façades, le jour (soleil du lieu compris) ou la graine changent (pas à la bascule
+  // humide).
+  const model = useMemo(() => buildModel(facades, life, seed), [facades, life.day.iso, life.day.sunrise, life.day.sunset, seed]); // eslint-disable-line react-hooks/exhaustive-deps
   // Ambiance de nuit au huitième de jour près (comme la vie aux fenêtres) : re-rendu seulement à ces paliers.
   const dark = r2(nightness(Math.round(sky.daylight * 8) / 8));
   const night = dark > NIGHT_AT;

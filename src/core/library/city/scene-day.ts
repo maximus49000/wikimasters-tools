@@ -1,4 +1,5 @@
 import { hashString, mulberry32 } from '../scene-world';
+import type { SunTimes } from '../sky';
 import { addDays, type DayContext, type DayKind, type FestivityId, type YMD } from './calendar';
 import { fireworksShow, type FireworksShow } from './fireworks-show';
 import type { Dwelling, Room } from './households';
@@ -11,7 +12,7 @@ import type { Dwelling, Room } from './households';
 
 export type SceneDay = {
   iso: string; weekday: number; weekend: boolean; kind: DayKind; schoolHoliday: boolean; month: number;
-  sunrise: number; sunset: number; // minutes, lever et coucher de Paris du mois
+  sunrise: number; sunset: number; // minutes locales, lever et coucher du lieu de la scène (`sunOf`)
   wet: boolean; cold: boolean; december: boolean; fests: FestivityId[]; show: FireworksShow | null;
   moving: boolean; // déménagement de commerce ce jour-là (8 h-10 h), renseigné par l'appelant
   // Semaine de vacances scolaires (week-end compris), renseignée par l'appelant d'après le mercredi de la semaine ;
@@ -25,6 +26,20 @@ export type SceneDay = {
 const SUNS: readonly (readonly [number, number])[] = [
   [8.7, 17.3], [8.1, 18.2], [7.2, 19.0], [7.1, 20.7], [6.3, 21.4], [5.8, 21.9], [6.1, 21.8], [6.8, 21.1], [7.5, 20.1], [8.2, 19.0], [8.0, 17.3], [8.6, 16.9],
 ];
+// Aux pôles, lever et coucher fictifs (minutes locales) qui gardent les règles logiques : nuit polaire, une courte journée
+// sombre de 10 h à 14 h (les volets se ferment tôt ; les lumières suivent l'emploi du temps et le ciel) ; jour polaire, coucher à minuit, après celui du foyer (les volets se
+// ferment à son coucher habituel, voir le retraité de `buildSchedule`) et lever à 4 h.
+const POLAR_NIGHT = { sunrise: 600, sunset: 840 } as const;
+const POLAR_DAY = { sunrise: 240, sunset: 1440 } as const;
+
+// Lever et coucher du jour de scène : ceux du lieu (`SceneTime.times`, calculés pour sa position et le décalage réel de son
+// fuseau), à défaut la table de Paris du mois (aucun lieu connu, aperçus).
+function sunOf(month: number, sun: SunTimes | undefined): { sunrise: number; sunset: number } {
+  if (sun?.kind === 'normal') return { sunrise: Math.round(sun.sunrise), sunset: Math.round(sun.sunset) };
+  if (sun?.kind === 'polar') return sun.polar === 'night' ? POLAR_NIGHT : POLAR_DAY;
+  const [sr, ss] = SUNS[month - 1]!;
+  return { sunrise: Math.round(sr * 60), sunset: Math.round(ss * 60) };
+}
 const WET_PRECIP = 0.3;
 const COLD_MONTHS = new Set([11, 12, 1, 2, 3]);
 
@@ -35,10 +50,10 @@ function isoWeek(date: YMD, weekday: number): { week: number; thursday: YMD } {
   return { week: thursday.y * 100 + Math.floor(dayOfYear / 7) + 1, thursday };
 }
 
-export function sceneDay(day: DayContext, weather: { precip: number; snow: boolean; storm: boolean }, seed: number, moving = false, holidayWeek?: boolean): SceneDay {
+export function sceneDay(day: DayContext, weather: { precip: number; snow: boolean; storm: boolean }, seed: number, moving = false, holidayWeek?: boolean, sun?: SunTimes): SceneDay {
   const month = day.date.m;
   const { week, thursday } = isoWeek(day.date, day.weekday);
-  const [sr, ss] = SUNS[month - 1]!;
+  const { sunrise, sunset } = sunOf(month, sun);
   const fests = day.festivities.map((f) => f.id).filter((id, i, all) => all.indexOf(id) === i);
   return {
     iso: day.iso,
@@ -47,8 +62,8 @@ export function sceneDay(day: DayContext, weather: { precip: number; snow: boole
     kind: day.kind,
     schoolHoliday: day.kind === 'holiday',
     month,
-    sunrise: Math.round(sr * 60),
-    sunset: Math.round(ss * 60),
+    sunrise,
+    sunset,
     wet: weather.precip >= WET_PRECIP || weather.storm,
     cold: COLD_MONTHS.has(month),
     december: month === 12,

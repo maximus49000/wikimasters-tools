@@ -4,6 +4,7 @@ import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling, type HouseholdType } from '../../../../src/core/library/city/households';
 import { dayDraw, sceneDay, type SceneDay } from '../../../../src/core/library/city/scene-day';
 import { buildSchedule, type Schedule, type Segment } from '../../../../src/core/library/city/schedules';
+import { sunTimes, type SunTimes } from '../../../../src/core/library/sky';
 
 const SEED = 7;
 const dry = { precip: 0, snow: false, storm: false };
@@ -251,6 +252,56 @@ describe('emplois du temps', () => {
       const s = sched(d, july);
       const salonOff = Math.max(...s.segments.filter((g) => g.k === 'lit' && g.room === 'salon').map((g) => (g as { t1: number }).t1));
       expect(acts(s).find((a) => a.choreo === 'closeShutters')!.t0).toBeLessThan(salonOff);
+    }
+  });
+
+  it('volets du retraité : le coucher du soleil du lieu, la table de Paris sans lieu', () => {
+    const at = (date: YMD, sun?: SunTimes): SceneDay => sceneDay(dayContext(date, VAC), dry, SEED, false, undefined, sun);
+    const olds = pool('retraite', 40).map((d) => ({ ...d, shutters: 'battant' as const }));
+    const closeAt = (day: SceneDay) =>
+      olds.filter((d) => dayDraw(d, day, SEED).presence !== 'away').map((d) => acts(sched(d, day)).find((a) => a.choreo === 'closeShutters')!.t0);
+    // Même jour d'automne : Oslo (UTC+2) ferme plus tôt que Paris.
+    const oct = { y: 2026, m: 10, d: 13 };
+    const paris = closeAt(at(oct, sunTimes(oct, { lat: 48.85, lon: 2.35 }, 120)));
+    const oslo = closeAt(at(oct, sunTimes(oct, { lat: 59.91, lon: 10.75 }, 120)));
+    expect(Math.max(...oslo)).toBeLessThan(Math.min(...paris));
+    // Hiver à Paris (UTC+1) : la fermeture suit le coucher réel (16 h 55), plus le plancher de 18 h 06.
+    const dec = { y: 2026, m: 12, d: 15 };
+    const sun = sunTimes(dec, { lat: 48.85, lon: 2.35 }, 60) as Extract<SunTimes, { kind: 'normal' }>;
+    const winter = at(dec, sun);
+    const nightfall = Math.round(sun.sunset) + 20;
+    const closes = closeAt(winter);
+    for (const t of closes) {
+      expect(t).toBeGreaterThanOrEqual(nightfall - 1e-6);
+      expect(t).toBeLessThan(1086);
+    }
+    // Sauf qui regarde encore la rue à cette heure (il referme après), tous ferment au coucher + 20 min.
+    expect(closes.filter((t) => Math.abs(t - nightfall) < 1e-6).length).toBeGreaterThan(closes.length / 2);
+    // Personne ne ferme les volets du salon pendant qu'un membre regarde la rue par sa fenêtre ou son balcon.
+    for (const d of olds.filter((x) => dayDraw(x, winter, SEED).presence !== 'away')) {
+      const all = acts(sched(d, winter));
+      const close = all.find((a) => a.choreo === 'closeShutters' && a.room === 'salon');
+      if (!close) continue;
+      for (const a of all) if (a.room === 'salon' && (a.choreo === 'lean' || a.choreo === 'leanRail') && a.t0 < close.t0) expect(a.t1).toBeLessThanOrEqual(close.t0);
+    }
+    // Sans lieu : table de Paris du mois (coucher 16 h 54 en décembre).
+    expect(closeAt(at(dec)).filter((t) => Math.abs(t - (Math.round(16.9 * 60) + 20)) < 1e-6).length).toBeGreaterThan(0);
+  });
+
+  it('volets du retraité aux pôles : nuit polaire tôt, jour polaire au coucher du foyer', () => {
+    const dec = { y: 2026, m: 12, d: 15 };
+    const olds = pool('retraite', 40).map((d) => ({ ...d, shutters: 'battant' as const }));
+    const polarNight = sceneDay(dayContext(dec, VAC), dry, SEED, false, undefined, { kind: 'polar', polar: 'night' });
+    const polarDay = sceneDay(dayContext({ y: 2026, m: 6, d: 16 }, VAC), dry, SEED, false, undefined, { kind: 'polar', polar: 'day' });
+    for (const d of olds.filter((x) => dayDraw(x, polarNight, SEED).presence !== 'away')) {
+      expect(acts(sched(d, polarNight)).find((a) => a.choreo === 'closeShutters')!.t0).toBeLessThan(1086);
+    }
+    for (const d of olds.filter((x) => dayDraw(x, polarDay, SEED).presence !== 'away')) {
+      const s = sched(d, polarDay);
+      const salonOff = Math.max(...s.segments.filter((g) => g.k === 'lit' && g.room === 'salon').map((g) => (g as { t1: number }).t1));
+      const t = acts(s).find((a) => a.choreo === 'closeShutters')!.t0;
+      expect(t).toBeLessThan(salonOff);
+      expect(t).toBeGreaterThan(salonOff - 60);
     }
   });
 

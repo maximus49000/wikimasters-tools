@@ -44,7 +44,7 @@ import type { CityContext } from '../core/library/city/intensity';
 import { dayNumber } from '../core/library/city/shops/hours';
 import type { BusNetwork } from '../core/library/city/traffic/bus-lines';
 import type { NamePool } from '../core/library/city/shops/lifecycle';
-import { skyAt, type Sky } from '../core/library/sky';
+import { skyAt, type Sky, type SunTimes } from '../core/library/sky';
 import { PetBubble, PetSprite } from './pet-sprite';
 import { BUBBLE, type PetView } from './pet-sim';
 import type { PlacingView } from './placement';
@@ -69,7 +69,8 @@ export type SceneView = {
   // Fuseau de la scène (ville du lieu de la scène) ; absent ou null = appareil. Les horloges décalent depuis lui.
   tz?: string | null;
   weather?: { clock: { read(nowMs: number): Weather }; flags: { gloom: boolean; rainy: boolean } };
-  city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool; busLines?: BusNetwork | null };
+  // `sun` : lever et coucher du lieu (vie des logements) ; absent = table de Paris.
+  city?: { day: DayContext; forcedNight: boolean; shopNames?: NamePool; busLines?: BusNetwork | null; sun?: SunTimes };
   // Ce que montrent les météomètres (état, libellé, température réelle).
   deco?: { state: WeatherState; label: string; tempC: number | null };
 };
@@ -242,7 +243,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const city = useMemo<CityContext | undefined>(
     () =>
       view.city && room.scene === 'city'
-        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.1 : 0, snow: false, storm: false, daylight: view.sky.daylight, shops: { epochDay: room.cityEpoch ?? dayNumber(view.city.day.date), names: view.city.shopNames ?? EMPTY_NAMES }, buses: view.city.busLines ?? null }
+        ? { minutes: view.minutes, day: view.city.day, precip: rainy ? 0.7 : gloom ? 0.1 : 0, snow: false, storm: false, daylight: view.sky.daylight, shops: { epochDay: room.cityEpoch ?? dayNumber(view.city.day.date), names: view.city.shopNames ?? EMPTY_NAMES }, buses: view.city.busLines ?? null, ...(view.city.sun ? { sun: view.city.sun } : {}) }
         : undefined,
     [view.city, room.scene, room.cityEpoch, view.minutes, view.sky.daylight, rainy, gloom],
   );

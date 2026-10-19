@@ -84,6 +84,18 @@ describe('chat des toits', () => {
     expect(win!.getAttribute('overflow')).toBe('hidden');
   });
 
+  it('emerge : à l’avancement 0, tout le chat est sous la ligne de coupe de la fenêtre (rien ne dépasse de la tabatière)', () => {
+    // Oreilles à −3,9, bout de la queue à −4,2 moins un demi-trait (0,35) : il faut remonter de plus de 4,55 pour passer sous la
+    // coupe à +0,3 ; à l'avancement 1, le chat est à sa place (translation nulle).
+    const rise = (): number => Number(/translate\(0 (-?[\d.]+)\)/.exec(svg().querySelector('[data-roof-cat-window] > g')!.getAttribute('transform')!)![1]);
+    render(<Cat pose="emerge" phase={0} night={false} dir={1} />);
+    expect(rise()).toBeGreaterThanOrEqual(4.55 + 0.3);
+    const win = svg().querySelector('[data-roof-cat-window]')!;
+    expect(Number(win.getAttribute('y')) + Number(win.getAttribute('height'))).toBeCloseTo(0.3, 5);
+    render(<Cat pose="emerge" phase={1} night={false} dir={1} />);
+    expect(rise()).toBe(0);
+  });
+
   it('sit : la queue bouge avec la phase (d), le reste ne change pas', () => {
     render(<Cat pose="sit" phase={0} night={false} dir={-1} />);
     const a = html();
@@ -111,11 +123,37 @@ describe('pigeon', () => {
   it('fly : les ailes battent (d change), le corps reste', () => {
     render(<Pigeon pose="fly" phase={0} dir={1} />);
     const w0 = svg().querySelector('[data-pigeon-wings]')!.getAttribute('d');
+    const h0 = html();
     render(<Pigeon pose="fly" phase={Math.PI / 2} dir={1} />);
     expect(svg().querySelector('[data-pigeon-wings]')!.getAttribute('d')).not.toBe(w0);
+    expect(html().replace(/ d="[^"]*"/g, '')).toBe(h0.replace(/ d="[^"]*"/g, ''));
   });
 
-  it('dark : voile #1E2A5A sur le plumage à 0,64 × dark, même nombre de nœuds', () => {
+  it('profil lisible : corps d’au moins 3,5 px de long, tête dans son groupe, pattes, bec vers `dir` ; la tête seule bouge', () => {
+    // Posé : la tête pointe par instants (sin(phase) > 0,8) ; picore : la tête plonge. Le corps (chemins hors du groupe de la
+    // tête) ne change pas, dans les deux sens.
+    for (const dir of [1, -1] as const) {
+      render(<Pigeon pose="perch" phase={0} dir={dir} />);
+      expect(svg().querySelector('[data-pigeon-legs]')).not.toBeNull();
+      const head = svg().querySelector('[data-pigeon-head]')!;
+      expect(head.querySelectorAll('path').length).toBeGreaterThanOrEqual(3);
+      const bodyOf = () => [...svg().querySelectorAll('[data-roof-pigeon] > path')].map((p) => p.getAttribute('d')).join('|');
+      const body0 = bodyOf();
+      const xs = body0.match(/-?\d+(\.\d+)?(?= -?\d)/g)!.map(Number);
+      expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThanOrEqual(3.5);
+      const headX = /M(-?[\d.]+)/.exec(head.querySelector('path')!.getAttribute('d')!)![1];
+      expect(Math.sign(Number(headX))).toBe(dir);
+      const t0 = head.getAttribute('transform');
+      render(<Pigeon pose="perch" phase={Math.PI / 2} dir={dir} />);
+      expect(head.getAttribute('transform')).not.toBe(t0);
+      expect(bodyOf()).toBe(body0);
+      render(<Pigeon pose="peck" phase={Math.PI / 12} dir={dir} />);
+      expect(svg().querySelector('[data-pigeon-head]')!.getAttribute('transform')).not.toBe(t0);
+      expect(bodyOf()).toBe(body0);
+    }
+  });
+
+  it('dark : voiles #1E2A5A sur le plumage (corps, tête, ailes) à 0,64 × dark, même nombre de nœuds', () => {
     render(<Pigeon pose="perch" phase={0} dir={1} />);
     const n = all().length;
     const v0 = veils();
@@ -129,6 +167,9 @@ describe('pigeon', () => {
     }
     render(<Pigeon pose="peck" phase={0} dir={-1} dark={0.5} />);
     for (const v of veils()) expect(Number(v.getAttribute('opacity'))).toBeCloseTo(DARK_ALPHA * 0.5, 5);
+    render(<Pigeon pose="fly" phase={1} dir={1} dark={1} />);
+    expect(veils().length).toBeGreaterThanOrEqual(2);
+    for (const v of veils()) expect(Number(v.getAttribute('opacity'))).toBeCloseTo(DARK_ALPHA, 5);
   });
 });
 

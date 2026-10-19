@@ -19,7 +19,11 @@ import { DARK_ALPHA, DARK_VEIL } from './window-life-art';
 const CAT_DAY = '#8A6A4A';
 const CAT_NIGHT = amb('#4A3E48');
 const CAT_EYE = '#C8FF8A';
+// Remontée du chat qui sort (px) : tout entier sous le zinc à l'avancement 0.
+export const CAT_RISE = 5;
 const PIGEON = '#8A8FA0';
+const PIGEON_BELLY = '#B8BCC8';
+const PIGEON_WING = '#686E84';
 const SMOKE_DAY = 'rgb(235,235,242)';
 const SMOKE_NIGHT = 'rgb(200,205,225)';
 const HAMMER_HEAD = '#5A5A74';
@@ -33,11 +37,14 @@ const on = (v: boolean): number => (v ? 1 : 0);
 // Disque et ellipse tracés dans le même sens que les coques du pantin (aire signée positive en coordonnées brutes) : un voile
 // qui les concatène garde un winding non nul là où ils se chevauchent (remplissage nonzero).
 const ellipsePath = (cx: number, cy: number, rx: number, ry: number): string => `M${n(cx - rx)} ${n(cy)}a${n(rx)} ${n(ry)} 0 1 1 ${n(2 * rx)} 0a${n(rx)} ${n(ry)} 0 1 1 ${n(-2 * rx)} 0z`;
-const tri = (a: readonly [number, number], b: readonly [number, number], c: readonly [number, number]): string => `M${n(a[0])} ${n(a[1])}L${n(b[0])} ${n(b[1])}L${n(c[0])} ${n(c[1])}z`;
+type Pt = readonly [number, number];
+const tri = (a: Pt, b: Pt, c: Pt): string => `M${n(a[0])} ${n(a[1])}L${n(b[0])} ${n(b[1])}L${n(c[0])} ${n(c[1])}z`;
+// Triangle tracé dans le même sens que les ellipses quel que soit le sens du dessin (aire signée positive).
+const triCW = (a: Pt, b: Pt, c: Pt): string => ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) >= 0 ? tri(a, b, c) : tri(a, c, b));
 
 // ───────────── chat ─────────────
 // Origine aux pattes (x au milieu du corps, y au sol du terrasson), regarde vers `dir`. `emerge` : sort de la tabatière
-// (phase 0 → 1 : monte de 3,2 px dans une fenêtre SVG qui le découpe à hauteur du zinc ; le calque le place à cx + 2,5 de la
+// (phase 0 → 1 : monte de 5 px dans une fenêtre SVG qui le découpe à hauteur du zinc ; le calque le place à cx + 2,5 de la
 // tabatière) ; `walk` : pattes en ciseaux, queue levée (phase en secondes, un pas tous les π/4 s) ; `sit` : contre la
 // souche, queue enroulée qui bat (sin(phase / 2)). La nuit : pelage amb(#4A3E48) et yeux #C8FF8A (transparents le jour).
 export function Cat({ pose, phase, night, dir }: { pose: 'emerge' | 'walk' | 'sit'; phase: number; night: boolean; dir: 1 | -1 }): ReactElement {
@@ -73,8 +80,10 @@ export function Cat({ pose, phase, night, dir }: { pose: 'emerge' | 'walk' | 'si
     </g>
   );
   if (pose !== 'emerge') return cat;
-  // Fenêtre SVG (overflow hidden, pas de clip-path) de 10 × 9,3 px au-dessus du zinc : le chat remonte dedans.
-  const rise = n((1 - smooth(sat(phase))) * 3.2);
+  // Fenêtre SVG (overflow hidden, pas de clip-path) de 10 × 9,3 px au-dessus du zinc : le chat remonte dedans. À l'avancement
+  // 0, il est entièrement sous le zinc (oreilles à −3,9, bout de la queue à −4,2 moins un demi-trait : remontée de 5 px, plus
+  // basse que la ligne de coupe à +0,3) ; rien ne dépasse de la tabatière avant qu'il sorte.
+  const rise = n((1 - smooth(sat(phase))) * CAT_RISE);
   return (
     <svg data-roof-cat-window="" x={-5} y={-9} width={10} height={9.3} viewBox="-5 -9 10 9.3" overflow="hidden">
       <g transform={`translate(0 ${rise})`}>{cat}</g>
@@ -83,33 +92,61 @@ export function Cat({ pose, phase, night, dir }: { pose: 'emerge' | 'walk' | 'si
 }
 
 // ───────────── pigeon ─────────────
-// Origine aux pattes. `perch` : posé, bec vers `dir`, tête qui pointe par instants (sin(phase) > 0,8) ; `peck` : picore,
-// la tête plonge devant (sin(6·phase)) ; `fly` : ailes qui battent (sin(phase) × 2,2, phase ≈ 9 × secondes dans la
-// maquette), sans tête visible. `dark` : voile de nuit sur le plumage #8A8FA0 (les traits d'encre restent).
+// Origine aux pattes, ≈ 4,4 px de long et 3,4 px de haut (la maquette, à 2,6 px, se lisait comme deux ronds reliés). Profil
+// lisible à cette taille : corps en goutte gris-bleu #8A8FA0 (ventre #B8BCC8, aile #686E84, queue effilée vers l'arrière),
+// tête ronde détachée sur un cou d'encre, bec et œil, deux pattes. `perch` : posé, bec vers `dir`, tête qui pointe par
+// instants (sin(phase) > 0,8) ; `peck` : picore, la tête plonge devant (sin(6·phase)) ; `fly` : ailes pleines derrière le corps
+// qui battent (sin(phase) × 1,8, phase ≈ 9 × secondes dans la maquette), tête devant, queue derrière. `dark` : voile de nuit sur le
+// plumage (les traits d'encre restent) — un voile par pièce mobile, jamais un tracé concaténé dont le sens dépendrait de
+// `dir` ou de la phase (remplissage nonzero).
 export function Pigeon({ pose, phase, dir, dark = 0 }: { pose: 'perch' | 'peck' | 'fly'; phase: number; dir: 1 | -1; dark?: number }): ReactElement {
+  const d = dir;
+  const v = veil(dark);
   if (pose === 'fly') {
-    const f = Math.sin(phase) * 2.2;
+    const f = Math.sin(phase) * 1.8;
+    // Deux ailes pleines derrière le corps, de l'épaule (±0,2, −0,3) au bout (±2,7, −f) : bord d'attaque bombé, bord de fuite
+    // large à la base (corde lisible même ailes levées).
+    const wing = (sx: number): string => `M${n(sx * 0.2)} -0.3Q${n(sx * 1.4)} ${n(-f * 0.55 - 0.6)} ${n(sx * 2.7)} ${n(-f)}Q${n(sx * 1.8)} ${n(-f * 0.25 + 0.5)} ${n(sx * 0.5)} 0.6z`;
+    const wings = wing(1) + wing(-1);
+    const hx = d * 1.4, hy = -0.2;
+    const body = ellipsePath(0, 0, 1.25, 0.5) + ellipsePath(hx, hy, 0.45, 0.45);
     return (
       <g data-roof-pigeon="fly">
-        <path data-pigeon-wings="" d={`M-2.4 ${n(-f)}Q-1.2 ${n(-f * 0.3)} 0 0Q1.2 ${n(-f * 0.3)} 2.4 ${n(-f)}`} fill="none" stroke={INK} strokeWidth={0.8} strokeLinecap="round" />
-        <path d={ellipsePath(0, 0, 1.1, 0.6)} fill={INK} />
+        <path d={triCW([-d * 0.9, -0.35], [-d * 2.3, -0.6], [-d * 2.3, 0.4])} fill={PIGEON_WING} stroke={INK} strokeWidth={0.4} strokeLinejoin="round" />
+        <path data-pigeon-wings="" d={wings} fill={PIGEON_WING} stroke={INK} strokeWidth={0.35} strokeLinejoin="round" />
+        <path data-dark-veil="" d={wings} fill={DARK_VEIL} opacity={v} />
+        <path d={ellipsePath(0, 0, 1.55, 0.8) + ellipsePath(hx, hy, 0.72, 0.72)} fill={INK} />
+        <path d={body} fill={PIGEON} />
+        <path d={ellipsePath(d * 0.1, 0.12, 1.0, 0.28)} fill={PIGEON_BELLY} />
+        <path data-dark-veil="" d={body} fill={DARK_VEIL} opacity={v} />
+        <path d={triCW([hx + d * 0.35, hy - 0.2], [hx + d * 1.05, hy + 0.05], [hx + d * 0.35, hy + 0.25])} fill={INK} />
+        <path d={ellipsePath(hx + d * 0.1, hy - 0.12, 0.14, 0.14)} fill={INK} />
       </g>
     );
   }
-  const d = dir;
-  // Tête : groupe translaté (picore : plonge de 0,5 devant et 0,9 vers le bas ; posé : immobile).
+  // Tête : groupe translaté (picore : plonge de 0,6 devant et 1,1 vers le bas ; posé : pointe de 0,35 devant par instants).
   const bob = pose === 'peck' ? Math.max(0, Math.sin(phase * 6)) : 0;
-  const peek = pose === 'perch' ? on(Math.sin(phase) > 0.8) : 1;
+  const peek = pose === 'perch' ? on(Math.sin(phase) > 0.8) : 0;
+  const hx = d * 1.3, hy = -2.75;
+  const body = ellipsePath(-d * 0.1, -1.65, 1.45, 1.1);
+  const tail = triCW([-d * 1.1, -2.1], [-d * 2.3, -2.45], [-d * 1.3, -1.25]);
+  const head = ellipsePath(hx, hy, 0.68, 0.68);
   return (
     <g data-roof-pigeon={pose}>
-      <path d={ellipsePath(0, -1.1, 1.3, 0.95)} fill={INK} />
-      <g data-pigeon-head="" transform={`translate(${n(d * 0.5 * bob)} ${n(0.9 * bob)})`}>
-        <path d={ellipsePath(d * 1.1, -1.9, 0.6, 0.6)} fill={INK} />
-        <path d={`M${n(d * 1.5 - 0.25)} -1.95h0.5v0.3h-0.5z`} fill={INK} opacity={peek} />
+      <path data-pigeon-legs="" d={`M${n(d * 0.35)} -0.7L${n(d * 0.45)} 0l${n(d * 0.45)} 0M${n(-d * 0.35)} -0.7L${n(-d * 0.2)} 0l${n(d * 0.45)} 0`} fill="none" stroke={INK} strokeWidth={0.35} strokeLinecap="round" />
+      <path d={ellipsePath(-d * 0.1, -1.65, 1.75, 1.4) + triCW([-d * 1.0, -2.45], [-d * 2.65, -2.75], [-d * 1.2, -1.0])} fill={INK} />
+      <path d={tail} fill={PIGEON_WING} />
+      <path d={body} fill={PIGEON} />
+      <path d={ellipsePath(d * 0.05, -1.15, 1.05, 0.55)} fill={PIGEON_BELLY} />
+      <path d={ellipsePath(-d * 0.45, -1.95, 1.0, 0.5)} fill={PIGEON_WING} />
+      <path data-dark-veil="" d={body} fill={DARK_VEIL} opacity={v} />
+      <g data-pigeon-head="" transform={`translate(${n(d * (0.6 * bob + 0.35 * peek))} ${n(1.1 * bob + 0.15 * peek)})`}>
+        <path d={ellipsePath(hx, hy, 0.95, 0.95) + ellipsePath(d * 0.75, -2.3, 0.75, 0.7)} fill={INK} />
+        <path d={head} fill={PIGEON} />
+        <path data-dark-veil="" d={head} fill={DARK_VEIL} opacity={v} />
+        <path d={triCW([hx + d * 0.55, hy - 0.2], [hx + d * 1.25, hy + 0.05], [hx + d * 0.55, hy + 0.25])} fill={INK} />
+        <path d={ellipsePath(hx + d * 0.2, hy - 0.15, 0.17, 0.17)} fill={INK} />
       </g>
-      <path d={ellipsePath(0, -1.1, 1.0, 0.7)} fill={PIGEON} />
-      <path data-dark-veil="" d={ellipsePath(0, -1.1, 1.0, 0.7)} fill={DARK_VEIL} opacity={veil(dark)} />
-      <path d={`M${n(-d * 2.0 - 0.5)} -1.2h1v0.45h-1z`} fill={INK} />
     </g>
   );
 }
