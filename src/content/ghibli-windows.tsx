@@ -95,9 +95,14 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
         const light = life && states ? windowLight(life, states, group, win.bay, dark, tones, String(k), home.tone) : null;
         const lit = light ? light.lit : roomLit(win, minutes, day, daylight, gloom);
         const tone: LightTone = light ? light.tone : roomTone(home, win.main, minutes);
+        // Lueur sous l'appui selon les volets et le rideau de la pièce (maquette : glowK = volets × (1 − 0,55 × rideau
+        // tiré) ; volets clos : aucune ; le rideau ne compte que si la fenêtre en a) ; sans la vie : entière.
+        const st = life && states ? states.get(group) : undefined;
+        const room = st ? life!.byFacadeHome.get(group)?.roomOfWindow.get(win.bay) : undefined;
+        const glowK = st && room ? Number((Math.min(1, Math.max(0, st.shut[room] ?? 1)) * (1 - 0.55 * (home.curtain ? (st.curt[room] ?? 0) : 0))).toFixed(2)) : 1;
         return (
           <g key={k} data-lamp="" data-lit={lit ? 'true' : 'false'} data-home={group} data-main={win.main ? 'true' : 'false'} opacity={lit ? dim : 0} style={{ transition: FADE }}>
-            <LitWindow win={win} home={home} level={level} facadeX={facadeX} tone={tone} glow={glowId(prefix, win.w, win.h, dMax)} curtains={!life} />
+            <LitWindow win={win} home={home} level={level} facadeX={facadeX} tone={tone} glow={glowId(prefix, win.w, win.h, dMax)} curtains={!life} glowK={glowK} />
           </g>
         );
       })}

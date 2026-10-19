@@ -10,13 +10,12 @@ import type { LightTone } from '../core/library/city/schedules';
 //   l'un transparent quand l'autre est visible) : seule l'opacité du groupe parent bascule ; les nœuds varient d'une
 //   fenêtre à l'autre (rideaux, accessoire, silhouette, balcon, appui, jardinière), jamais pour une même fenêtre ;
 // - budget : le calque entier reste sous la borne mesurée sur main (≈ 18 nœuds par fenêtre allumable, lueur comprise) ;
-//   ici 7 à 14 nœuds par fenêtre, la lueur (deux paliers + liseré) étant une définition partagée par taille et hauteur
+//   ici 7 à 14 nœuds par fenêtre, la lueur (deux paliers) étant une définition partagée par taille et hauteur
 //   bornée (<use>) ;
 // - aucune animation, aucun dégradé, aucun filtre.
 const INK = '#2A1A18';
 export const GLOW = 'rgba(255,214,130,0.22)';
-// Liseré fin autour du cadre, appui éclairé, lumière sur la jardinière et la dalle du balcon (notes.md §Lumière).
-const GLOW_RIM = 'rgba(255,214,130,0.16)';
+// Appui éclairé, lumière sur la jardinière et la dalle du balcon (notes.md §Lumière).
 const GLOW_SLAB = 'rgba(255,214,130,0.3)';
 const SILL_LIT = '#FFE8B0';
 // Teintes d'une pièce allumée : celles des logements du chantier 1 (HomeTone) et la lumière froide des emplois du temps (cool).
@@ -64,13 +63,13 @@ function glowPath(w: number, h: number, k: number, dMax?: number): string {
   return `M-0.5 ${h}H${w + 0.5}L${w + 1.5 + 1.5 * k} ${h + d * k * 0.8}Q${w / 2} ${h + d * k + r * k} ${-1.5 - 1.5 * k} ${h + d * k * 0.8}Z`;
 }
 
-// Lueur d'une fenêtre allumée : deux paliers plats (forme douce à bord net) + liseré fin autour du cadre, par taille.
+// Lueur d'une fenêtre allumée : deux paliers plats (forme douce à bord net) sous l'appui, par taille. Pas de liseré autour
+// du cadre (règle du projet : jamais de rectangle clair autour d'une fenêtre).
 function Glow({ w, h, dMax }: { w: number; h: number; dMax?: number }): ReactElement {
   return (
     <>
       <path d={glowPath(w, h, 1, dMax)} fill={GLOW} />
       <path d={glowPath(w, h, 0.55, dMax)} fill={GLOW} />
-      <rect x={-1.6} y={-1.2} width={w + 3.2} height={h + 1.2} fill={GLOW_RIM} />
     </>
   );
 }
@@ -266,8 +265,9 @@ function LitBalcony({ win, balcony }: { win: FacadeWindow; balcony: Balcony }): 
 // la façade (barreaux d'un balcon filant au même pas que ceux de la vitre éteinte : aucun saut pendant le fondu) ; `glow` :
 // définition de la lueur à sa taille, à hauteur bornée pour l'étage 0 et le socle (glowBound : rien sous le plancher) ;
 // `curtains` faux (logements vivants) : ni voilage ni rideau, dessinés par le calque de la vie aux fenêtres, ni silhouette
-// tirée du chantier 1 (les pantins de ce calque l'habitent).
-export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = true }: { win: FacadeWindow; home: Home | null; level: Level | null; facadeX?: number; tone: LightTone; glow: string; curtains?: boolean }): ReactElement {
+// tirée du chantier 1 (les pantins de ce calque l'habitent) ; `glowK` : force de la lueur (maquette : volets × (1 − 0,55 ×
+// rideau tiré) ; 1 sans la vie des logements).
+export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = true, glowK = 1 }: { win: FacadeWindow; home: Home | null; level: Level | null; facadeX?: number; tone: LightTone; glow: string; curtains?: boolean; glowK?: number }): ReactElement {
   const { x, y, w, h } = win;
   const tv = tone === 'tv';
   const curtain = curtains ? (home?.curtain ?? null) : null;
@@ -280,7 +280,7 @@ export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = tr
   const cw = curtainWidth(w);
   return (
     <>
-      <use href={`#${glow}`} x={x} y={y} />
+      <use data-glow="" href={`#${glow}`} x={x} y={y} opacity={glowK} />
       <rect x={x} y={y} width={w} height={h} fill={toneColor(tone)} />
       <rect x={x} y={y} width={w} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0 : tone === 'cream' ? 0.3 : 0.2} />
       <rect x={x + 0.6} y={y + h * 0.35} width={Math.max(0, w - 1.2)} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0.35 : 0} />

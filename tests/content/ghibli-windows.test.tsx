@@ -403,6 +403,32 @@ describe('calque des fenêtres Ghibli : lumières par présence', () => {
     expect(glass().getAttribute('fill')).toBe(TONE_FILL[tone]);
   });
 
+  it('lueur : jamais de liseré clair autour du cadre ; elle suit volets et rideau (volets clos : aucune)', () => {
+    // États forgés à 21 h : volets clos dans une pièce, rideau tiré dans une autre, le reste tel quel.
+    const states = lifeStates(life, 21 * 60);
+    const closed = slots.findIndex(({ win, group }) => states.get(group)?.lit[life.byFacadeHome.get(group)!.roomOfWindow.get(win.bay)!]);
+    const { win, group } = slots[closed]!;
+    const room = life.byFacadeHome.get(group)!.roomOfWindow.get(win.bay)!;
+    states.get(group)!.shut[room] = 0;
+    render({ minutes: 21 * 60, life, states });
+    expect(layer().querySelectorAll('rect[fill="rgba(255,214,130,0.16)"]')).toHaveLength(0);
+    const glowOf = (k: number): string | null => lamps()[k]!.querySelector('use[data-glow]')!.getAttribute('opacity');
+    expect(glowOf(closed)).toBe('0');
+    // Ailleurs : volets × (1 − 0,55 × rideau tiré, seulement s'il y a des rideaux).
+    slots.forEach(({ win: w, group: g, home }, k) => {
+      const st = states.get(g)!;
+      const r = life.byFacadeHome.get(g)!.roomOfWindow.get(w.bay)!;
+      const want = Number((Math.min(1, Math.max(0, st.shut[r] ?? 1)) * (1 - 0.55 * (home.curtain ? (st.curt[r] ?? 0) : 0))).toFixed(2));
+      expect(Number(glowOf(k))).toBe(want);
+    });
+  });
+
+  it('sans life : lueur entière, sans liseré', () => {
+    render({ minutes: 22 * 60 });
+    expect(layer().querySelectorAll('rect[fill="rgba(255,214,130,0.16)"]')).toHaveLength(0);
+    for (const el of lamps()) expect(el.querySelector('use[data-glow]')!.getAttribute('opacity')).toBe('1');
+  });
+
   it('états fournis par l’appelant : utilisés tels quels (un seul calcul par minute)', () => {
     // États de 21 h passés avec minutes = 13 h (jour sombre de mauvais temps) : l'allumage suit les états fournis.
     const states = lifeStates(life, 21 * 60);

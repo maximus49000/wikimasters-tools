@@ -318,6 +318,54 @@ describe('calque de la vie derrière les fenêtres', () => {
     expect(checked).toBeGreaterThan(0);
   });
 
+  it("de jour, pièce éteinte : pantin sous les rideaux (jamais l'ombre par-dessus un rideau tiré)", () => {
+    const width = 2000;
+    const facades = cityFacades(width, H, SEED);
+    // Dimanche (foyers chez eux en journée).
+    const SUNDAY = { y: 2026, m: 10, d: 25 };
+    const life = lifeOf(facades, SUNDAY);
+    // Minutes de jour où un pantin est dans une pièce aux rideaux tirés (salon, rideaux du logement).
+    const minutes: number[] = [];
+    for (let t = 10 * 60; t < 16 * 60 && minutes.length < 12; t += 2) {
+      const hit = life.dwellings.some((d) => {
+        const home = facades[d.facade]!.homes[d.home]!;
+        if (!home.curtain) return false;
+        const st = homeState(d, life.today.get(d.id)!, life.yesterday.get(d.id)!, t);
+        return st.actors.some((a) => a.where === 'in' && (st.curt[a.room] ?? 0) > 0.6 && windowPose(a, d));
+      });
+      if (hit) minutes.push(t);
+    }
+    expect(minutes.length).toBeGreaterThan(0);
+    const m = mount(width);
+    let checked = 0;
+    for (const t of minutes) {
+      m.render({ minutes: t, facades, life, d: SUNDAY });
+      for (const g of shown(m.layer())) {
+        if (g.getAttribute('data-where') !== 'in') continue;
+        checked++;
+        expect(['still', 'in']).toContain(g.getAttribute('data-slot'));
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('pantin qui bouge dans une pièce meublée : le meuble passe dessous, dans la page (jamais le meuble cuit par-dessus)', () => {
+    const m = mount(1080);
+    let checked = 0;
+    for (let t = 18 * 60; t < 22 * 60; t += 3) {
+      m.render({ minutes: t });
+      const layer = m.layer();
+      const rooms = new Set(shown(layer).filter((g) => g.getAttribute('data-slot') === 'in').map((g) => g.getAttribute('data-room')));
+      if (rooms.size === 0) continue;
+      for (const p of layer.querySelectorAll('[data-wl-prop]')) {
+        if (p.getAttribute('display') === 'none') continue;
+        expect(rooms.has(p.parentElement!.getAttribute('data-wl-room'))).toBe(false);
+      }
+      for (const p of layer.querySelectorAll('[data-wl-lprop]')) if (p.getAttribute('display') === 'inline' && rooms.has(p.getAttribute('data-wl-lprop')!.split('/').slice(0, 2).join('/'))) checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it('télé allumée : écran vivant hors de la façade cuite, qui scintille', () => {
     const width = 2000;
     let now = NOW_S * 1000;
@@ -408,6 +456,27 @@ describe('calque de la vie derrière les fenêtres', () => {
       const before = svgs.length;
       m.render({ minutes: 21 * 60 + 1 });
       expect(svgs.length - before).toBeLessThan(imgs.length / 2);
+    });
+
+    it('cuisson ratée : nouvel essai, puis le calque paraît sans attendre cet immeuble', () => {
+      setup();
+      const m = mount(1080);
+      m.render({ minutes: 21 * 60 });
+      const layer = m.layer();
+      const fail = (): number => {
+        const list = pending.splice(0);
+        act(() => { for (const p of list) p.onerror?.(); });
+        return list.length;
+      };
+      expect(fail()).toBeGreaterThan(0);
+      expect(layer.getAttribute('display')).toBe('none');
+      // Après le délai : nouvel essai de chaque immeuble raté (deux au plus), puis plus d'attente.
+      for (let k = 1; k <= 3; k++) {
+        vi.spyOn(Date, 'now').mockReturnValue((NOW_S + 2 * k) * 1000);
+        m.render({ minutes: 21 * 60 + k });
+        if (k <= 2) expect(fail()).toBeGreaterThan(0);
+      }
+      expect(layer.getAttribute('display')).not.toBe('none');
     });
 
     it('image cuite : les nœuds cachés le restent (seule la racine perd son display)', () => {

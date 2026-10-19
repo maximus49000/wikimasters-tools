@@ -280,13 +280,19 @@ function heldNodes(dm: DwM, look: Look, outside: boolean): ReactElement[] {
   ));
 }
 
-// Dedans, vivant, sous la façade cuite (ses rideaux et sa menuiserie passent devant) : sapin (la guirlande clignote), écran
-// des télés allumées (il scintille), pantins en mouvement dans la pièce, accessoires tenus dans la pièce.
+// Dedans, vivant, sous la façade cuite (ses rideaux et sa menuiserie passent devant) : meubles des pièces où un pantin
+// bouge (dessinés avant lui, comme la maquette), sapin (la guirlande clignote), écran des télés allumées (il scintille),
+// pantins en mouvement dans la pièce, accessoires tenus dans la pièce.
 const DwInside = memo(function DwInside({ dm, look }: { dm: DwM; look: Look }): ReactElement {
   return (
     <g data-wl-in={dm.d.id}>
       {dm.wins.map((w) => (
         <g key={w.room}>
+          {w.props.map((k) => (
+            <g key={k} data-wl-lprop={`${w.key}/${k}`} display="none" clipPath={`url(#${dm.uid}-${w.room}-in)`}>
+              <InteriorProp win={w.win} kind={k} tone="warm" flicker={0} dark={look.dark} />
+            </g>
+          ))}
           {w.sapin && (
             <g data-wl-sapin={w.key} display="none" clipPath={`url(#${dm.uid}-${w.room}-in)`}>
               <Sapin win={w.win} night={look.night} blink={0} />
@@ -380,7 +386,7 @@ const DwOutside = memo(function DwOutside({ dm, look }: { dm: DwM; look: Look })
 type FigRefs = { wrap: Element; pos: Element | null; fig: Element | null; img: Element | null };
 type HeldRefs = { kind: HandProp; g: Element; pos: Element | null; puff: Element | null; pour: Element | null };
 type WinRefs = {
-  props: { kind: InteriorKind; g: Element; screen: Element | null; screenGlow: Element | null }[]; sapin: Element | null; bulbs: Element[]; tv: Element | null; tvGlow: Element | null;
+  props: { kind: InteriorKind; g: Element; live: Element | null; screen: Element | null; screenGlow: Element | null }[]; sapin: Element | null; bulbs: Element[]; tv: Element | null; tvGlow: Element | null;
   panels: Element[]; curtDay: Element[]; curtNight: Element[]; folds: Element[]; voile: (Element | null)[];
   sash: Element | null; sashGroup: Element | null; shutters: Element | null; leaves: Element[]; slatsDark: Element[]; slatsLit: Element[];
 };
@@ -411,6 +417,7 @@ function collectRefs(page: Element, offstage: Element | null, model: Model): Ref
   const rooms = byAttr('data-wl-room');
   const sapins = byAttr('data-wl-sapin');
   const tvs = byAttr('data-wl-tv');
+  const lprops = byAttr('data-wl-lprop');
   const fronts = byAttr('data-wl-win');
   const fronts2 = byAttr('data-wl-win2');
   const wins = new Map<string, WinRefs>();
@@ -422,7 +429,7 @@ function collectRefs(page: Element, offstage: Element | null, model: Model): Ref
       const front2 = fronts2.get(k) ?? null;
       const all = (el: Element | null, sel: string): Element[] => (el ? [...el.querySelectorAll(sel)] : []);
       wins.set(k, {
-        props: all(room, '[data-wl-prop]').map((g) => ({ kind: g.getAttribute('data-wl-prop') as InteriorKind, g, screen: g.querySelector('[data-tv-screen]'), screenGlow: g.querySelector('[data-tv-screen] > [data-screen]') })),
+        props: all(room, '[data-wl-prop]').map((g) => ({ kind: g.getAttribute('data-wl-prop') as InteriorKind, g, live: lprops.get(`${k}/${g.getAttribute('data-wl-prop')}`) ?? null, screen: g.querySelector('[data-tv-screen]'), screenGlow: g.querySelector('[data-tv-screen] > [data-screen]') })),
         tv: tvs.get(k) ?? null,
         tvGlow: tvs.get(k)?.querySelector('[data-screen]') ?? null,
         sapin: sapins.get(k) ?? null,
@@ -484,14 +491,19 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const BAKE_SCALE = { min: 1, max: 4, fallback: 2 } as const;
 // Cuisson d'un immeuble : dernière cuisson lancée, dernier changement, groupe vivant montré (repli dans la page), version,
 // blob affiché ; `shown` : pantins en pose fixe que montre l'image affichée (clés), `next` : ceux de la cuisson en cours.
-type Baked = { at: number; change: number; live: boolean; version: number; url: string | null; shown: Set<string>; next: Set<string> };
+// `fails` / `retry` : cuissons ratées de suite et heure (s) de la prochaine tentative.
+type Baked = { at: number; change: number; live: boolean; version: number; url: string | null; shown: Set<string>; next: Set<string>; fails: number; retry: number };
+// Cuisson ratée (image illisible, pas de canvas, blob vide) : nouvel essai après BAKE_RETRY_S, au plus BAKE_TRIES fois ; au-delà
+// l'immeuble n'est plus attendu pour montrer le calque.
+const BAKE_RETRY_S = 1;
+const BAKE_TRIES = 2;
 // Cuisson possible : image, canvas et blobs réels (pas jsdom). Les tests forcent la cuisson (`bakeHooks.enabled`, avec
 // Image, canvas et blobs simulés) et lisent le SVG cuit (`onSvg`).
 export const bakeHooks: { enabled: boolean | null; onSvg: ((svg: string) => void) | null } = { enabled: null, onSvg: null };
 const canBake = (): boolean =>
   bakeHooks.enabled ??
   (typeof document !== 'undefined' && typeof Image !== 'undefined' && typeof URL.createObjectURL === 'function' && !(typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom')));
-function bakeFront(live: Element, img: SVGImageElement, box: readonly [number, number, number, number], b: Baked, onReady: (url: string) => void): void {
+function bakeFront(live: Element, img: SVGImageElement, box: readonly [number, number, number, number], b: Baked, onReady: (url: string) => void, onFail: () => void): void {
   // Sans canvas réel (jsdom) : rien, le groupe vivant reste montré.
   if (!canBake()) return;
   const [x, y, w, h] = box;
@@ -517,16 +529,23 @@ function bakeFront(live: Element, img: SVGImageElement, box: readonly [number, n
     pic.onload = pic.onerror = null;
     pic.removeAttribute('src');
   };
-  pic.onerror = done;
+  pic.onerror = () => {
+    done();
+    if (version === b.version) onFail();
+  };
   pic.onload = () => {
     const ok = version === b.version;
     const canvas = ok ? document.createElement('canvas') : null;
     const ctx = canvas ? ((canvas.width = W), (canvas.height = H), canvas.getContext('2d')) : null;
     if (ctx) ctx.drawImage(pic, 0, 0, W, H);
     done();
-    if (!canvas || !ctx) return;
+    if (!canvas || !ctx) {
+      if (ok) onFail();
+      return;
+    }
     canvas.toBlob((blob) => {
-      if (!blob || version !== b.version) return;
+      if (version !== b.version) return;
+      if (!blob) return onFail();
       onReady(URL.createObjectURL(blob));
     });
   };
@@ -603,6 +622,9 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
     const touched: number[] = [];
     const placed: Map<number, Placed>[] = [];
     const heldBy = new Map<HeldRefs, boolean>();
+    const livingRooms = new Set<Room>();
+    // Meubles vivants qui attendent l'image cuite qui les montre (cachés à l'arrivée de l'image de leur immeuble).
+    const waitingProps = new Set<Element>();
     // Façades réécrites par React depuis la dernière boucle : recuites une fois (et seulement elles).
     const prev = rendered.current;
     const rebake = new Set<number>(!prev || prev.look !== look || prev.lights !== lights || prev.model !== model ? model.facades.map((fm) => fm.fi) : []);
@@ -786,14 +808,14 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
       if (!F) return;
       let b = bakes.current.get(fm.fi);
       if (!b) {
-        b = { at: -Infinity, change: now, live: true, version: 0, url: null, shown: new Set(), next: new Set() };
+        b = { at: -Infinity, change: now, live: true, version: 0, url: null, shown: new Set(), next: new Set(), fails: 0, retry: 0 };
         bakes.current.set(fm.fi, b);
       }
       if (changed || rebake.has(fm.fi)) {
         b.change = now;
         rebake.delete(fm.fi);
       }
-      if (b.change <= b.at) return;
+      if (b.change <= b.at || now < b.retry) return;
       if (offstage) {
         if (busy && now - b.at < BAKE_BUSY_S && !still) return;
       } else {
@@ -826,6 +848,14 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
         forget(F.live, 'display');
         forget(F.img, 'display');
         bb.live = false;
+        // Meubles vivants de cet immeuble qui attendaient cette image.
+        for (const e of [...waitingProps]) {
+          if (fm.dws.some((dm) => e.closest(`[data-wl-in="${dm.d.id}"]`))) {
+            e.setAttribute('display', 'none');
+            forget(e, 'display');
+            waitingProps.delete(e);
+          }
+        }
         // Pantins de cet immeuble qui attendaient cette image.
         for (const dm of fm.dws) {
           for (const f of dm.figs) {
@@ -834,14 +864,26 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
             if (plan && N) showPage(N, pageSlot(f.key, plan), true);
           }
         }
-        // Première image de chaque immeuble : le calque paraît.
-        const el = root.current;
-        if (el && !ready.current && model.facades.every((x) => bakes.current.get(x.fi)?.url)) {
-          ready.current = true;
-          el.setAttribute('display', 'inline');
-          forget(el, 'display');
+        bb.fails = 0;
+        showWhenBaked();
+      }, () => {
+        // Ratée : nouvel essai un peu plus tard (la façade est marquée changée), puis on n'attend plus cet immeuble.
+        bb.fails++;
+        if (bb.fails <= BAKE_TRIES) {
+          bb.change = Math.max(bb.change, bb.at + 1e-6);
+          bb.retry = now + BAKE_RETRY_S;
         }
+        showWhenBaked();
       });
+    }
+    // Calque montré quand chaque immeuble a sa première image (ou a épuisé ses essais).
+    function showWhenBaked(): void {
+      const el = root.current;
+      if (el && !ready.current && model.facades.every((x) => { const b = bakes.current.get(x.fi); return !!b && (!!b.url || b.fails > BAKE_TRIES); })) {
+        ready.current = true;
+        el.setAttribute('display', 'inline');
+        forget(el, 'display');
+      }
     }
 
     // Écritures d'un logement relu : fenêtres (volets, battant, rideaux, meubles, télé, sapin), pantins, garde-corps.
@@ -893,13 +935,40 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
           vis(vn, c.voileNight);
           vis(li, c.lines);
         }
+        frontWrites += set.writes() - w0;
+      }
+      // Pièces où un pantin bouge (nœud vivant sous l'image) : leurs meubles passent dans la page, sous lui (le cuisinier
+      // devant son plan de cuisson, le marcheur devant la table) ; ailleurs ils restent cuits.
+      livingRooms.clear();
+      for (const { a, pose } of byM.values()) {
+        if (a.culled || pose.where !== 'in' || pose.still) continue;
+        const shadow = !!dm.byRoom.get(a.room)?.curtain && (st.curt[a.room] ?? 0) > 0.6 && lights && !!st.lit[a.room];
+        if (!shadow) livingRooms.add(a.room);
+      }
+      // Meubles, télé, sapin : à chaque relecture du logement (quelques nœuds).
+      for (const w of dm.wins) {
+        const w0 = set.writes();
+        const W = R.wins.get(w.key);
+        if (!W) continue;
+        const lit = lights && !!st.lit[w.room];
         const alpha = alphaOf(w.room);
+        const living = livingRooms.has(w.room);
         let tvLive = false;
+        let pageW = 0;
         for (const p of W.props) {
           // Le meuble d'une scène écartée par la borne reste dessiné : seul le pantin ne l'est pas.
           let on = false;
           for (const { a } of byM.values()) if (a.room === w.room && interiorOf(a.choreo, a.desk) === p.kind) on = true;
-          vis(p.g, on ? (lit ? 1 : alpha) : 0);
+          vis(p.g, on && !living ? (lit ? 1 : alpha) : 0);
+          const x0 = set.writes();
+          // Meuble rendu à l'image cuite : le vivant reste montré jusqu'à l'image qui le contient (rideau d'attente).
+          const handBack = !!offstage && on && !living && p.live?.getAttribute('display') === 'inline';
+          if (handBack) waitingProps.add(p.live!);
+          else {
+            waitingProps.delete(p.live!);
+            vis(p.live, on && living ? (lit ? 1 : alpha) : 0);
+          }
+          pageW += set.writes() - x0;
           if (p.kind !== 'tv') continue;
           // Télé allumée : son écran sort de l'image cuite (trou à sa place) et scintille dans la page, dessous (rideaux,
           // volets et menuiserie de l'image passent devant) ; sinon écran éteint, cuit.
@@ -907,7 +976,8 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
           vis(p.screen, tvLive ? 0 : 1);
           if (!tvLive) set(p.screenGlow, 'opacity', '0');
         }
-        frontWrites += set.writes() - w0;
+        // Seules les écritures de la façade cuite la font recuire (pas celles des meubles vivants de la page).
+        frontWrites += set.writes() - w0 - pageW;
         if (W.tv) {
           vis(W.tv, tvLive ? 1 : 0);
           if (W.tvGlow) {
@@ -945,7 +1015,8 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
             // travers le tissu (à 0,28, par-dessus le rideau) ; sinon sous les rideaux (cuit en pose fixe, vivant sous
             // l'image cuite quand il bouge).
             const base = wm.shutters && (st.shut[a.room] ?? 1) < 0.5 ? 0 : alphaOf(a.room);
-            const drawn = !!wm.curtain && (st.curt[a.room] ?? 0) > 0.6;
+            // L'ombre à travers le tissu n'existe que pièce allumée (maquette) ; éteinte, le rideau tiré le cache.
+            const drawn = !!wm.curtain && (st.curt[a.room] ?? 0) > 0.6 && lights && !!st.lit[a.room];
             if (base > 0) {
               alpha = drawn ? ALPHA.behindCurtain : base;
               want = drawn ? (pose.still ? 'shade' : 'out') : pose.still ? 'still' : 'in';
@@ -979,6 +1050,7 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
               set(F.wrap, 'data-alpha', op);
               set(F.pos, 'transform', tr);
               set(F.wrap, 'data-where', where);
+              set(F.wrap, 'data-room', wm.key);
               set(F.wrap, 'clip-path', baked ? `url(#${dm.uid}-${a.room}-b)` : pageClip);
               // Allure voulue (l'image peut garder la pose précédente le temps que le registre peigne la nouvelle).
               set(F.wrap, 'data-gait', pose.gait);
