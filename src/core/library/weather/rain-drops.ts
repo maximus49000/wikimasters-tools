@@ -107,8 +107,8 @@ export function createRainSim(world: RainWorld, seed: number, opts: { soft: bool
   };
 }
 
-// Nouvelle goutte, toujours au-dessus du cadre : rien n'apparaît sur place.
-function spawnDrop(sim: RainSim, layer: 0 | 1 | 2): RainDrop {
+// Nouvelle goutte : au-dessus du cadre (rien n'apparaît sur place), ou n'importe où sur sa colonne (pré-remplissage).
+function spawnDrop(sim: RainSim, layer: 0 | 1 | 2, fromTop = true): RainDrop {
   const L = LAYERS[layer]!;
   const r = sim.rng;
   const w = sim.world;
@@ -116,7 +116,7 @@ function spawnDrop(sim: RainSim, layer: 0 | 1 | 2): RainDrop {
   return {
     layer,
     x: r() * (w.width + 200) - 100,
-    y: -r() * 60 - 10,
+    y: fromTop ? -r() * 60 - 10 : r() * ground,
     v: lerp(L.v[0], L.v[1], r()),
     len: lerp(L.len[0], L.len[1], r()) * (0.6 + r() * 0.9),
     a: L.a * (0.55 + r() * 0.7),
@@ -146,6 +146,15 @@ function addSplash(sim: RainSim, x: number, y: number, k: number): void {
     parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v });
   }
   sim.splashes.push({ x, y, age: 0, k, parts });
+}
+
+/** Pluie déjà là (ouverture de la scène, redimensionnement) : pose tout de suite la population cible,
+ *  à des hauteurs réparties sur toute la colonne, sans éclaboussures. La montée progressive ne vaut que pour
+ *  une pluie qui commence pendant qu'on regarde. */
+export function prefillRain(sim: RainSim, env: RainEnv): void {
+  const target = rainTarget(env.precip, sim.budget, sim.soft);
+  while (sim.drops.length < target) sim.drops.push(spawnDrop(sim, pickLayer(sim), false));
+  sim.spawnAcc = 0;
 }
 
 export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {

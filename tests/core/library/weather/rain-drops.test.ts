@@ -5,6 +5,7 @@ import {
   RAIN_BUDGET_WIDE,
   createRainSim,
   gust,
+  prefillRain,
   rainTarget,
   stepRain,
   type RainBudget,
@@ -146,6 +147,25 @@ describe('pluie dehors : moteur', () => {
       expect(Number.isFinite(d.x) && Number.isFinite(d.y)).toBe(true);
       expect(d.y).toBeLessThanOrEqual(d.ground + 720 * 0.25);
     }
+  });
+
+  it('pluie déjà là à l’ouverture : prefillRain pose la cible, étalée sur la hauteur, sans éclaboussure', () => {
+    const sim = make();
+    prefillRain(sim, env(1, 0));
+    expect(sim.drops.length).toBe(900);
+    expect(sim.splashes.length).toBe(0);
+    const ys = sim.drops.map((d) => d.y);
+    for (const d of sim.drops) expect(d.y).toBeLessThanOrEqual(d.ground);
+    expect(Math.min(...ys)).toBeLessThan(40);
+    expect(Math.max(...ys)).toBeGreaterThan(300);
+    // une moitié au moins sous le tiers haut : pas toutes en haut
+    expect(ys.filter((y) => y > RUE.height / 3).length).toBeGreaterThan(sim.drops.length / 2);
+    // le pas suivant ne rajoute rien (cible déjà atteinte)
+    stepRain(sim, env(1, 1 / 30), 1 / 30);
+    expect(sim.drops.length).toBe(900);
+    const phone = make(RUE, 7, RAIN_BUDGET_PHONE, true);
+    prefillRain(phone, env(1, 0));
+    expect(phone.drops.length).toBe(350);
   });
 
   it('rafales : gust entre 0,45 et 1,55', () => {
