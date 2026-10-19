@@ -17,6 +17,9 @@ import { citizen, citizenKey, type CitizenDesc } from '../../../src/core/citizen
 import type { Outfit, Top } from '../../../src/core/library/city/people';
 import { tone } from '../../../src/content/city-sprites';
 
+// Ces tests couvrent le rendu 3D : interrupteur forcé à vrai (il est coupé dans le code depuis le 2026-10-19, style à retravailler).
+vi.mock('../../../src/content/figure/citizen-config', async (orig) => ({ ...(await orig<object>()), CITIZENS_3D: true }));
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const sun = sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120);
 const sky = skyAt(12 * 60, sun);

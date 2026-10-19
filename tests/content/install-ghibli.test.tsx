@@ -15,6 +15,9 @@ import { dayNumber } from '../../src/core/library/city/shops/hours';
 import { anchorsOf, type FigureKey } from '../../src/core/library/figure/bake';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
+// Ces tests couvrent le rendu 3D : interrupteur forcé à vrai (il est coupé dans le code depuis le 2026-10-19, style à retravailler).
+vi.mock('../../src/content/figure/citizen-config', async (orig) => ({ ...(await orig<object>()), CITIZENS_3D: true }));
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
 afterEach(() => {

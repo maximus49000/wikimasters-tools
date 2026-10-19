@@ -10,6 +10,9 @@ import { FigureContext, FigureRegistry, type Citizen3D } from '../../src/content
 import { EnterWait3D, GhibliFigure, gateEntering } from '../../src/content/figure/ghibli-figure';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
+// Ces tests couvrent le rendu 3D : interrupteur forcé à vrai (il est coupé dans le code depuis le 2026-10-19, style à retravailler).
+vi.mock('../../src/content/figure/citizen-config', async (orig) => ({ ...(await orig<object>()), CITIZENS_3D: true }));
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const sky = skyAt(12 * 60, sunTimes({ y: 2026, m: 10, d: 9 }, { lat: 48.85, lon: 2.35 }, 120));
 const env: TrafficEnv = { demand: { near: 1, far: 1, bike: 0.3 }, closed: false, arrivals: [], deliveries: [], crowd: 0.5, crossPx: 90 };
