@@ -13,7 +13,7 @@ import { useStreetShops } from './use-street-shops';
 import { useArtStyle } from './art-setting';
 import { GhibliWindows } from './ghibli-windows';
 import { nightness, roomLit, roomTone, windowLit } from '../core/library/city/window-lights';
-import { lifeStates, useSceneLife } from './use-scene-life';
+import { lifeStates, useSceneLife, useToneMemory, windowLight } from './use-scene-life';
 import { GhibliNightLight } from './ghibli-night';
 import { lampLit, lampsFor } from '../core/library/city/lamps';
 import { lampBlobs, patchBox } from '../core/library/city/night-light';
@@ -65,8 +65,11 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
   // Vie des logements (présence des habitants) : même source pour la vue classique et le calque Ghibli ; null sans contexte
   // de ville (aperçus). Déménagement : un local de la rue change de commerce aujourd'hui.
   const life = useSceneLife(buildings, city, seed, slotDays.some((s) => s.change !== null));
+  // États des logements : calculés une fois par minute, partagés avec le calque Ghibli ; teintes affichées par fenêtre.
   const states = useMemo(() => (life ? lifeStates(life, minutes) : null), [life, minutes]);
-  const night = nightness(sky.daylight) > 0;
+  const tones = useToneMemory(buildings);
+  // Sombre : nuit, ou ciel de mauvais temps (comme l'allumage du chantier 1).
+  const homeDark = gloom || nightness(sky.daylight) > 0;
   const [art] = useArtStyle();
   const ghibli = art === 'ghibli';
   const lingering = useLingering(ghibli, reducedMotion() ? 0 : 1000);
@@ -113,11 +116,10 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         {/* Fenêtres des logements à leur taille (cage et entresol exclus), même allumage que le calque Ghibli. */}
         {b.lamps.map((lamp, j) => {
           if (lamp.home < 0) return null;
-          const id = `${bi}:${lamp.home}`;
-          const st = states?.get(id);
-          const room = st ? life!.byFacadeHome.get(id)!.roomOfWindow.get(lamp.bay) : undefined;
-          const lit = st && room ? night && !!st.lit[room] : roomLit(lamp, minutes, city?.day, sky.daylight, gloom);
-          const tone = st && room ? st.tone[room] : roomTone(b.homes[lamp.home]!, lamp.main, minutes);
+          const home = b.homes[lamp.home]!;
+          const light = life && states ? windowLight(life, states, `${bi}:${lamp.home}`, lamp.bay, homeDark, tones, `${bi}/${j}`, home.tone) : null;
+          const lit = light ? light.lit : roomLit(lamp, minutes, city?.day, sky.daylight, gloom);
+          const tone = light ? light.tone : roomTone(home, lamp.main, minutes);
           return (
             <rect
               key={j}
@@ -252,7 +254,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         </g>
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
         <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} />
-        <GhibliWindows buildings={buildings} minutes={minutes} day={city?.day} daylight={sky.daylight} gloom={gloom} dim={dim} farLight={FAR_LIGHT} plan={plan} life={life} />
+        <GhibliWindows buildings={buildings} minutes={minutes} day={city?.day} daylight={sky.daylight} gloom={gloom} dim={dim} farLight={FAR_LIGHT} plan={plan} life={life} states={states} />
       </g>
       {shopFronts}
     </g>

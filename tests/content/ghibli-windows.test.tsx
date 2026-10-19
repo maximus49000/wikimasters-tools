@@ -11,9 +11,9 @@ import { cityMetrics } from '../../src/core/library/city/metrics';
 import { PODIUM_H } from '../../src/core/library/scene-world';
 import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
 import empreinte from '../core/library/fixtures/city-skyline-empreinte.json';
-import { buildSceneLife, type SceneLife } from '../../src/content/use-scene-life';
+import { buildSceneLife, lifeStates, type SceneLife } from '../../src/content/use-scene-life';
 import { dayContext } from '../../src/core/library/city/calendar';
-import { homeState } from '../../src/core/library/city/home-state';
+import { homeState, type HomeState } from '../../src/core/library/city/home-state';
 import { roomLit } from '../../src/core/library/city/window-lights';
 
 // Calque des fenêtres de la ville peinte : vitres sombres de nuit par immeuble, fenêtres allumées par logement (pièce
@@ -23,12 +23,12 @@ import { roomLit } from '../../src/core/library/city/window-lights';
 let container: HTMLDivElement;
 let root: Root;
 const facades = cityFacades(720, 340, 5);
-type Opts = { minutes?: number; daylight?: number; gloom?: boolean; dim?: number; buildings?: typeof facades; plan?: ReturnType<typeof cityPaintPlan>; life?: SceneLife | null };
+type Opts = { minutes?: number; daylight?: number; gloom?: boolean; dim?: number; buildings?: typeof facades; plan?: ReturnType<typeof cityPaintPlan>; life?: SceneLife | null; states?: Map<string, HomeState> };
 const render = (o: Opts = {}) =>
   act(() => {
     root.render(
       <svg>
-        <GhibliWindows buildings={o.buildings ?? facades} minutes={o.minutes ?? 1320} day={undefined} daylight={o.daylight ?? 0} gloom={o.gloom ?? false} dim={o.dim ?? 1} farLight={0.5} plan={o.plan} life={o.life} />
+        <GhibliWindows buildings={o.buildings ?? facades} minutes={o.minutes ?? 1320} day={undefined} daylight={o.daylight ?? 0} gloom={o.gloom ?? false} dim={o.dim ?? 1} farLight={0.5} plan={o.plan} life={o.life} states={o.states} />
       </svg>,
     );
   });
@@ -330,7 +330,7 @@ describe('calque des fenêtres Ghibli', () => {
 describe('calque des fenêtres Ghibli : lumières par présence', () => {
   const life = buildSceneLife(facades, dayContext({ y: 2026, m: 10, d: 14 }, []), { precip: 0, snow: false, storm: false }, 5, false);
   // Fenêtres allumables dans l'ordre du calque, avec leur logement.
-  const slots = facades.flatMap((b, i) => (b.far ? [] : b.lamps.flatMap((win) => (win.home < 0 ? [] : [{ win, group: `${i}:${win.home}` }]))));
+  const slots = facades.flatMap((b, i) => (b.far ? [] : b.lamps.flatMap((win) => (win.home < 0 ? [] : [{ win, group: `${i}:${win.home}`, home: b.homes[win.home]! }]))));
   const TONE_FILL: Record<string, string> = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF', cool: '#C8DCFF' };
 
   it('avec life, data-lit suit homeState', () => {
@@ -359,9 +359,55 @@ describe('calque des fenêtres Ghibli : lumières par présence', () => {
     expect(off).toBeGreaterThan(0);
   });
 
-  it('avec life : rien d’allumé de jour, même sous un ciel couvert', () => {
-    render({ minutes: 12 * 60, daylight: 1, gloom: true, dim: 0.7, life });
-    expect(lamps().every((el) => !lit(el))).toBe(true);
+  // Pièce de la fenêtre k allumée à la minute m (homeState), et sa teinte.
+  const roomAt = (k: number, m: number): { lit: boolean; tone: string | undefined } => {
+    const { win, group } = slots[k]!;
+    const d = life.byFacadeHome.get(group)!;
+    const st = homeState(d, life.today.get(d.id)!, life.yesterday.get(d.id)!, m);
+    const room = d.roomOfWindow.get(win.bay)!;
+    return { lit: !!st.lit[room], tone: st.tone[room] };
+  };
+
+  it('avec life : en plein jour rien d’allumé ; sous un ciel de mauvais temps, les pièces occupées s’allument', () => {
+    let checked = 0;
+    for (let minutes = 9 * 60; minutes <= 17 * 60; minutes += 20) {
+      const want = slots.map((_, k) => roomAt(k, minutes).lit);
+      if (!want.some(Boolean)) continue;
+      render({ minutes, daylight: 1, gloom: true, dim: 0.7, life });
+      expect(lamps().map(lit)).toEqual(want);
+      render({ minutes, daylight: 1, gloom: false, dim: 0, life });
+      expect(lamps().every((el) => !lit(el))).toBe(true);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('extinction : la vitre garde sa dernière teinte pendant le fondu (télé ou lumière froide)', () => {
+    // Première fenêtre télé ou froide allumée à m et éteinte à m + 1, la nuit, dans un logement d'une autre teinte de base
+    // (sinon le repli sur la teinte du logement donnerait la même couleur).
+    let found: { k: number; m: number; tone: string } | null = null;
+    for (let m = 17 * 60; m < 1440 + 3 * 60 && !found; m++) {
+      for (let k = 0; k < slots.length && !found; k++) {
+        const a = roomAt(k, m % 1440);
+        if (a.lit && (a.tone === 'tv' || a.tone === 'cool') && slots[k]!.home.tone !== a.tone && !roomAt(k, (m + 1) % 1440).lit) found = { k, m: m % 1440, tone: a.tone };
+      }
+    }
+    expect(found).not.toBeNull();
+    const { k, m, tone } = found!;
+    render({ minutes: m, life });
+    const glass = () => lamps()[k]!.querySelector('rect')!;
+    expect(lit(lamps()[k]!)).toBe(true);
+    expect(glass().getAttribute('fill')).toBe(TONE_FILL[tone]);
+    render({ minutes: (m + 1) % 1440, life });
+    expect(lit(lamps()[k]!)).toBe(false);
+    expect(glass().getAttribute('fill')).toBe(TONE_FILL[tone]);
+  });
+
+  it('états fournis par l’appelant : utilisés tels quels (un seul calcul par minute)', () => {
+    // États de 21 h passés avec minutes = 13 h (jour sombre de mauvais temps) : l'allumage suit les états fournis.
+    const states = lifeStates(life, 21 * 60);
+    render({ minutes: 13 * 60, daylight: 0, life, states });
+    expect(lamps().map(lit)).toEqual(slots.map((_, k) => roomAt(k, 21 * 60).lit));
   });
 
   it('même nombre de nœuds de 6 h à 2 h', () => {

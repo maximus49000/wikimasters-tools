@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildSceneLife, sceneMinute, useSceneLife, type SceneLife } from '../../src/content/use-scene-life';
+import { buildSceneLife, sceneMinute, sharedSceneLife, useSceneLife, type SceneLife } from '../../src/content/use-scene-life';
 import { addDays, dayContext, holidayWeekOf, type DayContext, type HolidayPeriod } from '../../src/core/library/city/calendar';
 import { cityFacades, type Facade } from '../../src/core/library/city/facades';
 import { cityDwellings } from '../../src/core/library/city/households';
@@ -99,6 +99,33 @@ describe('vie des logements de la scène', () => {
     // Déménagement de commerce.
     renderLife(out, facades, cityOf(dayContext(addDays(DATE, 1), []), { precip: 0.7 }), 5, true);
     expect(out.renders[4]!.day.moving).toBe(true);
+  });
+
+  it('même jour, autre genre (calendrier scolaire arrivé) : recalcul', () => {
+    const out = probe();
+    const day = dayContext(DATE, []);
+    renderLife(out, facades, cityOf(day));
+    renderLife(out, facades, cityOf({ ...day, kind: 'holiday', schoolOn: false }));
+    expect(out.renders[1]).not.toBe(out.renders[0]);
+    expect(out.renders[1]!.day.kind).toBe('holiday');
+    renderLife(out, facades, cityOf({ ...day, yesterday: { ...dayContext(addDays(DATE, -1), []), kind: 'holiday' } }));
+    expect(out.renders[2]).not.toBe(out.renders[0]);
+  });
+
+  it('cache partagé : deux calques aux façades identiques (tableaux distincts) reçoivent la même vie', () => {
+    const day = dayContext(addDays(DATE, 40), []);
+    const a = sharedSceneLife(cityFacades(720, 340, 5), day, false, 5, false);
+    const b = sharedSceneLife(cityFacades(720, 340, 5), { ...day }, false, 5, false);
+    expect(b).toBe(a);
+    // Même résultat que le calcul pur.
+    expect(a.today).toEqual(buildSceneLife(facades, day, { precip: 0, snow: false, storm: false }, 5, false).today);
+    // Clé différente : autre vie (graine, humide, largeur).
+    expect(sharedSceneLife(cityFacades(720, 340, 5), day, true, 5, false)).not.toBe(a);
+    expect(sharedSceneLife(cityFacades(1080, 340, 5), day, false, 5, false)).not.toBe(a);
+    // Et par le hook : deux composants, une seule vie.
+    const out = probe();
+    renderLife(out, cityFacades(720, 340, 5), cityOf(day));
+    expect(out.current).toBe(a);
   });
 
   it('sceneMinute = gullMinutes', () => {
