@@ -160,16 +160,17 @@ describe('poses des pantins de fenêtre', () => {
       const where = whereOf(c);
       const p1 = windowPose(actor(c, 0.45, 6, { where, slot: 1 }), home, true);
       const p2 = windowPose(actor(c, 0.55, 6, { where, slot: 1, t: 0.55 * 6 + 0.3 / 60 }), home, true);
+      for (const p of [0.01, 0.99]) expect(windowPose(actor(c, p, 6, { where }), home, true), `${c} à p=${p}`).toBeNull();
       if (c === 'cross') {
-        expect(p1).toMatchObject({ gait: 'stand', still: true });
-        expect(p2).toMatchObject({ gait: 'stand', still: true });
+        // Traversée fugace : hors champ sur toute la scène en mouvement réduit.
+        expect(p1).toBeNull();
+        expect(p2).toBeNull();
         continue;
       }
       expect(p1, c).not.toBeNull();
       expect(p1!.still, c).toBe(true);
       expect(p1!.gait, c).not.toBe('walk');
       expect(p2, c).toEqual(p1);
-      for (const p of [0.01, 0.99]) expect(windowPose(actor(c, p, 6, { where }), home, true), `${c} à p=${p}`).toBeNull();
     }
     expect(windowPose(actor('openShutters', 0.5, 3), home, true)!.arms).toBe('shutters');
     expect(windowPose(actor('drawCurtains', 0.5, 1), home, true)!.arms).toBe('curtain');

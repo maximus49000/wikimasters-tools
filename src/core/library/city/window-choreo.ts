@@ -96,7 +96,8 @@ function step(a: Actor, reduced: boolean): Step {
   const balcony = (): Step | null => (bal ? (reduced ? inOut(balDx) : balconyInOut(p, s, tIn, tOut, slot)) : inOut(0));
   switch (a.choreo) {
     case 'cross':
-      return reduced ? fixed('down', { yaw: facingYaw(1), dx: lerp(-1.6, 1.6, p), still: true }) : walk(s, p, -1.6, 1.6);
+      // Traversée fugace : rien à montrer en pose fixe (hors champ sur toute la scène en mouvement réduit).
+      return reduced ? OUT : walk(s, p, -1.6, 1.6);
     case 'tv':
     case 'read': {
       const dx = 0.22 + a.seat * 0.16;
