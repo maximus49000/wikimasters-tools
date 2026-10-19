@@ -127,6 +127,13 @@ export function climbRun(home: Pick<Dwelling, 'climb'>, floors: number, t: numbe
   return dir === 'in' ? { floors, up: true, start: t + 10, dur: Math.max(1, climb - 12) } : { floors, up: false, start: t - climb + 2, dur: Math.max(1, climb - 14) };
 }
 
+// Étages allumés retenus pour un passage tiré `floors` à l'instant t : tant qu'une montée ou une descente de la cage n'est pas
+// finie (à venir comprise), au moins ses étages — un second passage à la même porte ne fait pas s'éteindre la cage au-dessus
+// de la silhouette.
+export function keepStairPick(floors: number, run: StairRun | undefined, t: number): number {
+  return run && t < run.start + run.dur ? Math.max(floors, run.floors) : floors;
+}
+
 // Fenêtre de cage (0 = la plus basse) où passe la silhouette à l'instant t, un étage à la fois ; -1 hors de la montée.
 export function stairFigureAt(run: StairRun, t: number): number {
   if (run.floors <= 0 || t < run.start || t >= run.start + run.dur) return -1;

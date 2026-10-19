@@ -43,8 +43,13 @@ const StairFigure = memo(function StairFigure({ x, k, win, clip, sky }: { x: num
 });
 
 // Silhouette montrée à la fenêtre `next` (-1 : aucune), `shown` étant celle montrée jusque-là : n'écrit que les deux nœuds
-// qui basculent. Renvoie la nouvelle fenêtre montrée.
-export function placeStairFigures(nodes: readonly (Element | undefined)[], shown: number, next: number): number {
+// qui basculent. `shown` inconnu (table refaite par une nouvelle boucle, alors que le DOM garde les opacités de la
+// précédente) : écrit tous les nœuds. Renvoie la nouvelle fenêtre montrée.
+export function placeStairFigures(nodes: readonly (Element | undefined)[], shown: number | undefined, next: number): number {
+  if (shown === undefined) {
+    nodes.forEach((n, k) => n?.setAttribute('opacity', k === next ? '1' : '0'));
+    return next;
+  }
   if (next === shown) return shown;
   if (shown >= 0) nodes[shown]?.setAttribute('opacity', '0');
   if (next >= 0) nodes[next]?.setAttribute('opacity', '1');

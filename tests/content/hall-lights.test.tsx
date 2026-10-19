@@ -136,4 +136,17 @@ describe('cage d’escalier (minuterie des halls)', () => {
     }
     expect(seen).toEqual([-1, 0, 1, -1]);
   });
+
+  it('table refaite (nouvelle boucle) : tous les nœuds sont écrits, une seule silhouette, jamais figée', () => {
+    const host = mountStairs(true, false, () => true);
+    const nodes = [...host.querySelectorAll<SVGElement>(`[data-stair-figure="${doorX}"]`)].sort((a, b) => Number(a.getAttribute('data-floor')) - Number(b.getAttribute('data-floor')));
+    expect(nodes.length).toBeGreaterThanOrEqual(2);
+    // L'ancienne boucle montrait l'étage 0 ; la nouvelle ne le sait pas (shown inconnu).
+    nodes[0]!.setAttribute('opacity', '1');
+    expect(placeStairFigures(nodes, undefined, 1)).toBe(1);
+    expect(nodes.map((n) => n.getAttribute('opacity'))).toEqual(nodes.map((_, i) => (i === 1 ? '1' : '0')));
+    // Fin de la montée sous une table refaite : plus aucune silhouette.
+    expect(placeStairFigures(nodes, undefined, -1)).toBe(-1);
+    expect(nodes.every((n) => n.getAttribute('opacity') === '0')).toBe(true);
+  });
 });
