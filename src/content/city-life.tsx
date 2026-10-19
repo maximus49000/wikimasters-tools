@@ -64,6 +64,7 @@ import { HallLights, hallTransition } from './hall-lights';
 import { StairLights, placeStairFigures, stairTransition } from './stair-lights';
 import { useSceneLife, type SceneLife } from './use-scene-life';
 import { WindowLifeLayer } from './window-life';
+import { RoofLifeLayer } from './roof-life-layer';
 
 // Vie de la scène Ville : passants, habitants qui sortent de leur immeuble ou y rentrent, deux files de circulation,
 // les événements de la ville (vague 1b-i), les clients des commerces et l'équipe d'un chantier (vague 1b-iv-a,
@@ -989,6 +990,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         <StairLights stairs={stairs} ghibli={ghibli} still={still} lit={(x, k) => k < stairFloors(x, t0!)} sky={sky} />
         {/* Vie derrière les fenêtres (pantins, volets, rideaux) : sur les fenêtres du décor, sous tout le ciel animé. */}
         {ghibli && life && <WindowLifeLayer facades={facades} life={life} sky={sky} minutes={city.minutes} still={still} width={width} gloom={gloom} seed={seed} sirens={sirens} />}
+        {/* Toits vivants (chat, pigeons des corniches, fumées d'hiver, couvreur) : au-dessus des façades, sous le ciel animé. */}
+        {ghibli && life && <RoofLifeLayer facades={facades} life={life} sky={sky} minutes={city.minutes} still={still} seed={seed} />}
         {/* Mouettes (G5) : derrière les immeubles, au fond du ciel, sous la grue, les engins du ciel (cerf-volant, ballons, père Noël,
             défilé aérien) et le feu d'artifice. */}
         <GullsLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} minutes={city.minutes} rain={gullRain} still={still} frozenT={frozen.current ?? 0} ghibli={ghibli} />
