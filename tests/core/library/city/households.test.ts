@@ -101,13 +101,34 @@ describe('foyers par logement', () => {
     expect(seen.size).toBe(6);
     // Fumeurs, sapins, couche-tard : présents, sans être la règle (40 %, 55 %, 50 %).
     const share = (list: Dwelling[], f: (d: Dwelling) => boolean) => list.filter(f).length / list.length;
-    expect(share(all.filter((d) => d.hh.type === 'couple' || d.hh.type === 'solo'), (d) => d.hh.smoker)).toBeCloseTo(0.4, 0);
-    expect(share(all, (d) => d.hh.sapin)).toBeCloseTo(0.55, 0);
-    expect(share(all.filter((d) => d.hh.type === 'etudiant'), (d) => d.hh.late)).toBeCloseTo(0.5, 0);
+    expect(Math.abs(share(all.filter((d) => d.hh.type === 'couple' || d.hh.type === 'solo'), (d) => d.hh.smoker) - 0.4)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(share(all, (d) => d.hh.sapin) - 0.55)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(share(all.filter((d) => d.hh.type === 'etudiant'), (d) => d.hh.late) - 0.5)).toBeLessThanOrEqual(0.1);
   });
 
   it('logement d’une travée (lucarne) : jamais une famille ni une coloc', () => {
     for (const d of all) if (d.bays.length === 1) expect(['famille', 'coloc']).not.toContain(d.hh.type);
+  });
+
+  it('volets : haussmann → persienne, faubourg → battant, faubourg sans volets → null, socle → null, quel que soit le foyer', () => {
+    const f = cityFacades(W, H, 1);
+    const ds = cityDwellings(f, 1);
+    const tower = (d: Dwelling) => d.home < (f[d.facade]!.layout?.homes.length ?? 0) && f[d.facade]!.homes[d.home]!.level >= 0;
+    const haussmann = ds.filter((d) => tower(d) && f[d.facade]!.layout!.kind === 'haussmann');
+    const faubourg = ds.filter((d) => tower(d) && f[d.facade]!.layout!.kind === 'faubourg');
+    const socle = ds.filter((d) => d.home >= (f[d.facade]!.layout?.homes.length ?? 0));
+    expect(haussmann.length).toBeGreaterThan(0);
+    expect(faubourg.length).toBeGreaterThan(0);
+    expect(socle.length).toBeGreaterThan(0);
+    for (const d of haussmann) expect(d.shutters).toBe('persienne');
+    for (const d of faubourg) expect(d.shutters).toBe('battant');
+    for (const d of socle) expect(d.shutters).toBeNull();
+    // Étudiants et colocs gardent les volets de leur immeuble (ils ne les ferment pas : emploi du temps, tâche 2).
+    expect(haussmann.concat(faubourg).some((d) => d.hh.type === 'etudiant' || d.hh.type === 'coloc')).toBe(true);
+    // Faubourg dont la mise en page n'a pas de volets : aucun.
+    const fi = faubourg[0]!.facade;
+    const bare = f.map((b, i) => (i === fi ? { ...b, layout: { ...b.layout!, shutters: null } } : b));
+    for (const d of cityDwellings(bare, 1).filter((x) => x.facade === fi && tower(x))) expect(d.shutters).toBeNull();
   });
 
   it('étudiant et coloc n’ont jamais de volets battants à fermer (shutters ignorés par l’emploi du temps) ; lucarne : shutters null', () => {
@@ -117,9 +138,8 @@ describe('foyers par logement', () => {
         const b = f[d.facade]!;
         const home = b.homes[d.home]!;
         const podium = d.home >= (b.layout?.homes.length ?? 0);
-        // Les volets sont ceux de l'immeuble, quel que soit le foyer (l'étudiant et la coloc les laissent ouverts : tâche 2).
-        const expected = home.level === -1 && !podium ? null : b.layout?.kind === 'haussmann' ? 'persienne' : b.layout?.shutters ? 'battant' : null;
-        expect(d.shutters).toBe(expected);
+        // Lucarne et socle (« ni volets ni jardinières » au peintre) : jamais de volets.
+        if (podium || home.level < 0) expect(d.shutters).toBeNull();
         const level = podium || home.level < 0 ? null : b.layout!.levels[home.level]!;
         expect(d.balcony).toBe(level !== null && level.balcony !== 'none');
         expect(d.floorIdx).toBe(podium ? 0 : home.level < 0 ? b.layout!.levels.length : home.level);
