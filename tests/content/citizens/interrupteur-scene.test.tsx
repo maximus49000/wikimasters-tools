@@ -112,8 +112,12 @@ describe('interrupteur coupé : scène d’avant la branche', () => {
 // chantier, branche fix/ville-vie-finitions) pour les changements voulus du DOM des tâches 10 à 12, vérifiés commit par
 // commit (l'empreinte d'avant tient jusqu'à b3c0ac00) : silhouettes de la cage d'escalier (8df72a9b), réactions des
 // habitants aux événements (04678a68) et calque des toits vivants (bd57a856, edce0c22) ; stables sur deux passages.
-const ORDINARY = ['1445691:1b4d5da5', '1442528:2b8bc9e2', '1435932:569eca10', '1436193:8018b532'];
-const PARADE = ['1734098:a83d8ab4', '1734229:f4e25933', '1722458:2c157bcd', '1722441:4312da29'];
+// Relevés une dernière fois (2026-10-19) après les finitions, vérifiées commit par commit dans un worktree temporaire : l'empreinte
+// précédente tient encore en 235c2b0a ; a043d865 (pigeons redessinés) change les deux scénarios, c0cd4244 (sens de vol des
+// pigeons, cuisine du retraité) change encore le défilé ; 928a82b6 (palette sombre des balcons) et la fusion de main 3c80d352
+// (interrupteur 3D coupé) ne changent plus rien à ces scénarios ; stables sur deux passages.
+const ORDINARY = ['1452518:e01ba710', '1449355:42dc9f37', '1442746:23fa7756', '1443006:b7e934d3'];
+const PARADE = ['1744312:efc98d1e', '1744455:7b9f3167', '1732690:59c2eda2', '1732665:d1e5e80f'];
 // Unités du défilé montées à chaque image.
 const PARADE_UNITS = [
   ...Array<number>(39).fill(10), 9, 9, 9, 9, ...Array<number>(8).fill(10), ...Array<number>(18).fill(11), ...Array<number>(11).fill(10), 9,
