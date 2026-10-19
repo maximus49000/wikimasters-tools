@@ -71,7 +71,7 @@ const NO_BIRD: BirdV = { pose: null, x: 0, y: 0, phase: 0, dir: 1 };
 const NO_SMOKE: SmokeV = { level: 0, phase: 0 };
 const NO_ROOFER: RooferV = { pose: null, x: 0, y: 0, phase: 0, dir: 1 };
 const CAT_POSES = ['emerge', 'walk', 'sit'] as const;
-// Le chat qui sort : ses oreilles dépassent déjà de la tabatière à l'avancement 0 ; il prend corps sur le premier quart.
+// Le chat qui sort : tout entier sous le zinc à l'avancement 0 (CAT_RISE) ; il prend corps sur le premier quart.
 const CAT_FADE = 0.25;
 const vis = (on: boolean): 'inline' | 'none' => (on ? 'inline' : 'none');
 
