@@ -61,7 +61,10 @@ describe('tirage du jour', () => {
   it('décalages dans les amplitudes, extinctions = permutation des pièces', () => {
     const week = dayOf({ y: 2026, m: 10, d: 13 });
     const sat = dayOf({ y: 2026, m: 10, d: 10 });
+    const armistice = dayOf({ y: 2026, m: 11, d: 11 });
+    expect(armistice.kind).toBe('public-holiday');
     let wideWake = 0;
+    let wideHoliday = 0;
     for (const d of ds) {
       const w = dayDraw(d, week, SEED);
       expect(Math.abs(w.wake)).toBeLessThanOrEqual(25);
@@ -77,7 +80,10 @@ describe('tirage du jour', () => {
       expect(Math.abs(s.wake)).toBeLessThanOrEqual(50);
       if (Math.abs(s.wake) > 25) wideWake++;
       expect(s.presence).not.toBe('late');
+      expect(Math.abs(dayDraw(d, armistice, SEED).wake)).toBeLessThanOrEqual(50);
+      if (Math.abs(dayDraw(d, armistice, SEED).wake) > 25) wideHoliday++;
     }
+    expect(wideHoliday).toBeGreaterThan(ds.length * 0.3);
     expect(wideWake).toBeGreaterThan(ds.length * 0.3);
   });
 
@@ -85,11 +91,36 @@ describe('tirage du jour', () => {
     const holiday = dayOf({ y: 2026, m: 10, d: 20 });
     const school = dayOf({ y: 2026, m: 10, d: 13 });
     expect(holiday.kind).toBe('holiday');
+    expect(holiday.holidayWeek).toBe(true); // défaut : schoolHoliday
     expect(school.kind).toBe('school');
+    expect(school.holidayWeek).toBe(false);
+    // Samedi de vacances : `kind` vaut 'weekend', mais la semaine est une semaine de vacances (fournie par l'appelant).
+    const satVac = sceneDay(dayContext({ y: 2026, m: 10, d: 24 }, VAC), dry, SEED, false, true);
+    expect(satVac.kind).toBe('weekend');
+    expect(satVac.holidayWeek).toBe(true);
     const fams = pool('famille', 200);
     const share = (day: SceneDay) => fams.filter((d) => dayDraw(d, day, SEED).presence === 'away').length / fams.length;
     expect(share(holiday)).toBeGreaterThan(0.2);
+    expect(share(satVac)).toBeGreaterThan(0.2);
     expect(share(school)).toBeLessThan(0.08);
+  });
+
+  it('absent toute la semaine, week-end compris', () => {
+    const week = (d: number) => sceneDay(dayContext({ y: 2026, m: 10, d }, VAC), dry, SEED, false, true);
+    const mon = week(19);
+    const days = [20, 21, 22, 23, 24, 25].map(week);
+    const all = [...ds.slice(0, 100), ...pool('famille', 100)];
+    expect(all.length).toBe(200);
+    let away = 0;
+    for (const d of all) {
+      const isAway = dayDraw(d, mon, SEED).presence === 'away';
+      if (isAway) away++;
+      for (const day of days) expect(dayDraw(d, day, SEED).presence === 'away').toBe(isAway);
+    }
+    expect(away).toBeGreaterThan(20);
+    // Semaine suivante (lundi 26) : nouveau tirage.
+    const next = sceneDay(dayContext({ y: 2026, m: 10, d: 26 }, VAC), dry, SEED, false, true);
+    expect(all.some((d) => (dayDraw(d, mon, SEED).presence === 'away') !== (dayDraw(d, next, SEED).presence === 'away'))).toBe(true);
   });
 
   it('invités surtout le vendredi et le samedi soir, rentrés tard seulement en semaine', () => {
