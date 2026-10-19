@@ -128,6 +128,56 @@ describe('poses des pantins de fenêtre', () => {
     expect(windowPose(actor('tv', 0.31, 0.5), home)!.gait).toBe('seated');
   });
 
+  it('siège ≥ 1 : le pantin entre et sort jusqu\'à sa place, sans saut', () => {
+    for (const c of ['tv', 'read'] as const) {
+      const tIn = 11 / (120 * 60);
+      const before = windowPose(actor(c, tIn * 0.999, 120, { seat: 1 }), home)!;
+      const after = windowPose(actor(c, tIn * 1.001, 120, { seat: 1 }), home)!;
+      expect(before.gait).toBe('walk');
+      expect(after.gait).toBe('seated');
+      expect(Math.abs(after.dx - before.dx)).toBeLessThan(0.01);
+      const out0 = windowPose(actor(c, 1 - tIn * 1.001, 120, { seat: 1 }), home)!;
+      const out1 = windowPose(actor(c, 1 - tIn * 0.999, 120, { seat: 1 }), home)!;
+      expect(out1.gait).toBe('walk');
+      expect(Math.abs(out1.dx - out0.dx)).toBeLessThan(0.01);
+    }
+  });
+
+  it('une pose still ne change pas entre deux instants proches', () => {
+    for (const c of CHOREOS) {
+      for (const where of ['in', 'lean', 'balcony'] as Where[]) {
+        const a = actor(c, 0.5, 6, { where, slot: 1 });
+        const p1 = windowPose(a, home);
+        if (!p1?.still) continue;
+        const p2 = windowPose({ ...a, t: a.t + 0.7 / 60 }, home);
+        expect(p2, `${c} ${where}`).toEqual(p1);
+      }
+    }
+  });
+
+  it('mouvement réduit : pose clé centrale immobile, identique à deux instants du milieu, hors champ aux bouts', () => {
+    for (const c of CHOREOS) {
+      const where = whereOf(c);
+      const p1 = windowPose(actor(c, 0.45, 6, { where, slot: 1 }), home, true);
+      const p2 = windowPose(actor(c, 0.55, 6, { where, slot: 1, t: 0.55 * 6 + 0.3 / 60 }), home, true);
+      if (c === 'cross') {
+        expect(p1).toMatchObject({ gait: 'stand', still: true });
+        expect(p2).toMatchObject({ gait: 'stand', still: true });
+        continue;
+      }
+      expect(p1, c).not.toBeNull();
+      expect(p1!.still, c).toBe(true);
+      expect(p1!.gait, c).not.toBe('walk');
+      expect(p2, c).toEqual(p1);
+      for (const p of [0.01, 0.99]) expect(windowPose(actor(c, p, 6, { where }), home, true), `${c} à p=${p}`).toBeNull();
+    }
+    expect(windowPose(actor('openShutters', 0.5, 3), home, true)!.arms).toBe('shutters');
+    expect(windowPose(actor('drawCurtains', 0.5, 1), home, true)!.arms).toBe('curtain');
+    expect(windowPose(actor('cook', 0.5, 8), home, true)!.arms).toBe('cook-1');
+    expect(windowPose(actor('smoke', 0.5, 4, { where: 'balcony' }), home, true)!.arms).toBe('smoke-down');
+    expect(windowPose(actor('water', 0.5, 4, { where: 'balcony' }), home, true)).toMatchObject({ arms: 'water', dx: 0.5 });
+  });
+
   it('traversée : hors champ aux deux bouts, marche au milieu', () => {
     expect(windowPose(actor('cross', 0.01, 0.3), home)).toBeNull();
     expect(windowPose(actor('cross', 0.5, 0.3), home)).toMatchObject({ gait: 'walk', yaw: YAW_RIGHT, dx: 0 });

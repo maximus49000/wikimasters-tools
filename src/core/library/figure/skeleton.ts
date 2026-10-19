@@ -140,8 +140,8 @@ const TARGETS: Readonly<Record<ArmPose, readonly [T3 | null, T3 | null]>> = {
   water: [[-1.3, -11.4, 0.8], [10.4, -4.5, 0.5]], // arrose : arrosoir tendu devant et en bas, bras gauche un peu en arrière (74° / −14°)
   'shake-1': [[9.5, -4.1, 3.5], [9.5, -4.1, 3.5]], // secoue le tapis par-dessus l'appui, bras tendus bas (76°)
   'shake-2': [[10.5, 0.7, 3.5], [10.5, 0.7, 3.5]], // … bras tendus haut (100°)
-  'cook-1': [[6.5, -8.5, -1], [7.5, -7.5, -1.5]], // cuisine : main gauche à la casserole, cuillère avancée
-  'cook-2': [[6.5, -8.5, -1], [6.5, -8.6, -2.6]], // … cuillère ramenée vers soi (remue)
+  'cook-1': [[6.5, -8.5, -1], [6, -8.8, -2.6]], // cuisine : main gauche à la casserole, cuillère ramenée vers soi
+  'cook-2': [[6.5, -8.5, -1], [9.5, -5, -1]], // … cuillère poussée loin devant et plus haut (remue : l'alternance doit se lire)
   table: [[6, -4, -1.5], [6.5, -3.5, -2]], // à table (assis) : avant-bras sur la table, main droite à la fourchette
   tv: [[5, -9, -0.8], [5, -9, -0.8]], // télé (assis) : mains sur les genoux
   'dance-1': [[1, 9.5, 6.7], [1, 2.5, 11.3]], // danse : bras gauche haut, bras droit tendu de côté (156° / 108°, coude −24°)

@@ -50,8 +50,11 @@ const mod = (a: number, n: number): number => ((a % n) + n) % n;
 const walkPhase = (s: number): number => phaseIndexOf((s / WALK_CYCLE_S) * STRIDE);
 // Variante `-1` / `-2` d'un geste animé, décalée par `slot` (deux danseurs ne lèvent pas le même bras au même instant).
 const alt = (s: number, slot = 0): '1' | '2' => (mod(Math.floor(s / ALT_S) + slot, 2) === 0 ? '1' : '2');
-// Tête qui tourne lentement (maquette : inclinaison sinusoïdale ; ici rotation, indices −2…2).
-const headSway = (s: number, period: number, offset = 0): number => Math.round(Math.sin(s / period + offset) * 2);
+// Tête tournée d'un cran selon le créneau (variété entre voisins sans rien qui bouge : une pose `still` ne change pas d'une
+// image à l'autre, le calque ne la réécrit pas).
+const headOf = (slot: number): number => (slot % 2 ? 1 : -1);
+// Hors champ (entrée / sortie en mouvement réduit) : au-delà de OUT_OF_VIEW, `windowPose` renvoie null.
+const OUT: Step = { yaw: YAW_FRONT, gait: 'stand', phase: 0, head: 0, arms: 'down', lean: 0, dx: 9, props: [], still: true };
 
 const fixed = (arms: ArmPose, x: Partial<Step> = {}): Step => ({ yaw: YAW_FRONT, gait: 'stand', phase: 0, head: 0, arms, lean: 0, dx: 0, props: [], still: false, ...x });
 // Marche de `from` à `to` (en largeurs de fenêtre) à l'avancement q ∈ [0, 1], de profil dans le sens du déplacement.
@@ -69,7 +72,9 @@ function balconyInOut(p: number, s: number, tIn: number, tOut: number, slot: num
   return null;
 }
 
-function step(a: Actor): Step {
+// Pose à l'instant de l'acteur. `reduced` (mouvement réduit) : pose clé centrale de la chorégraphie, immobile, sans
+// dépendance au temps écoulé ; l'entrée et la sortie sont hors champ.
+function step(a: Actor, reduced: boolean): Step {
   const { p, slot } = a;
   const s = a.t * 60;
   // Durée de la scène (s) : lue dans t / p ; à p = 0 (tout début) l'entrée occupe sa part maximale.
@@ -77,22 +82,25 @@ function step(a: Actor): Step {
   const tIn = Math.min(IN_OUT_MAX, IN_OUT_S / durS);
   const tOut = tIn;
   const bal = a.where === 'balcony';
-  // Entrée depuis `from` vers la place `at`, sortie de la place vers `to` ; sinon null (le corps de la scène).
+  const balDx = BALCONY_SLOT0 + slot * BALCONY_STEP;
+  // Variante `-1` / `-2` d'un geste animé (la première en mouvement réduit).
+  const v = (name: 'cook' | 'shake' | 'dance', off = 0): ArmPose => `${name}-${reduced ? '1' : alt(s, off)}`;
+  // Marche d'entrée depuis `from` vers la place `at`, de sortie vers `to` ; sinon null (le corps de la scène).
   const inOut = (at: number, from = -1.5, to = 1.5): Step | null => {
-    if (p < tIn) return walk(s, p / tIn, from, at);
-    if (p > 1 - tOut) return walk(s, (p - 1 + tOut) / tOut, at, to);
+    if (p < tIn) return reduced ? OUT : walk(s, p / tIn, from, at);
+    if (p > 1 - tOut) return reduced ? OUT : walk(s, (p - 1 + tOut) / tOut, at, to);
     return null;
   };
+  // Même chose avec des seuils propres à la scène (volets, rideaux).
+  const walkIf = (cond: boolean, q: number, from: number, to: number): Step | null => (cond ? (reduced ? OUT : walk(s, q, from, to)) : null);
+  const balcony = (): Step | null => (bal ? (reduced ? inOut(balDx) : balconyInOut(p, s, tIn, tOut, slot)) : inOut(0));
   switch (a.choreo) {
     case 'cross':
-      return walk(s, p, -1.6, 1.6);
-    case 'tv': {
-      const side = a.seat % 2 ? -1 : 1;
-      return inOut(0.22 * side, -1.4, 1.4) ?? fixed('tv', { yaw: facingYaw(-1), gait: 'seated', dx: 0.22 + a.seat * 0.16, still: true });
-    }
+      return reduced ? fixed('down', { yaw: facingYaw(1), dx: lerp(-1.6, 1.6, p), still: true }) : walk(s, p, -1.6, 1.6);
+    case 'tv':
     case 'read': {
-      const side = a.seat % 2 ? -1 : 1;
-      return inOut(0.22 * side, -1.4, 1.4) ?? fixed('read', { yaw: facingYaw(-1), gait: 'seated', dx: 0.22 + a.seat * 0.16, props: ['book'], still: true });
+      const dx = 0.22 + a.seat * 0.16;
+      return inOut(dx, -1.4, 1.4) ?? fixed(a.choreo === 'tv' ? 'tv' : 'read', { yaw: facingYaw(-1), gait: 'seated', dx, props: a.choreo === 'read' ? ['book'] : [], still: true });
     }
     case 'table': {
       // Seul : au bureau ou au bout de la table, tourné vers la droite ; à plusieurs : face à face, par paires.
@@ -101,23 +109,23 @@ function step(a: Actor): Step {
       return inOut(dx, -1.4, 1.4) ?? fixed('table', { yaw: facingYaw(n === 1 || side < 0 ? 1 : -1), gait: 'seated', dx, props: ['cup'], still: true });
     }
     case 'cook':
-      return inOut(-0.22, 1.4, 1.4) ?? fixed(`cook-${alt(s)}`, { yaw: facingYaw(1), lean: LEAN_COOK, dx: -0.22, props: ['spoon'] });
+      return inOut(-0.22, 1.4, 1.4) ?? fixed(v('cook'), { yaw: facingYaw(1), lean: LEAN_COOK, dx: -0.22, props: ['spoon'], still: reduced });
     case 'armsUp':
       // Volets de la cuisine, scène courte : 20 % d'entrée et de sortie, bras levés au milieu.
-      if (p < 0.2) return walk(s, p / 0.2, -1.5, 0);
-      if (p > 0.8) return walk(s, (p - 0.8) / 0.2, 0, 1.5);
-      return fixed(p < 0.25 || p > 0.75 ? 'down' : 'shutters');
+      return walkIf(p < 0.2, p / 0.2, -1.5, 0) ?? walkIf(p > 0.8, (p - 0.8) / 0.2, 0, 1.5) ?? fixed(!reduced && (p < 0.25 || p > 0.75) ? 'down' : 'shutters', { still: reduced });
     case 'stand':
-      return inOut(0.1, -1.4, 1.4) ?? fixed('down', { dx: 0.1 + Math.sin(s / 7) * 0.1, still: true });
+      return inOut(0.1, -1.4, 1.4) ?? fixed('down', { dx: 0.1, still: true });
     case 'openShutters':
       // Marche, debout, bras levés aux vantaux (qui s'ouvrent), main au battant, puis penché à l'appui 20 s avant de repartir.
+      if (reduced) return walkIf(p < 0.12 || p >= 0.9, 0, 0, 0) ?? fixed('shutters', { still: true });
       if (p < 0.12) return walk(s, p / 0.12, -1.5, 0);
       if (p < 0.19) return fixed('down');
       if (p < 0.66) return fixed('shutters');
       if (p < 0.735) return fixed('reach');
-      if (p < 0.9) return fixed('sill', { lean: LEAN_SILL, where: 'lean', head: headSway(s, 5) });
+      if (p < 0.9) return fixed('sill', { lean: LEAN_SILL, where: 'lean', still: true });
       return walk(s, (p - 0.9) / 0.1, 0, 1.5);
     case 'closeShutters':
+      if (reduced) return walkIf(p < 0.14 || p >= 0.82, 0, 0, 0) ?? fixed('shutters', { still: true });
       if (p < 0.14) return walk(s, p / 0.14, 1.5, 0);
       if (p < 0.22) return fixed('down');
       if (p < 0.375) return fixed('reach');
@@ -126,36 +134,36 @@ function step(a: Actor): Step {
     case 'drawCurtains': {
       // Traverse la fenêtre en tirant le rideau d'un bord à l'autre (sens inverse pour le second rideau).
       const rev = a.reverse ? -1 : 1;
+      if (reduced) return walkIf(p < 0.22 || p >= 0.75, 0, 0, 0) ?? fixed('curtain', { still: true });
       if (p < 0.22) return walk(s, p / 0.22, -1.5 * rev, -0.45 * rev);
       if (p < 0.75) return fixed('curtain', { dx: lerp(-0.45, 0.45, (p - 0.22) / 0.53) * rev });
       return walk(s, (p - 0.75) / 0.25, 0.45 * rev, 1.5 * rev);
     }
     case 'lean':
-      return inOut(0) ?? fixed('sill', { lean: LEAN_SILL, where: 'lean', head: headSway(s, 5), still: true });
-    case 'leanRail': {
-      const out = bal ? balconyInOut(p, s, tIn, tOut, slot) : inOut(0);
-      return out ?? fixed('rail', { lean: LEAN_SILL, dx: bal ? BALCONY_SLOT0 + slot * BALCONY_STEP : 0, where: bal ? 'balcony' : 'lean', head: headSway(s, 6, slot), still: true });
-    }
+      return inOut(0) ?? fixed('sill', { lean: LEAN_SILL, where: 'lean', head: headOf(slot), still: true });
+    case 'leanRail':
+      return balcony() ?? fixed('rail', { lean: LEAN_SILL, dx: bal ? balDx : 0, where: bal ? 'balcony' : 'lean', head: headOf(slot), still: true });
     case 'smoke': {
-      const out = bal ? balconyInOut(p, s, tIn, tOut, slot) : inOut(0);
+      const out = balcony();
       if (out) return out;
       // Cycle de 11 s : main à la bouche pendant les 30 % du début (bouffée), bras baissé le reste du temps.
-      const cyc = mod(s / SMOKE_CYCLE_S + slot, 1);
-      return fixed(cyc < 0.3 ? 'smoke-up' : 'smoke-down', { lean: bal ? 0 : LEAN_SILL, dx: bal ? BALCONY_SLOT0 + slot * BALCONY_STEP : 0, where: bal ? 'balcony' : 'lean', props: ['cigarette'] });
+      const up = !reduced && mod(s / SMOKE_CYCLE_S + slot, 1) < 0.3;
+      return fixed(up ? 'smoke-up' : 'smoke-down', { lean: bal ? 0 : LEAN_SILL, dx: bal ? balDx : 0, where: bal ? 'balcony' : 'lean', props: ['cigarette'], still: reduced });
     }
     case 'water': {
-      const out = bal ? balconyInOut(p, s, tIn, tOut, 0) : inOut(0);
+      const out = bal ? (reduced ? inOut(0.5) : balconyInOut(p, s, tIn, tOut, 0)) : inOut(0);
       if (out) return out;
+      if (reduced) return fixed('water', { yaw: facingYaw(1), lean: LEAN_SILL, dx: bal ? 0.5 : 0, where: bal ? 'balcony' : 'lean', props: ['watering-can'], still: true });
       // Trois pots l'un après l'autre : on se redresse entre deux (bras baissés), on verse penché au-dessus du pot.
       const q = (p - tIn) / (1 - tIn - tOut), pot = Math.min(2, Math.floor(q * 3)), ph = (q * 3) % 1;
       const pouring = ph > 0.1 && ph < 0.85;
       return fixed(pouring ? 'water' : 'down', { yaw: facingYaw(1), lean: pouring ? LEAN_SILL : 0, dx: bal ? [0.1, 0.5, 0.9][pot]! : 0, where: bal ? 'balcony' : 'lean', props: ['watering-can'] });
     }
     case 'shake':
-      return inOut(0) ?? fixed(`shake-${alt(s)}`, { lean: LEAN_SILL, where: 'lean', props: ['rug'] });
+      return inOut(0) ?? fixed(v('shake'), { lean: LEAN_SILL, where: 'lean', props: ['rug'], still: reduced });
     case 'dance': {
       const home = -0.4 + slot * 0.3;
-      return inOut(home) ?? fixed(`dance-${alt(s, slot)}`, { dx: home + Math.sin(s / 2.3 + slot) * 0.08 });
+      return inOut(home) ?? fixed(v('dance', slot), { dx: reduced ? home : home + Math.sin(s / 2.3 + slot) * 0.08, still: reduced });
     }
   }
 }
@@ -163,9 +171,10 @@ function step(a: Actor): Step {
 // Taille relative du membre `m` du foyer ; un invité (m au-delà des membres) a la taille d'un adulte.
 const sizeOf = (a: Actor, d: Dwelling): number => d.hh.members[a.m]?.size ?? 1;
 
-// Pose du pantin d'un acteur à l'instant de l'acteur ; null quand il est hors champ (dans la pièce voisine).
-export function windowPose(a: Actor, d: Dwelling): WindowPose | null {
-  const st = step(a);
+// Pose du pantin d'un acteur à l'instant de l'acteur ; null quand il est hors champ (dans la pièce voisine). `reduced` :
+// mouvement réduit, pose clé centrale immobile (voir `step`).
+export function windowPose(a: Actor, d: Dwelling, reduced = false): WindowPose | null {
+  const st = step(a, reduced);
   if (Math.abs(st.dx) >= OUT_OF_VIEW) return null;
   const { where, ...rest } = st;
   return { ...rest, room: a.room, where: where ?? a.where, size: sizeOf(a, d) };
