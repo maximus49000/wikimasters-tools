@@ -270,7 +270,9 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
   switch (hh.type) {
     case 'couple': {
       const wake = (off ? 516 : 407) + W, out = wake + 52;
-      lit(K, wake, out + 3);
+      // En semaine, on éteint en partant : cuisine et salon allumés jusqu'au second départ.
+      lit(K, wake, off ? out + 3 : out + 16);
+      if (!off) lit(L, wake + 1, out + 14);
       quickShut(K, wake + 0.4, 0, 1);
       act(wake + 1.6, 7, K, 'in', 'cook', 0);
       openShutters(L, wake + 8, 1);
@@ -324,7 +326,8 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
     case 'famille': {
       const kids = ms.filter((i) => hh.members[i]!.size < 0.8), adults = ms.filter((i) => hh.members[i]!.size >= 0.8);
       const wake = (off ? 498 : 395) + W * 0.6, out = wake + 60;
-      lit(K, wake, out + 15);
+      lit(K, wake, off ? out + 15 : out + 30); // en semaine, jusqu'au départ du second parent
+      if (!off) lit(L, wake + 9, out + 28);
       quickShut(K, wake + 0.4, 0, 1);
       act(wake + 1.6, 9, K, 'in', 'cook', 0);
       openShutters(L, wake + 9, 1);
@@ -363,7 +366,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       const guests = draw.presence === 'guests' ? 1 + (r() < 0.5 ? 1 : 0) : 0;
       kidBed = dinner + 65 + r() * 10;
       bed = late(Math.max(1355 + Z * 0.6, kidBed + 25));
-      lit(K, tA, dinner + 60);
+      lit(K, tA, dinner + 95); // vaisselle et goûters du lendemain, puis la télé seule au salon
       if (C) {
         lit(C, tA + 4, kidBed + 12);
         fill(tA + 8, Math.min(tA + 63, dinner - 2), C, 'table', kids[0], { seat: 0, party: 1, desk: true }); // devoirs
@@ -392,6 +395,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       if (C) shut(C, wake + 18, 1, 1.8);
       openCurt(L, wake + 16.5, 0);
       meal(K, wake + 22, 32, ms);
+      lit(L, wake + 10.7, wake + 54); // salon allumé jusqu'à la fin du petit-déjeuner
       // journée : arrosage, tapis, regarder la rue
       const tw = 643 + W * 0.8 + (r() - 0.5) * 20, tr = 675 + W * 0.9 + (r() - 0.5) * 20;
       if (opt.water) {
@@ -418,12 +422,13 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       bed = late(Math.max(1293 + Z * 0.3, tvStart + 40));
       const table = [...ms];
       for (let i = 0; i < guests; i++) table.push(guest(dinner - 12 + i * 3, bed - 8 + i));
-      lit(K, 1080 + E * 0.3, dinner + 45);
+      lit(K, 1080 + E * 0.3, Math.max(dinner + 45, bed));
       meal(K, dinner, 36, table);
       // Volets à la tombée de la nuit, ou avant d'aller se coucher quand la nuit tombe plus tard (été).
       const nightfall = Math.min(Math.max(day.sunset + 20, 1086), bed - 5);
       closeShutters(K, nightfall, 0);
       closeShutters(L, nightfall + 1.6, 0);
+      drawCurt(L, nightfall + 3.4, 0); // les rideaux ouverts le matin se tirent le soir
       if (C) shut(C, nightfall + 3.5, 0);
       evening(tvStart, bed, table);
       if (C) lit(C, bed - 3, bed + 24);
@@ -462,6 +467,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       } else {
         bed = tA + 69;
         lit(L, tA, bed, 'cool');
+        drawCurt(L, tA + 1, 0);
         fill(tA + 1, tA + 26, L, 'table', 0, { seat: 0, party: 1, desk: true });
       }
       break;
@@ -498,8 +504,10 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       for (let i = 0; i < guests; i++) table.push(guest(dinner - 12 + i * 3, Math.min(bed - 8 + i, 1500)));
       meal(K, dinner, 38, table);
       const after = dinner + 40;
-      if (party0) party(1290, 1578, 3);
-      else {
+      if (party0) {
+        drawCurt(L, 1270, 0); // rideaux tirés avant l'arrivée des invités
+        party(1290, 1578, 3);
+      } else {
         evening(Math.max(1278 + E * 0.3, after + 2), Math.max(bed - 6, after + 40), table);
         if (r() < ROUTINE_SMOKE) {
           if (d.balcony && !day.wet) {
@@ -529,6 +537,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
         leave(outing, 0);
         back = Math.max(back, outing + 90);
       } else {
+        lit(L, wake + 1, wake + 48); // salon allumé au lever, éteint en partant
         win(L, wake + 46, 0);
         leave(wake + 48, 0);
       }
