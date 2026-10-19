@@ -31,8 +31,8 @@ const SHELF = 'rgba(60,30,30,0.6)';
 const SHELF_BACK = 'rgba(60,30,30,0.45)';
 const VOILE = 'rgba(255,248,230,0.45)';
 // Garde-corps : hauteur de la rambarde (filant / balconnet) et pas des barreaux, comme `paintBalcony`.
-const RAIL_H = { filant: 5.5, balconnet: 4 } as const;
-const BAR_STEP = 1.5;
+export const RAIL_H = { filant: 5.5, balconnet: 4 } as const;
+export const BAR_STEP = 1.5;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 // Taille de la lueur arrondie au demi-pixel : une définition partagée par toutes les fenêtres de même gabarit.
@@ -123,7 +123,7 @@ const rectPath = (x: number, y: number, w: number, h: number): string => `M${x} 
 export const curtainWidth = (w: number): number => clamp(w * 0.22, 1, 1.8);
 // Menuiserie d'une fenêtre : cadre, meneau, traverse si h ≥ 8 (comme `paintDayWindow`) ; lucarne : jamais de traverse
 // (comme sa vitre de jour, `paintGlass` de roof-painter).
-const joineryPath = ({ x, y, w, h, kind }: FacadeWindow): string => `${rectPath(x, y, w, h)}M${x + w / 2} ${y}v${h}${h >= 8 && kind !== 'dormer' ? `M${x} ${y + h * 0.33}h${w}` : ''}`;
+export const joineryPath = ({ x, y, w, h, kind }: FacadeWindow): string => `${rectPath(x, y, w, h)}M${x + w / 2} ${y}v${h}${h >= 8 && kind !== 'dormer' ? `M${x} ${y + h * 0.33}h${w}` : ''}`;
 
 // Vitres éteintes d'un immeuble la nuit : chemins couvrant toutes ses vitres et lucarnes (`windows` : étages, cage,
 // entresol, lucarnes vitrées ; œils-de-bœuf de `dormers`) : vitre sombre, reflet, ombre du linteau, rideaux des logements
@@ -225,8 +225,8 @@ function Prop({ kind, x, y, w, h }: { kind: 'lamp' | 'plant' | 'shelf'; x: numbe
 // Balcon devant une fenêtre (étage noble ou filant : porte-fenêtre ; balconnet : fenêtre courante) : `by` dessus de la
 // dalle, `rh` hauteur du garde-corps, `x0` premier barreau devant la vitre (pas 1,5 ; filant : barreaux depuis
 // `x de la façade + 1,5 + 0,8` comme `paintBalcony`, approchés depuis la fenêtre quand ce x n'est pas connu).
-type Balcony = { by: number; rh: number; x0: number };
-function balconyOf(win: FacadeWindow, level: Level | null, facadeX?: number): Balcony | null {
+export type Balcony = { by: number; rh: number; x0: number };
+export function balconyOf(win: FacadeWindow, level: Level | null, facadeX?: number): Balcony | null {
   if (!level || level.balcony === 'none') return null;
   if (level.balcony === 'filant' && win.kind === 'french') {
     const first = facadeX !== undefined ? facadeX + 2.3 : win.x + 0.35;
@@ -265,7 +265,8 @@ function LitBalcony({ win, balcony }: { win: FacadeWindow; balcony: Balcony }): 
 // jardinière et balcon éclairés. `level` : étage (balcon devant la fenêtre), null pour lucarnes et socle ; `facadeX` : x de
 // la façade (barreaux d'un balcon filant au même pas que ceux de la vitre éteinte : aucun saut pendant le fondu) ; `glow` :
 // définition de la lueur à sa taille, à hauteur bornée pour l'étage 0 et le socle (glowBound : rien sous le plancher) ;
-// `curtains` faux (logements vivants) : ni voilage ni rideau, dessinés par le calque de la vie aux fenêtres.
+// `curtains` faux (logements vivants) : ni voilage ni rideau, dessinés par le calque de la vie aux fenêtres, ni silhouette
+// tirée du chantier 1 (les pantins de ce calque l'habitent).
 export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = true }: { win: FacadeWindow; home: Home | null; level: Level | null; facadeX?: number; tone: LightTone; glow: string; curtains?: boolean }): ReactElement {
   const { x, y, w, h } = win;
   const tv = tone === 'tv';
@@ -290,7 +291,7 @@ export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = tr
         </>
       )}
       {prop && <Prop kind={prop} x={x} y={y} w={w} h={h} />}
-      {windowFigure(win, home) && (
+      {curtains && windowFigure(win, home) && (
         <g data-figure="" fill="#3A2018">
           <circle cx={x + w / 2} cy={y + h * 0.45} r={Math.min(w, h) * 0.16} />
           <rect x={x + w * 0.3} y={y + h * 0.6} width={w * 0.4} height={h * 0.4} />

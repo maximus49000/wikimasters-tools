@@ -59,6 +59,8 @@ import { useWallClockLoop } from './use-wallclock-loop';
 import { HALL_TIMER_S, crossingDoorX, hallLit, seedHallTimers, seedStairFloors, stairFloorsLit, stairNewPassage } from '../core/library/city/hall-lights';
 import { HallLights, hallTransition } from './hall-lights';
 import { StairLights, stairTransition } from './stair-lights';
+import { useSceneLife } from './use-scene-life';
+import { WindowLifeLayer } from './window-life';
 
 // Vie de la scène Ville : passants, habitants qui sortent de leur immeuble ou y rentrent, deux files de circulation,
 // les événements de la ville (vague 1b-i), les clients des commerces et l'équipe d'un chantier (vague 1b-iv-a,
@@ -328,6 +330,11 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Commerces : deux visites par local (seulement si la rue a des commerces) ; probabilité d'une visite recalculée à la minute,
   // nulle si le local n'est pas ouvert, et en mouvement réduit (aucun client ne bouge).
   const shops = useStreetShops(width, height, seed, city);
+  // Vie des logements (même objet que celui du calque des fenêtres de CityScene : cache partagé de use-scene-life) : vie
+  // derrière les fenêtres, Ghibli seulement. Déménagement : un local de la rue change de commerce aujourd'hui.
+  const life = useSceneLife(facades, city, seed, shops.street.some((s) => s.change !== null));
+  // Ciel de mauvais temps (RoomView : précipitations 0,1 par temps couvert, 0,7 sous la pluie) : on allume en plein jour.
+  const gloom = city.precip > 0 || city.storm;
   // Bouts de trajet des clients : les entrées d'immeubles (centres), comme les habitants.
   const doorCenters = useMemo(() => doors.map((d) => d.x + DOOR_WIDTH / 2), [doors]);
   const allVisits = useMemo(
@@ -791,6 +798,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       <g data-city-events-back="">
         {/* Cages d'escalier (minuterie des halls) : fenêtres de la façade, donc sous tout le ciel qui peut passer devant. */}
         <StairLights stairs={stairs} ghibli={ghibli} still={still} lit={(x, k) => k < stairFloors(x, t0!)} />
+        {/* Vie derrière les fenêtres (pantins, volets, rideaux) : sur les fenêtres du décor, sous tout le ciel animé. */}
+        {ghibli && life && <WindowLifeLayer facades={facades} life={life} sky={sky} minutes={city.minutes} still={still} width={width} gloom={gloom} />}
         {/* Mouettes (G5) : derrière les immeubles, au fond du ciel, sous la grue, les engins du ciel (cerf-volant, ballons, père Noël,
             défilé aérien) et le feu d'artifice. */}
         <GullsLayer width={width} height={height} seed={seed} sky={sky} facades={facades} ground={metrics.ground} minutes={city.minutes} rain={gullRain} still={still} frozenT={frozen.current ?? 0} ghibli={ghibli} />

@@ -65,6 +65,10 @@ const SASH_SKEW = 17.745;
 const SASH_W = 0.95;
 // Nombre d'ampoules de la guirlande et seuil d'allumage de leur cycle de 2 s.
 const BULBS = 7;
+// Ampoule `i` de la guirlande allumée à l'instant `blink` (s) : 1,3 s sur 2, décalée par ampoule.
+export const bulbOn = (blink: number, i: number): number => on(((blink * 1.5 + i * 0.7) % 2) < 1.3);
+// Lueur de l'écran de télé (opacité du blanc) : scintille quand la pièce est à la télé (`flicker` en secondes), sinon 0.
+export const tvGlow = (tone: LightTone, flicker: number): number => n(tone === 'tv' ? 0.75 + 0.2 * Math.sin(flicker * 9) : 0);
 // Ambiance de nuit (notes.md : amb(c) = mix(c, #1E2A5A, 0,64)) : un voile de cette couleur à l'opacité 0,64 × `dark`,
 // superposé aux seules formes colorées d'un composant, compose exactement amb(c) à la nuit pleine — un nœud, sans
 // changer les couleurs des formes ; ce qui éclaire (lames éclairées, braise, fumée, eau, écrans allumés) reste au-dessus.
@@ -108,6 +112,8 @@ export function figureHeight(win: Pick<FacadeWindow, 'h' | 'kind'>): number {
 // contre le mur, miroir à −0,5 décalé de 0,6 px). Le vantail droit est dessiné en miroir par son groupe parent.
 export const shutterTransform = (open: number, kind: ShutterKind = 'persienne'): string =>
   kind === 'persienne' ? `scale(${n(1 - open)} 1)` : `translate(${n(-BATTANT_GAP * open)} 0) scale(${n(1 - BATTANT_FOLD * open)} 1)`;
+// Lames éclairées (1) ou sombres (0) : persienne dès que la pièce est allumée derrière, battant seulement plus fermé qu'ouvert.
+export const shutterLit = (kind: ShutterKind, open: number, litBehind: boolean): number => on(kind === 'persienne' ? litBehind : litBehind && open < 0.5);
 
 // Un vantail : face, lames sombres et lames éclairées (l'une transparente), ombre du bord intérieur (persienne), contour.
 function Leaf({ kind, lw, h, face, slat, lit, edge, dark }: { kind: ShutterKind; lw: number; h: number; face: string; slat: string; lit: number; edge: string; dark: number }): ReactElement {
@@ -135,7 +141,7 @@ export function Shutters({ win, kind, color, open, litBehind, dark = 0 }: { win:
   const { x, y, w, h } = win;
   const c = hex(color);
   const lw = w / 2;
-  const lit = on(kind === 'persienne' ? litBehind : litBehind && open < 0.5);
+  const lit = shutterLit(kind, open, litBehind);
   const slat = css(shade(c, kind === 'persienne' ? 0.55 : 0.5));
   const edge = css(shade(c, 0.35));
   const t = shutterTransform(open, kind);
@@ -183,6 +189,22 @@ export function Sash({ win, open, night, dark = 0 }: { win: FacadeWindow; open: 
 export const curtainOpenWidth = curtainWidth;
 const curtainDrawnWidth = (w: number): number => w / 2 + 0.2;
 
+// Attributs des rideaux qui changent avec leur position (`drawn`), l'allumage et la nuit : échelle des panneaux, étoffe de
+// jour / de nuit, plis, voilage allumé / de jour / de nuit et ses lignes. Partagés par `Curtains` (rendu) et la boucle du
+// calque de la vie aux fenêtres (écriture directe des attributs, sans re-rendu).
+export function curtainAttrs(w: number, drawn: number, lit: boolean, night: boolean): { sx: number; day: number; folds: number; voileLit: number; voileDay: number; voileNight: number; lines: number } {
+  const sheer = drawn < 0.5;
+  return {
+    sx: n(lerp(curtainOpenWidth(w), curtainDrawnWidth(w), drawn) / curtainDrawnWidth(w)),
+    day: on(lit || !night),
+    folds: on(drawn > 0.2),
+    voileLit: on(sheer && lit),
+    voileDay: on(sheer && !lit && !night),
+    voileNight: on(sheer && !lit && night),
+    lines: on(sheer && (lit || !night)),
+  };
+}
+
 // Un panneau dans le repère de son bord extérieur : étoffe de jour (ou allumée) et de nuit éteinte (l'une transparente),
 // plis (dès que le rideau est un peu tiré ; ils se resserrent quand il est ouvert), ombre du bord intérieur.
 function Panel({ W, h, color, nightColor, day, folds }: { W: number; h: number; color: string; nightColor: string; day: number; folds: number }): ReactElement {
@@ -192,7 +214,7 @@ function Panel({ W, h, color, nightColor, day, folds }: { W: number; h: number; 
     <>
       <rect data-curtain-day="" width={n(W)} height={n(h)} fill={color} opacity={day} />
       <rect data-curtain-night="" width={n(W)} height={n(h)} fill={nightColor} opacity={1 - day} />
-      <path d={d} fill="none" stroke={CURTAIN_FOLD} strokeWidth={0.35} opacity={folds} />
+      <path data-curtain-folds="" d={d} fill="none" stroke={CURTAIN_FOLD} strokeWidth={0.35} opacity={folds} />
       <path d={`M${n(W - 0.2)} 0v${n(h)}`} fill="none" stroke={CURTAIN_EDGE} strokeWidth={0.4} vectorEffect="non-scaling-stroke" />
     </>
   );
@@ -204,21 +226,19 @@ function Panel({ W, h, color, nightColor, day, folds }: { W: number; h: number; 
 export function Curtains({ win, style, color, drawn, lit, wall, night = lit }: { win: FacadeWindow; style: 'side' | 'voile'; color: string; drawn: number; lit: boolean; wall: string; night?: boolean }): ReactElement {
   const { x, y, w, h } = win;
   const W = curtainDrawnWidth(w);
-  const sx = n(lerp(curtainOpenWidth(w), W, drawn) / W);
-  const day = on(lit || !night);
-  const folds = on(drawn > 0.2);
-  const panel = { W, h, color, nightColor: nightCurtain(color, wall), day, folds };
-  const sheer = drawn < 0.5;
+  const a = curtainAttrs(w, drawn, lit, night);
+  const sx = a.sx;
+  const panel = { W, h, color, nightColor: nightCurtain(color, wall), day: a.day, folds: a.folds };
   let lines = '';
   if (style === 'voile') for (let k = 1; k < w; k += 1.6) lines += `M${n(x + k)} ${n(y)}L${n(x + k - 0.6)} ${n(y + h)}`;
   return (
     <g data-curtains={style}>
       {style === 'voile' && (
         <>
-          <rect data-voile-lit="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={VOILE_LIT} opacity={on(sheer && lit)} />
-          <rect data-voile-day="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={VOILE_DAY} opacity={on(sheer && !lit && !night)} />
-          <rect data-voile-night="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={nightVoile(wall)} opacity={on(sheer && !lit && night)} />
-          <path d={lines} fill="none" stroke={VOILE_LINES} strokeWidth={0.4} opacity={on(sheer && (lit || !night))} />
+          <rect data-voile-lit="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={VOILE_LIT} opacity={a.voileLit} />
+          <rect data-voile-day="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={VOILE_DAY} opacity={a.voileDay} />
+          <rect data-voile-night="" x={n(x)} y={n(y)} width={n(w)} height={n(h)} fill={nightVoile(wall)} opacity={a.voileNight} />
+          <path data-voile-lines="" d={lines} fill="none" stroke={VOILE_LINES} strokeWidth={0.4} opacity={a.lines} />
         </>
       )}
       <g data-curtain-panel="" transform={`translate(${n(x)} ${n(y)}) scale(${sx} 1)`}>
@@ -276,7 +296,7 @@ export function Sapin({ win, night, blink }: { win: FacadeWindow; night: boolean
     cx: cx + (((i * 37) % 7) - 3) * (H * 0.06),
     cy: fl - H * (0.3 + (i % 4) * 0.17),
     c: GARLAND[i % 5]!,
-    lit: on(((blink * 1.5 + i * 0.7) % 2) < 1.3),
+    lit: bulbOn(blink, i),
   }));
   return (
     <g data-sapin="">
@@ -324,7 +344,7 @@ export function InteriorProp({ win, kind, tone, flicker, dark = 0 }: { win: Faca
     // Maquette : télé à 0,34 × 2,2 largeurs à gauche du spectateur assis à +0,22 : près du bord gauche de la vitre.
     const tx = ax - w * 0.4;
     const ty = fl - hh * 0.55;
-    const glow = tone === 'tv' ? 0.75 + 0.2 * Math.sin(flicker * 9) : 0;
+    const glow = tvGlow(tone, flicker);
     return (
       <g data-interior-prop="tv">
         <rect x={n(tx - 1.6)} y={n(fl - hh * 0.3)} width={3.2} height={n(hh * 0.3)} fill={SILH} />
@@ -344,6 +364,13 @@ export function InteriorProp({ win, kind, tone, flicker, dark = 0 }: { win: Faca
   );
 }
 
+// Volute de la cigarette à l'avancement `phase` de la bouffée (0 → 1 : elle monte et se dilue ; < 0 : pas de fumée) :
+// attributs du disque `[data-puff]`, partagés avec la boucle du calque de la vie aux fenêtres.
+export function puffAttrs(phase: number): { transform: string; opacity: number } {
+  const puff = Math.min(1, Math.max(0, phase));
+  return { transform: `translate(${n(1.5 + puff * 4)} ${n(-4 - puff * 5)}) scale(${n(0.8 + puff * 2)})`, opacity: n(phase < 0 ? 0 : 0.5 * (1 - puff)) };
+}
+
 // Accessoire dans la main (`at` : main droite du pantin, en coordonnées de la scène) ; la nuit, en silhouette.
 // `phase` : cigarette = avancement de la bouffée (0 → 1 : la volute monte et se dilue ; < 0 : pas de fumée) ; arrosoir =
 // 1 quand il verse (filet d'eau) ; tapis = phase de l'ondulation (radians) ; sans effet pour la cuillère, le livre, la tasse.
@@ -353,13 +380,13 @@ export function HeldProp({ kind, at, phase, night, dark = 0 }: { kind: HandProp;
   const sil = night ? SILH : null;
   const dv = { 'data-dark-veil': '', fill: DARK_VEIL, opacity: veil(dark) } as const;
   if (kind === 'cigarette') {
-    const puff = Math.min(1, Math.max(0, phase));
+    const puff = puffAttrs(phase);
     return (
       <g data-held-prop="cigarette" transform={t}>
         <path d="M0 -0.3h1.8" stroke={sil ?? CUP} strokeWidth={0.4} />
         <path d="M0 -0.3h1.8" stroke={DARK_VEIL} strokeWidth={0.4} opacity={veil(dark)} />
         <circle cx={1.9} cy={-0.3} r={0.45} fill={EMBER} />
-        <circle data-puff="" r={1} fill={night ? SMOKE_NIGHT : SMOKE_DAY} transform={`translate(${n(1.5 + puff * 4)} ${n(-4 - puff * 5)}) scale(${n(0.8 + puff * 2)})`} opacity={n(phase < 0 ? 0 : 0.5 * (1 - puff))} />
+        <circle data-puff="" r={1} fill={night ? SMOKE_NIGHT : SMOKE_DAY} transform={puff.transform} opacity={puff.opacity} />
       </g>
     );
   }

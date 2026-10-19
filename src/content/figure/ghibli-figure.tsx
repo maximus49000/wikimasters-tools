@@ -34,11 +34,13 @@ export const citizenLight = (sky: Sky): number => NIGHT_LIGHT + (1 - NIGHT_LIGHT
 
 // Allure du pantin 2D (G5) : `santa` : tenue du père Noël (bottes noires ; les cases de la tenue sont toujours présentes, la
 // clé de palette est complète) ; `haze` (0–1) : pantin lointain, couleurs mélangées au bleu de brume du décor du fond
-// (#9CC0E4) avant la teinte du moment.
-export type FigureLook = { santa?: boolean; haze?: number };
+// (#9CC0E4) avant la teinte du moment ; `silhouette` : palette unie SILHOUETTE (contre-jour derrière une fenêtre allumée la
+// nuit, vie aux fenêtres), sans teinte du moment.
+export type FigureLook = { santa?: boolean; haze?: number; silhouette?: boolean };
 const HAZE = '#9CC0E4';
+export const SILHOUETTE = '#1A1422';
 export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, c3d?: { key: string; light: number }, look: FigureLook = {}): Palette {
-  const { santa = false, haze = 0 } = look;
+  const { santa = false, haze = 0, silhouette = false } = look;
   const lit: Sky = { ...sky, daylight: step(sky.daylight) };
   const t = (c: string): string => tone(haze > 0 ? mixHex(c, HAZE, haze) : c, lit);
   const slots: Record<string, string> = {
@@ -68,6 +70,7 @@ export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, c3d?: { key: 
     p[`f-${k}`] = t(c);
     p[`fs-${k}`] = t(shadeOf(c));
   }
+  if (silhouette) for (const k of Object.keys(p)) p[k] = SILHOUETTE;
   if (CITIZENS_3D && c3d) {
     p.c3d = c3d.key;
     p['c3d-light'] = String(step(c3d.light));
@@ -281,7 +284,8 @@ function track(reg: FigureRegistry, node: Element, pk: string, key: FigureKey, w
 // `work` : tenue de travail (dans la signature) ; `santa` : tenue du père Noël (dans la signature et la palette) ; `held` :
 // objets tenus, posés aux accroches de la pose affichée dès le rendu (les foules immobiles n'appellent jamais poseFigure),
 // déplacés ensuite par poseFigure, cachés avec la figure. `santa` et `haze` (pantin voilé de brume) : toujours le pantin 2D,
-// même avec CITIZENS_3D (pas de base 3D du père Noël, pas de brume sur les sprites 3D).
+// même avec CITIZENS_3D (pas de base 3D du père Noël, pas de brume sur les sprites 3D) ; de même `flat` (pantin derrière une
+// vitre, vie aux fenêtres : jamais la 3D) et `silhouette` (palette unie SILHOUETTE, contre-jour de nuit).
 // Habitants 3D : `citizen` (graine ; défaut : hachage de la tenue), `kind` (enfant, ancien…), `emotion` (humeur du visage),
 // `waitFor3D` (aucune image tant que la 3D peut arriver, WAIT3D_FALLBACK_MS au plus, puis pantin), `pin` (accroche 3D posée
 // sur celle du pantin : selle du cycliste).
@@ -303,6 +307,8 @@ export function GhibliFigure({
   sex,
   beard,
   pin,
+  flat = false,
+  silhouette = false,
 }: {
   outfit: Outfit;
   sky: Sky;
@@ -321,14 +327,16 @@ export function GhibliFigure({
   sex?: 'm' | 'f';
   beard?: boolean;
   pin?: Anchor;
+  flat?: boolean;
+  silhouette?: boolean;
 }): ReactElement {
   const reg = useFigureRegistry();
   if (useContext(EnterWait3D)) waitFor3D = true;
   const ref = useRef<SVGGElement | null>(null);
   const sig = signatureOf(shapeOf(outfit, umbrella, work, santa));
   const pk = reg.addPalette(
-    santa || haze > 0
-      ? figurePalette(outfit, sky, rainy, undefined, { santa, haze })
+    santa || haze > 0 || flat || silhouette
+      ? figurePalette(outfit, sky, rainy, undefined, { santa, haze, silhouette })
       : citizenPalette(reg, outfit, sky, rainy, umbrella, work, { citizen, kind, emotion, sex, beard }),
   );
   const key = keyOf(sig, initial);
