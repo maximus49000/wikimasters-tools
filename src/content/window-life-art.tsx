@@ -80,6 +80,9 @@ const hex = hexRgb;
 const css = (c: readonly [number, number, number]): string => rgba(c, 1);
 const rectPath = (x: number, y: number, w: number, h: number): string => `M${n(x)} ${n(y)}h${n(w)}v${n(h)}h${n(-w)}z`;
 const disc = (cx: number, cy: number, r: number): string => `M${n(cx - r)} ${n(cy)}a${r} ${r} 0 1 0 ${n(2 * r)} 0a${r} ${r} 0 1 0 ${n(-2 * r)} 0z`;
+// Disque tracé dans le sens horaire (sweep 1), celui de `rectPath` : un voile qui réunit un rect et des disques garde un
+// winding non nul là où ils se chevauchent (remplissage nonzero), sinon la zone commune reste non voilée.
+const discCw = (cx: number, cy: number, r: number): string => `M${n(cx - r)} ${n(cy)}a${r} ${r} 0 1 1 ${n(2 * r)} 0a${r} ${r} 0 1 1 ${n(-2 * r)} 0z`;
 const on = (v: boolean): number => (v ? 1 : 0);
 const veil = (dark: number): number => n(DARK_ALPHA * Math.min(1, Math.max(0, dark)));
 
@@ -251,7 +254,7 @@ export function FlowerBox({ win, month, seed, dark = 0 }: { win: FacadeWindow; m
     <g data-flower-box="">
       <rect x={n(bx)} y={n(by)} width={n(bw)} height={1.6} fill={BOX} stroke={INK} strokeWidth={0.4} />
       {flowers.map((f, i) => <circle key={i} data-flower="" cx={n(f.cx)} cy={n(f.cy)} r={0.7} fill={f.c} />)}
-      <path data-dark-veil="" d={rectPath(bx, by, bw, 1.6) + flowers.map((f) => disc(f.cx, f.cy, 0.7)).join('')} fill={DARK_VEIL} opacity={veil(dark)} />
+      <path data-dark-veil="" d={rectPath(bx, by, bw, 1.6) + flowers.map((f) => discCw(f.cx, f.cy, 0.7)).join('')} fill={DARK_VEIL} opacity={veil(dark)} />
     </g>
   );
 }

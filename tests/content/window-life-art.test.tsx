@@ -184,6 +184,15 @@ describe('jardinière, sapin, accessoires', () => {
     expect(colours(7)).not.toEqual(colours(10));
   });
 
+  it('FlowerBox : le voile de nuit couvre aussi les fleurs qui chevauchent le bac (disques dans le sens du rect)', () => {
+    render(<FlowerBox win={win} month={7} seed={2} dark={1} />);
+    const d = svg().querySelector('[data-flower-box] [data-dark-veil]')!.getAttribute('d')!;
+    // Rect horaire (droite, bas, gauche) puis 6 disques en deux arcs horaires chacun (sweep 1), aucun arc anti-horaire.
+    expect(d).toMatch(/^M[\d.]+ [\d.]+h[\d.]+v1\.6h-[\d.]+z/);
+    expect(d.match(/a0\.7 0\.7 0 1 1 /g)?.length).toBe(12);
+    expect(d).not.toContain(' 0 1 0 ');
+  });
+
   it('FlowerBox : même graine, même dessin', () => {
     render(<FlowerBox win={win} month={6} seed={3} />);
     const a = html();
