@@ -10,6 +10,8 @@ import { GlowDefs, LitWindow, NightGlass, glowBound, glowId, glowSize } from './
 import { lifeStates, useToneMemory, windowLight, type SceneLife } from './use-scene-life';
 import type { HomeState } from '../core/library/city/home-state';
 import { windowShutters } from './window-life-art';
+import type { FondMoment } from '../core/library/paint/fond-time';
+import { farLightK } from '../core/library/paint/fond-vie';
 
 // Calque des fenêtres de la ville peinte (vague Ghibli), hors filtre d'étalonnage, au-dessus des tranches du décor. Ordre :
 // 1. lumières du mur du fond : celles du plan peint (sous l'égout, privées de celles que cache le premier plan, farTops de
@@ -25,8 +27,9 @@ import { windowShutters } from './window-life-art';
 // d'escalier (minuterie des halls) est dans le calque des halls ; l'entresol ne s'allume jamais.
 const FADE = 'opacity 4s ease';
 
-function FarLight({ win, lit, dim, farLight }: { win: FarWindow; lit: boolean; dim: number; farLight: number }): ReactElement {
-  return <rect data-far-lamp="" data-lit={lit ? 'true' : 'false'} x={win.x} y={win.y} width={FAR_WINDOW.w} height={FAR_WINDOW.h} fill={win.blue ? '#C4D8FF' : '#FFDFA0'} opacity={lit ? dim * farLight : 0} style={{ transition: FADE }} />;
+// `shut` : part de la lumière qui passe les volets (fond vivant : 15 % derrière un volet fermé, farLightK de fond-vie.ts).
+function FarLight({ win, lit, dim, farLight, shut = 1 }: { win: FarWindow; lit: boolean; dim: number; farLight: number; shut?: number }): ReactElement {
+  return <rect data-far-lamp="" data-lit={lit ? 'true' : 'false'} x={win.x} y={win.y} width={FAR_WINDOW.w} height={FAR_WINDOW.h} fill={win.blue ? '#C4D8FF' : '#FFDFA0'} opacity={lit ? Number((dim * farLight * shut).toFixed(3)) : 0} style={{ transition: FADE }} />;
 }
 
 const hex = (c: Rgb): string => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
@@ -61,9 +64,10 @@ function slotsOf(buildings: readonly Facade[]): Slot[] {
 }
 
 // `plan` : plan peint de la ville (mur recoloré de la 2e tour d'un socle, pierre du socle) ; sans plan, mur de la mise en page.
+// `moment` : instant du fond vivant des tranches (volets du mur du fond : la lumière passe à 15 % derrière un volet fermé).
 // `life` : vie des logements (mêmes `buildings`) ; null ou absent : allumage du chantier 1. `states` : états des logements à
 // `minutes` déjà calculés par l'appelant (lifeStates, une fois par minute) ; absents, calculés ici.
-export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, farLight, plan, life, states: given }: { buildings: Facade[]; minutes: number; day: WindowDay | undefined; daylight: number; gloom: boolean; dim: number; farLight: number; plan?: Pick<CityPaintPlan, 'buildings' | 'podiums'> | null; life?: SceneLife | null; states?: ReadonlyMap<string, HomeState> | null }): ReactElement {
+export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, farLight, plan, life, states: given, moment }: { buildings: Facade[]; minutes: number; day: WindowDay | undefined; daylight: number; gloom: boolean; dim: number; farLight: number; plan?: Pick<CityPaintPlan, 'buildings' | 'podiums'> | null; life?: SceneLife | null; states?: ReadonlyMap<string, HomeState> | null; moment?: FondMoment }): ReactElement {
   const prefix = `w${useId().replace(/:/g, '')}`;
   const slots = useMemo(() => slotsOf(buildings), [buildings]);
   // Une lueur par taille de fenêtre (arrondie au demi-pixel) et hauteur bornée, partagée par <use>.
@@ -98,7 +102,7 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
   return (
     <g data-ghibli-windows="">
       <GlowDefs prefix={prefix} sizes={sizes} />
-      {(plan ? plan.buildings.map((b) => b.lit) : buildings.map((b) => b.farWindows)).map((wins, i) => wins.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} />))}
+      {(plan ? plan.buildings.map((b) => b.lit) : buildings.map((b) => b.farWindows)).map((wins, i) => wins.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} shut={plan && moment ? farLightK(plan.buildings[i]!, win, moment) : 1} />))}
       {panes.map((p) => <NightGlass key={p.key} layout={p.layout} wall={p.wall} opacity={glass} curtains={!life} />)}
       {slots.map(({ win, home, level, facadeX, dMax, group }, k) => {
         const light = life && states ? windowLight(life, states, group, win.bay, dark, tones, String(k), home.tone) : null;

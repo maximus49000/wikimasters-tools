@@ -709,7 +709,7 @@ function paintParked(ctx: PaintCtx, e: Escape, D: FondMoment, seed: number): voi
     rect(ink(0.8), 0.6, -0.4, 1, 0.6);
   }
 }
-// Moulin (tour, toit, ailes figées : elles tourneront au vent en PR 2b).
+// Moulin (tour, toit) ; les ailes tournent au vent dans le calque de la vie du fond (fond-vie.ts, fond-life.tsx).
 function paintMill(ctx: PaintCtx, m: NonNullable<Escape['mill']>, D: FondMoment): void {
   const { x, y, s } = m;
   const hz = 0.34;
@@ -723,35 +723,6 @@ function paintMill(ctx: PaintCtx, m: NonNullable<Escape['mill']>, D: FondMoment)
   fillRect(ctx, haze(GLASS_FAR, 0.4), x - 0.7 * s, y - 8 * s, 1.4 * s, 1.6 * s);
   inkPath(ctx, [[x - 4 * s, y], [x - 3 * s, y - 12 * s], [x + 3 * s, y - 12 * s], [x + 4 * s, y]], 0.6, 0.8 - hz, true);
   if (D.meteo.snow) poly(ctx, SNOW, [[x - 4 * s, y - 12 * s], [x, y - 16 * s], [x + 4 * s, y - 12 * s], [x + 4 * s, y - 12.8 * s], [x, y - 16.8 * s], [x - 4 * s, y - 12.8 * s]]);
-  paintMillSails(ctx, m, m.phase);
-}
-// Ailes du moulin à l'angle `ang` (sans vent : `phase`).
-export function paintMillSails(ctx: PaintCtx, m: NonNullable<Escape['mill']>, ang: number): void {
-  const hz = 0.34;
-  const s = m.s;
-  const hub = { x: m.x - 0.5 * s, y: m.y - 13 * s };
-  ctx.strokeStyle = ink(0.8 - hz);
-  for (let k = 0; k < 4; k++) {
-    const a = ang + (k * Math.PI) / 2;
-    const ex = hub.x + Math.cos(a) * 9 * s;
-    const ey = hub.y + Math.sin(a) * 9 * s;
-    ctx.lineWidth = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(hub.x, hub.y);
-    ctx.lineTo(ex, ey);
-    ctx.stroke();
-    ctx.fillStyle = rgba(haze(hexRgb('#F0E8D0'), hz), 0.85);
-    ctx.beginPath();
-    ctx.moveTo(hub.x + Math.cos(a) * 2 * s, hub.y + Math.sin(a) * 2 * s);
-    ctx.lineTo(ex, ey);
-    ctx.lineTo(ex + Math.cos(a + Math.PI / 2) * 2.2 * s, ey + Math.sin(a + Math.PI / 2) * 2.2 * s);
-    ctx.lineTo(hub.x + Math.cos(a) * 2 * s + Math.cos(a + Math.PI / 2) * 2.2 * s, hub.y + Math.sin(a) * 2 * s + Math.sin(a + Math.PI / 2) * 2.2 * s);
-    ctx.closePath();
-    ctx.fill();
-    ctx.lineWidth = 0.35;
-    ctx.stroke();
-  }
-  disc(ctx, ink(0.85 - hz), hub.x, hub.y, 0.8 * s);
 }
 export function paintReservoir(ctx: PaintCtx, r: { x: number; y: number; s: number; hz: number }, D: FondMoment): void {
   const { x, y, s, hz } = r;
