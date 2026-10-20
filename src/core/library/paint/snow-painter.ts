@@ -11,7 +11,7 @@ import { roofOutlineOf } from './roof-painter';
 // Toits (sous la ligne de toit, jamais au-dessus), cheminées, rebords de fenêtres, trottoirs et rue, crête de la colline et
 // toits des maisons du fond (décor cellulo). Chaque immeuble et chaque case du sol a son propre générateur : deux tranches
 // voisines peignent la même chose sur leur bord commun.
-export const SNOW_VERSION = 4;
+export const SNOW_VERSION = 5;
 
 const SNOW = hexRgb('#F4F8FC');
 const SNOW_SHADE = hexRgb('#D8E2EE');
@@ -361,10 +361,11 @@ export function paintHillSnow(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1
 export function paintSnowTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number): void {
   const x0 = tile * TILE;
   const x1 = Math.min(plan.width, (tile + 1) * TILE);
-  const { buildings, houses } = tileItems(plan, tile);
+  const { buildings, houses, fondHouses } = tileItems(plan, tile);
   // Tous les immeubles du premier plan du monde (pas seulement ceux de la tranche) : même décision d'une tranche à l'autre.
   const near = plan.buildings.filter((x) => !x.far);
-  paintHillSnow(ctx, plan, x0, x1, houses);
+  // Maisons du fond vivant (rang de crête, échappée) comprises.
+  paintHillSnow(ctx, plan, x0, x1, [...houses, ...fondHouses]);
   for (const b of buildings.filter((x) => x.far)) paintRoofSnow(ctx, plan, b, near);
   for (const b of buildings.filter((x) => !x.far)) paintRoofSnow(ctx, plan, b);
   paintGroundSnow(ctx, plan, x0, x1);

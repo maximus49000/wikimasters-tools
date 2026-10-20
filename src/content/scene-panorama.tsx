@@ -132,8 +132,9 @@ function useActorLoop(root: RefObject<SVGGElement | null>, actors: Actor[], widt
 
 // Décor fixe : ciel, étoiles, soleil, lune et paysage. Il ne change qu'à la minute ; aucune animation n'y touche,
 // si bien que la copie `<use>` d’une fenêtre soulevée n’est pas recalculée à chaque image.
-function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, gloom = false, rainy = false, city, forcedNight = false }: PanoramaProps): ReactElement {
-  const props = { width, height, sky, minutes, seed, gloom, rainy, city, forcedNight };
+function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, gloom = false, rainy = false, city, forcedNight = false, weather }: PanoramaProps): ReactElement {
+  // `weather` : le fond vivant de la ville lit la neige posée et la météo une fois par minute (scene-city.tsx).
+  const props = { width, height, sky, minutes, seed, gloom, rainy, city, forcedNight, weather };
   const terrestrial = scene !== 'space' && scene !== 'earth';
   const [art] = useArtStyle();
   const ghibli = art === 'ghibli' && scene === 'city';

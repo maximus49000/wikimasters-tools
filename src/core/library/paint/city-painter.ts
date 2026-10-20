@@ -7,7 +7,10 @@ import { paintDayWindow, paintFacade } from './facade-painter';
 import { paintParisRoof } from './roof-painter';
 import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
-import { paintFarWall, paintHillGround, paintHillHouse, paintLandmark } from './hill-painter';
+import { paintFarWall } from './hill-painter';
+import { fondStates, paintFond } from './fond-painter';
+import type { FondHouse } from './fond-plan';
+import { DEFAULT_MOMENT, laundryK, shutterK, slotHours, type FondMoment } from './fond-time';
 import type { PaintCtx } from './paint-ctx';
 
 // Peintre de la ville (vague Ghibli, décor cellulo) : une tranche de TILE px du monde, en coordonnées du monde (l'appelant
@@ -15,7 +18,7 @@ import type { PaintCtx } from './paint-ctx';
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 10;
+export const PAINT_VERSION = 11;
 
 const LEAVES = ['#2A6A2E', '#52A23C', '#A8DC58'].map(hexRgb);
 const BARK = hexRgb('#9A8468');
@@ -29,7 +32,8 @@ export const tileCount = (width: number): number => Math.max(1, Math.ceil(width 
 // Corniche du socle des jumeaux : débord de chaque côté, hauteur au-dessus de `p.top`, hauteur totale, ombre dessous.
 export const CORNICE = { over: 1.5, up: 0.8, h: 3, drop: 2.5 } as const;
 
-export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; furniture: Furniture[]; doors: PlanDoor[] };
+// `fondHouses` : maisons du fond vivant hors du plan de la colline (rang de crête, maisons de l'échappée) : la neige posée les couvre.
+export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; furniture: Furniture[]; doors: PlanDoor[]; fondHouses: FondHouse[] };
 
 export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
   const x0 = tile * TILE - 2;
@@ -43,10 +47,48 @@ export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
     landmarks: plan.hill.landmarks.filter((l) => l.x - 3 < x1 && l.x + l.w + 3 > x0),
     furniture: plan.furniture.filter((f) => f.x - 10 < x1 && f.x + f.w + 10 > x0),
     doors: plan.doors.filter((d) => d.cx - 13 * d.s < x1 && d.cx + 13 * d.s > x0),
+    fondHouses: [...plan.fond.crestHouses, ...plan.fond.escapes.flatMap((e) => e.houses)].filter((h) => h.x - 2 < x1 && h.x + h.w + 2 > x0),
   };
 }
 
-export function tileKey(plan: CityPaintPlan, tile: number): string {
+// Signature du fond vivant de la tranche : ce que le plan y pose (il dépend de toute la largeur : échappées par bande,
+// comblement) ; deux plans de même signature peignent le même fond dans la tranche.
+function fondSig(plan: CityPaintPlan, tile: number): number {
+  const x0 = tile * TILE - 2;
+  const x1 = (tile + 1) * TILE + 2;
+  const parts: string[] = [];
+  const box = (b: readonly number[] | undefined, k: string): void => {
+    if (b && b[2]! >= x0 && b[0]! <= x1) parts.push(`${k}${b.map((v) => v.toFixed(1)).join(':')}`);
+  };
+  for (const list of [...plan.fond.rowVerdure, plan.fond.crestVerdure]) for (const v of list) box(v.b, v.kind);
+  for (const e of plan.fond.escapes) if (e.span[1] >= x0 && e.span[0] <= x1) parts.push(`e${e.x.toFixed(1)}:${e.x1.toFixed(1)}`);
+  for (const h of plan.fond.crestHouses) if (h.x + h.w + 2 >= x0 && h.x - 2 <= x1) parts.push(`c${h.x.toFixed(1)}`);
+  for (const c of [...plan.fond.chapels, ...plan.fond.reservoirs]) if (c.x + 14 >= x0 && c.x - 10 <= x1) parts.push(`k${c.x.toFixed(1)}`);
+  return hashString(parts.join(','));
+}
+
+// États lents du mur du fond dans la tranche (volets, linge) au début de la tranche de 10 min.
+function farStates(plan: CityPaintPlan, buildings: readonly PaintBuilding[], D: FondMoment): string {
+  const T = slotHours(D.minutes);
+  const out: number[] = [];
+  for (const b of buildings) {
+    if (!b.far || !b.life) continue;
+    if (b.look.shutters) for (const w of b.life.wins) out.push(Math.round(shutterK(T, D, w) * 20));
+    if (b.life.laundryFloor !== null) out.push(Math.round(laundryK(T, D, String(Math.round(b.x * 8)), true, plan.seed) * 3));
+  }
+  return out.join('');
+}
+
+// Clé des états lents de la tranche (date, neige, poses de la tranche de 10 min) : elle ne change que si l'image change.
+export function momentKey(plan: CityPaintPlan, tile: number, D: FondMoment): string {
+  const x0 = tile * TILE;
+  const x1 = Math.min(plan.width, (tile + 1) * TILE);
+  const states = fondStates(plan, x0, x1, D) + '/' + farStates(plan, tileItems(plan, tile).buildings, D);
+  return `${D.date}|${D.meteo.snow ? 'neige' : ''}|${hashString(states).toString(36)}`;
+}
+
+// `moment` : instant du fond vivant (date, météo, heure) ; sans lui, la clé ne porte que le dessin du plan (neige posée).
+export function tileKey(plan: CityPaintPlan, tile: number, moment?: FondMoment): string {
   const it = tileItems(plan, tile);
   return [
     PAINT_VERSION,
@@ -56,21 +98,23 @@ export function tileKey(plan: CityPaintPlan, tile: number): string {
     Math.min(TILE, plan.width - tile * TILE),
     // Sans l'id : celui d'un immeuble du fond (index dans les façades) change quand la pièce grandit.
     // Travées de la mise en page et fenêtres du socle : elles suivent la partie visible et la porte d'un lot coupé au bord.
-    it.buildings.map((b) => `${b.far ? 'f' : ''}@${b.x.toFixed(1)}${b.layout ? `:${b.layout.bays.map((c) => c.toFixed(1)).join(';')}` : ''}`).join(','),
+    it.buildings.map((b) => `${b.far ? `f${b.top.toFixed(1)}` : ''}@${b.x.toFixed(1)}${b.layout ? `:${b.layout.bays.map((c) => c.toFixed(1)).join(';')}` : ''}`).join(','),
     it.podiums.map((p) => `${p.x.toFixed(1)}:${p.wins.map((w) => w.x.toFixed(1)).join(';')}`).join(','),
     it.trees.map((t) => `${t.x.toFixed(1)}:${t.r.toFixed(1)}`).join(','),
     it.houses.map((h) => `${h.row}${h.x.toFixed(1)}`).join(','),
     it.landmarks.map((l) => `${l.kind}${l.x.toFixed(1)}`).join(','),
     it.furniture.map((f) => `${f.kind}${f.x.toFixed(1)}`).join(','),
     it.doors.map((d) => `${d.variant}${d.x.toFixed(1)}`).join(','),
+    fondSig(plan, tile).toString(36),
+    ...(moment ? [momentKey(plan, tile, moment)] : []),
   ].join('|');
 }
 
 const rngOf = (plan: CityPaintPlan, salt: string, x: number) => mulberry32(plan.seed ^ hashString(salt) ^ Math.round(x * 8));
 
 // Immeuble : le fond garde son peintre (hill-painter) ; le premier plan est peint d'après sa mise en page, façade puis toit.
-export function paintBuilding(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding): void {
-  if (b.far) return paintFarWall(ctx, plan, b, leftOf(plan, b));
+export function paintBuilding(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding, moment: FondMoment = DEFAULT_MOMENT): void {
+  if (b.far) return paintFarWall(ctx, plan, b, leftOf(plan, b), moment);
   paintFacade(ctx, plan, b);
   paintParisRoof(ctx, plan, b);
 }
@@ -339,16 +383,13 @@ export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium):
   inkRect(ctx, cx, cy, cw, CORNICE.h, 0.7);
 }
 
-export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number): void {
+// `moment` : date, météo et heure du fond vivant (poses lentes lues au début de la tranche de 10 min).
+export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number, moment: FondMoment = DEFAULT_MOMENT): void {
   const it = tileItems(plan, tile);
   const x0 = tile * TILE;
   const x1 = Math.min(plan.width, (tile + 1) * TILE);
-  paintHillGround(ctx, plan, x0, x1);
-  for (let row = 0; row < HILL_ROWS.length; row++) {
-    for (const h of it.houses) if (h.row === row) paintHillHouse(ctx, h);
-    for (const l of it.landmarks) if (Math.abs(l.base - plan.height * HILL_ROWS[row]!.y) < 1e-6) paintLandmark(ctx, l, HILL_ROWS[row]!.haze);
-  }
-  for (const b of it.buildings) if (b.far) paintBuilding(ctx, plan, b);
+  paintFond(ctx, plan, x0, x1, moment, it.landmarks);
+  for (const b of it.buildings) if (b.far) paintBuilding(ctx, plan, b, moment);
   for (const b of it.buildings) if (!b.far) paintBuilding(ctx, plan, b);
   for (const p of it.podiums) paintPodium(ctx, plan, p);
   paintStreet(ctx, plan, x0, x1);

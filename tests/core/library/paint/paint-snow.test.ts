@@ -13,7 +13,9 @@ afterEach(() => vi.restoreAllMocks());
 function allowed(plan: ReturnType<typeof cityPaintPlan>, x: number, y: number): boolean {
   if (y >= plan.ground - 1e-6) return true;
   if (y >= hillCrestY(plan, x) - 1e-6 && y <= hillCrestY(plan, x) + 4 + 1e-6) return true;
-  if (plan.hill.houses.some((h) => onPolyline(hillRoofPoints(h).map(([px, py]) => [px, py + 0.8 * h.s]), x, y))) return true;
+  // Maisons de la colline et du fond vivant (rang de crête, maisons de l'échappée).
+  const houses = [...plan.hill.houses, ...plan.fond.crestHouses, ...plan.fond.escapes.flatMap((e) => e.houses)];
+  if (houses.some((h) => onPolyline(hillRoofPoints(h).map(([px, py]) => [px, py + 0.8 * h.s]), x, y))) return true;
   return plan.buildings.some((b) => {
     if (x >= b.x - 2 && x <= b.x + b.w + 2 && y >= roofLineY(b, x) - 1e-6 && y <= plan.ground) return true;
     if (chimneyBoxes(plan, b).some((c) => x >= c.x0 - 1e-6 && x <= c.x1 + 1e-6 && y >= c.y0 - 1e-6)) return true;

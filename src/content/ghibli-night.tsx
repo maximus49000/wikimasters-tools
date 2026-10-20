@@ -2,7 +2,8 @@ import { useEffect, useId, useMemo, useReducer, type ReactElement } from 'react'
 import { lampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
 import { LANTERN, lampBlobs, patchBox, shopBlobs, wetHalfWidth, wetStrokes } from '../core/library/city/night-light';
-import { PAINT_VERSION } from '../core/library/paint/city-painter';
+import { PAINT_VERSION, TILE, momentKey } from '../core/library/paint/city-painter';
+import type { FondMoment } from '../core/library/paint/fond-time';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import { idle } from './paint-queue';
 import { PaintRegistry } from './paint-registry';
@@ -27,6 +28,8 @@ type Props = {
   dim: number;
   forcedNight?: boolean;
   plan: CityPaintPlan | null;
+  // Instant du fond vivant des tranches affichées (la découpe éclairée repeint les mêmes volets et le même linge).
+  moment?: FondMoment;
   shops: readonly NightShop[];
   rainy: boolean;
 };
@@ -56,7 +59,7 @@ function useNightImages(jobs: readonly Job[]): void {
   }, [sig]);
 }
 
-export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, forcedNight = false, plan, shops, rainy }: Props): ReactElement {
+export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, forcedNight = false, plan, shops, rainy, moment }: Props): ReactElement {
   const lamps = useMemo(() => lampsFor(width, seed), [width, seed]);
   const m = cityMetrics(height);
   const k = m.unit * STREET_SCALE.lamp;
@@ -67,6 +70,15 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
   const haloId = `${ids}-halo`;
   const coneId = `${ids}-cone`;
   const base = `${seed}|${width}|${height}|${PAINT_VERSION}`;
+  // États lents des tranches sous la boîte : la découpe est repeinte quand ils changent.
+  const slow = (box: { x: number; w: number }): string => {
+    if (!plan || !moment) return '';
+    const t0 = Math.max(0, Math.floor(box.x / TILE));
+    const t1 = Math.max(t0, Math.floor((box.x + box.w) / TILE));
+    const out: string[] = [];
+    for (let t = t0; t <= t1 && t * TILE < plan.width; t++) out.push(momentKey(plan, t, moment));
+    return `|${out.join('~')}`;
+  };
 
   const lampViews = lamps.map((lamp) => {
     const lit = lampLit(lamp, minutes, daylight, forcedNight);
@@ -78,7 +90,7 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
       lit,
       blobs,
       box: patchBox(blobs),
-      patchKey: `lamp|${base}|${lamp.x}|${k.toFixed(3)}`,
+      patchKey: `lamp|${base}|${lamp.x}|${k.toFixed(3)}${lit ? slow(patchBox(blobs)) : ''}`,
       wetKey: `wet|${seed}|${lamp.x}|${hw.toFixed(2)}|${u.toFixed(3)}|${depth.toFixed(1)}`,
       hw,
       colW: 2 * wetHalfWidth(hw, u),
@@ -92,7 +104,7 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
       i,
       blobs,
       box: patchBox(blobs),
-      patchKey: `shop|${base}|${s.x.toFixed(1)}|${s.w.toFixed(1)}|${s.top.toFixed(1)}`,
+      patchKey: `shop|${base}|${s.x.toFixed(1)}|${s.w.toFixed(1)}|${s.top.toFixed(1)}${s.lit ? slow(patchBox(blobs)) : ''}`,
       wetKey: `wet|${seed}|${(s.x + s.w / 2).toFixed(1)}|${hw.toFixed(2)}|${u.toFixed(3)}|${depth.toFixed(1)}`,
       hw,
       colW: 2 * wetHalfWidth(hw, u),
@@ -108,12 +120,12 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
   });
   for (const v of lampViews) {
     if (!v.lit) continue;
-    if (plan) jobs.push({ key: v.patchKey, paint: () => paintPatch(plan, v.box, v.blobs) });
+    if (plan) jobs.push({ key: v.patchKey, paint: () => paintPatch(plan, v.box, v.blobs, undefined, moment) });
     if (rainy) jobs.push(wetJob(v.wetKey, v.lamp.x, v.hw, v.colW));
   }
   for (const v of shopViews) {
     if (!v.shop.lit) continue;
-    if (plan) jobs.push({ key: v.patchKey, paint: () => paintPatch(plan, v.box, v.blobs) });
+    if (plan) jobs.push({ key: v.patchKey, paint: () => paintPatch(plan, v.box, v.blobs, undefined, moment) });
     if (rainy) jobs.push(wetJob(v.wetKey, v.shop.x + v.shop.w / 2, v.hw, v.colW));
   }
   useNightImages(jobs);

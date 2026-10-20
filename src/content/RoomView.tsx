@@ -854,7 +854,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
           <g id={worldId} data-window-view="">
             <ShopContext.Provider value={shops}>
             <PropContext.Provider value={propSprites}>
-              <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} />
+              <ScenePanoramaStatic scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherClock} />
             </PropContext.Provider>
             </ShopContext.Provider>
           </g>

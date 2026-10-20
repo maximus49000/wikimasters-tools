@@ -25,4 +25,9 @@ export interface PaintCtx {
   fillRect(x: number, y: number, w: number, h: number): void;
   strokeRect(x: number, y: number, w: number, h: number): void;
   createLinearGradient(x0: number, y0: number, x1: number, y1: number): GradientLike;
+  // Facultatifs (fond vivant : routes, rameaux, trait pointillé des feuillages) : un vrai contexte les a, le faux peut s'en passer.
+  lineCap?: string;
+  lineJoin?: string;
+  lineDashOffset?: number;
+  setLineDash?(segments: number[]): void;
 }
