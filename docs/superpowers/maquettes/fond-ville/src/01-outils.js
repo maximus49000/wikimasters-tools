@@ -119,7 +119,7 @@ function foliageOf(D, key, species = 'bouquet') {
   const r = mulberry32(hashString('pheno-' + key)), o = (r() - 0.5) * 14, roux = r() < 0.5, lead = AUTUMN_LEAD[species] ?? 0, doy = D.doy;
   const base = TONES.summer.map(hexRgb), autumn = (roux ? TONES.roux : TONES.gold).map(hexRgb);
   if (doy < 84 + o || doy >= 330 + o + lead) return { d: 0, tones: TONES.winter.map(hexRgb), stage: 'bare', drop: 1, base, autumn };
-  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: out, tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0, base, autumn }; }
+  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: out, tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0, tender: 1 - out, base, autumn }; }
   const yel = sat((doy - (274 + o + lead)) / 45), drop = sat((doy - (293 + o + lead)) / 36);
   return { d: 1 - drop, tones: mixTones(TONES.summer, roux ? TONES.roux : TONES.gold, yel), stage: yel > 0 ? 'autumn' : 'green', drop, yel, base, autumn };
 }

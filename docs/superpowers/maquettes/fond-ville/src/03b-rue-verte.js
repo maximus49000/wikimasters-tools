@@ -63,7 +63,7 @@ function streetVerdure(F) {
 
 // ── peinture (calendrier réel : foliageOf / bloomOf / bedState / leavesOnGround, brume nulle : premier plan) ──
 // Modèle d'un arbre de rue (squelette fixe : fût = v.h, ramure = 2 × r, 4 niveaux, ≤ 60 touffes de rayon 0,2 r).
-const rueModel = (v) => treeModelOf('rue' + Math.round(v.x), v.species, { x: v.x, y: v.y }, v.h, v.r * 2.0, v.young ? 3 : 4, v.r * (v.young ? 0.3 : 0.2), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
+const rueModel = (v) => treeModelOf('rue' + Math.round(v.x), v.species, { x: v.x, y: v.y }, v.h, v.r * 2.0, v.young ? 3 : 4, v.r * (v.young ? 0.42 : 0.3), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
 const rueBark = (v) => hexRgb(BARK[v.young ? 'jeune' : v.species]);
 function paintTuteur(ctx, v) { if (!v.young) return; const { x, y } = v; ctx.strokeStyle = '#8A7A5A'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x + 2.2, y); ctx.lineTo(x + 2.2, y - v.h * 0.7); ctx.stroke(); ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x - 0.5, y - v.h * 0.5); ctx.lineTo(x + 2.5, y - v.h * 0.55); ctx.stroke(); }
 // Fleurs d'un pied d'arbre, d'un bac ou d'un parterre d'après l'état des parterres (bedState) : pousses, fleurs, fanées, sol nu.

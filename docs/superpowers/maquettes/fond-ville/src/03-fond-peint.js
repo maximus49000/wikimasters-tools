@@ -67,8 +67,8 @@ function roadPoint(e, d) {
 // Bouquet d'arbres (le même dessin que ceux des maisons, hill-painter.ts), saison comprise.
 // Bouquet de la colline : un modèle (fût court, 2-3 niveaux, ≤ 22 touffes) ; `part` 'all' | 'trunk' (fût + branches) | 'canopy'.
 function paintBouquet(ctx, tx, ty, tr, s, hz, D = CUR_D, key = `${Math.round(tx)}-${Math.round(ty)}`, part = 'all') {
-  const m = treeModelOf('b' + key, 'bouquet', { x: tx, y: ty + tr * 0.9 }, tr * 0.55, tr * 1.7, tr > 3 ? 3 : 2, tr * 0.34, 22), f = foliageOf(D, 'b' + key, 'bouquet'), rk = mulberry32(hashString('gui-' + key));
-  if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb('#5A4A40'), hz); paintBranches(ctx, m, 'all', { hz, veil: 0.24 * (1 - f.d), snow: D.meteo.snow, mistletoe: rk() < 0.25 && f.d < 0.5 ? 1 : 0 }); }
+  const m = treeModelOf('b' + key, 'bouquet', { x: tx, y: ty + tr * 0.9 }, tr * 0.55, tr * 1.7, tr > 3 ? 3 : 2, tr * 0.5, 22), f = foliageOf(D, 'b' + key, 'bouquet'), rk = mulberry32(hashString('gui-' + key));
+  if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb('#5A4A40'), hz); paintBranches(ctx, m, 'coarse', { hz, snow: D.meteo.snow }); paintBranches(ctx, m, 'fine', { hz, veil: 0.24 * (1 - f.d), snow: D.meteo.snow, mistletoe: rk() < 0.25 && f.d < 0.5 ? 1 : 0, alpha: 0.06 + 0.94 * (1 - f.d) }); }
   if (part !== 'trunk') paintLeaves(ctx, m, f, D, { hz });
 }
 let CUR_D = null, F_SEED = 7, CUR_T = 12;
@@ -87,9 +87,9 @@ function paintVerdure(ctx, v, hz0 = 0, D = CUR_D, part = 'all') {
   if (v.kind === 'bouquet') return paintBouquet(ctx, v.x, v.y, v.r, s, hz, D, key, part);
   if (v.kind === 'chestnut' || v.kind === 'cerisier' || v.kind === 'chene' || v.kind === 'poplar' || v.kind === 'cypress') {
     const h = v.h, sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind === 'cypress' ? 'poplar' : v.kind), cyp = v.kind === 'cypress';
-    const m = treeModelOf(key, sp, { x: v.x, y: v.y }, h * (cyp ? 0.12 : v.kind === 'poplar' ? 0.18 : 0.3), h * (cyp ? 0.88 : v.kind === 'poplar' ? 0.82 : 0.7), 3, h * (cyp ? 0.07 : v.kind === 'poplar' ? 0.075 : 0.11), cyp ? 30 : 26);
+    const m = treeModelOf(key, sp, { x: v.x, y: v.y }, h * (cyp ? 0.12 : v.kind === 'poplar' ? 0.18 : 0.3), h * (cyp ? 0.88 : v.kind === 'poplar' ? 0.82 : 0.7), 3, h * (cyp ? 0.09 : v.kind === 'poplar' ? 0.1 : 0.16), cyp ? 30 : 26);
     const f2 = cyp ? { d: 1, tones: EVERGREEN, stage: 'green', drop: 0 } : f, rk = mulberry32(hashString('gui-' + key));
-    if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb(cyp ? '#4A3A30' : v.kind === 'poplar' ? '#7A6A5A' : '#5A4A40'), hz); paintBranches(ctx, m, 'all', { hz, veil: 0.24 * (1 - f2.d), snow: D.meteo.snow, mistletoe: !cyp && rk() < 0.3 && f2.d < 0.5 ? 1 + Math.floor(rk() * 2) : 0 }); paintDryLeaves(ctx, m, D, hz); }
+    if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb(cyp ? '#4A3A30' : v.kind === 'poplar' ? '#7A6A5A' : '#5A4A40'), hz); paintBranches(ctx, m, 'coarse', { hz, snow: D.meteo.snow }); paintBranches(ctx, m, 'fine', { hz, veil: 0.24 * (1 - f2.d), snow: D.meteo.snow, mistletoe: !cyp && rk() < 0.3 && f2.d < 0.5 ? 1 + Math.floor(rk() * 2) : 0, alpha: 0.06 + 0.94 * (1 - f2.d) }); paintDryLeaves(ctx, m, D, hz); }
     if (part !== 'trunk') paintLeaves(ctx, m, f2, D, { hz });
     return;
   }

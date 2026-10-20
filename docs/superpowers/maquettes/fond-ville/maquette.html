@@ -6622,7 +6622,7 @@ function foliageOf(D, key, species = 'bouquet') {
   const r = mulberry32(hashString('pheno-' + key)), o = (r() - 0.5) * 14, roux = r() < 0.5, lead = AUTUMN_LEAD[species] ?? 0, doy = D.doy;
   const base = TONES.summer.map(hexRgb), autumn = (roux ? TONES.roux : TONES.gold).map(hexRgb);
   if (doy < 84 + o || doy >= 330 + o + lead) return { d: 0, tones: TONES.winter.map(hexRgb), stage: 'bare', drop: 1, base, autumn };
-  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: out, tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0, base, autumn }; }
+  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: out, tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0, tender: 1 - out, base, autumn }; }
   const yel = sat((doy - (274 + o + lead)) / 45), drop = sat((doy - (293 + o + lead)) / 36);
   return { d: 1 - drop, tones: mixTones(TONES.summer, roux ? TONES.roux : TONES.gold, yel), stage: yel > 0 ? 'autumn' : 'green', drop, yel, base, autumn };
 }
@@ -7031,8 +7031,8 @@ function roadPoint(e, d) {
 // Bouquet d'arbres (le même dessin que ceux des maisons, hill-painter.ts), saison comprise.
 // Bouquet de la colline : un modèle (fût court, 2-3 niveaux, ≤ 22 touffes) ; `part` 'all' | 'trunk' (fût + branches) | 'canopy'.
 function paintBouquet(ctx, tx, ty, tr, s, hz, D = CUR_D, key = `${Math.round(tx)}-${Math.round(ty)}`, part = 'all') {
-  const m = treeModelOf('b' + key, 'bouquet', { x: tx, y: ty + tr * 0.9 }, tr * 0.55, tr * 1.7, tr > 3 ? 3 : 2, tr * 0.34, 22), f = foliageOf(D, 'b' + key, 'bouquet'), rk = mulberry32(hashString('gui-' + key));
-  if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb('#5A4A40'), hz); paintBranches(ctx, m, 'all', { hz, veil: 0.24 * (1 - f.d), snow: D.meteo.snow, mistletoe: rk() < 0.25 && f.d < 0.5 ? 1 : 0 }); }
+  const m = treeModelOf('b' + key, 'bouquet', { x: tx, y: ty + tr * 0.9 }, tr * 0.55, tr * 1.7, tr > 3 ? 3 : 2, tr * 0.5, 22), f = foliageOf(D, 'b' + key, 'bouquet'), rk = mulberry32(hashString('gui-' + key));
+  if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb('#5A4A40'), hz); paintBranches(ctx, m, 'coarse', { hz, snow: D.meteo.snow }); paintBranches(ctx, m, 'fine', { hz, veil: 0.24 * (1 - f.d), snow: D.meteo.snow, mistletoe: rk() < 0.25 && f.d < 0.5 ? 1 : 0, alpha: 0.06 + 0.94 * (1 - f.d) }); }
   if (part !== 'trunk') paintLeaves(ctx, m, f, D, { hz });
 }
 let CUR_D = null, F_SEED = 7, CUR_T = 12;
@@ -7051,9 +7051,9 @@ function paintVerdure(ctx, v, hz0 = 0, D = CUR_D, part = 'all') {
   if (v.kind === 'bouquet') return paintBouquet(ctx, v.x, v.y, v.r, s, hz, D, key, part);
   if (v.kind === 'chestnut' || v.kind === 'cerisier' || v.kind === 'chene' || v.kind === 'poplar' || v.kind === 'cypress') {
     const h = v.h, sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind === 'cypress' ? 'poplar' : v.kind), cyp = v.kind === 'cypress';
-    const m = treeModelOf(key, sp, { x: v.x, y: v.y }, h * (cyp ? 0.12 : v.kind === 'poplar' ? 0.18 : 0.3), h * (cyp ? 0.88 : v.kind === 'poplar' ? 0.82 : 0.7), 3, h * (cyp ? 0.07 : v.kind === 'poplar' ? 0.075 : 0.11), cyp ? 30 : 26);
+    const m = treeModelOf(key, sp, { x: v.x, y: v.y }, h * (cyp ? 0.12 : v.kind === 'poplar' ? 0.18 : 0.3), h * (cyp ? 0.88 : v.kind === 'poplar' ? 0.82 : 0.7), 3, h * (cyp ? 0.09 : v.kind === 'poplar' ? 0.1 : 0.16), cyp ? 30 : 26);
     const f2 = cyp ? { d: 1, tones: EVERGREEN, stage: 'green', drop: 0 } : f, rk = mulberry32(hashString('gui-' + key));
-    if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb(cyp ? '#4A3A30' : v.kind === 'poplar' ? '#7A6A5A' : '#5A4A40'), hz); paintBranches(ctx, m, 'all', { hz, veil: 0.24 * (1 - f2.d), snow: D.meteo.snow, mistletoe: !cyp && rk() < 0.3 && f2.d < 0.5 ? 1 + Math.floor(rk() * 2) : 0 }); paintDryLeaves(ctx, m, D, hz); }
+    if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb(cyp ? '#4A3A30' : v.kind === 'poplar' ? '#7A6A5A' : '#5A4A40'), hz); paintBranches(ctx, m, 'coarse', { hz, snow: D.meteo.snow }); paintBranches(ctx, m, 'fine', { hz, veil: 0.24 * (1 - f2.d), snow: D.meteo.snow, mistletoe: !cyp && rk() < 0.3 && f2.d < 0.5 ? 1 + Math.floor(rk() * 2) : 0, alpha: 0.06 + 0.94 * (1 - f2.d) }); paintDryLeaves(ctx, m, D, hz); }
     if (part !== 'trunk') paintLeaves(ctx, m, f2, D, { hz });
     return;
   }
@@ -7412,17 +7412,17 @@ PORTS.chestnut = PORTS.marronnier;
 function treeModel(key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, trunkW) {
   const P = PORTS[species] || PORTS.bouquet, rng = mulberry32(hashString('squelette-' + key)), segs = [];
   const w0 = trunkW ?? Math.max(0.5, crownH * 0.07 * P.w), rootY = foot.y - trunkH;
-  const rec = (px, py, ang, len, w, lv) => {
+  const rec = (px, py, ang, len, w, lv, mass) => {
     if (lv > depth) return;
     const n = P.n[0] + Math.floor(rng() * (P.n[1] - P.n[0] + 1));
     for (let i = 0; i < n; i++) {
       const a = ang + (i - (n - 1) / 2) * P.ang * (0.75 + rng() * 0.5) + (rng() - 0.5) * P.kink;
-      const l = len * (0.75 + rng() * 0.5), ex = px + Math.cos(a) * l, ey = py + Math.sin(a) * l;
-      segs.push({ x0: px, y0: py, x1: ex, y1: ey, w, lv });
-      rec(ex, ey, a + (rng() - 0.5) * P.kink * 0.6, l * (P.len / 0.56) * 0.62, w * 0.62, lv + 1);
+      const l = len * (0.75 + rng() * 0.5), ex = px + Math.cos(a) * l, ey = py + Math.sin(a) * l, mid = lv === 1 ? i : mass;
+      segs.push({ x0: px, y0: py, x1: ex, y1: ey, w, lv, mass: mid });
+      rec(ex, ey, a + (rng() - 0.5) * P.kink * 0.6, l * (P.len / 0.56) * 0.62, w * 0.62, lv + 1, mid);
     }
   };
-  rec(foot.x, rootY, -Math.PI / 2, crownH * 0.5, w0 * 0.75, 1);
+  rec(foot.x, rootY, -Math.PI / 2, crownH * 0.5, w0 * 0.75, 1, 0);
   // Enveloppe réelle du squelette (envergure et hauteur : fixes).
   let minX = foot.x, maxX = foot.x, minY = rootY; for (const s of segs) { minX = Math.min(minX, s.x1); maxX = Math.max(maxX, s.x1); minY = Math.min(minY, s.y1); }
   const cx = (minX + maxX) / 2, cy = (minY + rootY) / 2, rx = (maxX - minX) / 2 + tuftR, ry = (rootY - minY) / 2 + tuftR;
@@ -7430,11 +7430,11 @@ function treeModel(key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, t
   const twigs = segs.filter((s) => s.lv >= Math.min(2, depth)), rt = mulberry32(hashString('touffes-' + key)), tufts = [];
   const step = Math.max(1, Math.floor(twigs.length / maxTufts));
   for (let i = Math.floor(rt() * step); i < twigs.length && tufts.length < maxTufts; i += step) {
-    const s = twigs[i], t = 0.45 + rt() * 0.55, x = s.x0 + (s.x1 - s.x0) * t + (rt() - 0.5) * tuftR * 0.8, y = s.y0 + (s.y1 - s.y0) * t + (rt() - 0.5) * tuftR * 0.8;
+    const s = twigs[i], t = 0.45 + rt() * 0.55, x = s.x0 + (s.x1 - s.x0) * t + (rt() - 0.5) * tuftR * 0.8, y = Math.max(minY, s.y0 + (s.y1 - s.y0) * t + (rt() - 0.5) * tuftR * 0.8); // jamais au-dessus du plus haut rameau : la silhouette ne saute pas quand une touffe naît
     const dist = Math.hypot((x - cx) / rx, (y - cy) / ry), rank = sat(dist * 0.7 + rt() * 0.4 - 0.05);
-    tufts.push({ x, y, rr: tuftR * (0.8 + rt() * 0.5), rank, tone: Math.floor(rt() * 3), phase: rt() * TAU, yel: rt(), cluster: (y < cy ? 2 : 0) + (dist > 0.75 ? 1 : 0) });
+    tufts.push({ x, y, rr: tuftR * (0.8 + rt() * 0.5), rank, tone: Math.floor(rt() * 3), phase: rt() * TAU, yel: rt(), cluster: Math.min(5, s.mass), mass: s.mass, outer: dist > 0.7 });
   }
-  return { key, species, foot, trunkH, rootY, w0, segs, tufts, cx, cy, rx, ry, top: minY - tuftR, trunkBox: { x: foot.x - w0, y: rootY, w: 2 * w0, h: trunkH }, span: [minX, maxX] };
+  return { key, species, foot, trunkH, rootY, w0, segs, tufts, nMasses: segs.filter((sg) => sg.lv === 1).length, cx, cy, rx, ry, top: minY - tuftR, trunkBox: { x: foot.x - w0, y: rootY, w: 2 * w0, h: trunkH }, span: [minX, maxX] };
 }
 const MODELS = new Map();
 const treeModelOf = (key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, trunkW) => { const k = `${key}|${species}|${foot.x.toFixed(2)}|${foot.y.toFixed(2)}|${trunkH.toFixed(2)}|${crownH.toFixed(2)}|${depth}|${tuftR.toFixed(2)}|${maxTufts}`; if (!MODELS.has(k)) MODELS.set(k, treeModel(key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, trunkW)); return MODELS.get(k); };
@@ -7458,33 +7458,55 @@ function paintBranches(ctx, m, part = 'all', opts = {}) {
 // État d'une touffe à la date D (f = foliageOf) : taille 0..1 (0 = absente), couleur (jaunissement par touffe : les bouts d'abord).
 function tuftState(tf, f, D, species) {
   const bl = species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
-  let size = sat((f.d - tf.rank) / 0.2);                                      // apparaît / disparaît sur 0,2 de densité (≈ 6 jours au printemps, 7 en automne : ≤ 1 px par jour)
-  if (f.stage === 'tender') size = Math.min(size, 0.35 + 0.65 * sat((f.d - tf.rank) / 0.3)); // bourgeon → feuille
-  if (bl > 0) size = Math.max(size, 0.6 + 0.4 * bl);
+  let size = sat((f.d - tf.rank) / 0.36);                                     // apparaît / disparaît sur 0,36 de densité (≈ 11-13 jours : ≤ 1 px par jour)
+  if (f.tender > 0) size = Math.min(size, 0.35 + 0.65 * sat((f.d - tf.rank) / 0.3) + (1 - f.tender)); // bourgeon → feuille, plafond qui se lève en continu
+  if (bl > 0) size = Math.max(size, Math.min(1, bl * 2.5) * (0.6 + 0.4 * bl)); // la floraison du cerisier monte en douceur (≤ 1 px par jour)
   const yel = f.yel !== undefined ? sat(f.yel * 1.5 - tf.rank * 0.5 + tf.yel * 0.2 - 0.1) : 0;
   let tones = f.yel !== undefined && yel > 0 ? mixTones(f.base, f.autumn, yel) : f.tones;
   if (bl > 0) tones = ['#D88AA8', '#F0B0C8', '#FCDCE8'].map(hexRgb).map((c, i) => mixRgb(c, tones[i], 1 - bl));
   return { size, tones, loose: f.drop > 0 && f.drop < 1 && f.d - tf.rank > -0.06 && f.d - tf.rank < 0.1, bloom: bl };
 }
-// Feuilles : `which` = filtre de grappe (0-3) ou null ; `shift` = décalage (vent) ; `wet` = pluie ; `hz` = brume ; `part` 'leaves' | 'shadow' | 'hi'.
+// Blob de feuillage à bord lobé et dentelé (pas un cercle) : 18 sommets, lobes (3 et 5 par tour) et dentelure fine alternée.
+function leafBlob(ctx, x, y, r, ph) {
+  ctx.moveTo(x + r * (1 + 0.16 * Math.sin(ph)), y);
+  for (let i = 1; i <= 18; i++) { const a = (i / 18) * TAU, k = 1 + 0.16 * Math.sin(3 * a + ph) + 0.1 * Math.sin(5 * a + 2 * ph) + (i % 2 ? 0.07 : -0.05); ctx.lineTo(x + Math.cos(a) * r * k, y + Math.sin(a) * r * k * 0.92); }
+  ctx.closePath();
+}
+// Feuilles : `which` = filtre de masse (0-5) ou null ; `shiftX/Y` = décalage (vent) ; `wet` = pluie ; `hz` = brume ; `part` =
+// 'leaves' (masses continues : ombre, ton moyen, rehauts en touches, trait léger sur la silhouette seule), 'shadow', 'hi'.
+// Une masse = l'union des blobs de ses touffes présentes : les blobs se recouvrent (pas de contour individuel), le trait
+// n'apparaît que sur le bord extérieur (tracé AVANT les aplats, donc couvert à l'intérieur), les trouées viennent des touffes
+// absentes (automne, printemps) et des creux entre masses.
 function paintLeaves(ctx, m, f, D, opts = {}) {
   const hz = opts.hz || 0, wet = opts.wet || 0, part = opts.part || 'leaves', sx = opts.shiftX || 0, sy = opts.shiftY || 0;
   const blm = m.species === 'marronnier' ? bloomOf(D, 'marronnier') : 0, blt = m.species === 'tilleul' ? bloomOf(D, 'tilleul') : 0;
+  const items = [];
   for (const tf of m.tufts) {
     if (opts.which !== undefined && opts.which !== null && tf.cluster !== opts.which) continue;
-    if (opts.loose !== undefined) { const st0 = tuftState(tf, f, D, m.species); if (st0.loose !== opts.loose) continue; }
     const st = tuftState(tf, f, D, m.species); if (st.size <= 0) continue;
-    const rr = tf.rr * st.size, x = tf.x + sx * (0.5 + tf.rank) + Math.sin(tf.phase) * 0.2 * sx, y = tf.y + sy * (0.5 + tf.rank);
-    if (part === 'shadow') { ctx.fillStyle = `rgba(70,50,130,${(0.14 * st.size).toFixed(3)})`; ctx.beginPath(); ctx.ellipse(x + 4, y + 5, rr * 1.1, rr * 0.9, 0, 0, TAU); ctx.fill(); continue; }
-    const tones = wet ? st.tones.map((c) => mixRgb(c, hexRgb('#1A2A3A'), 0.28 * wet)) : st.tones;
-    if (part === 'hi') { disc(ctx, rgba(haze(opts.pale ? light(tones[2], 0.5) : tones[2], hz), 1), x - rr * 0.3, y - rr * 0.3, rr * 0.5); continue; }
-    ctx.strokeStyle = ink((0.8 - hz) * Math.min(1, st.size * 2)); ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.stroke();
-    disc(ctx, rgba(haze(tones[0], hz), 1), x, y, rr); disc(ctx, rgba(haze(tones[1], hz), 1), x - rr * 0.2, y - rr * 0.25, rr * 0.72); disc(ctx, rgba(haze(tones[2], hz), 1), x - rr * 0.35, y - rr * 0.4, rr * 0.4);
-    if (wet) { ctx.strokeStyle = `rgba(230,240,255,${0.35 * wet})`; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(x, y, rr * 0.9, Math.PI * 1.05, Math.PI * 1.55); ctx.stroke(); }
-    if (blm > 0 && tf.cluster >= 2) { ctx.fillStyle = `rgba(255,244,236,${blm})`; ctx.fillRect(x - 0.3, y - rr - 1.6, 0.6, 2); }
-    if (blt > 0 && tf.yel < 0.5) { ctx.fillStyle = `rgba(250,236,170,${blt})`; ctx.fillRect(x + rr * 0.3, y - rr * 0.2, 0.8, 0.8); }
-    if (D.meteo.snow) { ctx.fillStyle = 'rgba(240,244,248,0.92)'; ctx.beginPath(); ctx.ellipse(x, y - rr * 0.15, rr * 0.95, rr * 0.45, 0, Math.PI, 0); ctx.fill(); }
+    if (opts.loose !== undefined && st.loose !== opts.loose) continue;
+    const rr = tf.rr * st.size /* le rayon suit la taille jusqu'à 0 : aucune touffe ne disparaît d'un coup */, x = tf.x + sx * (0.5 + tf.rank) + Math.sin(tf.phase) * 0.2 * sx, y = tf.y + sy * (0.5 + tf.rank);
+    items.push({ tf, st, rr, x, y });
   }
+  if (!items.length) return;
+  if (part === 'shadow') { ctx.fillStyle = 'rgba(70,50,130,0.16)'; ctx.beginPath(); for (const it of items) leafBlob(ctx, it.x + 4, it.y + 5, it.rr * 1.05, it.tf.phase); ctx.fill(); return; }
+  const tone = (it, i) => { const c = wet ? mixRgb(it.st.tones[i], hexRgb('#1A2A3A'), 0.28 * wet) : it.st.tones[i]; return rgba(haze(c, hz), 1); };
+  if (part === 'hi') { ctx.fillStyle = tone(items[0], 2); if (opts.pale) ctx.fillStyle = rgba(haze(light(items[0].st.tones[2], 0.5), hz), 1); ctx.beginPath(); for (const it of items) { if (it.rr < 1.2) continue; const r = mulberry32(hashString('hi' + it.tf.phase)); for (let k = 0; k < 3; k++) { const a = -2.4 + r() * 1.4, d = it.rr * (0.3 + r() * 0.45); ctx.moveTo(it.x + Math.cos(a) * d + 0.6, it.y + Math.sin(a) * d); ctx.ellipse(it.x + Math.cos(a) * d, it.y + Math.sin(a) * d, 0.75, 0.45, a, 0, TAU); } } ctx.fill(); return; }
+  // 1. Trait encré sur la silhouette extérieure seulement (léger, interrompu), tracé sous les aplats.
+  ctx.save(); ctx.setLineDash([2.2, 1.1]); ctx.lineDashOffset = items[0].tf.phase; ctx.strokeStyle = ink(0.55 - hz); ctx.lineWidth = 0.9; ctx.beginPath(); for (const it of items) leafBlob(ctx, it.x, it.y, it.rr, it.tf.phase); ctx.stroke(); ctx.restore();
+  // 2. Ombre (dessous et côté opposé au soleil) : tous les blobs, ton sombre.
+  ctx.beginPath(); for (const it of items) leafBlob(ctx, it.x, it.y, it.rr, it.tf.phase); ctx.fillStyle = tone(items[0], 0);
+  // Les touffes d'un arbre partagent un ton par état : on groupe par ton pour garder des aplats (pas un dégradé par touffe).
+  const groups = new Map(); for (const it of items) { const k = it.st.tones[0].join(','); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
+  for (const [, g] of groups) { ctx.fillStyle = tone(g[0], 0); ctx.beginPath(); for (const it of g) leafBlob(ctx, it.x, it.y, it.rr, it.tf.phase); ctx.fill(); }
+  // 3. Ton moyen : blobs décalés vers le haut-gauche et un peu réduits (l'ombre reste visible en bas à droite).
+  for (const [, g] of groups) { ctx.fillStyle = tone(g[0], 1); ctx.beginPath(); for (const it of g) leafBlob(ctx, it.x - it.rr * 0.22, it.y - it.rr * 0.28, it.rr * 0.8, it.tf.phase + 1); ctx.fill(); }
+  // 4. Rehaut clair en haut à gauche : petites touches de feuilles (ellipses) sur le haut des blobs, pas un troisième aplat.
+  for (const [, g] of groups) { ctx.fillStyle = tone(g[0], 2); ctx.beginPath(); for (const it of g) { if (it.rr < 1.1) continue; const r = mulberry32(hashString('hi' + it.tf.phase)); const n = it.rr > 2.5 ? 4 : 2; for (let k = 0; k < n; k++) { const a = -2.5 + r() * 1.5, d = it.rr * (0.25 + r() * 0.5), ex = it.x + Math.cos(a) * d, ey = it.y + Math.sin(a) * d, ea = a + 0.6; ctx.moveTo(ex + 0.8, ey); ctx.ellipse(ex, ey, Math.min(1.1, it.rr * 0.35), Math.min(0.6, it.rr * 0.18), ea, 0, TAU); } } ctx.fill(); }
+  if (wet) { ctx.strokeStyle = `rgba(230,240,255,${0.35 * wet})`; ctx.lineWidth = 0.7; ctx.beginPath(); for (const it of items) ctx.arc(it.x, it.y, it.rr * 0.8, Math.PI * 1.1, Math.PI * 1.5); ctx.stroke(); }
+  if (blm > 0) { ctx.fillStyle = `rgba(255,244,236,${blm})`; for (const it of items) if (it.tf.outer || it.tf.y < m.cy) ctx.fillRect(it.x - 0.3, it.y - it.rr - 1.4, 0.6, 2); }
+  if (blt > 0) { ctx.fillStyle = `rgba(250,236,170,${blt})`; for (const it of items) if (it.tf.yel < 0.5) ctx.fillRect(it.x + it.rr * 0.3, it.y - it.rr * 0.2, 0.8, 0.8); }
+  if (D.meteo.snow) { ctx.fillStyle = 'rgba(240,244,248,0.92)'; ctx.beginPath(); for (const it of items) { ctx.moveTo(it.x + it.rr * 0.95, it.y - it.rr * 0.15); ctx.ellipse(it.x, it.y - it.rr * 0.15, it.rr * 0.95, it.rr * 0.45, 0, Math.PI, 0); } ctx.fill(); }
 }
 // Feuilles sèches accrochées (chênes) : de la chute à la mi-janvier, en s'éclaircissant.
 const dryLeavesOf = (D, species) => (species === 'chene' ? (D.doy >= 320 ? 1 - (D.doy - 320) / 60 : D.doy < 15 ? 0.3 - D.doy / 50 : 0) : 0);
@@ -7495,7 +7517,8 @@ function paintTreeStatic(ctx, m, f, D, opts = {}) {
   const hz = opts.hz || 0, wet = D.meteo.wet || 0; if (opts.veil === undefined) opts.veil = 0.14;
   if (opts.shadow) paintLeaves(ctx, m, f, D, { part: 'shadow' });
   paintTrunk(ctx, m, opts.bark || hexRgb('#6A5A50'), hz, wet, opts.young);
-  paintBranches(ctx, m, 'all', { hz, veil: (opts.veil ?? 0.22) * (1 - f.d), snow: D.meteo.snow, mistletoe: opts.mistletoe || 0 });
+  paintBranches(ctx, m, 'coarse', { hz, snow: D.meteo.snow });
+  paintBranches(ctx, m, 'fine', { hz, veil: (opts.veil ?? 0.22) * (1 - f.d), snow: D.meteo.snow, mistletoe: opts.mistletoe || 0, alpha: 0.06 + 0.94 * (1 - f.d) });
   paintDryLeaves(ctx, m, D, hz);
   paintLeaves(ctx, m, f, D, { hz, wet });
 }
@@ -7566,7 +7589,7 @@ function streetVerdure(F) {
 
 // ── peinture (calendrier réel : foliageOf / bloomOf / bedState / leavesOnGround, brume nulle : premier plan) ──
 // Modèle d'un arbre de rue (squelette fixe : fût = v.h, ramure = 2 × r, 4 niveaux, ≤ 60 touffes de rayon 0,2 r).
-const rueModel = (v) => treeModelOf('rue' + Math.round(v.x), v.species, { x: v.x, y: v.y }, v.h, v.r * 2.0, v.young ? 3 : 4, v.r * (v.young ? 0.3 : 0.2), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
+const rueModel = (v) => treeModelOf('rue' + Math.round(v.x), v.species, { x: v.x, y: v.y }, v.h, v.r * 2.0, v.young ? 3 : 4, v.r * (v.young ? 0.42 : 0.3), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
 const rueBark = (v) => hexRgb(BARK[v.young ? 'jeune' : v.species]);
 function paintTuteur(ctx, v) { if (!v.young) return; const { x, y } = v; ctx.strokeStyle = '#8A7A5A'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x + 2.2, y); ctx.lineTo(x + 2.2, y - v.h * 0.7); ctx.stroke(); ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x - 0.5, y - v.h * 0.5); ctx.lineTo(x + 2.5, y - v.h * 0.55); ctx.stroke(); }
 // Fleurs d'un pied d'arbre, d'un bac ou d'un parterre d'après l'état des parterres (bedState) : pousses, fleurs, fanées, sol nu.
@@ -7956,13 +7979,14 @@ function treeSprites(F, v, env, S) {
   const layers = {}, mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(box.w * S); c.height = Math.ceil(box.h * S); const ctx = c.getContext('2d'); ctx.scale(S, S); ctx.translate(-box.x, -box.y); return [c, ctx]; };
   let [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { part: 'shadow' }); layers.shadow = c;
   [c, ctx] = mk(); paintTrunk(ctx, m, rueBark(v), 0, wet, v.young); paintTuteur(ctx, v); paintBranches(ctx, m, 'coarse'); layers.trunk = c;
-  [c, ctx] = mk(); paintBranches(ctx, m, 'fine', { veil: 0.12 * (1 - f.d), snow: D.meteo.snow }); paintDryLeaves(ctx, m, D); layers.twigs = c;
-  for (let k = 0; k < 4; k++) { [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { which: k, wet, loose: false }); layers['c' + k] = c; }
+  [c, ctx] = mk(); paintBranches(ctx, m, 'fine', { veil: 0.12 * (1 - f.d), snow: D.meteo.snow, alpha: 0.06 + 0.94 * (1 - f.d) }); paintDryLeaves(ctx, m, D); layers.twigs = c;
+  for (let k = 0; k < Math.min(6, m.nMasses); k++) { [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { which: k, wet, loose: false }); layers['c' + k] = c; }
   const out = { box, layers, f, m };
   CACHE.set(key, out); if (CACHE.size > 160) CACHE.delete(CACHE.keys().next().value);
   return out;
 }
-const CLUSTER_AMP = [0.7, 1.6, 0.95, 2.1]; // basses-intérieures, basses-bout, hautes-intérieures, hautes-bout (px par unité de vent)
+// Amplitude d'une masse (px par unité de vent) : plus forte pour les masses hautes et écartées du tronc.
+const massAmp = (m, k) => { const tf = m.tufts.filter((t) => t.cluster === k); if (!tf.length) return 1; const mx = tf.reduce((a, t) => a + t.x, 0) / tf.length, my = tf.reduce((a, t) => a + t.y, 0) / tf.length; return 0.8 + 1.2 * Math.abs(mx - m.foot.x) / Math.max(1, m.rx) + 0.8 * (m.cy - my) / Math.max(1, m.ry); };
 function paintArbresRue(ctx, F, env, S, counter) {
   const t = env.seconds, D = env.D, wet = D.meteo.wet || 0;
   for (const v of F.rue) {
@@ -7975,8 +7999,8 @@ function paintArbresRue(ctx, F, env, S, counter) {
     // Rameaux fins : léger fléchissement (cisaillement de 3 % de b autour de la racine des charpentières).
     ctx.save(); ctx.transform(1, 0, 0.03 * b, 1, -0.03 * b * m.rootY, 0); ctx.drawImage(sp.layers.twigs, sp.box.x, sp.box.y, sp.box.w, sp.box.h); ctx.restore();
     // Grappes de feuilles : translation propre (amplitude par grappe, déphasage par arbre et par grappe, rafales), plus forte au bout et en haut.
-    for (let k = 0; k < 4; k++) {
-      const ph = v.x * 0.37 + k * 1.9, osc = 0.7 + 0.3 * Math.sin(t * (2.6 + k * 0.7) + ph) + 0.15 * Math.sin(t * 7.3 + ph * 2), dx = b * CLUSTER_AMP[k] * osc, dy = -Math.abs(b) * 0.25 * (k >= 2 ? 1 : 0.5) * (0.5 + 0.5 * Math.sin(t * 3.1 + ph));
+    for (let k = 0; k < Math.min(6, m.nMasses); k++) {
+      const ph = v.x * 0.37 + k * 1.9, osc = 0.7 + 0.3 * Math.sin(t * (2.6 + k * 0.7) + ph) + 0.15 * Math.sin(t * 7.3 + ph * 2), dx = b * massAmp(m, k) * osc, dy = -Math.abs(b) * 0.25 * (0.5 + 0.5 * Math.sin(t * 3.1 + ph));
       ctx.drawImage(sp.layers['c' + k], sp.box.x + dx, sp.box.y + dy, sp.box.w, sp.box.h);
     }
     ctx.setTransform(S, 0, 0, S, 0, 0);
@@ -8272,6 +8296,14 @@ function renderCaptures() {
       frames.forEach((c, i) => pl.drawImage(c, (i % cols) * cw, Math.floor(i / cols) * chh)); ids.push(name + '-planche');
     }
   }
+  // Planche des feuillages : un arbre de chaque essence (modèle de rue, fût 30 px, houppier r 16) en été et à la mi-octobre, ×3.
+  { const SP = ['platane', 'tilleul', 'marronnier', 'cerisier', 'poplar', 'chene'], cw = 110, chh = 120, ctx = canvasFor('zoom-feuillage', SP.length * cw * 3, 2 * chh * 3 + 40, 'zoom-feuillage — une essence par colonne : 7 juillet (haut) et 15 octobre (bas), ×3 ; masses continues à bord dentelé, trouées, rehauts en touches');
+    ctx.fillStyle = '#1c1a22'; ctx.fillRect(0, 0, SP.length * cw * 3, 2 * chh * 3 + 40);
+    SP.forEach((sp, i) => { ctx.fillStyle = '#e8e0cc'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(sp, i * cw * 3 + 6, 16);
+      [[ETE, 20], ['2026-10-15', 20 + chh * 3 + 20]].forEach(([date, oy]) => { const D = dayOf(date, 'soleil'); ctx.save(); ctx.translate(i * cw * 3, oy); ctx.scale(3, 3); ctx.fillStyle = '#EDE2C8'; ctx.fillRect(0, 0, cw, chh); ctx.fillStyle = '#E6D4AE'; ctx.fillRect(0, chh - 14, cw, 14);
+        const v = { x: cw / 2, y: chh - 12, h: 30, r: 16, species: sp, lean: 0, young: false, flowerSeed: 0.3 }, m = treeModelOf('planche-' + sp, sp, { x: v.x, y: v.y }, v.h, v.r * 2, 4, v.r * 0.3, 60, 1.3 + v.r * 0.07);
+        paintTreeStatic(ctx, m, foliageOf(D, 'planche-' + sp, sp), D, { bark: hexRgb(BARK[sp] || '#8A7A66'), shadow: true, veil: 0.2 }); ctx.restore(); }); });
+    ids.push('zoom-feuillage'); }
   // Séquences au vent (4-6 images à 0,4 s d'écart ; `seq-*` → GIF par capture.mjs) : pied d'arbre ×3 et échappée ×3.
   const SEQS = [
     { id: 'seq-vent-faible-ete', date: ETE, meteo: 'soleil', vent: 1, T: 15 + 0.3 * MIN, n: 5, note: 'vent faible d’été : frémissement des rehauts, rafale qui passe' },
@@ -8350,7 +8382,7 @@ function auditSquelette(seed) {
   const F = fondPlanOf(seed); F.rue ||= streetVerdure(F);
   const trees = [];
   for (const v of F.rue) if (v.kind === 'pit' && !v.empty) trees.push({ name: `rue@${Math.round(v.x)}`, m: rueModel(v), key: 'rue' + Math.round(v.x), sp: v.species });
-  for (const v of [...F.crestVerdure, ...F.rowVerdure.flat(), ...F.escapes.flatMap((e) => e.verdure)]) if (isTree(v) && v.kind !== 'cypress' && v.kind !== 'orchard') { const key = `${v.kind}-${Math.round(v.x ?? 0)}-${Math.round(v.y ?? 0)}`; if (v.kind === 'bouquet') trees.push({ name: `colline-bouquet@${Math.round(v.x)}`, m: treeModelOf('b' + key, 'bouquet', { x: v.x, y: v.y + v.r * 0.9 }, v.r * 0.55, v.r * 1.7, v.r > 3 ? 3 : 2, v.r * 0.34, 22), key: 'b' + key, sp: 'bouquet' }); else { const sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind), h = v.h, pop = v.kind === 'poplar'; trees.push({ name: `colline-${v.kind}@${Math.round(v.x)}`, m: treeModelOf(key, sp, { x: v.x, y: v.y }, h * (pop ? 0.18 : 0.3), h * (pop ? 0.82 : 0.7), 3, h * (pop ? 0.075 : 0.11), 26), key, sp }); } }
+  for (const v of [...F.crestVerdure, ...F.rowVerdure.flat(), ...F.escapes.flatMap((e) => e.verdure)]) if (isTree(v) && v.kind !== 'cypress' && v.kind !== 'orchard') { const key = `${v.kind}-${Math.round(v.x ?? 0)}-${Math.round(v.y ?? 0)}`; if (v.kind === 'bouquet') trees.push({ name: `colline-bouquet@${Math.round(v.x)}`, m: treeModelOf('b' + key, 'bouquet', { x: v.x, y: v.y + v.r * 0.9 }, v.r * 0.55, v.r * 1.7, v.r > 3 ? 3 : 2, v.r * 0.5, 22), key: 'b' + key, sp: 'bouquet' }); else { const sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind), h = v.h, pop = v.kind === 'poplar'; trees.push({ name: `colline-${v.kind}@${Math.round(v.x)}`, m: treeModelOf(key, sp, { x: v.x, y: v.y }, h * (pop ? 0.18 : 0.3), h * (pop ? 0.82 : 0.7), 3, h * (pop ? 0.1 : 0.16), 26), key, sp }); } }
   let maxJump = 0, worst = '', boxesOk = true;
   for (const tr of trees) {
     let prev = null; const box0 = JSON.stringify(tr.m.trunkBox), span0 = JSON.stringify(tr.m.span);

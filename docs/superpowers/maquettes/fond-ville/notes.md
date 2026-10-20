@@ -45,6 +45,7 @@ nouveau calque) : `01-outils` (cellulo, temps, météo, ciel), `02-plan-fond` (p
 | `seq-vent-faible-ete.gif`, `seq-rafales-automne.gif`, `seq-pluie-vent.gif`, `seq-orage.gif`, `seq-neige-redoux.gif`, `seq-petales-avril.gif`, `seq-colline-vent.gif` | séquences à 0,4 s d'écart (pied d'arbre ×3, échappée ×3) : frémissement, feuilles arrachées, pluie et vent, orage (feuilles retournées), neige qui glisse au redoux, pétales, tranches de colline cisaillées et moulin ; un GIF par séquence (ffmpeg, 2,5 images/s). |
 | `gauche-avant.png` / `gauche-apres.png` | le côté gauche (x 0 → 500, échelle 1, rendu ×2) avant / après le remplissage : maisons étagées jusqu'à la crête, façades et jardins le long de la route et de la voie, bosquets serrés. |
 | `seq-chute-feuilles-planche.png` + `seq-chute-feuilles.gif`, `seq-debourrement-planche.png` + `seq-debourrement.gif` | même arbre, même cadrage, une image tous les 6 jours (1er oct. → 30 nov. ; 15 mars → 15 mai) : le fût (pointillé rose fixe) et les branches ne bougent pas, seules les feuilles partent (bouts d'abord) ou reviennent. |
+| `zoom-feuillage.png` | une essence par colonne (platane, tilleul, marronnier, cerisier, peuplier, chêne), 7 juillet en haut et 15 octobre en bas, ×3 : masses continues à bord dentelé, trouées, rehauts en touches, trait sur la silhouette seule. |
 | `annee-planche.png` | une année : même coin de rue (haut), même échappée (milieu), mêmes toits du mur du fond (bas), le 15 de chaque mois à 14 h (janvier sous la neige, 15 août un dimanche : fanfare). |
 
 ## 2. Corrections de l'audit (D1 à D6) — correspondance avec le code
@@ -287,6 +288,33 @@ nues, plus grand composant ; objectif : 0 fenêtre et < 10 %) :
 
 Avant ce retour (même mesure) : 11-16 % d'herbe nue et 33 à 865 fenêtres nues. Il reste 8 à 11,6 % d'herbe nue (le reste
 est en parcelles de moins de 12 × 8 px : pelouses du square, bas-côtés, talus), et 2 fenêtres sur la graine 1 à 2 880 px.
+
+## 3 e. Feuillage en masses naturelles (retour du 20 octobre : « les feuilles font trop points »)
+
+Modèle (`treeModel`) et calendrier inchangés ; seul le DESSIN du feuillage change (`paintLeaves`, `leafBlob`,
+src/03a-arbres.js), rue et colline :
+- chaque touffe est un **blob lobé et dentelé** (18 sommets, lobes à 3 et 5 par tour, dentelure fine alternée) de rayon
+  0,3 r en rue (0,5 r sur la colline) : les blobs d'une même masse (= touffes portées par la même charpentière, `mass` sur
+  chaque segment) se recouvrent et forment **3 à 7 masses continues** selon l'essence (platane large et étagé avec grandes
+  trouées, tilleul ovale dense, marronnier en dômes, peuplier en fuseau, cerisier en coupe aérée, chêne tortueux) ;
+- **volume par la lumière** : ombre (ton sombre, tous les blobs), ton moyen (blobs décalés en haut à gauche et réduits à 80 %,
+  l'ombre reste dessous et à droite), rehaut clair **en petites touches de feuilles** (2-4 ellipses par blob, haut gauche) ;
+- **trait encré seulement sur la silhouette** : pointillé léger (2,2 / 1,1) tracé sous les aplats, donc visible sur le bord
+  extérieur et dans les trouées, jamais autour d'une touffe ;
+- **été** : les rameaux fins sont dessinés à 6 % d'opacité (visibles dans les trouées seulement), le tronc et le départ des
+  charpentières restent visibles sous la masse ; **automne** : les masses se percent depuis l'extérieur (touffes de rang
+  élevé d'abord), bord qui s'effiloche, touches jaunes / rousses qui gagnent depuis l'extérieur, lambeaux sur les rameaux, puis
+  squelette nu (rameaux à 100 %) ; **printemps** : voile vert tendre (touffes réduites, plafond qui se lève en continu) qui
+  s'épaissit en masses ; une touffe naît et meurt sur 0,36 de densité (≈ 12 jours), rayon proportionnel à sa taille jusqu'à 0,
+  centre jamais au-dessus du plus haut rameau → **test 365 jours** : boîtes du fût identiques pour 100 % des arbres, saut de
+  silhouette max 0,74-0,86 px (graines 1, 7, 42) ;
+- **vent** : masses translatées une à une (amplitude ∝ distance au tronc et hauteur : 0,8 à 2,8 px par unité de vent,
+  oscillation propre), bord qui frémit (touffes lâches et touches de rehaut redessinées), tronc et charpentières fixes.
+
+**Coût** : sprites cuits par masse (3 + nMasses ≤ 6 par arbre de rue, recuits au changement de date / pluie / neige) ; par
+image : 8 arbres × ≤ 9 `drawImage` + les touffes lâches et les touches de rehaut tracées en chemins (≈ 1 ms par arbre) ;
+au banc : ≈ 125-150 ms avec vent (dont ≈ 35 ms pour les 45 tranches de colline, ≈ 25-30 ms pour les 8 arbres de rue : les touffes
+lâches et les touches de rehaut sont des chemins lobés tracés à chaque image, à cuire aussi dans l'appli), ≈ 60-75 ms sans. Dans l'appli, les masses sont des `<image>` cuites (un nœud par masse) : le coût par image se réduit aux transforms.
 
 ## 3 bis. Verdure de la rue principale (`src/03b-rue-verte.js`, couche peinte PAR-DESSUS le premier plan)
 

@@ -36,13 +36,14 @@ function treeSprites(F, v, env, S) {
   const layers = {}, mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(box.w * S); c.height = Math.ceil(box.h * S); const ctx = c.getContext('2d'); ctx.scale(S, S); ctx.translate(-box.x, -box.y); return [c, ctx]; };
   let [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { part: 'shadow' }); layers.shadow = c;
   [c, ctx] = mk(); paintTrunk(ctx, m, rueBark(v), 0, wet, v.young); paintTuteur(ctx, v); paintBranches(ctx, m, 'coarse'); layers.trunk = c;
-  [c, ctx] = mk(); paintBranches(ctx, m, 'fine', { veil: 0.12 * (1 - f.d), snow: D.meteo.snow }); paintDryLeaves(ctx, m, D); layers.twigs = c;
-  for (let k = 0; k < 4; k++) { [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { which: k, wet, loose: false }); layers['c' + k] = c; }
+  [c, ctx] = mk(); paintBranches(ctx, m, 'fine', { veil: 0.12 * (1 - f.d), snow: D.meteo.snow, alpha: 0.06 + 0.94 * (1 - f.d) }); paintDryLeaves(ctx, m, D); layers.twigs = c;
+  for (let k = 0; k < Math.min(6, m.nMasses); k++) { [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { which: k, wet, loose: false }); layers['c' + k] = c; }
   const out = { box, layers, f, m };
   CACHE.set(key, out); if (CACHE.size > 160) CACHE.delete(CACHE.keys().next().value);
   return out;
 }
-const CLUSTER_AMP = [0.7, 1.6, 0.95, 2.1]; // basses-intérieures, basses-bout, hautes-intérieures, hautes-bout (px par unité de vent)
+// Amplitude d'une masse (px par unité de vent) : plus forte pour les masses hautes et écartées du tronc.
+const massAmp = (m, k) => { const tf = m.tufts.filter((t) => t.cluster === k); if (!tf.length) return 1; const mx = tf.reduce((a, t) => a + t.x, 0) / tf.length, my = tf.reduce((a, t) => a + t.y, 0) / tf.length; return 0.8 + 1.2 * Math.abs(mx - m.foot.x) / Math.max(1, m.rx) + 0.8 * (m.cy - my) / Math.max(1, m.ry); };
 function paintArbresRue(ctx, F, env, S, counter) {
   const t = env.seconds, D = env.D, wet = D.meteo.wet || 0;
   for (const v of F.rue) {
@@ -55,8 +56,8 @@ function paintArbresRue(ctx, F, env, S, counter) {
     // Rameaux fins : léger fléchissement (cisaillement de 3 % de b autour de la racine des charpentières).
     ctx.save(); ctx.transform(1, 0, 0.03 * b, 1, -0.03 * b * m.rootY, 0); ctx.drawImage(sp.layers.twigs, sp.box.x, sp.box.y, sp.box.w, sp.box.h); ctx.restore();
     // Grappes de feuilles : translation propre (amplitude par grappe, déphasage par arbre et par grappe, rafales), plus forte au bout et en haut.
-    for (let k = 0; k < 4; k++) {
-      const ph = v.x * 0.37 + k * 1.9, osc = 0.7 + 0.3 * Math.sin(t * (2.6 + k * 0.7) + ph) + 0.15 * Math.sin(t * 7.3 + ph * 2), dx = b * CLUSTER_AMP[k] * osc, dy = -Math.abs(b) * 0.25 * (k >= 2 ? 1 : 0.5) * (0.5 + 0.5 * Math.sin(t * 3.1 + ph));
+    for (let k = 0; k < Math.min(6, m.nMasses); k++) {
+      const ph = v.x * 0.37 + k * 1.9, osc = 0.7 + 0.3 * Math.sin(t * (2.6 + k * 0.7) + ph) + 0.15 * Math.sin(t * 7.3 + ph * 2), dx = b * massAmp(m, k) * osc, dy = -Math.abs(b) * 0.25 * (0.5 + 0.5 * Math.sin(t * 3.1 + ph));
       ctx.drawImage(sp.layers['c' + k], sp.box.x + dx, sp.box.y + dy, sp.box.w, sp.box.h);
     }
     ctx.setTransform(S, 0, 0, S, 0, 0);

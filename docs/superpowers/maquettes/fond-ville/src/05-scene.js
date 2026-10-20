@@ -212,6 +212,14 @@ function renderCaptures() {
       frames.forEach((c, i) => pl.drawImage(c, (i % cols) * cw, Math.floor(i / cols) * chh)); ids.push(name + '-planche');
     }
   }
+  // Planche des feuillages : un arbre de chaque essence (modèle de rue, fût 30 px, houppier r 16) en été et à la mi-octobre, ×3.
+  { const SP = ['platane', 'tilleul', 'marronnier', 'cerisier', 'poplar', 'chene'], cw = 110, chh = 120, ctx = canvasFor('zoom-feuillage', SP.length * cw * 3, 2 * chh * 3 + 40, 'zoom-feuillage — une essence par colonne : 7 juillet (haut) et 15 octobre (bas), ×3 ; masses continues à bord dentelé, trouées, rehauts en touches');
+    ctx.fillStyle = '#1c1a22'; ctx.fillRect(0, 0, SP.length * cw * 3, 2 * chh * 3 + 40);
+    SP.forEach((sp, i) => { ctx.fillStyle = '#e8e0cc'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(sp, i * cw * 3 + 6, 16);
+      [[ETE, 20], ['2026-10-15', 20 + chh * 3 + 20]].forEach(([date, oy]) => { const D = dayOf(date, 'soleil'); ctx.save(); ctx.translate(i * cw * 3, oy); ctx.scale(3, 3); ctx.fillStyle = '#EDE2C8'; ctx.fillRect(0, 0, cw, chh); ctx.fillStyle = '#E6D4AE'; ctx.fillRect(0, chh - 14, cw, 14);
+        const v = { x: cw / 2, y: chh - 12, h: 30, r: 16, species: sp, lean: 0, young: false, flowerSeed: 0.3 }, m = treeModelOf('planche-' + sp, sp, { x: v.x, y: v.y }, v.h, v.r * 2, 4, v.r * 0.3, 60, 1.3 + v.r * 0.07);
+        paintTreeStatic(ctx, m, foliageOf(D, 'planche-' + sp, sp), D, { bark: hexRgb(BARK[sp] || '#8A7A66'), shadow: true, veil: 0.2 }); ctx.restore(); }); });
+    ids.push('zoom-feuillage'); }
   // Séquences au vent (4-6 images à 0,4 s d'écart ; `seq-*` → GIF par capture.mjs) : pied d'arbre ×3 et échappée ×3.
   const SEQS = [
     { id: 'seq-vent-faible-ete', date: ETE, meteo: 'soleil', vent: 1, T: 15 + 0.3 * MIN, n: 5, note: 'vent faible d’été : frémissement des rehauts, rafale qui passe' },
@@ -290,7 +298,7 @@ function auditSquelette(seed) {
   const F = fondPlanOf(seed); F.rue ||= streetVerdure(F);
   const trees = [];
   for (const v of F.rue) if (v.kind === 'pit' && !v.empty) trees.push({ name: `rue@${Math.round(v.x)}`, m: rueModel(v), key: 'rue' + Math.round(v.x), sp: v.species });
-  for (const v of [...F.crestVerdure, ...F.rowVerdure.flat(), ...F.escapes.flatMap((e) => e.verdure)]) if (isTree(v) && v.kind !== 'cypress' && v.kind !== 'orchard') { const key = `${v.kind}-${Math.round(v.x ?? 0)}-${Math.round(v.y ?? 0)}`; if (v.kind === 'bouquet') trees.push({ name: `colline-bouquet@${Math.round(v.x)}`, m: treeModelOf('b' + key, 'bouquet', { x: v.x, y: v.y + v.r * 0.9 }, v.r * 0.55, v.r * 1.7, v.r > 3 ? 3 : 2, v.r * 0.34, 22), key: 'b' + key, sp: 'bouquet' }); else { const sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind), h = v.h, pop = v.kind === 'poplar'; trees.push({ name: `colline-${v.kind}@${Math.round(v.x)}`, m: treeModelOf(key, sp, { x: v.x, y: v.y }, h * (pop ? 0.18 : 0.3), h * (pop ? 0.82 : 0.7), 3, h * (pop ? 0.075 : 0.11), 26), key, sp }); } }
+  for (const v of [...F.crestVerdure, ...F.rowVerdure.flat(), ...F.escapes.flatMap((e) => e.verdure)]) if (isTree(v) && v.kind !== 'cypress' && v.kind !== 'orchard') { const key = `${v.kind}-${Math.round(v.x ?? 0)}-${Math.round(v.y ?? 0)}`; if (v.kind === 'bouquet') trees.push({ name: `colline-bouquet@${Math.round(v.x)}`, m: treeModelOf('b' + key, 'bouquet', { x: v.x, y: v.y + v.r * 0.9 }, v.r * 0.55, v.r * 1.7, v.r > 3 ? 3 : 2, v.r * 0.5, 22), key: 'b' + key, sp: 'bouquet' }); else { const sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind), h = v.h, pop = v.kind === 'poplar'; trees.push({ name: `colline-${v.kind}@${Math.round(v.x)}`, m: treeModelOf(key, sp, { x: v.x, y: v.y }, h * (pop ? 0.18 : 0.3), h * (pop ? 0.82 : 0.7), 3, h * (pop ? 0.1 : 0.16), 26), key, sp }); } }
   let maxJump = 0, worst = '', boxesOk = true;
   for (const tr of trees) {
     let prev = null; const box0 = JSON.stringify(tr.m.trunkBox), span0 = JSON.stringify(tr.m.span);
