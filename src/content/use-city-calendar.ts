@@ -118,6 +118,6 @@ export function useCityDay(date: YMD, enabled = true): DayContext {
     const date = { y, m, d };
     const prev = addDays(date, -1);
     const yesterday: DayContext = { ...dayContext(prev, periods, alsace), holidayWeek: holidayWeekOf(prev, periods) };
-    return { ...dayContext(date, periods, alsace), holidayWeek: holidayWeekOf(date, periods), yesterday };
+    return { ...dayContext(date, periods, alsace), holidayWeek: holidayWeekOf(date, periods), yesterday, periods };
   }, [y, m, d, periods, alsace]);
 }

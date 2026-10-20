@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { addDays, dayContext, type DayContext } from '../core/library/city/calendar';
 import type { Facade } from '../core/library/city/facades';
 import { gullMinutes } from '../core/library/city/gulls';
+import { decorTasks, halloweenPlanFor, type HwPlan } from '../core/library/city/halloween';
 import { homeState, type HomeState } from '../core/library/city/home-state';
 import { cityDwellings, type Dwelling } from '../core/library/city/households';
 import type { CityContext } from '../core/library/city/intensity';
@@ -15,12 +16,14 @@ import type { SunTimes } from '../core/library/sky';
 // (`homeState`) est relu par les calques (fenêtres allumées, vie aux fenêtres). Sans contexte de ville (aperçus) : null, les
 // calques gardent l'allumage du chantier 1.
 
-// byFacadeHome : logement par `${façade}:${logement}` (= `Dwelling.id`, `data-home` du calque des fenêtres).
-export type SceneLife = { dwellings: Dwelling[]; today: Map<string, Schedule>; yesterday: Map<string, Schedule>; day: SceneDay; byFacadeHome: Map<string, Dwelling> };
+// byFacadeHome : logement par `${façade}:${logement}` (= `Dwelling.id`, `data-home` du calque des fenêtres) ; halloween : plan
+// des décors d'Halloween de l'édition en cours (null hors de la période), dont les poses et retraits du jour et de la veille
+// sont des scènes des emplois du temps.
+export type SceneLife = { dwellings: Dwelling[]; today: Map<string, Schedule>; yesterday: Map<string, Schedule>; day: SceneDay; byFacadeHome: Map<string, Dwelling>; halloween: HwPlan | null };
 type Weather = { precip: number; snow: boolean; storm: boolean };
 
-const schedulesOf = (dwellings: readonly Dwelling[], day: SceneDay, seed: number): Map<string, Schedule> =>
-  new Map(dwellings.map((d) => [d.id, buildSchedule(d, day, dayDraw(d, day, seed))]));
+const schedulesOf = (dwellings: readonly Dwelling[], day: SceneDay, seed: number, ctx: DayContext, plan: HwPlan | null): Map<string, Schedule> =>
+  new Map(dwellings.map((d) => [d.id, buildSchedule(d, day, dayDraw(d, day, seed), decorTasks(plan, d.id, ctx.date))]));
 
 // Calcul pur (tests, cache) : la veille vient de `day.yesterday` (useCityDay, mêmes périodes de vacances), à défaut d'un
 // contexte sans périodes ; même météo que le jour (celle de la veille n'est pas connue), aucun déménagement. `sun` : lever et
@@ -30,12 +33,17 @@ export function buildSceneLife(facades: readonly Facade[], day: DayContext, weat
   const today = sceneDay(day, weather, seed, moving, day.holidayWeek, sun);
   const prevCtx = day.yesterday ?? dayContext(addDays(day.date, -1), []);
   const prev = sceneDay(prevCtx, weather, seed, false, prevCtx.holidayWeek, sun);
+  const periods = day.periods ?? [];
+  const plan = halloweenPlanFor(day.date, dwellings, facades, seed, periods);
+  // Veille : même plan (même édition), sauf la veille de la période.
+  const prevPlan = plan && halloweenPlanFor(prevCtx.date, dwellings, facades, seed, periods) ? plan : null;
   return {
     dwellings,
-    today: schedulesOf(dwellings, today, seed),
-    yesterday: schedulesOf(dwellings, prev, seed),
+    today: schedulesOf(dwellings, today, seed, day, plan),
+    yesterday: schedulesOf(dwellings, prev, seed, prevCtx, prevPlan),
     day: today,
     byFacadeHome: new Map(dwellings.map((d) => [d.id, d])),
+    halloween: plan,
   };
 }
 
@@ -64,11 +72,13 @@ function dwellingsOf(facades: readonly Facade[], seed: number): { dwellings: Dwe
 }
 const lives = new Map<string, SceneLife>();
 const dayKey = (d: DayContext | undefined): string => (d ? [d.iso, d.kind, d.holidayWeek ?? '-'].join('/') : '-');
+// Vacances connues (absences des foyers sur toute la période d'Halloween).
+const periodsKey = (d: DayContext): string => (d.periods ?? []).map((p) => p.start + p.end).join(',');
 const sunKey = (s: SunTimes | undefined): string => (!s ? '-' : s.kind === 'polar' ? s.polar : `${Math.round(s.sunrise)}-${Math.round(s.sunset)}`);
 
 export function sharedSceneLife(facades: readonly Facade[], day: DayContext, wet: boolean, seed: number, moving: boolean, sun?: SunTimes): SceneLife {
   const { dwellings, sig } = dwellingsOf(facades, seed);
-  const key = [sig, seed, dayKey(day), dayKey(day.yesterday), wet, moving, sunKey(sun)].join('#');
+  const key = [sig, seed, dayKey(day), dayKey(day.yesterday), wet, moving, sunKey(sun), periodsKey(day)].join('#');
   let life = lives.get(key);
   if (life) lives.delete(key); // replacée en dernier : la plus récente
   else {
@@ -90,7 +100,7 @@ export function useSceneLife(facades: readonly Facade[], city: CityContext | und
     () => (day ? sharedSceneLife(facades, day, wet, seed, moving, sun) : null),
     // `day` est lu par ce qui fait le jour de scène (date, genre, semaine de vacances, et de même pour la veille) et `sun` par
     // sa signature (minutes arrondies) : un nouvel objet du même jour ou du même soleil ne recalcule rien.
-    [facades, seed, day?.iso, day?.kind, day?.holidayWeek, day?.yesterday?.iso, day?.yesterday?.kind, day?.yesterday?.holidayWeek, wet, moving, sunSig], // eslint-disable-line react-hooks/exhaustive-deps
+    [facades, seed, day?.iso, day?.kind, day?.holidayWeek, day?.yesterday?.iso, day?.yesterday?.kind, day?.yesterday?.holidayWeek, day?.periods, wet, moving, sunSig], // eslint-disable-line react-hooks/exhaustive-deps
   );
 }
 

@@ -123,6 +123,19 @@ describe('fêtes de 1b-ii-b', () => {
   });
 });
 
+describe('Halloween', () => {
+  it('la soirée du 31 octobre, de 17 h à 23 h seulement', () => {
+    const day = festivitiesOn({ y: 2026, m: 10, d: 31 });
+    expect(day.map((f) => f.id)).toEqual(['halloween']);
+    expect(activeFestivities(day, 1019)).toEqual([]);
+    expect(activeFestivities(day, 1020)).toEqual(['halloween']);
+    expect(activeFestivities(day, 1379)).toEqual(['halloween']);
+    expect(activeFestivities(day, 1380)).toEqual([]);
+    expect(festivitiesOn({ y: 2026, m: 10, d: 30 })).toEqual([]);
+    expect(festivitiesOn({ y: 2026, m: 11, d: 1 })).toEqual([]);
+  });
+});
+
 describe('festivityStartsOn', () => {
   it('ne retient que le premier jour d’une fête qui passe minuit', () => {
     expect(festivityStartsOn({ y: 2026, m: 6, d: 21 }, 'music')).toBe(true);

@@ -1,5 +1,6 @@
 import { mulberry32 } from '../scene-world';
 import { festivityStartsOn } from './calendar';
+import { DECOR_SCENE, type DecorTask, type HwKind } from './halloween';
 import type { Dwelling, Room } from './households';
 import type { DayDraw, SceneDay } from './scene-day';
 
@@ -21,18 +22,21 @@ import type { DayDraw, SceneDay } from './scene-day';
 export type LightTone = 'warm' | 'cream' | 'orange' | 'tv' | 'cool';
 export type Where = 'in' | 'lean' | 'balcony';
 export type Choreo = 'cook' | 'openShutters' | 'closeShutters' | 'armsUp' | 'drawCurtains' | 'table' | 'tv' | 'read' | 'lean' | 'leanRail'
-  | 'water' | 'shake' | 'smoke' | 'cross' | 'stand' | 'dance';
+  | 'water' | 'shake' | 'smoke' | 'cross' | 'stand' | 'dance' | 'decorLean' | 'decorBalcony';
 export type Segment =
   | { k: 'lit'; room: Room; t0: number; t1: number; tone: LightTone }
   | { k: 'shut' | 'curt' | 'win'; room: Room; t: number; to: number; dur: number }
-  | { k: 'act'; t0: number; t1: number; room: Room; where: Where; choreo: Choreo; m: number; seat?: number; party?: number; desk?: boolean; slot?: number; reverse?: boolean; event?: boolean; from?: number }
+  | { k: 'act'; t0: number; t1: number; room: Room; where: Where; choreo: Choreo; m: number; seat?: number; party?: number; desk?: boolean; slot?: number; reverse?: boolean; event?: boolean; from?: number; decor?: SceneDecor }
   | { k: 'return' | 'depart'; t: number; m: number }
   | { k: 'sapin' | 'party' | 'dim'; t0: number; t1: number };
+// Décor d'Halloween d'une scène `decorLean` / `decorBalcony` (city/halloween.ts) : `dx`, sa place en largeurs de la fenêtre
+// du geste ; `reverse` de la scène : on le retire au lieu de le poser.
+export type SceneDecor = { id: string; kind: HwKind; dx: number };
 // shutUser : volets fermés la nuit (valeur au début du jour) ; maxActors : scènes `act` simultanées au plus fort du jour.
 export type Schedule = { dwelling: string; segments: Segment[]; shutUser: boolean; maxActors: number };
 
 type Act = Extract<Segment, { k: 'act' }>;
-type ActExtra = Partial<Pick<Act, 'seat' | 'party' | 'desk' | 'slot' | 'reverse' | 'event'>>;
+type ActExtra = Partial<Pick<Act, 'seat' | 'party' | 'desk' | 'slot' | 'reverse' | 'event' | 'decor'>>;
 
 const DAY_END = 1800;
 // Retard maximal d'une scène courte quand son membre est occupé (minutes) ; pose longue gardée si ≥ MIN_POSE minutes.
@@ -46,6 +50,8 @@ const TONES: readonly LightTone[] = ['warm', 'warm', 'cream', 'orange'];
 // Extinctions du coucher (minutes) : fenêtre autour de `bed`, écart tiré entre deux pièces, durée minimale d'une lumière.
 const OFF = { before: 15, after: 40, gap: [1.5, 7], minLit: 3 } as const;
 const SHUT_USERS = new Set(['couple', 'famille', 'retraite', 'solo']);
+// Halloween : essais successifs d'un geste de décor après l'heure de tendance (minutes), chacun décalé de SHIFT au plus.
+const DECOR_TRIES = [0, 40, 80, 120, 160] as const;
 
 // Plan des feux pour la seconde passe : qui regarde (membres présents pendant tout le spectacle), si le foyer réagit.
 type ShowPlan = { who: number[] };
@@ -53,7 +59,7 @@ type Composed = { segments: Segment[]; shutUser: boolean; bed: number; kidBed: n
 
 const pri = (tone: LightTone, base: LightTone): number => (tone === 'tv' ? 3 : tone === 'orange' && base !== 'orange' ? 2 : 1);
 
-function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | null): Composed {
+function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | null, decor: readonly DecorTask[]): Composed {
   const hh = d.hh;
   const r = mulberry32(draw.rng);
   const opt = draw.optional;
@@ -590,6 +596,29 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
     look(tLook, 20, 0, L, { event: true });
     ms.forEach((m, i) => act(tDance, 30, L, 'in', 'dance', m, { slot: i, event: true }));
   }
+  // ─── Halloween : poses et retraits du jour, par le membre prévu sinon un autre adulte, au premier moment libre après l'heure
+  // de tendance ; la fenêtre (porte-fenêtre du balcon) s'ouvre le temps du geste. Personne de libre : le décor change d'état
+  // sans geste (halloween.ts, `decorSwitch`). ───
+  for (const { item, removing, at } of decor) {
+    const balcony = item.gesture === 'balcony';
+    const room: Room = balcony ? L : item.room;
+    if (!has(room)) continue;
+    const { dur } = DECOR_SCENE[item.gesture];
+    const x: ActExtra = { decor: { id: item.id, kind: item.kind, dx: item.dx }, ...(removing ? { reverse: true } : {}) };
+    const who = [item.m, ...ms.filter((i) => i !== item.m && hh.members[i]!.size >= 0.9)];
+    let s: number | null = null;
+    for (const shift of DECOR_TRIES) {
+      for (const m of who) {
+        s = act(at + shift, dur, room, balcony ? 'balcony' : 'lean', balcony ? 'decorBalcony' : 'decorLean', m, x);
+        if (s !== null) break;
+      }
+      if (s !== null) break;
+    }
+    if (s !== null) {
+      win(room, s - 0.1, 1);
+      win(room, s + dur, 0);
+    }
+  }
   if (day.december && hh.sapin) S.push({ k: 'sapin', t0: Math.max(1008, Math.min(firstBack, bed - 30)), t1: Math.max(bed, 1100) });
 
   // ─── poses longues dans les trous ───
@@ -665,10 +694,11 @@ function maxActors(segments: Segment[]): number {
 // Emploi du temps d'un logement pour un jour de scène. Absent : aucun segment (volets fermés tout le jour pour qui les ferme).
 // Jour de feux : une première passe donne le coucher et les sorties, la seconde pose les penchés avant le reste (la famille
 // et le retraité ne regardent que s'ils veillent encore au début du spectacle ; seuls les membres présents regardent).
-export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw): Schedule {
+// `decor` : décors d'Halloween à poser ou retirer ce jour-là (halloween.ts, `decorTasks`).
+export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw, decor: readonly DecorTask[] = []): Schedule {
   const shutUserOf = SHUT_USERS.has(d.hh.type);
   if (draw.presence === 'away') return { dwelling: d.id, segments: [], shutUser: shutUserOf, maxActors: 0 };
-  let res = compose(d, day, draw, null);
+  let res = compose(d, day, draw, null, decor);
   const show = day.show;
   if (show) {
     const awake = (d.hh.type !== 'famille' && d.hh.type !== 'retraite') || res.bed > show.start;
@@ -679,7 +709,7 @@ export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw): Schedu
       .filter((m) => !res.gone.some(([g, from, to]) => g === m && from - d.climb < b && to + d.climb > a))
       .filter((m) => !kid(m) || res.kidBed > show.start)
       .sort((p, q) => Number(kid(p)) - Number(kid(q)) || p - q);
-    if (awake && who.length) res = compose(d, day, draw, { who });
+    if (awake && who.length) res = compose(d, day, draw, { who }, decor);
   }
   const segments = clamp(res.segments);
   return { dwelling: d.id, segments, shutUser: res.shutUser, maxActors: maxActors(segments) };

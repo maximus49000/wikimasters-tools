@@ -3,12 +3,13 @@ export type YMD = { y: number; m: number; d: number };
 export type HolidayPeriod = { name: string; start: string; end: string };
 export type DayKind = 'school' | 'wednesday' | 'weekend' | 'holiday' | 'public-holiday';
 // Fêtes de la scène Ville (vague 1b-ii) : `hours` en minutes, [début, fin) ; une plage ne passe pas minuit (on écrit une ligne par jour).
-export type FestivityId = 'new-year' | 'bastille' | 'christmas-eve' | 'epiphany' | 'valentine' | 'easter' | 'may-day' | 'music' | 'armistice';
+export type FestivityId = 'new-year' | 'bastille' | 'christmas-eve' | 'epiphany' | 'valentine' | 'easter' | 'may-day' | 'music' | 'armistice' | 'halloween';
 export type Festivity = { id: FestivityId; hours: readonly (readonly [number, number])[] };
 // `holidayWeek` : la semaine (lundi-dimanche) est en vacances scolaires, d'après son mercredi (holidayWeekOf) ; `yesterday` : contexte
 // de la veille, mêmes périodes (vie des logements : la soirée de la veille déborde après minuit). Renseignés par useCityDay ;
-// absents ailleurs (repli : genre du jour, veille sans périodes).
-export type DayContext = { date: YMD; iso: string; weekday: number; kind: DayKind; schoolOn: boolean; publicHoliday: string | null; festivities: Festivity[]; holidayWeek?: boolean; yesterday?: DayContext };
+// absents ailleurs (repli : genre du jour, veille sans périodes). `periods` : périodes de vacances connues (useCityDay), pour les
+// calculs qui regardent d'autres jours que le jour et la veille (décors d'Halloween : qui est parti la semaine de la pose).
+export type DayContext = { date: YMD; iso: string; weekday: number; kind: DayKind; schoolOn: boolean; publicHoliday: string | null; festivities: Festivity[]; holidayWeek?: boolean; yesterday?: DayContext; periods?: readonly HolidayPeriod[] };
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 export const isoDate = ({ y, m, d }: YMD): string => `${y}-${pad(m)}-${pad(d)}`;
@@ -73,6 +74,8 @@ export const FESTIVITIES: readonly { id: FestivityId; m: number; d: number; hour
   // La Fête de la musique se prolonge dans la nuit, jusqu'à 4 h 30 (fin de la dépose des stands et des scènes).
   { id: 'music', m: 6, d: 22, hours: [[0, 270]] },
   { id: 'bastille', m: 7, d: 14, hours: [[600, 720], [1260, 1440]] },
+  // Halloween : la soirée du 31 (les décors s'étalent du 24 octobre au 8 novembre, city/halloween.ts et install.ts).
+  { id: 'halloween', m: 10, d: 31, hours: [[1020, 1380]] },
   { id: 'armistice', m: 11, d: 11, hours: [[480, 1080]] },
   { id: 'christmas-eve', m: 12, d: 24, hours: [[0, 1440]] },
   { id: 'christmas-eve', m: 12, d: 25, hours: [[0, 720]] },

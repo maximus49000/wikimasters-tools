@@ -44,7 +44,7 @@ const WET_PRECIP = 0.3;
 const COLD_MONTHS = new Set([11, 12, 1, 2, 3]);
 
 // Jeudi de la semaine ISO (lundi-dimanche) : il donne l'année et le numéro de la semaine.
-function isoWeek(date: YMD, weekday: number): { week: number; thursday: YMD } {
+export function isoWeek(date: YMD, weekday: number): { week: number; thursday: YMD } {
   const thursday = addDays(date, 3 - ((weekday + 6) % 7));
   const dayOfYear = (Date.UTC(thursday.y, thursday.m - 1, thursday.d) - Date.UTC(thursday.y, 0, 1)) / 86400000;
   return { week: thursday.y * 100 + Math.floor(dayOfYear / 7) + 1, thursday };
@@ -100,6 +100,15 @@ const OPTIONAL = { water: 0.7, rug: 0.35, look: 0.55, smoke: 0.85, party: 0.65, 
 const spread = (r: number, amp: number): number => (2 * r - 1) * amp;
 const between = (r: number, [a, b]: readonly [number, number]): number => a + r * (b - a);
 
+// Foyer parti toute la semaine ISO `week` (vacances, week-end ailleurs) : un tirage par semaine, plus probable en vacances
+// scolaires (familles surtout) et l'été. Relu hors de `dayDraw` par les décors d'Halloween (qui est là le jour de la pose).
+export function awayInWeek(d: Pick<Dwelling, 'key' | 'hh'>, seed: number, week: number, holidayWeek: boolean, weekMonth: number): boolean {
+  const rAway = mulberry32(seed ^ hashString('away') ^ d.key ^ week)();
+  let pAway = holidayWeek ? (d.hh.type === 'famille' ? AWAY.holidayFamily : AWAY.holidayOther) : AWAY.base;
+  if (weekMonth === 7 || weekMonth === 8) pAway *= AWAY.summer;
+  return rAway < pAway;
+}
+
 export function dayDraw(d: Dwelling, day: SceneDay, seed: number): DayDraw {
   const rng = mulberry32(seed ^ hashString(day.iso) ^ d.key ^ hashString('day'));
   const { type, smoker } = d.hh;
@@ -107,17 +116,14 @@ export function dayDraw(d: Dwelling, day: SceneDay, seed: number): DayDraw {
   // une scène, sans décaler les autres tirages du logement. Le premier tirage (ancienne absence du jour) est gardé pour ne
   // pas décaler les suivants ; l'absence vient du tirage de la semaine.
   rng();
-  const rAway = mulberry32(seed ^ hashString('away') ^ d.key ^ day.week)();
   const rSick = rng(), rGuests = rng(), rLate = rng(), rLateExtra = rng(), rGuestsExtra = rng();
   const rWake = rng(), rBack = rng(), rEvening = rng(), rBed = rng();
   const rWater = rng(), rRug = rng(), rLook = rng(), rSmoke = rng(), rParty = rng(), rTv = rng(), rKid = rng();
 
-  let pAway = day.holidayWeek ? (type === 'famille' ? AWAY.holidayFamily : AWAY.holidayOther) : AWAY.base;
-  if (day.weekMonth === 7 || day.weekMonth === 8) pAway *= AWAY.summer;
   const workday = !day.weekend && day.kind !== 'public-holiday';
   const pGuests = day.weekday === 5 || day.weekday === 6 ? GUESTS.friSat : GUESTS.other;
   const presence: Presence =
-    rAway < pAway ? 'away' : rSick < SICK ? 'sick' : rGuests < pGuests ? 'guests' : workday && rLate < LATE.p ? 'late' : 'normal';
+    awayInWeek(d, seed, day.week, day.holidayWeek, day.weekMonth) ? 'away' : rSick < SICK ? 'sick' : rGuests < pGuests ? 'guests' : workday && rLate < LATE.p ? 'late' : 'normal';
 
   const wake = spread(rWake, !workday ? SPREAD.wakeWeekend : SPREAD.wakeWeek);
   const back = spread(rBack, SPREAD.back) + (presence === 'late' ? between(rLateExtra, LATE.extra) : 0);
