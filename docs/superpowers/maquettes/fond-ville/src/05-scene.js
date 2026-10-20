@@ -11,6 +11,8 @@ function cached(key, w, h, paint) {
 const bucket10 = (T) => Math.floor(T * 6) / 6;
 // Premier plan (vrai paintCityTile, fond transparent) + ombres D3 corrigées : une fois par graine et par échelle.
 const fgCanvas = (F, scale) => cached(`fg|${F.seed}|${scale}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); for (let t = 0; t < tileCount(W); t++) { ctx.save(); ctx.beginPath(); ctx.rect(t * 360, 0, 360, H); ctx.clip(); paintCityTile(ctx, F.plan, t); ctx.restore(); } paintNearShadows(ctx, F); });
+// Verdure de la rue (par-dessus le premier plan) : une fois par graine, échelle, saison et neige.
+const rueCanvas = (F, env, scale) => { F.rue ||= streetVerdure(F); return cached(`rue|${F.seed}|${scale}|${env.D.season}|${env.D.meteo.snow ? 'n' : ''}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintRueVerdure(ctx, F, env); }); };
 // Décor actuel (bundle AVANT) : captures « avant ».
 const avantCanvas = (seed, scale) => cached(`avant|${seed}|${scale}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); const plan = AVANT.cityPaintPlan(W, H, seed); for (let t = 0; t < AVANT.tileCount(W); t++) { ctx.save(); ctx.beginPath(); ctx.rect(t * 360, 0, 360, H); ctx.clip(); AVANT.paintCityTile(ctx, plan, t); ctx.restore(); } });
 // Fond statique (poses lentes : tranche de 10 min, date, météo).
@@ -42,6 +44,7 @@ function renderScene(ctx, seed, T, D, view, avant = false) {
     b.drawImage(murCanvas(F, env, S), 0, 0, W, H);
     paintVieMur(b, F, env, counter);
     b.drawImage(fgCanvas(F, S), 0, 0, W, H);
+    b.drawImage(rueCanvas(F, env, S), 0, 0, W, H);
   }
   // Lumières (hors étalonnage) dans un calque à part, avec les découpes.
   const lights = layer('lights', W * S, H * S), l = lights.getContext('2d');
@@ -54,6 +57,7 @@ function renderScene(ctx, seed, T, D, view, avant = false) {
   } else {
     l.save(); l.clip(F.clipHill); paintLightsHill(l, F, env, counter); l.restore();
     l.save(); l.clip(F.clipWall); paintLightsWall(l, F, env, counter); l.restore();
+    paintLightsRue(l, F, env);
   }
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.filter = gradeFilter(env);
@@ -80,6 +84,9 @@ function smokeView(F, T, D, scale = 4) {
   const env = envAt(T, D), ch = F.houses.map((h) => h.chimney).filter((c) => c && smokeK(T, D, c, F.seed) > 0 && F.hillTop[Math.round(c.x)] > c.y + 2)[0] || F.houses.find((h) => h.chimney).chimney;
   return { x0: Math.max(0, Math.round(ch.x - 70)), y0: Math.max(0, Math.round(ch.y - 45)), w: 150, h: 90, scale };
 }
+// Vues de la rue : un pied d'arbre fleuri, un parterre.
+const pitView = (F, scale = 3) => { F.rue ||= streetVerdure(F); const p = F.rue.find((v) => v.kind === 'pit' && !v.empty && v.flowers && v.x > 80) || F.rue.find((v) => v.kind === 'pit'); return { x0: Math.max(0, Math.round(p.x - 80)), y0: F.ground - 85, w: 160, h: 120, scale }; };
+const bedView = (F, scale = 3) => { F.rue ||= streetVerdure(F); const p = F.rue.find((v) => v.kind === 'parterre' && v.x0 > 80) || F.rue.find((v) => v.kind === 'bac'); return { x0: Math.max(0, Math.round(p.x0 + p.w / 2 - 80)), y0: F.ground - 85, w: 160, h: 120, scale }; };
 const wallView = (F, scale = 3) => { const b = F.far.reduce((m, b) => (b.nFloors > m.nFloors ? b : m), F.far[0]); return { x0: Math.max(0, Math.round(b.x - 60)), y0: Math.max(0, Math.round(b.top - 20)), w: 180, h: 130, scale }; };
 
 // ───────────── galerie ─────────────
@@ -108,6 +115,16 @@ function renderCaptures() {
   for (const [tag, avant] of [['avant', true], ['apres', false]]) { const id = `${tag}-graine7-nuit`; renderScene(canvasFor(id, W * 2, H * 2, `${id} — 27 octobre 23 h`), 7, 23 + 0.2 * MIN, D23, fullView(2), avant); ids.push(id); }
   // Moments (graine 7).
   for (const m of MOMENTS) { const D = dayOf(m.date, m.meteo); renderScene(canvasFor(m.id, W * 2, H * 2, `${m.id} — ${m.note}`), 7, m.T, D, fullView(2)); ids.push(m.id); }
+  // Rue (graine 7) : saisons et nuit, vue de la rue seule (toits du premier plan → chaussée).
+  const RUE_VIEW = { x0: 0, y0: 70, w: W, h: H - 70, scale: 2 };
+  const RUES = [
+    { id: 'rue-printemps-11h', T: 11 + 0.2 * MIN, date: '2027-04-20', meteo: 'soleil', note: 'mardi 20 avril, 11 h — tulipes aux pieds d’arbres, bacs et parterres, glycine en fleurs, arbres en jeunes feuilles' },
+    { id: 'rue-ete-15h', T: 15 + 0.3 * MIN, date: ETE, meteo: 'soleil', note: '7 juillet, 15 h — platanes, tilleuls et marronniers en feuilles, géraniums et lavande' },
+    { id: 'rue-automne-15h', T: 15 + 0.3 * MIN, date: AUT, meteo: 'soleil', note: '27 octobre, 15 h — feuillages roux, feuilles mortes sur le trottoir, chrysanthèmes, vigne vierge rouge' },
+    { id: 'rue-hiver-11h', T: 11 + 0.2 * MIN, date: HIV, meteo: 'nuages', note: '10 février, 11 h — arbres nus, sol paillé et bruyères, grimpantes en bois' },
+    { id: 'rue-nuit-22h', T: 22 + 0.2 * MIN, date: AUT, meteo: 'soleil', note: '27 octobre, 22 h — houppiers éclairés par les lampadaires' },
+  ];
+  for (const m of RUES) { const D = dayOf(m.date, m.meteo); renderScene(canvasFor(m.id, W * 2, (H - 70) * 2, `${m.id} — ${m.note}`), 7, m.T, D, RUE_VIEW); ids.push(m.id); }
   // Zooms ×3 (graine 7).
   const F = fondPlanOf(7);
   const zooms = [
@@ -119,6 +136,10 @@ function renderCaptures() {
     { id: 'zoom-tour-14juillet', view: towerView(F), T: 14 + 5 * MIN, D: dayOf(FETE, 'soleil'), note: 'la tour le 14 juillet : drapeau au mât, pigeons posés sur le beffroi (×3)' },
     { id: 'zoom-tour-nuit', view: towerView(F), T: 23 + 0.2 * MIN, D: D23, note: 'la tour illuminée, cadran éclairé (×3)' },
     { id: 'zoom-ruelle', view: alleyView(F), T: 15 + 0.3 * MIN, D: D15, note: 'une fente du premier plan : mur du fond à étages, fenêtres sous l’égout, ruelle en retrait sous le haut du rez-de-chaussée (×3)' },
+    { id: 'zoom-pied-arbre', view: pitView(F), T: 15 + 0.3 * MIN, D: D15, note: 'pied d’arbre : fosse à grille en fonte, pied fleuri, tronc planté avec ombre au sol, houppier devant la façade avec son ombre (×3)' },
+    { id: 'zoom-pied-arbre-printemps', view: pitView(F), T: 11 + 0.2 * MIN, D: dayOf('2027-04-20', 'soleil'), note: 'le même pied d’arbre au printemps : tulipes (×3)' },
+    { id: 'zoom-parterre', view: bedView(F), T: 15 + 0.3 * MIN, D: D15, note: 'parterre au pied d’un immeuble, bacs de trottoir, pots devant une porte (×3)' },
+    { id: 'zoom-parterre-automne', view: bedView(F), T: 15 + 0.3 * MIN, D: D23, note: 'le même parterre à l’automne : chrysanthèmes, feuilles mortes (×3)' },
     { id: 'zoom-mur', view: wallView(F), T: 15 + 0.3 * MIN, D: D15, note: 'mur du fond : bandeaux, corniche, travées, volets, linge (×3)' },
     { id: 'zoom-mur-nuit', view: wallView(F), T: 22 + 10 * MIN, D: D23, note: 'mur du fond à 22 h 10 : volets qui se ferment, fenêtres allumées sous l’égout (×3)' },
   ];

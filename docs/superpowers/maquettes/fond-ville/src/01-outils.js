@@ -3,7 +3,7 @@
 // `AVANT` est le même code avec le fond actuel (hill-painter.ts tel quel) : il sert aux captures « avant ».
 const { cityPaintPlan, hillCrestY, HILL_ROWS, FAR_HAZE, FAR_ROOF_H, leftOf, paintCityTile, tileCount, cityFacades, FAR_WINDOW, GROUND_FLOOR,
   hashString, mulberry32, SUN, COOL, INK, TAU, shade, light, ink, hexRgb, mixRgb, rgba, gradeFor, windowsLitFraction, windowLit, nightness,
-  lampLit, publicHolidays, dayContext, roofLineY, roofSpan } = RUE;
+  lampLit, lampsFor, publicHolidays, dayContext, roofLineY, roofSpan } = RUE;
 const W = 1440, H = 340;
 const MIN = 1 / 60, SEC = 1 / 3600;
 const sat = (v) => (v < 0 ? 0 : v > 1 ? 1 : v), lerp = (a, b, t) => a + (b - a) * t, ramp = (T, t0, d) => sat((T - t0) / d), smooth = (t) => t * t * (3 - 2 * t);

@@ -6506,7 +6506,7 @@ var RUE = (function(exports) {
 // `AVANT` est le même code avec le fond actuel (hill-painter.ts tel quel) : il sert aux captures « avant ».
 const { cityPaintPlan, hillCrestY, HILL_ROWS, FAR_HAZE, FAR_ROOF_H, leftOf, paintCityTile, tileCount, cityFacades, FAR_WINDOW, GROUND_FLOOR,
   hashString, mulberry32, SUN, COOL, INK, TAU, shade, light, ink, hexRgb, mixRgb, rgba, gradeFor, windowsLitFraction, windowLit, nightness,
-  lampLit, publicHolidays, dayContext, roofLineY, roofSpan } = RUE;
+  lampLit, lampsFor, publicHolidays, dayContext, roofLineY, roofSpan } = RUE;
 const W = 1440, H = 340;
 const MIN = 1 / 60, SEC = 1 / 3600;
 const sat = (v) => (v < 0 ? 0 : v > 1 ? 1 : v), lerp = (a, b, t) => a + (b - a) * t, ramp = (T, t0, d) => sat((T - t0) / d), smooth = (t) => t * t * (3 - 2 * t);
@@ -7045,6 +7045,138 @@ function paintFarStatic(ctx, F, env) {
   for (const b of F.far) { const left = prev && prev.x < b.x ? prev : null; paintFarC(ctx, F, b, left, env, F.seed); prev = b; }
 }
 
+// ═══════════ 03b-rue-verte.js ═══════════
+// ───────────── verdure de la rue principale (couche peinte PAR-DESSUS le premier plan de l'appli, dans les tranches) ─────────────
+// Ce qu'on voit dans une rue parisienne : alignement d'arbres en pied de trottoir dans une fosse à grille en fonte (platanes,
+// tilleuls, marronniers ; espacement 60-95 px tiré, un arbre plus jeune au tuteur, une fosse vide), pieds d'arbres fleuris, bacs
+// de trottoir devant une vitrine, parterre au pied d'un immeuble sans commerce, grimpante (glycine, vigne vierge) sur l'arête
+// d'une façade, pots devant une porte, herbe entre les pavés au bord de la chaussée, feuilles mortes à l'automne.
+// Emplacements interdits (tirage par graine et position, `streetVerdure`) : entrées d'immeuble (± DOOR_MARGIN), portes de
+// commerce (± 8), lampadaires (± 9, `lampsFor`), arbres existants du plan (`plan.trees`, ± r + 6), mobilier (`plan.furniture`),
+// chaussée. Le couloir des passants (`doorY` → `walkY`, soit ground + 2 … ground + 14) reste libre : fosses à la bordure
+// (curb − 5 … curb), bacs et parterres collés à la façade (ground … ground + 3,5), terrasses de cafés dans le même couloir
+// que les passants (deux rangs de tables entre doorY et walkY : elles ne croisent ni les fosses ni les bacs).
+const PIT = { w: 8, h: 3.2 };                       // grille de fosse (perspective)
+const SPECIES = ['platane', 'platane', 'tilleul', 'marronnier', 'tilleul'];
+const FLOWERS = {                                   // fleurs de saison (pieds d'arbres, bacs, parterres)
+  spring: ['#E8456B', '#F6C62E', '#F28CB4', '#FFFFFF'],      // tulipes
+  summer: ['#E03A3A', '#8468B0', '#F0609A', '#9A78C8'],      // géraniums, lavande
+  autumn: ['#F0B040', '#C87A2A', '#D8A040', '#B04A3A'],      // chrysanthèmes
+  winter: ['#B890C0', '#C8A0C8', '#8A6A5A'],                 // bruyères, sol paillé
+};
+const BARK = { platane: '#C8B898', tilleul: '#8A7A66', marronnier: '#7A6654', jeune: '#A89880' };
+
+function streetVerdure(F) {
+  const { plan, ground } = F, seed = F.seed, curb = plan.curb, u = plan.unit, out = [];
+  const lamps = lampsFor(W, seed).map((l) => l.x);
+  const doors = plan.doors.map((d) => ({ x0: d.x - 4, x1: d.x + 12 + 4 }));
+  const shopDoors = plan.blocked.filter((s) => !doors.some((d) => Math.abs(d.x0 + 4 - s.x0) < 0.5)).map((s) => s); // locaux (porte côté opposé à l'entrée : on garde les 8 px de chaque bout libres)
+  const busy = (x0, x1, kinds) => (kinds.includes('door') && doors.some((d) => x1 > d.x0 - 2 && x0 < d.x1 + 2)) || (kinds.includes('lamp') && lamps.some((l) => x1 > l - 9 && x0 < l + 9)) || (kinds.includes('tree') && plan.trees.some((t) => x1 > t.x - t.r - 6 && x0 < t.x + t.r + 6)) || (kinds.includes('furn') && plan.furniture.some((f) => x1 > f.x - 3 && x0 < f.x + f.w + 3)) || (kinds.includes('shopdoor') && shopDoors.some((s) => (x1 > s.x0 - 2 && x0 < s.x0 + 8) || (x1 > s.x1 - 8 && x0 < s.x1 + 2))) || out.some((v) => v.x0 !== undefined && x1 > v.x0 - 3 && x0 < v.x1 + 3);
+  // 1. Alignement d'arbres en fosse à la bordure.
+  const rng = rngOf(seed, 'rue-arbres');
+  for (let x = 30 + rng() * 50; x < W - 20; x += 60 + rng() * 35) {
+    let placed = false;
+    for (let k = 0; k < 4 && !placed; k++) {
+      const px = x + k * 7;
+      if (busy(px - 6, px + 6, ['door', 'lamp', 'tree', 'furn', 'shopdoor'])) continue;
+      const roll = rng(), young = roll < 0.14, empty = roll >= 0.14 && roll < 0.22, species = pick(SPECIES, rng);
+      const h = (young ? 12 : 17 + rng() * 9) * u, r = (young ? 4 + rng() * 1.5 : 9 + rng() * 6) * u, lean = (rng() - 0.5) * 2;
+      out.push({ kind: 'pit', x: px, x0: px - 5, x1: px + 5, y: curb - 1.4, empty, young, species, h, r, lean, flowers: !empty && rng() < 0.45, flowerSeed: rng() * 1000 });
+      placed = true;
+    }
+  }
+  // 2. Bacs de trottoir devant une vitrine (jamais devant la porte du local), 40 % des locaux ; 3. parterre au pied d'un immeuble sans commerce.
+  const rb = rngOf(seed, 'rue-bacs');
+  for (const s of shopDoors) {
+    if (rb() > 0.4 || s.x1 - s.x0 < 30) continue;
+    const n = 1 + Math.floor(rb() * 2), left = rb() < 0.5;
+    for (let i = 0; i < n; i++) { const w = 6 + rb() * 3, bx = left ? s.x0 + 9 + i * (w + 3) : s.x1 - 9 - w - i * (w + 3); if (!busy(bx, bx + w, ['door', 'furn'])) out.push({ kind: 'bac', x0: bx, x1: bx + w, y: ground + 0.5, w, h: 3 + rb(), tall: rb() < 0.3, flowerSeed: rb() * 1000 }); }
+  }
+  for (const b of F.near) {
+    if (b.x < 0 || b.x + b.w > W) continue;
+    const inShop = plan.blocked.some((s) => s.x1 - s.x0 > 20 && b.x + b.w / 2 > s.x0 && b.x + b.w / 2 < s.x1);
+    if (inShop || rb() > 0.5) continue;
+    const w = Math.min(22, b.w * 0.45), bx = b.x + (rb() < 0.5 ? 2 : b.w - w - 2);
+    if (!busy(bx, bx + w, ['door', 'furn', 'tree'])) out.push({ kind: 'parterre', x0: bx, x1: bx + w, y: ground + 0.3, w, h: 3.5, flowerSeed: rb() * 1000, hedge: rb() < 0.5 });
+  }
+  // 4. Grimpantes sur l'arête d'une façade (15 %), 5. pots devant une porte (30 %), 6. herbe entre les pavés, 7. feuilles mortes (saison).
+  const rg = rngOf(seed, 'rue-grimpantes');
+  for (const b of F.near) if (b.x >= 0 && b.x + b.w <= W && rg() < 0.15) { const left = rg() < 0.5; out.push({ kind: 'grimpante', x: left ? b.x + 1.5 : b.x + b.w - 1.5, top: Math.max(b.top + b.look.roofH + 8, ground - 30 - (20 + rg() * 40)), bottom: ground, plant: rg() < 0.5 ? 'glycine' : 'vigne', flowerSeed: rg() * 1000 }); }
+  const rp = rngOf(seed, 'rue-pots');
+  for (const d of plan.doors) if (rp() < 0.3) out.push({ kind: 'pots', x: d.x, both: rp() < 0.5, flowerSeed: rp() * 1000 });
+  const rh = rngOf(seed, 'rue-herbe');
+  for (let x = 10 + rh() * 30; x < W; x += 30 + rh() * 45) out.push({ kind: 'herbe', x, y: curb + 0.8 + rh() * 1.6, n: 2 + Math.floor(rh() * 3) });
+  return out;
+}
+
+// ── peinture (saison, brume nulle : premier plan) ──
+function paintCrown(ctx, cx, cy, r, species, season, bare) {
+  const tones = LEAF_SEASON[season].map(hexRgb), masses = species === 'tilleul' ? [[0, -0.1, 0.9, 1.25], [-0.45, 0.25, 0.55, 1], [0.45, 0.25, 0.55, 1]] : species === 'marronnier' ? [[0, 0, 1, 1], [-0.6, 0.2, 0.7, 1], [0.6, 0.2, 0.7, 1], [0, -0.55, 0.65, 1]] : [[0, 0, 0.95, 1], [-0.62, 0.15, 0.62, 1], [0.6, 0.1, 0.6, 1], [-0.2, -0.55, 0.6, 1], [0.3, -0.5, 0.55, 1]];
+  // Ombre portée du houppier sur la façade (lumière du haut à gauche : décalée en bas à droite), bord net.
+  ctx.fillStyle = 'rgba(70,50,130,0.18)'; ctx.beginPath(); for (const [mx, my, k, ky] of masses) { ctx.moveTo(cx + mx * r + 3 + r * k, cy + my * r + 4); ctx.ellipse(cx + mx * r + 3, cy + my * r + 4, r * k, r * k * ky, 0, 0, TAU); } ctx.fill();
+  if (bare) { ctx.strokeStyle = INK; ctx.lineWidth = 0.8; ctx.beginPath(); for (const [mx, my] of masses) { ctx.moveTo(cx, cy + r * 0.5); ctx.lineTo(cx + mx * r * 1.1, cy + my * r - r * 0.35); ctx.moveTo(cx + mx * r * 0.6, cy + my * r * 0.6); ctx.lineTo(cx + mx * r * 1.3 + 2, cy + my * r - r * 0.6); } ctx.stroke(); }
+  ctx.strokeStyle = INK; ctx.lineWidth = 1.1; ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * (bare ? 0.6 : 1); ctx.moveTo(cx + mx * r + rr, cy + my * r); ctx.ellipse(cx + mx * r, cy + my * r, rr, rr * ky, 0, 0, TAU); } ctx.stroke();
+  for (let t = 0; t < 3; t++) { ctx.fillStyle = rgba(tones[t], bare ? 0.45 : 1); ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * (1 - t * 0.28) * (bare ? 0.6 : 1), x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.ellipse(x, y, rr, rr * ky, 0, 0, TAU); } ctx.fill(); }
+}
+function paintFlowersRow(ctx, x0, x1, y, season, seedF, dense = 1) {
+  const r = mulberry32(Math.floor(seedF * 1000)), cols = FLOWERS[season], bare = season === 'winter';
+  for (let x = x0 + 0.8; x < x1 - 0.6; x += (1.3 + r() * 0.9) / dense) {
+    const c = hexRgb(pick(cols, r)), tall = season === 'spring' || (season === 'summer' && r() < 0.4);
+    if (bare) { if (r() < 0.6) disc(ctx, c, x, y - 0.6, 0.55); continue; }
+    disc(ctx, shade(hexRgb('#3F8A3A'), 0.2), x, y - 0.2, 0.7); if (tall) { fillRect(ctx, '#3F8A3A', x - 0.15, y - 2.2, 0.3, 2); disc(ctx, c, x, y - 2.4, 0.6); } else disc(ctx, c, x - 0.2, y - 0.9, 0.55);
+  }
+}
+function paintRueVerdure(ctx, F, env) {
+  const D = env.D, season = D.season, bare = season === 'winter', { ground } = F, curb = F.plan.curb, items = F.rue;
+  // Feuilles mortes sur le trottoir à l'automne (tirage par position), avant tout le reste.
+  if (season === 'autumn') { const r = rngOf(F.seed, 'rue-feuilles'); for (let i = 0; i < W / 3; i++) { const x = r() * W, y = ground + 1 + r() * (curb - ground - 1.5); fillRect(ctx, pick(['#C87A2A', '#E0A040', '#A85A30', '#D8B050'], r), x, y, 1.2 + r() * 0.8, 0.8); } }
+  for (const v of items) {
+    if (v.kind === 'herbe') { ctx.strokeStyle = bare ? '#7A8A68' : '#5E9A50'; ctx.lineWidth = 0.5; ctx.beginPath(); for (let i = 0; i < v.n; i++) { ctx.moveTo(v.x + i * 1.2, v.y + 1); ctx.lineTo(v.x + i * 1.2 + (i % 2 ? 0.6 : -0.5), v.y - 1.2 - (i % 3) * 0.4); } ctx.stroke(); continue; }
+    if (v.kind === 'pots') { for (const dx of v.both ? [-3.5, 13.5] : [13.5]) { const px = v.x + dx; fillRect(ctx, hexRgb('#A04A2E'), px, ground - 1.8, 2.4, 2.4); fillRect(ctx, shade(hexRgb('#A04A2E'), 0.35), px + 1.6, ground - 1.8, 0.8, 2.4); inkRectLine(ctx, px, ground - 1.8, 2.4, 2.4); disc(ctx, bare ? hexRgb('#4A6A48') : hexRgb('#3F8A3A'), px + 1.2, ground - 2.6, 1.3); disc(ctx, bare ? hexRgb('#6A8A60') : hexRgb('#56A844'), px + 0.8, ground - 3, 0.8); if (!bare) paintFlowersRow(ctx, px - 0.2, px + 2.6, ground - 2.6, season, v.flowerSeed, 1.4); } continue; }
+    if (v.kind === 'bac' || v.kind === 'parterre') {
+      const { x0, w, h, y } = v, wood = v.kind === 'bac' ? hexRgb(v.tall ? '#5A4A3E' : '#8A6A48') : hexRgb('#A09080');
+      fillRect(ctx, 'rgba(70,50,130,0.2)', x0 + 1, y + h, w + 1.5, 1.2);
+      fillRect(ctx, wood, x0, y, w, h); fillRect(ctx, shade(wood, 0.35), x0 + w * 0.75, y, w * 0.25, h); fillRect(ctx, light(wood, 0.4), x0, y, w, 0.6); inkRectLine(ctx, x0, y, w, h);
+      if (v.kind === 'parterre' && v.hedge) { ctx.fillStyle = bare ? '#4A6A48' : '#3F8A3A'; for (let x = x0 + 1; x < x0 + w - 0.5; x += 1.6) { ctx.beginPath(); ctx.arc(x, y - 0.4, 1.1, 0, TAU); ctx.fill(); } ctx.fillStyle = bare ? '#6A8A60' : '#56A844'; for (let x = x0 + 0.6; x < x0 + w - 0.5; x += 1.6) { ctx.beginPath(); ctx.arc(x, y - 0.9, 0.7, 0, TAU); ctx.fill(); } }
+      else { fillRect(ctx, bare ? hexRgb('#6A5A4A') : hexRgb('#2E6E34'), x0 + 0.4, y - 0.8, w - 0.8, 1.2); paintFlowersRow(ctx, x0, x0 + w, y - 0.6, season, v.flowerSeed, v.tall ? 0.8 : 1); if (v.tall && !bare) { fillRect(ctx, hexRgb('#3F8A3A'), x0 + w / 2 - 0.3, y - 7, 0.6, 7); disc(ctx, hexRgb('#2E6E34'), x0 + w / 2, y - 7.5, 2.2); disc(ctx, hexRgb('#56A844'), x0 + w / 2 - 0.6, y - 8, 1.4); } }
+      continue;
+    }
+    if (v.kind === 'grimpante') {
+      const gly = v.plant === 'glycine', tones = bare ? ['#5A4A40', '#6A5A50'] : season === 'autumn' && !gly ? ['#A03A2A', '#D86040'] : ['#2E6E34', '#56A844'];
+      ctx.strokeStyle = '#5A4A3A'; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(v.x, v.bottom); ctx.quadraticCurveTo(v.x + 2, (v.top + v.bottom) / 2, v.x - 1, v.top); ctx.stroke();
+      const r = mulberry32(Math.floor(v.flowerSeed * 1000));
+      for (let y = v.bottom - 2; y > v.top; y -= 2.2) { const spread = 1.5 + (1 - (y - v.top) / (v.bottom - v.top)) * 4, x = v.x + (r() - 0.5) * spread * 2; ctx.fillStyle = tones[0]; ctx.beginPath(); ctx.arc(x, y, 1.4 + r() * 0.6, 0, TAU); ctx.fill(); ctx.fillStyle = tones[1]; ctx.beginPath(); ctx.arc(x - 0.4, y - 0.4, 0.8 + r() * 0.4, 0, TAU); ctx.fill(); if (gly && season === 'spring' && r() < 0.5) { ctx.fillStyle = '#9A78C8'; ctx.fillRect(x - 0.3, y + 1, 0.6, 2 + r() * 1.5); } }
+      continue;
+    }
+    if (v.kind === 'pit') {
+      // Grille en fonte (perspective), terre, pied fleuri ; puis tronc planté dans la fosse avec ombre au sol, houppier devant la façade.
+      const { x, y } = v;
+      fillRect(ctx, '#4A4238', x - PIT.w / 2, y - PIT.h / 2, PIT.w, PIT.h); ctx.strokeStyle = '#8A8070'; ctx.lineWidth = 0.35; ctx.beginPath(); for (let k = -3; k <= 3; k++) { ctx.moveTo(x + k * 1.1, y - PIT.h / 2 + 0.3); ctx.lineTo(x + k * 1.1, y + PIT.h / 2 - 0.3); } ctx.moveTo(x - PIT.w / 2 + 0.3, y); ctx.lineTo(x + PIT.w / 2 - 0.3, y); ctx.stroke();
+      if (v.empty) { fillRect(ctx, '#7A6450', x - 1.2, y - 0.8, 2.4, 1.6); continue; }
+      if (v.flowers) paintFlowersRow(ctx, x - 3.4, x + 3.6, y + 0.4, season, v.flowerSeed, 1.3);
+      const trunkH = v.h, topX = x + v.lean, bark = hexRgb(BARK[v.young ? 'jeune' : v.species]);
+      ctx.fillStyle = 'rgba(70,50,130,0.26)'; ctx.beginPath(); ctx.moveTo(x - 1, y); ctx.lineTo(x + 1.4, y); ctx.lineTo(x + 1.4 + trunkH * 0.3, y + 1.6); ctx.lineTo(x - 1 + trunkH * 0.3, y + 1.6); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x - (v.young ? 0.7 : 1.4), y); ctx.lineTo(topX - (v.young ? 0.5 : 0.9), y - trunkH); ctx.lineTo(topX + (v.young ? 0.5 : 0.9), y - trunkH); ctx.lineTo(x + (v.young ? 0.7 : 1.5), y); ctx.closePath(); ctx.fillStyle = rgba(bark, 1); ctx.fill();
+      ctx.save(); ctx.clip(); fillRect(ctx, shade(bark, 0.4), x + 0.3, y - trunkH, 2, trunkH); if (v.species === 'platane' && !v.young) { ctx.fillStyle = rgba(light(bark, 0.5), 1); const r = mulberry32(Math.floor(v.flowerSeed * 7)); for (let i = 0; i < 6; i++) ctx.fillRect(x - 1.2 + r() * 1.6, y - trunkH + 2 + r() * (trunkH - 6), 1, 1.6 + r()); } ctx.restore();
+      ctx.strokeStyle = INK; ctx.lineWidth = 0.7; ctx.stroke();
+      if (v.young) { ctx.strokeStyle = '#8A7A5A'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x + 2.2, y); ctx.lineTo(x + 2.2, y - trunkH * 0.7); ctx.stroke(); ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x - 0.5, y - trunkH * 0.5); ctx.lineTo(x + 2.5, y - trunkH * 0.55); ctx.stroke(); }
+      paintCrown(ctx, topX, y - trunkH - v.r * 0.75, v.r, v.species, season, bare);
+    }
+  }
+}
+function inkRectLine(ctx, x, y, w, h) { ctx.strokeStyle = INK; ctx.lineWidth = 0.6; ctx.strokeRect(x, y, w, h); }
+// Lumière de nuit : les houppiers proches d'un lampadaire allumé prennent un lavis chaud (dessous du houppier, côté lampe).
+function paintLightsRue(ctx, F, env) {
+  if (!env.dark) return;
+  const lamps = lampsFor(W, F.seed);
+  for (const v of F.rue) if (v.kind === 'pit' && !v.empty) for (const l of lamps) {
+    const d = Math.abs(l.x - v.x); if (d > 40 || !lampLit(l, env.minutes, env.daylight)) continue;
+    const cy = v.y - v.h - v.r * 0.75, k = (1 - d / 40) * 0.35 * env.night; ctx.fillStyle = `rgba(255,214,140,${k.toFixed(3)})`;
+    ctx.beginPath(); ctx.ellipse(v.x + v.lean + Math.sign(l.x - v.x) * v.r * 0.3, cy + v.r * 0.35, v.r * 0.8, v.r * 0.5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(255,214,140,${(k * 0.7).toFixed(3)})`; ctx.fillRect(v.x - 1.5, v.y - v.h, 3, v.h);
+  }
+}
+
 // ═══════════ 04-vie-fond.js ═══════════
 // ───────────── vie du fond (animée : fonction pure de (graine, date, heure, météo), rien n'apparaît sur place) ─────────────
 // Dans l'appli : calque SVG « vie-fond » entre les tranches peintes et les fenêtres allumées, à nœuds constants (voir notes.md).
@@ -7296,6 +7428,8 @@ function cached(key, w, h, paint) {
 const bucket10 = (T) => Math.floor(T * 6) / 6;
 // Premier plan (vrai paintCityTile, fond transparent) + ombres D3 corrigées : une fois par graine et par échelle.
 const fgCanvas = (F, scale) => cached(`fg|${F.seed}|${scale}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); for (let t = 0; t < tileCount(W); t++) { ctx.save(); ctx.beginPath(); ctx.rect(t * 360, 0, 360, H); ctx.clip(); paintCityTile(ctx, F.plan, t); ctx.restore(); } paintNearShadows(ctx, F); });
+// Verdure de la rue (par-dessus le premier plan) : une fois par graine, échelle, saison et neige.
+const rueCanvas = (F, env, scale) => { F.rue ||= streetVerdure(F); return cached(`rue|${F.seed}|${scale}|${env.D.season}|${env.D.meteo.snow ? 'n' : ''}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintRueVerdure(ctx, F, env); }); };
 // Décor actuel (bundle AVANT) : captures « avant ».
 const avantCanvas = (seed, scale) => cached(`avant|${seed}|${scale}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); const plan = AVANT.cityPaintPlan(W, H, seed); for (let t = 0; t < AVANT.tileCount(W); t++) { ctx.save(); ctx.beginPath(); ctx.rect(t * 360, 0, 360, H); ctx.clip(); AVANT.paintCityTile(ctx, plan, t); ctx.restore(); } });
 // Fond statique (poses lentes : tranche de 10 min, date, météo).
@@ -7327,6 +7461,7 @@ function renderScene(ctx, seed, T, D, view, avant = false) {
     b.drawImage(murCanvas(F, env, S), 0, 0, W, H);
     paintVieMur(b, F, env, counter);
     b.drawImage(fgCanvas(F, S), 0, 0, W, H);
+    b.drawImage(rueCanvas(F, env, S), 0, 0, W, H);
   }
   // Lumières (hors étalonnage) dans un calque à part, avec les découpes.
   const lights = layer('lights', W * S, H * S), l = lights.getContext('2d');
@@ -7339,6 +7474,7 @@ function renderScene(ctx, seed, T, D, view, avant = false) {
   } else {
     l.save(); l.clip(F.clipHill); paintLightsHill(l, F, env, counter); l.restore();
     l.save(); l.clip(F.clipWall); paintLightsWall(l, F, env, counter); l.restore();
+    paintLightsRue(l, F, env);
   }
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.filter = gradeFilter(env);
@@ -7365,6 +7501,9 @@ function smokeView(F, T, D, scale = 4) {
   const env = envAt(T, D), ch = F.houses.map((h) => h.chimney).filter((c) => c && smokeK(T, D, c, F.seed) > 0 && F.hillTop[Math.round(c.x)] > c.y + 2)[0] || F.houses.find((h) => h.chimney).chimney;
   return { x0: Math.max(0, Math.round(ch.x - 70)), y0: Math.max(0, Math.round(ch.y - 45)), w: 150, h: 90, scale };
 }
+// Vues de la rue : un pied d'arbre fleuri, un parterre.
+const pitView = (F, scale = 3) => { F.rue ||= streetVerdure(F); const p = F.rue.find((v) => v.kind === 'pit' && !v.empty && v.flowers && v.x > 80) || F.rue.find((v) => v.kind === 'pit'); return { x0: Math.max(0, Math.round(p.x - 80)), y0: F.ground - 85, w: 160, h: 120, scale }; };
+const bedView = (F, scale = 3) => { F.rue ||= streetVerdure(F); const p = F.rue.find((v) => v.kind === 'parterre' && v.x0 > 80) || F.rue.find((v) => v.kind === 'bac'); return { x0: Math.max(0, Math.round(p.x0 + p.w / 2 - 80)), y0: F.ground - 85, w: 160, h: 120, scale }; };
 const wallView = (F, scale = 3) => { const b = F.far.reduce((m, b) => (b.nFloors > m.nFloors ? b : m), F.far[0]); return { x0: Math.max(0, Math.round(b.x - 60)), y0: Math.max(0, Math.round(b.top - 20)), w: 180, h: 130, scale }; };
 
 // ───────────── galerie ─────────────
@@ -7393,6 +7532,16 @@ function renderCaptures() {
   for (const [tag, avant] of [['avant', true], ['apres', false]]) { const id = `${tag}-graine7-nuit`; renderScene(canvasFor(id, W * 2, H * 2, `${id} — 27 octobre 23 h`), 7, 23 + 0.2 * MIN, D23, fullView(2), avant); ids.push(id); }
   // Moments (graine 7).
   for (const m of MOMENTS) { const D = dayOf(m.date, m.meteo); renderScene(canvasFor(m.id, W * 2, H * 2, `${m.id} — ${m.note}`), 7, m.T, D, fullView(2)); ids.push(m.id); }
+  // Rue (graine 7) : saisons et nuit, vue de la rue seule (toits du premier plan → chaussée).
+  const RUE_VIEW = { x0: 0, y0: 70, w: W, h: H - 70, scale: 2 };
+  const RUES = [
+    { id: 'rue-printemps-11h', T: 11 + 0.2 * MIN, date: '2027-04-20', meteo: 'soleil', note: 'mardi 20 avril, 11 h — tulipes aux pieds d’arbres, bacs et parterres, glycine en fleurs, arbres en jeunes feuilles' },
+    { id: 'rue-ete-15h', T: 15 + 0.3 * MIN, date: ETE, meteo: 'soleil', note: '7 juillet, 15 h — platanes, tilleuls et marronniers en feuilles, géraniums et lavande' },
+    { id: 'rue-automne-15h', T: 15 + 0.3 * MIN, date: AUT, meteo: 'soleil', note: '27 octobre, 15 h — feuillages roux, feuilles mortes sur le trottoir, chrysanthèmes, vigne vierge rouge' },
+    { id: 'rue-hiver-11h', T: 11 + 0.2 * MIN, date: HIV, meteo: 'nuages', note: '10 février, 11 h — arbres nus, sol paillé et bruyères, grimpantes en bois' },
+    { id: 'rue-nuit-22h', T: 22 + 0.2 * MIN, date: AUT, meteo: 'soleil', note: '27 octobre, 22 h — houppiers éclairés par les lampadaires' },
+  ];
+  for (const m of RUES) { const D = dayOf(m.date, m.meteo); renderScene(canvasFor(m.id, W * 2, (H - 70) * 2, `${m.id} — ${m.note}`), 7, m.T, D, RUE_VIEW); ids.push(m.id); }
   // Zooms ×3 (graine 7).
   const F = fondPlanOf(7);
   const zooms = [
@@ -7404,6 +7553,10 @@ function renderCaptures() {
     { id: 'zoom-tour-14juillet', view: towerView(F), T: 14 + 5 * MIN, D: dayOf(FETE, 'soleil'), note: 'la tour le 14 juillet : drapeau au mât, pigeons posés sur le beffroi (×3)' },
     { id: 'zoom-tour-nuit', view: towerView(F), T: 23 + 0.2 * MIN, D: D23, note: 'la tour illuminée, cadran éclairé (×3)' },
     { id: 'zoom-ruelle', view: alleyView(F), T: 15 + 0.3 * MIN, D: D15, note: 'une fente du premier plan : mur du fond à étages, fenêtres sous l’égout, ruelle en retrait sous le haut du rez-de-chaussée (×3)' },
+    { id: 'zoom-pied-arbre', view: pitView(F), T: 15 + 0.3 * MIN, D: D15, note: 'pied d’arbre : fosse à grille en fonte, pied fleuri, tronc planté avec ombre au sol, houppier devant la façade avec son ombre (×3)' },
+    { id: 'zoom-pied-arbre-printemps', view: pitView(F), T: 11 + 0.2 * MIN, D: dayOf('2027-04-20', 'soleil'), note: 'le même pied d’arbre au printemps : tulipes (×3)' },
+    { id: 'zoom-parterre', view: bedView(F), T: 15 + 0.3 * MIN, D: D15, note: 'parterre au pied d’un immeuble, bacs de trottoir, pots devant une porte (×3)' },
+    { id: 'zoom-parterre-automne', view: bedView(F), T: 15 + 0.3 * MIN, D: D23, note: 'le même parterre à l’automne : chrysanthèmes, feuilles mortes (×3)' },
     { id: 'zoom-mur', view: wallView(F), T: 15 + 0.3 * MIN, D: D15, note: 'mur du fond : bandeaux, corniche, travées, volets, linge (×3)' },
     { id: 'zoom-mur-nuit', view: wallView(F), T: 22 + 10 * MIN, D: D23, note: 'mur du fond à 22 h 10 : volets qui se ferment, fenêtres allumées sous l’égout (×3)' },
   ];

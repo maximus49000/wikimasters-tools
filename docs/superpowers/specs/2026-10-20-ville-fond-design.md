@@ -80,6 +80,14 @@ Ajouts proposés par Claude à la demande de l'utilisateur (« je te laisse prop
 Toutes les corrections de l'audit (§2) sont retenues. **Une seule maquette Fable** couvre les corrections et la vie du fond ;
 elle est validée avant tout code.
 
+
+**Verdure (demandes de l'utilisateur, 2026-10-20)** : la colline est trop vide et doit être plus verte (bosquets, haies,
+grands arbres, square, vigne : fait dans la maquette). La rue principale reçoit aussi de la verdure naturelle : arbres
+d'alignement en fosse, pieds d'arbres fleuris, bacs, parterres, grimpantes, sans gêner les entrées, vitrines, arrêts, passages
+ni la circulation des passants. **Les saisons sont respectées** : calendrier réel et progressif (débourrement, feuillage,
+jaunissement arbre par arbre, chute et feuilles mortes ramassées, arbres nus), floraisons à leur date, parterres replantés
+à chaque saison, neige sur les branches. Calendrier détaillé dans `maquettes/fond-ville/notes.md`.
+
 ## 4. Étapes
 
 1. ~~Choix du catalogue (§3) et des corrections de l'audit (§2)~~ : fait le 2026-10-20.
