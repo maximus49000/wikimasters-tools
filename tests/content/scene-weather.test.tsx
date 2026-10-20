@@ -185,6 +185,17 @@ describe('WeatherLayer', () => {
     act(() => vi.advanceTimersByTime(3000));
     spy.mockRestore();
   });
+  it('pièce : la part du soleil cachée est posée sur le <svg> extérieur, que lit le calque de lumière (hors du <svg> des fenêtres)', () => {
+    const clock = createWeatherClock();
+    clock.setSource(steadySource('storm'), Date.now());
+    act(() => root.render(<svg data-room=""><svg data-window-views=""><WeatherLayer scene="city" width={720} height={216} seed={1} sky={SKY} clock={clock} /></svg></svg>));
+    act(() => vi.advanceTimersByTime(1000));
+    const outer = container.querySelector<SVGSVGElement>('[data-room]')!;
+    const inner = container.querySelector<SVGSVGElement>('[data-window-views]')!;
+    expect(Number(outer.style.getPropertyValue('--wmt-sun-hidden'))).toBeGreaterThan(0.5);
+    expect(outer.style.getPropertyValue('--wmt-overcast')).not.toBe('');
+    expect(inner.style.getPropertyValue('--wmt-sun-hidden')).toBe('');
+  });
   it('la dérive ne saute pas quand le vent change (vitesse intégrée)', () => {
     const clock = createWeatherClock();
     clock.setSource(steadySource('storm'), Date.now());
