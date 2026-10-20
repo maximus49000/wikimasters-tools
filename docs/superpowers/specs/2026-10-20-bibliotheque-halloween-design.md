@@ -30,6 +30,22 @@ Tout reste calculé depuis la date, l'heure et la graine : aucun état ajouté, 
   12 minutes.
 - **Pluie** : on décore quel que soit le temps (point à valider n° 1, choix par défaut).
 
+## Écarts décidés à l'implémentation (PR 2)
+
+- **Ghibli seulement** : la couche de la nuit et les déguisements n'existent que dans le rendu Ghibli (celui de la production) ;
+  le dessin classique reste inchangé.
+- **Déguisements dans le pantin** : un champ `g:<déguisement>` de la signature (`dress.ts`), des pièces cuites dans `bake.ts`
+  (comme le père Noël), pantin 2D forcé (pas de déguisement sur la base 3D). Trois accessoires en plus des dix costumes :
+  chapeau pointu, cornes, oreilles.
+- **Animaux** : un passage dans l'axe d'une fenêtre fait réagir une fois sur deux (groupe ou passant déguisé) ou sept fois
+  sur dix (promeneur de chien), au plus une réaction toutes les 45 s. Le chat sursaute (deux fois sur trois) ou file sous le
+  canapé (une fois sur trois) ; il ne feule pas. Pont rue → pièce : la ville est dessinée dans le repère de la pièce, la
+  scène publie ses passages (`street-passes.ts`), le contexte des animaux les relit (`pet-context.ts`).
+- **Plan et pluie** : le plan de la soirée est recalculé quand la pluie franchit le seuil (précipitations 0,2).
+- **Bonbons** : pas de bonbons qui volent dans l'app (la maquette les montrait) ; l'enfant tend son seau, l'habitant tend la
+  main.
+- **Faire peur** : environ une fois toutes les 7 minutes pour 900 px de rue (la rue de la maquette).
+
 ## 1. Calendrier (`city/calendar.ts`)
 
 - `FestivityId` gagne `halloween` ; ligne `{ id: 'halloween', m: 10, d: 31, hours: [[1020, 1380]] }` (17 h à 23 h). Le
