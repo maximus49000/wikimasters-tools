@@ -21,6 +21,8 @@ export type Sky = {
   sunAt?: SkyPoint;
   moonAt?: SkyPoint;
   moonPhase?: MoonPhase;
+  // Hauteur réelle de la lune (radians), pour le clair de lune qui entre par les fenêtres.
+  moonAlt?: number;
 };
 
 const RAD = Math.PI / 180;

@@ -185,6 +185,15 @@ describe('WeatherLayer', () => {
     act(() => vi.advanceTimersByTime(3000));
     spy.mockRestore();
   });
+  it('la nuit, la part de la LUNE cachée est mesurée : ciel dégagé → lune visible, ciel couvert → cachée', () => {
+    const hiddenNow = (): number => Number(container.querySelector('svg')!.style.getPropertyValue('--wmt-sun-hidden'));
+    mount('sun', 'city', NIGHT);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(hiddenNow()).toBeLessThan(0.5);
+    mount('storm', 'city', NIGHT);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(hiddenNow()).toBeGreaterThan(0.9);
+  });
   it('pièce : la part du soleil cachée est posée sur le <svg> extérieur, que lit le calque de lumière (hors du <svg> des fenêtres)', () => {
     const clock = createWeatherClock();
     clock.setSource(steadySource('storm'), Date.now());

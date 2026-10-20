@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { astroAt, moonPhase, skyPoint, withRealSky } from '../../../src/core/library/astro';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 import { moonLitPath } from '../../../src/content/ghibli-sky';
+import { moonBeam } from '../../../src/content/sky-place';
 
 const TRELAZE = { lat: 47.45, lon: -0.47 };
 const SYDNEY = { lat: -33.87, lon: 151.21 };
@@ -110,5 +111,21 @@ describe('moonLitPath', () => {
     expect(moonLitPath(10, 0.8)).toBe('M0 -10A10 10 0 0 1 0 10A6 10 0 0 1 0 -10Z');
     expect(moonLitPath(10, 1)).toBe('M0 -10A10 10 0 0 1 0 10A10 10 0 0 1 0 -10Z');
     expect(moonLitPath(10, 0.5)).toContain('A0 10');
+  });
+});
+
+describe('moonBeam (clair de lune des fenêtres)', () => {
+  const times = sunTimes({ y: 2026, m: 10, d: 20 }, TRELAZE, 120);
+  const at = (d: number, minutes: number) => withRealSky(skyAt(minutes, sunTimes({ y: 2026, m: 10, d }, TRELAZE, 120)), astroAt({ y: 2026, m: 10, d }, minutes, TRELAZE, 120));
+  it('la nuit, lune levée : un rayon dont la force suit la phase', () => {
+    const gibbous = moonBeam(at(20, 21 * 60), 720, 340);
+    expect(gibbous).not.toBeNull();
+    expect(gibbous!.strength).toBeGreaterThan(0.3);
+    const crescent = moonBeam(at(13, 19 * 60 + 50), 720, 340);
+    if (crescent) expect(crescent.strength).toBeLessThan(gibbous!.strength * 0.3);
+  });
+  it('pas de clair de lune le jour, ni lune couchée', () => {
+    expect(moonBeam(withRealSky(skyAt(15 * 60, times), astroAt({ y: 2026, m: 10, d: 20 }, 15 * 60, TRELAZE, 120)), 720, 340)).toBeNull();
+    expect(moonBeam(at(20, 4 * 60), 720, 340)).toBeNull();
   });
 });

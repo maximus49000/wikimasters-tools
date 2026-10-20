@@ -115,6 +115,7 @@ export function withRealSky(sky: Sky, astro: Astro): Sky {
     sunAt: astro.sunAt,
     moonAt: astro.moonAt,
     moonPhase: astro.phase,
+    moonAlt: astro.moon.alt,
     moonFrac: moonUp ? clamp((astro.moonAt.x - 0.04) / 0.92, 0, 1) : null,
   };
 }
