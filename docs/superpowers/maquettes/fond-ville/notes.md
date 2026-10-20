@@ -301,8 +301,9 @@ src/03a-arbres.js), rue et colline :
   l'ombre reste dessous et à droite), rehaut clair **en petites touches de feuilles** (2-4 ellipses par blob, haut gauche) ;
 - **trait encré seulement sur la silhouette** : pointillé léger (2,2 / 1,1) tracé sous les aplats, donc visible sur le bord
   extérieur et dans les trouées, jamais autour d'une touffe ;
-- **été** : les rameaux fins sont dessinés à 6 % d'opacité (visibles dans les trouées seulement), le tronc et le départ des
-  charpentières restent visibles sous la masse ; **automne** : les masses se percent depuis l'extérieur (touffes de rang
+- **été** : aucun rameau fin hors masse (un rameau n'est dessiné, en bois normal, que si son bout n'a plus ou pas encore de
+  feuillage : opacité = f(rang du rameau − densité) × (1 − densité), nulle dès 92 % de densité) ; le voile gris-brun des rameaux
+  suit leurs traits (jamais une ellipse) et n'apparaît que sous 50 % de densité ; l'ombre portée garde la forme des masses présentes ; **automne** : les masses se percent depuis l'extérieur (touffes de rang
   élevé d'abord), bord qui s'effiloche, touches jaunes / rousses qui gagnent depuis l'extérieur, lambeaux sur les rameaux, puis
   squelette nu (rameaux à 100 %) ; **printemps** : voile vert tendre (touffes réduites, plafond qui se lève en continu) qui
   s'épaissit en masses ; une touffe naît et meurt sur 0,36 de densité (≈ 12 jours), rayon proportionnel à sa taille jusqu'à 0,

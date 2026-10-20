@@ -36,7 +36,7 @@ function treeSprites(F, v, env, S) {
   const layers = {}, mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(box.w * S); c.height = Math.ceil(box.h * S); const ctx = c.getContext('2d'); ctx.scale(S, S); ctx.translate(-box.x, -box.y); return [c, ctx]; };
   let [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { part: 'shadow' }); layers.shadow = c;
   [c, ctx] = mk(); paintTrunk(ctx, m, rueBark(v), 0, wet, v.young); paintTuteur(ctx, v); paintBranches(ctx, m, 'coarse'); layers.trunk = c;
-  [c, ctx] = mk(); paintBranches(ctx, m, 'fine', { veil: 0.12 * (1 - f.d), snow: D.meteo.snow, alpha: 0.06 + 0.94 * (1 - f.d) }); paintDryLeaves(ctx, m, D); layers.twigs = c;
+  [c, ctx] = mk(); paintBranches(ctx, m, 'fine', { d: f.d, veil: 0.12, snow: D.meteo.snow }); paintDryLeaves(ctx, m, D); layers.twigs = c;
   for (let k = 0; k < Math.min(6, m.nMasses); k++) { [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { which: k, wet, loose: false }); layers['c' + k] = c; }
   const out = { box, layers, f, m };
   CACHE.set(key, out); if (CACHE.size > 160) CACHE.delete(CACHE.keys().next().value);

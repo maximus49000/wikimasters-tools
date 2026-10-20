@@ -34,6 +34,7 @@ function treeModel(key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, t
   // Enveloppe réelle du squelette (envergure et hauteur : fixes).
   let minX = foot.x, maxX = foot.x, minY = rootY; for (const s of segs) { minX = Math.min(minX, s.x1); maxX = Math.max(maxX, s.x1); minY = Math.min(minY, s.y1); }
   const cx = (minX + maxX) / 2, cy = (minY + rootY) / 2, rx = (maxX - minX) / 2 + tuftR, ry = (rootY - minY) / 2 + tuftR;
+  for (const sg of segs) sg.rank = sat(Math.hypot(((sg.x0 + sg.x1) / 2 - cx) / rx, ((sg.y0 + sg.y1) / 2 - cy) / ry) * 0.7 - 0.05); // position dans la ramure (0 cœur → 1 bout), comme les touffes
   // Touffes : sur les rameaux (niveaux ≥ 2, ou ≥ 1 si peu de niveaux), échantillonnées sans dépasser `maxTufts`.
   const twigs = segs.filter((s) => s.lv >= Math.min(2, depth)), rt = mulberry32(hashString('touffes-' + key)), tufts = [];
   const step = Math.max(1, Math.floor(twigs.length / maxTufts));
@@ -54,14 +55,23 @@ function paintTrunk(ctx, m, bark0, hz = 0, wet = 0, young = false) {
   ctx.save(); ctx.clip(); fillRect(ctx, haze(shade(bark, 0.4), hz), foot.x + tt * 0.2, rootY, tb, m.trunkH); if (m.species === 'platane' && !young && m.trunkH > 12) { ctx.fillStyle = rgba(light(bark, 0.5), 1); const r = mulberry32(hashString('ecorce' + m.key)); for (let i = 0; i < 6; i++) ctx.fillRect(foot.x - tb * 0.8 + r() * tb * 1.2, rootY + 2 + r() * (m.trunkH - 6), 1, 1.6 + r()); } ctx.restore();
   ctx.strokeStyle = ink(0.95 - hz); ctx.lineWidth = m.trunkH > 12 ? 0.7 : 0.5; ctx.stroke();
 }
-// Branches : `part` = 'coarse' (charpentières, niveau 1), 'fine' (rameaux, niveaux ≥ 2) ou 'all' ; voile des rameaux ∝ (1 − d).
+// Branches : `part` = 'coarse' (charpentières, niveau 1 : toujours en bois plein), 'fine' (rameaux, niveaux ≥ 2) ou 'all'.
+// Un rameau fin n'est dessiné qu'en bois normal, et seulement quand son bout n'a plus (ou pas encore) de feuillage : opacité
+// = f(rang du rameau − densité `opts.d`) × (1 − densité) : en plein été (d ≥ 0,92) aucun rameau hors masse ; en automne les bouts
+// se dénudent les premiers ; l'hiver tout le squelette. Le « voile » des rameaux fins (gris-brun pâle, densité < 0,5) suit la
+// forme réelle des rameaux (mêmes traits, plus larges), jamais une ellipse.
 function paintBranches(ctx, m, part = 'all', opts = {}) {
-  const hz = opts.hz || 0, bark = rgba(haze(hexRgb('#4A3A30'), hz), opts.alpha ?? 1), levels = part === 'coarse' ? [1] : part === 'fine' ? [2, 3, 4, 5] : [1, 2, 3, 4, 5];
-  if (part !== 'coarse' && opts.veil > 0) { ctx.fillStyle = rgba(haze(hexRgb('#8A7A70'), hz), opts.veil); ctx.beginPath(); ctx.ellipse(m.cx, m.cy, m.rx * 0.9, m.ry * 0.9, 0, 0, TAU); ctx.fill(); }
-  ctx.lineCap = 'round'; ctx.strokeStyle = bark;
-  for (const lv of levels) { const ss = m.segs.filter((s) => s.lv === lv); if (!ss.length) continue; ctx.lineWidth = Math.max(0.3, ss[0].w); ctx.beginPath(); for (const s of ss) { ctx.moveTo(s.x0, s.y0); ctx.lineTo(s.x1, s.y1); } ctx.stroke(); }
-  if (opts.snow) { ctx.strokeStyle = `rgba(242,246,250,0.92)`; for (const s of m.segs) { if (!levels.includes(s.lv)) continue; const dx = Math.abs(s.x1 - s.x0), dy = Math.abs(s.y1 - s.y0); if (dy > dx * 1.3) continue; ctx.lineWidth = Math.max(0.5, s.w * 0.7); ctx.beginPath(); ctx.moveTo(s.x0, s.y0 - s.w * 0.5 - 0.3); ctx.lineTo(s.x1, s.y1 - s.w * 0.5 - 0.3); ctx.stroke(); } }
-  if (opts.mistletoe) { const r = mulberry32(hashString('gui' + m.key)), mids = m.segs.filter((s) => s.lv === 2); for (let i = 0; i < opts.mistletoe && mids.length; i++) { const s = mids[Math.floor(r() * mids.length)], rr = Math.max(1, m.ry * 0.16); disc(ctx, rgba(haze(hexRgb('#3E6A3A'), hz), 1), (s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, rr); disc(ctx, rgba(haze(hexRgb('#6A9A5A'), hz), 1), (s.x0 + s.x1) / 2 - rr * 0.3, (s.y0 + s.y1) / 2 - rr * 0.3, rr * 0.5); } }
+  const hz = opts.hz || 0, d = opts.d ?? 0, levels = part === 'coarse' ? [1] : part === 'fine' ? [2, 3, 4, 5] : [1, 2, 3, 4, 5];
+  const alphaOf = (sg) => (sg.lv === 1 ? 1 : sat((sg.rank - d + 0.1) / 0.25) * sat((0.92 - d) / 0.25)) * (opts.alpha ?? 1);
+  ctx.lineCap = 'round';
+  const veilK = part !== 'coarse' && opts.veil ? opts.veil * sat((0.5 - d) / 0.5) : 0;
+  if (veilK > 0) { ctx.strokeStyle = rgba(haze(hexRgb('#8A7A70'), hz), veilK); for (const sg of m.segs) { if (sg.lv < 2) continue; const a = alphaOf(sg); if (a <= 0.02) continue; ctx.lineWidth = Math.max(1.2, sg.w * 3); ctx.beginPath(); ctx.moveTo(sg.x0, sg.y0); ctx.lineTo(sg.x1, sg.y1); ctx.stroke(); } }
+  // Regroupés par opacité (pas de 0,1) pour garder des chemins groupés.
+  const buckets = new Map();
+  for (const sg of m.segs) { if (!levels.includes(sg.lv)) continue; const a = Math.round(alphaOf(sg) * 10) / 10; if (a <= 0) continue; const k = `${sg.lv}|${a}`; if (!buckets.has(k)) buckets.set(k, { w: sg.w, a, segs: [] }); buckets.get(k).segs.push(sg); }
+  for (const [, b] of buckets) { ctx.strokeStyle = rgba(haze(hexRgb('#4A3A30'), hz), b.a); ctx.lineWidth = Math.max(0.3, b.w); ctx.beginPath(); for (const sg of b.segs) { ctx.moveTo(sg.x0, sg.y0); ctx.lineTo(sg.x1, sg.y1); } ctx.stroke(); }
+  if (opts.snow) { ctx.strokeStyle = `rgba(242,246,250,0.92)`; for (const sg of m.segs) { if (!levels.includes(sg.lv) || alphaOf(sg) < 0.5) continue; const dx = Math.abs(sg.x1 - sg.x0), dy = Math.abs(sg.y1 - sg.y0); if (dy > dx * 1.3) continue; ctx.lineWidth = Math.max(0.5, sg.w * 0.7); ctx.beginPath(); ctx.moveTo(sg.x0, sg.y0 - sg.w * 0.5 - 0.3); ctx.lineTo(sg.x1, sg.y1 - sg.w * 0.5 - 0.3); ctx.stroke(); } }
+  if (opts.mistletoe) { const r = mulberry32(hashString('gui' + m.key)), mids = m.segs.filter((sg) => sg.lv === 2); for (let i = 0; i < opts.mistletoe && mids.length; i++) { const sg = mids[Math.floor(r() * mids.length)], rr = Math.max(1, m.ry * 0.16); disc(ctx, rgba(haze(hexRgb('#3E6A3A'), hz), 1), (sg.x0 + sg.x1) / 2, (sg.y0 + sg.y1) / 2, rr); disc(ctx, rgba(haze(hexRgb('#6A9A5A'), hz), 1), (sg.x0 + sg.x1) / 2 - rr * 0.3, (sg.y0 + sg.y1) / 2 - rr * 0.3, rr * 0.5); } }
 }
 // État d'une touffe à la date D (f = foliageOf) : taille 0..1 (0 = absente), couleur (jaunissement par touffe : les bouts d'abord).
 function tuftState(tf, f, D, species) {
@@ -126,7 +136,7 @@ function paintTreeStatic(ctx, m, f, D, opts = {}) {
   if (opts.shadow) paintLeaves(ctx, m, f, D, { part: 'shadow' });
   paintTrunk(ctx, m, opts.bark || hexRgb('#6A5A50'), hz, wet, opts.young);
   paintBranches(ctx, m, 'coarse', { hz, snow: D.meteo.snow });
-  paintBranches(ctx, m, 'fine', { hz, veil: (opts.veil ?? 0.22) * (1 - f.d), snow: D.meteo.snow, mistletoe: opts.mistletoe || 0, alpha: 0.06 + 0.94 * (1 - f.d) });
+  paintBranches(ctx, m, 'fine', { hz, d: f.d, veil: opts.veil ?? 0.22, snow: D.meteo.snow, mistletoe: opts.mistletoe || 0 });
   paintDryLeaves(ctx, m, D, hz);
   paintLeaves(ctx, m, f, D, { hz, wet });
 }
