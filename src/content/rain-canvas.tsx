@@ -438,8 +438,6 @@ export type RainGlassProps = {
   clock: Clock;
   sky: Sky;
   lights: readonly RainLight[];
-  /** Rien n'est dessiné (la simulation continue). */
-  hidden: boolean;
   /** Vitre soulevée pendant un glissé : ni gouttes ni buée sur elle (elle reprend quand la fenêtre est posée). */
   skip?: number | null;
   /** Hauteur du monde (dégradé du ciel derrière les gouttes) ; par défaut le bas des vitres. */
@@ -504,7 +502,6 @@ export function RainGlassCanvas(p: RainGlassProps): ReactElement | null {
       return masked;
     };
     const paint = (): void => {
-      if (live.current.hidden) { wipe(surface); return; }
       const c = begin(surface);
       if (c) drawGlass(c, view(), drawEnv, fieldRef.current, fogOf());
     };
@@ -563,9 +560,9 @@ export function RainGlassCanvas(p: RainGlassProps): ReactElement | null {
       fog = null;
     };
   }, [panes, box, p.seed]); // eslint-disable-line react-hooks/exhaustive-deps
-  // ciel (chaque minute), lumières, vitre soulevée ou masquée : une image refaite (la boucle, si elle tourne, relit tout à chaque
+  // ciel (chaque minute), lumières, vitre soulevée : une image refaite (la boucle, si elle tourne, relit tout à chaque
   // image) ; en mouvement réduit, c'est aussi ce qui fait suivre la météo à l'image fixe.
-  useLayoutEffect(() => { ctl.current?.redraw(); }, [field, p.hidden, p.skip, p.sky, p.clock]);
+  useLayoutEffect(() => { ctl.current?.redraw(); }, [field, p.skip, p.sky, p.clock]);
   if (!box) return null;
   return (
     <foreignObject data-rain-canvas="glass" data-skip-pane={p.skip ?? undefined} x={box.x} y={box.y} width={box.w} height={box.h} style={{ pointerEvents: 'none' }}>

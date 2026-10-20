@@ -195,7 +195,7 @@ describe('pluie naturelle — canvas dans la scène', () => {
     const clock = { read: () => now };
     const panes = [{ x: 20, y: 20, w: 120, h: 80 }, { x: 200, y: 20, w: 160, h: 80 }];
     const render = (sky: Sky): void =>
-      act(() => root.render(<svg><RainGlassCanvas panes={panes} seed={3} clock={clock} sky={sky} lights={[]} hidden={false} /></svg>));
+      act(() => root.render(<svg><RainGlassCanvas panes={panes} seed={3} clock={clock} sky={sky} lights={[]} /></svg>));
     render({ ...SKY });
     expect(drawn).toBeGreaterThan(0); // vitre couverte tout de suite (préremplie)
     expect(rainLoopsActive()).toBe(0);

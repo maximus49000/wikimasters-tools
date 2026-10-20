@@ -172,13 +172,18 @@ describe('WeatherLayer', () => {
     expect(partial).toBeGreaterThan(0);
     expect(visibleClouds()).toBe(container.querySelectorAll('[data-wx-cloud]').length);
   });
-  it('n’écrit --wmt-precip que lorsqu’elle change', () => {
+  it('n’écrit plus --wmt-precip (aucun lecteur) et n’écrit une variable que lorsqu’elle change', () => {
     mount('rain');
     const svg = container.querySelector('svg')!;
-    expect(svg.style.getPropertyValue('--wmt-precip')).not.toBe('');
-    const spy = vi.spyOn(svg.style, 'setProperty');
+    expect(svg.style.getPropertyValue('--wmt-precip')).toBe('');
+    const last = new Map<string, string>([['--wmt-sun-hidden', svg.style.getPropertyValue('--wmt-sun-hidden')]]);
+    const spy = vi.spyOn(svg.style, 'setProperty').mockImplementation(function (this: CSSStyleDeclaration, name: string, value: string | null) {
+      expect(name).not.toBe('--wmt-precip');
+      expect(value).not.toBe(last.get(name)); // jamais la même valeur réécrite
+      last.set(name, String(value));
+    });
     act(() => vi.advanceTimersByTime(3000));
-    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
   it('la dérive ne saute pas quand le vent change (vitesse intégrée)', () => {
     const clock = createWeatherClock();

@@ -145,7 +145,6 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     // Opacité courante de chaque nuage (−1 : pas encore posé) ; un nuage apparaît ou s'efface en fondu, jamais d'un coup.
     const cloudOpacity = cloudNodes.map(() => -1);
     let colorKey = '';
-    let lastPrecip = '';
     let lastStep = '';
     let lastHidden = '';
     let lastOvercast = '';
@@ -166,7 +165,6 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       lastMs = now;
       const w = clock.read(now);
       const { daylight, sunFrac } = skyRef.current;
-      const rain = w.kind === 'rain' ? w.precip : 0;
       const snow = w.kind === 'snow' ? w.precip : 0;
 
       // Ciel : de vrais nuages (leur NOMBRE = la couverture) ; leur teinte et l'obscurité du ciel suivent l'intensité de la pluie.
@@ -293,20 +291,12 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
           put(nodes.rays, 'transform', `rotate(${(Math.sin(t * 0.15) * 4).toFixed(2)} ${sun.x.toFixed(1)} ${sun.y.toFixed(1)})`);
         }
       }
-
-      // Intensité de la pluie, exposée sur le <svg> de la pièce (variable CSS ; les gouttes de vitre sont désormais sur canvas).
-      const precipText = rain.toFixed(2);
-      if (precipText !== lastPrecip) {
-        lastPrecip = precipText;
-        svg?.style.setProperty('--wmt-precip', precipText);
-      }
     };
     placeRef.current = place;
     place();
     if (still) {
       return () => {
         placeRef.current = null;
-        svg?.style.removeProperty('--wmt-precip');
         svg?.style.removeProperty('--wmt-sun-hidden');
       };
     }
@@ -322,7 +312,6 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     return () => {
       window.cancelAnimationFrame(frame);
       placeRef.current = null;
-      svg?.style.removeProperty('--wmt-precip');
       svg?.style.removeProperty('--wmt-sun-hidden');
     };
   }, [sky, ground, clock, seed, width, height, pool, coverRef, skyRef, layout]);

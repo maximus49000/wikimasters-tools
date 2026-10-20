@@ -861,7 +861,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
           {/* Gouttes sur les vitres (vue pièce) : sous les châssis, les meubles et la lumière de la pièce. Toutes les vitres restent dans
           // la simulation pendant un glissé (pas de remise à zéro) ; la vitre soulevée n'est simplement pas dessinée. */}
           {weatherOn && view.weather && !outside && (
-            <RainGlassCanvas panes={glasses} seed={hashString(room.id) ^ 0x61a55} clock={view.weather.clock} sky={view.sky} lights={rainLights} hidden={false} skip={liftedPane} worldHeight={wallH} />
+            <RainGlassCanvas panes={glasses} seed={hashString(room.id) ^ 0x61a55} clock={view.weather.clock} sky={view.sky} lights={rainLights} skip={liftedPane} worldHeight={wallH} />
           )}
           {outside && <g data-follow-marker="" opacity="0"><path d="M-7 -10 L7 -10 L0 0 Z" fill="#fff" stroke="#222" strokeWidth={2} strokeLinejoin="round" /></g>}
         </svg>
