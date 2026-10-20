@@ -87,7 +87,7 @@ Branche de travail : `ccr-f0374a79-8v8eca`. Pour reprendre, relire ce plan, la s
     3. [x] Tests : déterminisme du plan, échappée par bande hors des bords, route, voie, gares et escalier jamais recouverts,
        herbe nue (≤ 12 % et aucune zone de 12 × 8 px nue, graines 1/7/42 × 720/1440/2880), clé de tranche qui ne change
        qu'avec saison, neige et tranche de 10 min, raccord des tranches.
-    4. Captures au banc (`.superpowers/harness-fond`) en été 15 h, en automne et en hiver sous la neige, comparées à
+    4. [x] Captures au banc (`.superpowers/harness-fond`) en été 15 h, en automne et en hiver sous la neige, comparées à
        `captures/ete-15h.png`, `colline-apres.png`, `gauche-apres.png` et `hiver-8h.png` ; corrections visuelles ;
        captures `maquettes/fond-ville/pr2a-*.png`.
     5. Suite complète. 13 échecs existent déjà sur main dans ce conteneur (habitants 3D, commerces, véhicules,
