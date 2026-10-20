@@ -36,13 +36,15 @@ nouveau calque) : `01-outils` (cellulo, temps, météo, ciel), `02-plan-fond` (p
 | `zoom-tour{,-14juillet,-nuit}.png` | pigeons qui tournent à l'heure pile (15 h 00 min 12 s), posés sur le beffroi avec le drapeau, cadran de nuit. |
 | `zoom-ruelle.png` | une fente du premier plan : mur du fond à étages, fenêtres sous l'égout, ruelle en retrait sous le haut du rez-de-chaussée. |
 | `zoom-mur{,-nuit}.png` | bandeaux, corniche, travées, volets, linge ; à 22 h 10 volets qui se ferment, fenêtres allumées. |
-| `fumee-seq-1..4.png` | 8 h 30 + 0 / 2 / 5 / 9 s : le panache naît au conduit et se dissipe (×4). |
+| `seq-fumee.gif` | 8 h 30 + 0 / 2 / 5 / 9 s : le panache naît au conduit et se dissipe (×4). |
 | `rue-cerisiers-11h.png`, `rue-printemps-11h.png` | 2 avril (cerisiers en fleurs, pousses des parterres) ; 28 avril (tulipes, glycine, chandelles des marronniers, feuillage tendre). |
 | `rue-ete-15h.png`, `rue-automne-15h.png`, `rue-novembre-15h.png` | 7 juillet (platanes, tilleuls, marronniers, géraniums et lavande) ; 27 octobre (jaunissement, vigne vierge rouge, chrysanthèmes, feuilles mortes) ; 14 novembre (chute en cours, tapis de feuilles). |
 | `rue-hiver-11h.png`, `rue-neige-11h.png`, `rue-nuit-22h.png` | 10 février (arbres nus, bruyères et paillage) ; 20 janvier sous la neige (branches et parterres enneigés) ; 27 octobre 22 h (houppiers éclairés par les lampadaires). |
 | `zoom-pied-arbre{,-printemps}.png`, `zoom-parterre{,-automne}.png` | pied d'arbre ×3 (fosse à grille, pied fleuri, ombre au sol, houppier devant la façade avec son ombre) ; parterre, bacs, pots ×3. |
 | `colline-avant.png` / `colline-apres.png` | l'échappée élargie ×3 avant / après ce retour (marché, lavoir, verger clos, ruisseau, bassin, sentiers, moulin, pétanque, poulailler, rochers, crête garnie). |
-| `seq-vent-faible-ete-1..5`, `seq-rafales-automne-1..6`, `seq-pluie-vent-1..5`, `seq-orage-1..6`, `seq-neige-redoux-1..5`, `seq-petales-avril-1..5`, `seq-colline-vent-1..5` (+ `.gif`) | séquences à 0,4 s d'écart (pied d'arbre ×3, échappée ×3) : frémissement, feuilles arrachées, pluie et vent, orage (feuilles retournées), neige qui glisse au redoux, pétales, tranches de colline cisaillées et moulin ; un GIF par séquence (ffmpeg, 2,5 images/s). |
+| `seq-vent-faible-ete.gif`, `seq-rafales-automne.gif`, `seq-pluie-vent.gif`, `seq-orage.gif`, `seq-neige-redoux.gif`, `seq-petales-avril.gif`, `seq-colline-vent.gif` | séquences à 0,4 s d'écart (pied d'arbre ×3, échappée ×3) : frémissement, feuilles arrachées, pluie et vent, orage (feuilles retournées), neige qui glisse au redoux, pétales, tranches de colline cisaillées et moulin ; un GIF par séquence (ffmpeg, 2,5 images/s). |
+| `gauche-avant.png` / `gauche-apres.png` | le côté gauche (x 0 → 500, échelle 1, rendu ×2) avant / après le remplissage : maisons étagées jusqu'à la crête, façades et jardins le long de la route et de la voie, bosquets serrés. |
+| `seq-chute-feuilles-planche.png` + `seq-chute-feuilles.gif`, `seq-debourrement-planche.png` + `seq-debourrement.gif` | même arbre, même cadrage, une image tous les 6 jours (1er oct. → 30 nov. ; 15 mars → 15 mai) : le fût (pointillé rose fixe) et les branches ne bougent pas, seules les feuilles partent (bouts d'abord) ou reviennent. |
 | `annee-planche.png` | une année : même coin de rue (haut), même échappée (milieu), mêmes toits du mur du fond (bas), le 15 de chaque mois à 14 h (janvier sous la neige, 15 août un dimanche : fanfare). |
 
 ## 2. Corrections de l'audit (D1 à D6) — correspondance avec le code
@@ -224,6 +226,68 @@ avec vent** (dont ≈ 45 ms pour les 45 tranches de colline en `drawImage` cisai
 la part la plus chère : sur Android, regrouper la colline en **tranches de 240 px** (6 × 3 = 18 transformations, ≈ 18 ms) ou
 n'animer que le calque T1 (échappée) est le réglage à prévoir ; les arbres de rue (48 nœuds) tiennent dans le budget.
 
+## 3 d. Squelette fixe, feuilles sur les rameaux, colline sans trous (retour du 20 octobre)
+
+**Cause du défaut « le tronc devient tout petit »** : il y avait deux dessins par arbre — le houppier feuillu (masses posées
+au-dessus d'un tronc-polygone de hauteur `v.h`) et le squelette d'hiver (`treeSkeleton`, avec son PROPRE fût `h × 0,3` et sa
+propre envergure), avec une bascule au seuil de densité 85 % et des masses qui rétrécissaient (0,4 + 0,6 d) et pâlissaient
+en bloc. Sur la colline, même chose entre `paintBouquet` (disques) et le squelette.
+
+**Correction à la racine (`src/03a-arbres.js`, `treeModel`)** : un seul modèle par arbre, tiré de (clé = position, essence,
+taille, âge) et jamais de la date, de la densité ni de la météo : fût (hauteur, épaisseur, racine des charpentières),
+charpentières, branches, rameaux (angles et longueurs tirés), envergure et hauteur totale fixes. Le feuillage est une liste
+de **touffes attachées aux rameaux** (≤ 60 par arbre de rue, ≤ 22-26 sur la colline), chacune avec un rang 0 (près du
+tronc) → 1 (bout des branches) : présente si rang < densité du jour, elle apparaît et disparaît sur 0,2 de densité (≈ 6 jours :
+≤ 1 px par jour), grossit au débourrement (bourgeon → feuille), jaunit à son rythme (les bouts d'abord : `yel × 1,5 −
+rang × 0,5`) et se détache en automne : trous dans la masse, rameaux dénudés du bout vers l'intérieur. Les feuilles qui
+tombent (particules) partent des touffes **lâches** (rang ≈ densité), de leur position et de leur couleur, puis restent au
+sol. Le fût est dessiné une fois ; la silhouette feuillue enveloppe le squelette.
+
+**Contrôle `?audit=squelette&seed=N`** : pour chaque arbre (rue et colline), sur 365 jours, boîte du fût (x, y, largeur,
+hauteur) et envergure strictement identiques, écart de hauteur totale de la silhouette entre deux jours consécutifs :
+graine 1 : 129 arbres, boîtes identiques, saut max **0,74 px** ; graine 7 : 125 arbres, **0,86 px** ; graine 42 : 106 arbres,
+**0,62 px** (objectif ≤ 1 px).
+
+**Vent, nouveau rendu** : plus aucun cisaillement global. Rue : fût et charpentières **jamais transformés** ; rameaux fins :
+cisaillement de 3 % de `b` autour de la racine des charpentières ; feuilles en **4 grappes** (basses / hautes × intérieures /
+bout des branches) translatées chacune de `b × [0,7 ; 1,6 ; 0,95 ; 2,1] px` avec oscillation propre (deux sinus déphasés par
+arbre et par grappe) et légère remontée ; touffes lâches dessinées une à une (frémissent plus) ; rehauts qui scintillent
+(vent faible) ou face claire (vent fort). Colline : seuls les calques de **feuillage** (`T0c`, `T1c`, `T2c`) ondulent par
+tranches de 96 px (translation ≤ 2 px, cisaillement 1,5 %), les fûts et branches (`T0k`…) restent plantés. Sprites recuits
+seulement au changement de date / pluie / neige.
+
+**Budget revu (au banc, Chromium, 1 440 × 340 rendu ×2)** : sans vent ≈ 62-78 ms par image (dont ≈ 10 ms de plus qu'avant
+pour la colline garnie), avec vent ≈ 95-102 ms : 8 arbres de rue × (3 sprites fixes + 1 cisaillé + 4 grappes translatées
+= 8 `drawImage`) ≈ 6 ms, 45 tranches de feuillage de colline ≈ 35 ms, touffes lâches + rehauts ≈ 3 ms, particules ≤ 40.
+Pour l'appli : par arbre de rue 8 nœuds `<image>` (3 fixes, 5 à `transform`), soit 64 nœuds pour 8 arbres, mis à jour à
+15 Hz ; colline : 45 `<g>` de feuillage (ou 18 avec des tranches de 240 px sur Android) ; pool fixe de particules.
+
+**Colline sans trous (`?dense=0` pour l'avant)** : rang de crête de maisons serrées (échelle 0,42, contiguës, 14-26 px de
+large, étagées entre la crête et les toits du rang 0, sauf aux repères, à la voie et à l'escalier) ; maisons et ateliers bas
+le long de la route et autour de la voie (de la crête au rang 2, 3,5 à 40 px du ruban, jamais sur la voie, les gares ni
+l'escalier) ; bosquets doublés ; puis une **passe de comblement** : la colline visible est rendue une fois à l'échelle 1
+(été, sans vent), chaque fenêtre de 8 × 6 px d'herbe nue d'un seul tenant reçoit un bouquet, un petit arbre, une haie ou des
+rochers (tirage par position, déterministe), ajoutés au calque de son rang. Dans l'appli, cette passe se fait dans
+`cityPaintPlan` sur un masque géométrique (projection des maisons, routes, parcelles) plutôt que sur des pixels.
+
+**Contrôle `?audit=vert&seed=N&w=L`** (part d'herbe nue sur la colline visible, nombre de fenêtres de 12 × 8 px entièrement
+nues, plus grand composant ; objectif : 0 fenêtre et < 10 %) :
+
+| Graine | Largeur | Été : herbe nue / fenêtres 12×8 | Hiver : herbe nue / fenêtres 12×8 | Comblements |
+|---|---|---|---|---|
+| 1 | 720 | 9,4 % / 0 | 9,5 % / 0 | 63 |
+| 1 | 1 440 | 11,4 % / 0 | 11,6 % / 0 | 78 |
+| 1 | 2 880 | 9,9 % / 2 | 10,3 % / 2 | 83 |
+| 7 | 720 | 10,1 % / 0 | 10,4 % / 0 | 75 |
+| 7 | 1 440 | 9,4 % / 0 | 9,6 % / 0 | 74 |
+| 7 | 2 880 | 8,0 % / 0 | 8,1 % / 0 | 80 |
+| 42 | 720 | 10,7 % / 0 | 11,2 % / 0 | 74 |
+| 42 | 1 440 | 8,8 % / 0 | 8,9 % / 0 | 71 |
+| 42 | 2 880 | 8,9 % / 0 | 9,1 % / 0 | 77 |
+
+Avant ce retour (même mesure) : 11-16 % d'herbe nue et 33 à 865 fenêtres nues. Il reste 8 à 11,6 % d'herbe nue (le reste
+est en parcelles de moins de 12 × 8 px : pelouses du square, bas-côtés, talus), et 2 fenêtres sur la graine 1 à 2 880 px.
+
 ## 3 bis. Verdure de la rue principale (`src/03b-rue-verte.js`, couche peinte PAR-DESSUS le premier plan)
 
 Dans l'appli : à peindre dans les tranches de `paintCityTile`, après `paintTree` et `paintFurniture` (ordre : fosses et
@@ -319,4 +383,5 @@ platane − 10 j, tilleul − 8, peuplier − 5, marronnier − 4, cerisier − 
 9. Densité de la verdure de la colline : ≈ 150 formes par scène (bosquets, haies, vigne, square, potagers, arbres de crête) ; en vouloir plus ou moins ?
 10. Fond garni : faut-il aussi un petit marché avec étals de saison (non fait : la place manque dans l'échappée) et un lavoir ? Fréquence des piétons (12/h) et de la fanfare ?
 11. Vent : tranches de colline de 96 px (45 transformations, ≈ 45 ms au banc) ou de 240 px (18, ≈ 18 ms) sur Android ? Fréquence de mise à jour 15 Hz ou 20 Hz ? Les feuilles au sol restent 50 s : plus ?
-12. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.
+12. Herbe nue : 8-11,6 % avec des parcelles < 12 × 8 px ; faut-il viser moins (le comblement peut descendre à 6 × 4 px) ou garder quelques pelouses ?
+13. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.

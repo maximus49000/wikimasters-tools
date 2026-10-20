@@ -4,7 +4,7 @@
 const { cityPaintPlan, hillCrestY, HILL_ROWS, FAR_HAZE, FAR_ROOF_H, leftOf, paintCityTile, tileCount, cityFacades, FAR_WINDOW, GROUND_FLOOR,
   hashString, mulberry32, SUN, COOL, INK, TAU, shade, light, ink, hexRgb, mixRgb, rgba, gradeFor, windowsLitFraction, windowLit, nightness,
   lampLit, lampsFor, publicHolidays, dayContext, roofLineY, roofSpan } = RUE;
-const W = 1440, H = 340;
+let W = 1440; const H = 340;
 const MIN = 1 / 60, SEC = 1 / 3600;
 const sat = (v) => (v < 0 ? 0 : v > 1 ? 1 : v), lerp = (a, b, t) => a + (b - a) * t, ramp = (T, t0, d) => sat((T - t0) / d), smooth = (t) => t * t * (3 - 2 * t);
 const pick = (l, r) => l[Math.floor(r() * l.length)];
@@ -59,7 +59,7 @@ const METEO = {
 METEO.pluie.wet = 1;
 // Réglages d'URL (mode animé / débogage) : `?vent=0..3` force le vent (calme, faible, fort, tempête), `?dir=-1` l'inverse,
 // `?motion=0` = prefers-reduced-motion (arbres immobiles, pas de particules), `?garni=0` = colline d'avant (comparatif).
-const PARAMS = { vent: null, dir: 1, motion: 1, garni: 1 };
+const PARAMS = { vent: null, dir: 1, motion: 1, garni: 1, dense: 1 }; // `dense` : remplissage de ce retour (maisons de crête et de bord de route) ; `?dense=0` pour l'avant
 const WIND_FORCES = [0, 0.2, 0.55, 0.9];
 // Contexte du jour : date ISO, mois, saison, jour de semaine, férié (calendar.ts), météo.
 function dayOf(dateStr, meteoName) {
@@ -109,17 +109,19 @@ const TONES = {
   tender: ['#5E9A4A', '#8CC46A', '#C4E89A'], summer: ['#2E6E34', '#56A844', '#A6DC60'],
   gold: ['#8A6A20', '#D8A830', '#F0D060'], roux: ['#7A3A1E', '#C86A2A', '#F0A040'], winter: ['#6A5A50', '#8A7A6A', '#A89888'],
 };
-const mixTones = (a, b, t) => a.map((c, i) => mixRgb(hexRgb(c), hexRgb(b[i]), t));
+const toRgb = (c) => (typeof c === 'string' ? hexRgb(c) : c);
+const mixTones = (a, b, t) => a.map((c, i) => mixRgb(toRgb(c), toRgb(b[i]), t));
 // État du feuillage d'un arbre à la date D : `d` densité 0..1 (0 = nu), `tones` (3 masses), `stage`, `drop` (part tombée).
 //   débourrement 25 mars → 25 avril (vert tendre jusqu'à fin mai) · plein feuillage mai → septembre · jaunissement 1er oct → 15 nov
 //   · chute 20 oct → 25 nov · nu fin novembre → mars. Persistants (cyprès, haies, lierre) : toujours verts.
 function foliageOf(D, key, species = 'bouquet') {
   if (EVERGREENS.has(species)) return { d: 1, tones: EVERGREEN, stage: 'green', drop: 0 };
   const r = mulberry32(hashString('pheno-' + key)), o = (r() - 0.5) * 14, roux = r() < 0.5, lead = AUTUMN_LEAD[species] ?? 0, doy = D.doy;
-  if (doy < 84 + o || doy >= 330 + o + lead) return { d: 0, tones: TONES.winter.map(hexRgb), stage: 'bare', drop: 1 };
-  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: Math.max(0.1, out), tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0 }; }
+  const base = TONES.summer.map(hexRgb), autumn = (roux ? TONES.roux : TONES.gold).map(hexRgb);
+  if (doy < 84 + o || doy >= 330 + o + lead) return { d: 0, tones: TONES.winter.map(hexRgb), stage: 'bare', drop: 1, base, autumn };
+  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: out, tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0, base, autumn }; }
   const yel = sat((doy - (274 + o + lead)) / 45), drop = sat((doy - (293 + o + lead)) / 36);
-  return { d: Math.max(0.1, 1 - drop), tones: mixTones(TONES.summer, roux ? TONES.roux : TONES.gold, yel), stage: yel > 0 ? 'autumn' : 'green', drop };
+  return { d: 1 - drop, tones: mixTones(TONES.summer, roux ? TONES.roux : TONES.gold, yel), stage: yel > 0 ? 'autumn' : 'green', drop, yel, base, autumn };
 }
 // Floraisons à leur date (0..1) : marronniers (chandelles) 25 avril → 25 mai, cerisiers 20 mars → 15 avril, glycine 10 avril → 20 mai,
 // tilleuls 5 → 28 juin, vigne vierge rouge vif 1er octobre → 5 novembre.

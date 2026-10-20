@@ -26,9 +26,11 @@ for (const cid of ids) {
   const url = await ev(`document.getElementById(${JSON.stringify(cid)}).toDataURL('image/png')`);
   fs.writeFileSync(path.join(out, cid + '.png'), Buffer.from(url.split(',')[1], 'base64'));
 }
-// Séquences `seq-<nom>-<n>` → GIF animé (ffmpeg, 2,5 images/s) si ffmpeg est là.
+// Séquences `seq-<nom>-<n>` → GIF animé (ffmpeg, 2,5 images/s) si ffmpeg est là, puis les PNG de la séquence sont supprimés ;
+// tous les PNG sont réduits à 255 couleurs (ImageMagick) pour alléger le dépôt (aplats cellulo : sans perte visible).
 const { execSync } = await import('node:child_process');
 const seqs = new Set(ids.map((i) => (i.match(/^(seq-.+)-\d+$/) || [])[1]).filter(Boolean));
-for (const sq of seqs) { try { execSync(`ffmpeg -y -loglevel error -framerate 2.5 -i ${path.join(out, sq + '-%d.png')} -vf "split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer" -loop 0 ${path.join(out, sq + '.gif')}`); console.log('gif', sq); } catch (e) { console.log('pas de gif pour', sq, e.message.split('\n')[0]); } }
+for (const sq of seqs) { try { execSync(`ffmpeg -y -loglevel error -framerate 2.5 -i ${path.join(out, sq + '-%d.png')} -vf "split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer" -loop 0 ${path.join(out, sq + '.gif')}`); console.log('gif', sq); for (const id of ids) if (id.startsWith(sq + '-') && /-\d+$/.test(id)) fs.rmSync(path.join(out, id + '.png'), { force: true }); } catch (e) { console.log('pas de gif pour', sq, e.message.split('\n')[0]); } }
+try { for (const id of ids) { const f = path.join(out, id + '.png'); if (fs.existsSync(f)) execSync(`convert ${f} -colors 255 ${f}`); } } catch (e) { console.log('pas de quantification :', e.message.split('\n')[0]); }
 console.log(ids.length, 'captures dans', out);
 ws.close(); proc.kill(); process.exit(err ? 1 : 0);

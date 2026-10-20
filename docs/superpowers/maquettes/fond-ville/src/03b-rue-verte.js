@@ -62,44 +62,10 @@ function streetVerdure(F) {
 }
 
 // ── peinture (calendrier réel : foliageOf / bloomOf / bedState / leavesOnGround, brume nulle : premier plan) ──
-// `opts.layer` : 'shadow' (ombre sur la façade), 'skel' (charpentières), 'twigs' (rameaux + voile), 'low' (masses basses), 'high'
-// (masses hautes), 'hi' (rehauts seuls, pour le frémissement), 'all'. `opts.wet` : feuillage assombri et luisant (pluie).
-function paintCrown(ctx, cx, cy, r, species, f, D, key, baseY, opts = {}) {
-  const layer = opts.layer || 'all', want = (l) => layer === 'all' || layer === l, wet = opts.wet || 0;
-  const bare = f.d <= 0.1, kd = bare ? 0.55 : 0.4 + 0.6 * f.d, tones0 = f.tones, tones = wet ? tones0.map((c) => mixRgb(c, hexRgb('#1A2A3A'), 0.28 * wet)) : tones0;
-  const massesAll = species === 'tilleul' ? [[0, -0.15, 0.8, 1.3], [-0.5, 0.3, 0.5, 1], [0.5, 0.3, 0.5, 1]] : species === 'marronnier' ? [[0, 0, 0.9, 1], [-0.65, 0.2, 0.62, 1], [0.65, 0.2, 0.62, 1], [0, -0.6, 0.58, 1]] : species === 'cerisier' ? [[0, 0, 0.8, 0.9], [-0.6, 0.1, 0.55, 0.9], [0.6, 0.15, 0.5, 0.9]] : [[0, 0, 0.85, 1], [-0.7, 0.15, 0.58, 1], [0.68, 0.1, 0.56, 1], [-0.25, -0.6, 0.55, 1], [0.35, -0.55, 0.5, 1]];
-  let tn = tones, kk = kd, bb = bare;
-  const blc = species === 'cerisier' ? bloomOf(D, 'cerisier') : 0; if (blc > 0) { tn = ['#D88AA8', '#F0B0C8', '#FCDCE8'].map(hexRgb); kk = Math.max(kk, 0.75 + 0.25 * blc); bb = false; }
-  const dd = bb ? 0 : f.d;
-  if (want('shadow')) { ctx.fillStyle = `rgba(70,50,130,${(0.05 + 0.12 * dd).toFixed(3)})`; ctx.beginPath(); for (const [mx, my, k, ky] of massesAll) { ctx.moveTo(cx + mx * r + 4 + r * k * kk, cy + my * r + 5); ctx.ellipse(cx + mx * r + 4, cy + my * r + 5, r * k * kk, r * k * ky * kk, 0, 0, TAU); } ctx.fill(); }
-  if ((f.d < 0.85 || blc > 0) && (want('skel') || want('twigs'))) {
-    const sk = treeSkeleton(key, species, cx, baseY, baseY - cy + r * 1.05, 5);
-    if (layer === 'all') paintSkeleton(ctx, sk, { veilAlpha: 0.2 * (1 - Math.min(1, f.d)), snow: D.meteo.snow, dryLeaves: dryLeavesOf(D, species), alpha: 1 });
-    else { const coarse = { ...sk, segs: sk.segs.filter((s) => s.lv <= 1), tips: [] }, fine = { ...sk, segs: sk.segs.filter((s) => s.lv >= 2) }; if (want('skel')) paintSkeleton(ctx, coarse, { veil: false, snow: D.meteo.snow }); if (want('twigs')) paintSkeleton(ctx, fine, { veilAlpha: 0.2 * (1 - Math.min(1, f.d)), snow: D.meteo.snow, dryLeaves: dryLeavesOf(D, species) }); }
-  }
-  if (bb) return;
-  const masses = layer === 'low' ? massesAll.filter((m) => m[1] >= 0) : layer === 'high' ? massesAll.filter((m) => m[1] < 0) : massesAll;
-  if (want('low') || want('high')) {
-    ctx.strokeStyle = ink(Math.min(1, f.d * 1.5)); ctx.lineWidth = 1.1; ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * kk; ctx.moveTo(cx + mx * r + rr, cy + my * r); ctx.ellipse(cx + mx * r, cy + my * r, rr, rr * ky, 0, 0, TAU); } ctx.stroke();
-    for (let t = 0; t < 3; t++) { ctx.fillStyle = rgba(tn[t], 0.3 + 0.7 * Math.max(f.d, blc)); ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * (1 - t * 0.28) * kk, x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.ellipse(x, y, rr, rr * ky, 0, 0, TAU); } ctx.fill(); }
-    // Luisance de pluie : liseré clair en haut à gauche des masses.
-    if (wet) { ctx.strokeStyle = `rgba(230,240,255,${0.35 * wet})`; ctx.lineWidth = 0.8; ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * kk; ctx.ellipse(cx + mx * r, cy + my * r, rr * 0.92, rr * ky * 0.92, 0, Math.PI * 1.05, Math.PI * 1.55); ctx.moveTo(cx, cy); } ctx.stroke(); }
-    const blm = species === 'marronnier' ? bloomOf(D, 'marronnier') : 0; if (blm > 0) { ctx.fillStyle = `rgba(255,244,236,${blm})`; for (const [mx, my, k, ky] of masses) for (let i = -1; i <= 1; i++) ctx.fillRect(cx + mx * r + i * r * k * 0.45 - 0.35, cy + my * r - r * k * ky * 0.85, 0.7, 2.2); }
-    const blt = species === 'tilleul' ? bloomOf(D, 'tilleul') : 0; if (blt > 0 && want('high')) { ctx.fillStyle = `rgba(250,236,170,${blt})`; const rr = mulberry32(hashString('til' + key)); for (let i = 0; i < 14; i++) { const a = rr() * TAU, d = Math.sqrt(rr()) * r * 0.8; ctx.fillRect(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 0.8, 0.8); } }
-    if (D.meteo.snow) { ctx.fillStyle = 'rgba(240,244,248,0.92)'; ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * kk; ctx.moveTo(cx + mx * r + rr, cy + my * r - rr * ky * 0.1); ctx.ellipse(cx + mx * r, cy + my * r - rr * ky * 0.1, rr, rr * ky * 0.4, 0, Math.PI, 0); } ctx.fill(); }
-  }
-  if (layer === 'hi') { // rehauts seuls (frémissement par vent faible, face claire des feuilles sous vent fort)
-    const t = 2; ctx.fillStyle = rgba(opts.pale ? light(tn[2], 0.5) : tn[2], 1); ctx.beginPath(); for (const [mx, my, k, ky] of massesAll) { const rr = r * k * (1 - t * 0.28) * kk, x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.ellipse(x, y, rr, rr * ky, 0, 0, TAU); } ctx.fill();
-  }
-}
-// Tronc d'un arbre de rue (polygone, écorce, tuteur) ; mouillé = plus sombre.
-function paintRueTrunk(ctx, v, wet = 0) {
-  const { x, y } = v, trunkH = v.h, topX = x + v.lean, bark0 = hexRgb(BARK[v.young ? 'jeune' : v.species]), bark = wet ? mixRgb(bark0, hexRgb('#2A2420'), 0.35 * wet) : bark0;
-  const tw = v.young ? 0.7 : 1.3 + v.r * 0.07, tt = v.young ? 0.5 : 0.8 + v.r * 0.04; ctx.beginPath(); ctx.moveTo(x - tw, y); ctx.lineTo(topX - tt, y - trunkH); ctx.lineTo(topX + tt, y - trunkH); ctx.lineTo(x + tw, y); ctx.closePath(); ctx.fillStyle = rgba(bark, 1); ctx.fill();
-  ctx.save(); ctx.clip(); fillRect(ctx, shade(bark, 0.4), x + 0.3, y - trunkH, 3, trunkH); if (v.species === 'platane' && !v.young) { ctx.fillStyle = rgba(light(bark, 0.5), 1); const r = mulberry32(Math.floor(v.flowerSeed * 7)); for (let i = 0; i < 6; i++) ctx.fillRect(x - 1.2 + r() * 1.6, y - trunkH + 2 + r() * (trunkH - 6), 1, 1.6 + r()); } ctx.restore();
-  ctx.strokeStyle = INK; ctx.lineWidth = 0.7; ctx.stroke();
-  if (v.young) { ctx.strokeStyle = '#8A7A5A'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x + 2.2, y); ctx.lineTo(x + 2.2, y - trunkH * 0.7); ctx.stroke(); ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x - 0.5, y - trunkH * 0.5); ctx.lineTo(x + 2.5, y - trunkH * 0.55); ctx.stroke(); }
-}
+// Modèle d'un arbre de rue (squelette fixe : fût = v.h, ramure = 2 × r, 4 niveaux, ≤ 60 touffes de rayon 0,2 r).
+const rueModel = (v) => treeModelOf('rue' + Math.round(v.x), v.species, { x: v.x, y: v.y }, v.h, v.r * 2.0, v.young ? 3 : 4, v.r * (v.young ? 0.3 : 0.2), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
+const rueBark = (v) => hexRgb(BARK[v.young ? 'jeune' : v.species]);
+function paintTuteur(ctx, v) { if (!v.young) return; const { x, y } = v; ctx.strokeStyle = '#8A7A5A'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x + 2.2, y); ctx.lineTo(x + 2.2, y - v.h * 0.7); ctx.stroke(); ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x - 0.5, y - v.h * 0.5); ctx.lineTo(x + 2.5, y - v.h * 0.55); ctx.stroke(); }
 // Fleurs d'un pied d'arbre, d'un bac ou d'un parterre d'après l'état des parterres (bedState) : pousses, fleurs, fanées, sol nu.
 function paintFlowersRow(ctx, x0, x1, y, D, seedF, dense = 1) {
   const st = bedState(D), r = mulberry32(Math.floor(seedF * 1000));
@@ -153,7 +119,7 @@ function paintRueVerdure(ctx, F, env) {
       if (D.meteo.wet) { ctx.fillStyle = 'rgba(60,70,110,0.22)'; ctx.beginPath(); ctx.ellipse(x + 1, y + 1.4, 5 + v.r * 0.15, 1.3, 0, 0, TAU); ctx.fill(); ctx.fillStyle = 'rgba(200,220,240,0.25)'; ctx.beginPath(); ctx.ellipse(x - 0.5, y + 1.1, 2.5, 0.5, 0, 0, TAU); ctx.fill(); }
       ctx.fillStyle = 'rgba(70,50,130,0.26)'; ctx.beginPath(); ctx.moveTo(x - 1, y); ctx.lineTo(x + 1.4, y); ctx.lineTo(x + 1.4 + trunkH * 0.22, y + 1.8); ctx.lineTo(x - 1 + trunkH * 0.22, y + 1.8); ctx.closePath(); ctx.fill();
       // Tronc et houppier : sprites cuits et cisaillés par le vent (04a-vent.js), sauf si la scène est rendue sans vent.
-      if (!F.animTrees) { paintRueTrunk(ctx, v, D.meteo.wet || 0); paintCrown(ctx, x + v.lean, y - trunkH - v.r * 0.8, v.r, v.species, foliageOf(D, 'rue' + Math.round(x), v.species), D, 'rue' + Math.round(x), y - trunkH, { wet: D.meteo.wet || 0 }); }
+      if (!F.animTrees) { const m = rueModel(v); paintTreeStatic(ctx, m, foliageOf(D, 'rue' + Math.round(x), v.species), D, { bark: rueBark(v), shadow: true, veil: 0.2, young: v.young }); paintTuteur(ctx, v); }
     }
   }
 }

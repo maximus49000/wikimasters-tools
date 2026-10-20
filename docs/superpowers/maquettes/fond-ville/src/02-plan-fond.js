@@ -42,6 +42,25 @@ function escapeVerdure(rng, e) {
   const dFuni = (x, y) => { const dx = funi.x1 - funi.x0, dy = funi.y1 - funi.y0, t = sat(((x - funi.x0) * dx + (y - funi.y0) * dy) / (dx * dx + dy * dy)); return Math.min(Math.hypot(x - (funi.x0 + dx * t), y - (funi.y0 + dy * t)), Math.hypot(x - funi.x1, y - (funi.y1 - 12)) - 8, Math.hypot(x - funi.x0, y - (funi.y0 + 6)) - 8); };
   const free = (x, y, r) => x > e.c.x + 3 && x < e.c.x1 - 3 && y > y0 - 2 && y < yb - 1 && dRoad(x, y) >= r + 2.5 && dFuni(x, y) >= r + 7 && (!e.hillTop || y + 1 < e.hillTop[Math.max(0, Math.min(W, Math.round(x)))]);
   const taken = [];
+  // Maisons et ateliers bas, étagés le long de la route (des deux côtés, 5 à 13 px du ruban) et autour de la voie : la route et
+  // la voie restent lisibles, bordées de façades ; tirage par position.
+  e.houses = [];
+  if (PARAMS.garni && PARAMS.dense) {
+    const dStairs = (x, y) => { const st = e.stairs; if (!st) return 99; const dx = st.x1 - st.x0, dy = st.y1 - st.y0, t = sat(((x - st.x0) * dx + (y - st.y0) * dy) / (dx * dx + dy * dy)); return Math.hypot(x - (st.x0 + dx * t), y - (st.y0 + dy * t)); };
+    const hs = 0.6, hz = 0.2;
+    for (let x = e.c.x - 34; x < e.c.x1 + 14; x += 3 + rng() * 4) {
+      for (let k = 0; k < 20; k++) {
+        const cy0 = e.crest ? e.crest(x) + 9 : y0, base = cy0 + rng() * (yb - cy0 - 2), w = (9 + rng() * 9) * hs;
+        const dr = Math.min(dRoad(x, base), dRoad(x + w, base)), dr2 = Math.min(dRoad(x, base - 8 * hs), dRoad(x + w, base - 8 * hs));
+        if (dr < 3.5 || dr2 < 2.5 || dr > 40) continue;
+        if (dFuni(x, base) < 5 || dFuni(x + w, base) < 5 || dStairs(x, base) < 5 || dStairs(x + w, base) < 5 || dStairs(x + w / 2, base - 8 * hs) < 5) continue;
+        if (!(e.hillTop && base - 3 < e.hillTop[Math.max(0, Math.min(W, Math.round(x + w / 2)))])) continue;
+        if (e.houses.some((h) => x < h.x + h.w + 1 && x + w > h.x - 1 && Math.abs(h.base - base) < 8 * hs)) continue;
+        const hh = makeHouse(rng, x, base, base < y0 + 4 ? 0.45 : hs, base < y0 + 4 ? 0.34 : hz, base < y0 + 4 ? 0 : base <= (y1 + yb) / 2 ? 1 : 2, `er-${Math.round(x)}-${Math.round(base)}`, 9, 18);
+        e.houses.push(hh); taken.push({ x: x + w / 2, y: base - hh.h / 2, r: Math.max(w, hh.h) / 2 + 1 }); break;
+      }
+    }
+  }
   const rects = []; const place = (r) => { for (let k = 0; k < 40; k++) { const x = rx - 10 + rng() * (rw + 20), y = y0 + 2 + rng() * (yb - y0 - 6); if (free(x, y, r) && !taken.some((t) => Math.hypot(t.x - x, t.y - y) < (t.r + r) * 0.7) && !rects.some((q) => x > q.x - r && x < q.x + q.w + r && y > q.y - r * 0.6 && y < q.y + q.h + r * 0.6)) { taken.push({ x, y, r }); return { x, y }; } } return null; };
   // Vigne en rangs (clin d'œil à Montmartre) puis square : des parcelles libres, testées par leurs coins.
   const patch = (w, h) => { for (let k = 0; k < 60; k++) { const x = rx - 6 + rng() * (rw - w + 12), y = y0 + 3 + rng() * (yb - y0 - h - 6); const pts = []; for (let i = 0; i <= 4; i++) for (let j = 0; j <= 2; j++) pts.push([x + (w * i) / 4, y + (h * j) / 2]); if (pts.every(([px, py]) => free(px, py, 1.5)) && !taken.some((t) => t.x > x - t.r && t.x < x + w + t.r && t.y > y - t.r && t.y < y + h + t.r)) { taken.push({ x: x + w / 2, y: y + h / 2, r: Math.max(w, h) / 2 }); return { x, y, w, h }; } } return null; };
@@ -54,7 +73,7 @@ function escapeVerdure(rng, e) {
   if (vine) rects.push(vine); if (lawn) rects.push(lawn);
   // Grands arbres isolés (2-3), bosquets (4-6 groupes de 1-3 bouquets), potager (0-1).
   for (let i = 0, n = 3 + Math.floor(rng() * 3); i < n; i++) { const h = 11 + rng() * 9, p = place(h * 0.3); if (p) out.push({ kind: pick(['chestnut', 'poplar', 'poplar', 'cypress', 'cerisier', 'chene'], rng), ...p, h, s: 0.7 }); }
-  for (let i = 0, n = 9 + Math.floor(rng() * 5); i < n; i++) { const r = 2 + rng() * 3.2, p = place(r); if (!p) continue; out.push({ kind: 'bouquet', ...p, r, s: 0.55 + rng() * 0.2 }); for (let j = 0, m = Math.floor(rng() * 3); j < m; j++) { const r2 = r * (0.6 + rng() * 0.5), x = p.x + (rng() - 0.5) * r * 3, y = p.y + (rng() - 0.3) * r * 1.4; if (free(x, y, r2)) out.push({ kind: 'bouquet', x, y, r: r2, s: 0.55 + rng() * 0.2 }); } }
+  for (let i = 0, n = (PARAMS.dense ? 16 : 9) + Math.floor(rng() * 5); i < n; i++) { const r = 2 + rng() * 3.2, p = place(r); if (!p) continue; out.push({ kind: 'bouquet', ...p, r, s: 0.55 + rng() * 0.2 }); for (let j = 0, m = Math.floor(rng() * 3); j < m; j++) { const r2 = r * (0.6 + rng() * 0.5), x = p.x + (rng() - 0.5) * r * 3, y = p.y + (rng() - 0.3) * r * 1.4; if (free(x, y, r2)) out.push({ kind: 'bouquet', x, y, r: r2, s: 0.55 + rng() * 0.2 }); } }
   if (rng() < 0.7) { const p = place(6); if (p) out.push({ kind: 'garden', x: p.x - 6, y: p.y + 3, w: 12, s: 0.7, hz: 0.2 }); }
   // Haies : le long de deux tronçons de route, côté amont (perpendiculaire à la route, décalage 4 px).
   const n = road.length; for (const [f0, f1] of [[0.14, 0.3], [0.5, 0.66], [0.78, 0.9]]) {
@@ -85,6 +104,17 @@ function escapeVerdure(rng, e) {
   }
   // Tout sauf les arbres isolés avant la route (la route, la voie et les gares restent visibles) ; tri par y pour le recouvrement.
   return out.sort((a, b) => (a.y + (a.h || 0)) - (b.y + (b.h || 0)));
+}
+// Maison de remplissage (crête, bords de route) : même tirage de forme que celles du plan (hillPlan), à l'échelle `s`.
+const HILL_WALLS_M = ['#F4E0B8', '#F2C8A0', '#EACFA8', '#F6E6CC', '#E8C0A8', '#F0D4B0', '#DCCDB4', '#F4D0C0'].map(hexRgb);
+const HILL_ROOFS_M = ['#D0583A', '#C86A3E', '#B8503A', '#E07048', '#A84A36', '#C25E44'].map(hexRgb);
+function makeHouse(rng, x, base, s, hz, row, key, wmin = 12, wmax = 24) {
+  const w = (wmin + rng() * (wmax - wmin)) * s, h = (18 + rng() * 18) * s * (w < 11 * s ? 0.8 : 1), kind = rng() < 0.6 ? 'gable' : rng() < 0.5 ? 'mansard' : 'hip';
+  const hh = { row, x, w, h, base, top: base - h, s, haze: hz, wall: pick(HILL_WALLS_M, rng), roof: kind === 'mansard' ? hexRgb('#5A6A84') : pick(HILL_ROOFS_M, rng), kind, dormers: rng() < 0.5, chimney: rng() < 0.6 ? 0.2 + rng() * 0.6 : null, trees: null };
+  const rh = h * 0.32, wins = [];
+  for (let wy = hh.top + rh + 4 * s; wy + 5 * s < base; wy += 9 * s) for (let wx = x + 3 * s; wx + 4 * s < x + w - 2 * s; wx += 7 * s) wins.push({ x: wx, y: wy, w: 3.2 * s, h: 4.5 * s, u: rng(), blue: rng() < 0.25 });
+  const chimney = hh.chimney !== null ? { x: x + w * hh.chimney + 1.5 * s, y: hh.top - 4 * s + rh * 0.4, s, haze: hz, key } : null;
+  return { ...hh, rh, wins, lit: wins.slice(0, 1 + Math.floor(rng() * 2)), chimney, terrace: null, key, filler: true };
 }
 // Lacets arrondis : courbe quadratique par les milieux des segments (points de contrôle = sommets), échantillonnée.
 function smoothPolyline(ctrl) {
@@ -192,8 +222,8 @@ function fondPlan(seed) {
     const crane = { x: rx + rw - 10, base: y1 + 1, mast: 26, boom: 22, weeks: new Set(Array.from({ length: 10 }, () => Math.floor(rng() * 52))) };
     // Moulin à vent (clin d'œil au Moulin de la Galette) sur la crête, à droite de la gare haute et de l'escalier ; ses ailes tournent avec le vent (04a-vent.js).
     const mill = PARAMS.garni ? { x: funi.x1 + 34 + rng() * 12, y: crest(funi.x1 + 40) + 1.5, s: 0.55 + rng() * 0.1, phase: rng() * TAU } : null;
-    const eTmp = { c, road, rx, rw, y0, y1, yb, funi, crane, hillTop }; const verdure = escapeVerdure(rng, eTmp);
-    return { ...c, road, segs, L, lamps, funi, stairs, crane, mill, verdure, pathLamps: eTmp.pathLamps || [], lawn: verdure.find((v) => v.kind === 'lawn') || null, trafficU: rng() };
+    const eTmp = { c, road, rx, rw, y0, y1, yb, funi, stairs, crane, hillTop, crest }; const verdure = escapeVerdure(rng, eTmp);
+    return { ...c, road, segs, L, lamps, funi, stairs, crane, mill, verdure, houses: eTmp.houses || [], pathLamps: eTmp.pathLamps || [], lawn: verdure.find((v) => v.kind === 'lawn') || null, trafficU: rng() };
   });
   // Verdure des rangs (entre et derrière les maisons) et de la crête (grands arbres isolés sur le ciel).
   const rowVerdure = [[], [], []];
@@ -249,9 +279,24 @@ function fondPlan(seed) {
   // Réverbères de la crête (chapelet) : un tous les ~55 px sur la ligne de crête, allumés en vague.
   const crestLamps = []; { const rng = rngOf(seed, 'fond-crete'); for (let x = 20 + rng() * 30; x < W; x += 48 + rng() * 16) crestLamps.push({ x, y: crest(x) + 1.5, u: 0.4 + rng() * 0.07, off: Math.round(rng() * 30 - 15) }); }
   const landmarks = plan.hill.landmarks.map((l) => ({ ...l, lit: true }));
+  // Rang de crête (« rang 0 bis ») : maisons serrées et étagées entre la crête et les toits du rang 0, sur toute la largeur,
+  // sauf aux repères (chapelle, château d'eau, moulin, tour, dômes), à la voie du funiculaire et à l'escalier : la crête reste
+  // une silhouette de toits et d'arbres sur le ciel ; l'herbe nue n'apparaît plus qu'en petites parcelles.
+  const crestHouses = [];
+  if (PARAMS.garni && PARAMS.dense) {
+    const rng = rngOf(seed, 'rang-crete'), s0 = 0.42, hz0 = 0.4;
+    const banned = (x0, x1) => chapels.some((c) => x1 > c.x - 14 && x0 < c.x + 14) || reservoirs.some((r) => x1 > r.x - 8 && x0 < r.x + 8) || plan.hill.landmarks.some((l) => x1 > l.x - 4 && x0 < l.x + l.w + 4) || escapes.some((e) => (e.mill && x1 > e.mill.x - 6 && x0 < e.mill.x + 6) || (x1 > e.funi.x0 - 2 && x0 < e.funi.x1 + 2) || (x1 > e.stairs.x0 - 2 && x0 < e.stairs.x1 + 2));
+    for (let x = -6 + rng() * 10; x < W + 6; ) {
+      const w0 = (14 + rng() * 12), x1 = x + w0 * s0;
+      if (banned(x, x1)) { x += 4; continue; }
+      const base = crest(x + w0 * s0 / 2) + 8 + rng() * 6;
+      crestHouses.push(makeHouse(rng, x, base, s0, hz0, 0, `cr-${Math.round(x)}`, w0, w0 + 0.01));
+      x = x1 + (rng() < 0.3 ? (3 + rng() * 6) * s0 : 0.4);
+    }
+  }
   // Découpes (Path2D) : ce qui est visible AU-DESSUS du premier plan (vie du mur), et au-dessus du mur du fond aussi (vie de la colline).
   const pathAbove = (arr) => { const p = new Path2D(); p.moveTo(0, -20); for (let x = 0; x <= W; x++) p.lineTo(x, arr[x]); p.lineTo(W, -20); p.closePath(); return p; };
-  return { seed, plan, ground, ruelleY, near, far, houses, landmarks, escapes, crestLamps, rowVerdure, crestVerdure, chapels, reservoirs, nearTop, farTop, hillTop, crest, clipWall: pathAbove(nearTop), clipHill: pathAbove(hillTop) };
+  return { seed, plan, ground, ruelleY, near, far, houses, crestHouses, landmarks, escapes, crestLamps, rowVerdure, crestVerdure, chapels, reservoirs, nearTop, farTop, hillTop, crest, clipWall: pathAbove(nearTop), clipHill: pathAbove(hillTop) };
 }
 const PLANS = new Map();
-const fondPlanOf = (seed) => { const k = `${seed}|${PARAMS.garni}`; if (!PLANS.has(k)) PLANS.set(k, fondPlan(seed)); return PLANS.get(k); };
+const fondPlanOf = (seed) => { const k = `${seed}|${PARAMS.garni}|${PARAMS.dense}|${W}`; if (!PLANS.has(k)) PLANS.set(k, fondPlan(seed)); return PLANS.get(k); };

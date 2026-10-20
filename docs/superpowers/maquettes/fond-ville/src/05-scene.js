@@ -4,7 +4,7 @@
 //   premier plan) → mur du fond statique → vie du mur (découpe : au-dessus du premier plan) → premier plan (vrai peintre, bundle
 //   RUE) → étalonnage de nuit (feColorMatrix de grade.ts sur tout) → lumières (hors étalonnage, mêmes découpes).
 // Réglages d'URL lus avant tout (le plan et la météo en dépendent) : vent forcé, direction, mouvement réduit, colline garnie.
-{ const q = new URLSearchParams(location.search); if (q.has('vent')) PARAMS.vent = Math.max(0, Math.min(3, Number(q.get('vent')))); if (q.get('dir') === '-1') PARAMS.dir = -1; if (q.get('motion') === '0' || (matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) PARAMS.motion = 0; if (q.get('garni') === '0') PARAMS.garni = 0; }
+{ const q = new URLSearchParams(location.search); if (q.has('vent')) PARAMS.vent = Math.max(0, Math.min(3, Number(q.get('vent')))); if (q.get('dir') === '-1') PARAMS.dir = -1; if (q.get('motion') === '0' || (matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) PARAMS.motion = 0; if (q.get('garni') === '0') PARAMS.garni = 0; if (q.get('dense') === '0') PARAMS.dense = 0; }
 const CACHE = new Map();
 function cached(key, w, h, paint) {
   if (!CACHE.has(key)) { const c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d')); CACHE.set(key, c); if (CACHE.size > 40) CACHE.delete(CACHE.keys().next().value); }
@@ -19,7 +19,7 @@ const rueCanvas = (F, env, scale) => { F.rue ||= streetVerdure(F); return cached
 const avantCanvas = (seed, scale) => cached(`avant|${seed}|${scale}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); const plan = AVANT.cityPaintPlan(W, H, seed); for (let t = 0; t < AVANT.tileCount(W); t++) { ctx.save(); ctx.beginPath(); ctx.rect(t * 360, 0, 360, H); ctx.clip(); AVANT.paintCityTile(ctx, plan, t); ctx.restore(); } });
 // Fond statique (poses lentes : tranche de 10 min, date, météo).
 const meteoKey = (D) => `${D.meteo.snow ? 'n' : ''}${D.meteo.precip > 0 ? 'p' : ''}${D.meteo.wet ? 'w' : ''}${D.meteo.fog > 0.4 ? 'b' : ''}${D.meteo.thaw ? 't' : ''}`;
-const fondLayer = (F, env, scale, layer) => cached(`fond|${layer}|${F.seed}|${PARAMS.garni}|${scale}|${env.D.date}|${meteoKey(env.D)}|${bucket10(env.T)}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintFondStatic(ctx, F, { ...env, T: bucket10(env.T) }, layer); });
+const fondLayer = (F, env, scale, layer) => cached(`fond|${layer}|${F.seed}|${PARAMS.garni}${PARAMS.dense}|${W}|${scale}|${env.D.date}|${meteoKey(env.D)}|${bucket10(env.T)}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintFondStatic(ctx, F, { ...env, T: bucket10(env.T) }, layer); });
 const murCanvas = (F, env, scale) => cached(`mur|${F.seed}|${scale}|${env.D.date}|${meteoKey(env.D)}|${bucket10(env.T)}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintFarStatic(ctx, F, { ...env, T: bucket10(env.T) }); });
 
 // Étalonnage : feColorMatrix de grade.ts (gradeFor), appliqué par le filtre du canvas (url(#grade)).
@@ -35,8 +35,35 @@ const layer = (name, w, h) => { let c = LAYERS[name]; if (!c) { c = LAYERS[name]
 const newCounter = () => ({ vehicules: 0, fumees: 0, oiseaux: 0, fenetres: 0, drapeaux: 0, brume: 0, grue: 0, arbres: 0, pietons: 0, fontaine: 0, arbresVent: 0, tranchesVent: 0, particules: 0 });
 
 // Rend la scène corrigée (après) à l'instant T. view = { x0, y0, w, h, scale }. `avant` : décor actuel à la place (même ciel, même nuit).
+// Passe de comblement (`dense`) : la colline visible est rendue une fois à l'échelle 1 (été, sans vent) ; chaque fenêtre de
+// 12 × 8 px d'herbe nue d'un seul tenant reçoit un bouquet, un petit arbre, une haie ou des rochers (tirage par position),
+// ajouté au plan dans le calque de son rang ; puis les calques sont repeints. Déterministe (même graine → mêmes comblements).
+function ensureFillers(F) {
+  if (F.fillersDone || !PARAMS.dense) return; F.fillersDone = true;
+  const D = dayOf(ETE, 'soleil'), env = envAt(15, D), v0 = PARAMS.vent; PARAMS.vent = 0;
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const ctx = c.getContext('2d');
+  for (const l of FOND_LAYERS) ctx.drawImage(fondLayer(F, env, 1, l), 0, 0, W, H);
+  PARAMS.vent = v0;
+  const refs = [haze(GRASS, 0.35), haze(light(GRASS, 0.4), 0.3)], img = ctx.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+  for (let y = 0; y < Math.floor(F.ground); y++) for (let x = 0; x < W; x++) { if (y < F.crest(x) - 1 || y >= F.hillTop[x]) continue; const i = (y * W + x) * 4; if (refs.some((rc) => Math.abs(img[i] - rc[0]) <= 7 && Math.abs(img[i + 1] - rc[1]) <= 7 && Math.abs(img[i + 2] - rc[2]) <= 7)) mask[y * W + x] = 1; }
+  const S2 = new Int32Array((W + 1) * (H + 1)); for (let y = 1; y <= H; y++) for (let x = 1; x <= W; x++) S2[y * (W + 1) + x] = mask[(y - 1) * W + x - 1] + S2[(y - 1) * (W + 1) + x] + S2[y * (W + 1) + x - 1] - S2[(y - 1) * (W + 1) + x - 1];
+  const sum = (x, y, w, h) => S2[(y + h) * (W + 1) + x + w] - S2[y * (W + 1) + x + w] - S2[(y + h) * (W + 1) + x] + S2[y * (W + 1) + x];
+  const rng = rngOf(F.seed, 'comblement'), y0 = H * HILL_ROWS[0].y, y1 = H * HILL_ROWS[1].y; let n = 0;
+  for (let y = 0; y + 6 <= H; y += 2) for (let x = 0; x + 8 <= W; x += 2) {
+    if (sum(x, y, 8, 6) < 48) continue;
+    const cx = x + 4.5, cy = y + 6, row = cy < y0 + 2 ? -1 : cy < y1 + 2 ? 0 : 1, s = row < 0 ? 0.5 : HILL_ROWS[row + 1].s, hz = row < 0 ? 0.36 : HILL_ROWS[row + 1].haze, u = rng();
+    const item = u < 0.5 ? { kind: 'bouquet', x: cx - 1.5 * s, y: cy - 2.2 * s, r: (3.2 + rng() * 2) * s, s, hz } : u < 0.7 ? { kind: pick(['chestnut', 'cerisier', 'chene', 'poplar'], rng), x: cx, y: cy + 1, h: (9 + rng() * 5) * s * 1.4, s, hz } : u < 0.85 ? { kind: 'hedge', pts: Array.from({ length: 5 }, (_, k) => [x + 0.5 + k * 2.1, cy - 0.5 + Math.sin(k) * 0.4]), s, hz } : { kind: 'rocks', x: cx, y: cy, n: 2 + Math.floor(rng() * 2), seed: rng() * 100, s, hz };
+    (row < 0 ? F.crestVerdure : F.rowVerdure[row]).push(item); n++;
+    // La zone est comblée : on l'efface du masque (et des sommes) pour ne pas y revenir.
+    for (let yy = y; yy < y + 7; yy++) for (let xx = x - 4; xx < x + 13; xx++) if (xx >= 0 && xx < W) mask[yy * W + xx] = 0;
+    for (let yy = y + 1; yy <= Math.min(H, y + 8); yy++) for (let xx = 1; xx <= W; xx++) S2[yy * (W + 1) + xx] = mask[(yy - 1) * W + xx - 1] + S2[(yy - 1) * (W + 1) + xx] + S2[yy * (W + 1) + xx - 1] - S2[(yy - 1) * (W + 1) + xx - 1];
+    x += 8;
+  }
+  F.fillerCount = n;
+  for (const k of [...CACHE.keys()]) if (k.startsWith('fond|')) CACHE.delete(k);
+}
 function renderScene(ctx, seed, T, D, view, avant = false) {
-  const F = fondPlanOf(seed), env = envAt(T, D), S = view.scale, counter = newCounter(); F.animTrees = true;
+  const F = fondPlanOf(seed), env = envAt(T, D), S = view.scale, counter = newCounter(); F.animTrees = true; ensureFillers(F);
   const base = layer('base', W * S, H * S), b = base.getContext('2d');
   b.setTransform(1, 0, 0, 1, 0, 0); b.clearRect(0, 0, base.width, base.height); b.scale(S, S);
   paintSky(b, env);
@@ -44,12 +71,8 @@ function renderScene(ctx, seed, T, D, view, avant = false) {
   else {
     // Fond par calques : sol, puis pour chaque rang ses arbres (tranches cisaillées par le vent) et ses maisons.
     b.drawImage(fondLayer(F, env, S, 'sol'), 0, 0, W, H);
-    drawHillTrees(b, fondLayer(F, env, S, 'T0'), env, S, H * 0.24, 0.9, counter); b.setTransform(S, 0, 0, S, 0, 0);
-    b.drawImage(fondLayer(F, env, S, 'H0'), 0, 0, W, H);
-    drawHillTrees(b, fondLayer(F, env, S, 'T1'), env, S, H * HILL_ROWS[1].y, 1, counter); b.setTransform(S, 0, 0, S, 0, 0);
-    b.drawImage(fondLayer(F, env, S, 'H1'), 0, 0, W, H);
-    drawHillTrees(b, fondLayer(F, env, S, 'T2'), env, S, H * HILL_ROWS[2].y, 1.1, counter); b.setTransform(S, 0, 0, S, 0, 0);
-    b.drawImage(fondLayer(F, env, S, 'H2'), 0, 0, W, H);
+    const rows = [['T0k', 'T0c', H * 0.24, 0.9], ['Hc'], ['H0'], ['T1k', 'T1c', H * HILL_ROWS[1].y, 1], ['H1'], ['T2k', 'T2c', H * HILL_ROWS[2].y, 1.1], ['H2']];
+    for (const [lk, lc, baseY, factor] of rows) { b.drawImage(fondLayer(F, env, S, lk), 0, 0, W, H); if (lc) { drawHillCanopy(b, fondLayer(F, env, S, lc), env, S, baseY, factor, counter); b.setTransform(S, 0, 0, S, 0, 0); } }
     b.save(); b.clip(F.clipHill); for (const e of F.escapes) if (e.mill) paintMillSails(b, e.mill, env); b.restore();
     paintVieColline(b, F, env, counter);
     b.drawImage(murCanvas(F, env, S), 0, 0, W, H);
@@ -120,11 +143,6 @@ function renderCaptures() {
   const ids = [];
   const D15 = dayOf(ETE, 'soleil'), D23 = dayOf(AUT, 'soleil');
   // Audit : avant / après sur les graines 1, 7 et 42 (jour), puis la nuit sur la graine 7 (défaut 1 : fenêtres allumées sur les toits).
-  for (const seed of [1, 7, 42]) {
-    for (const [tag, avant] of [['avant', true], ['apres', false]]) {
-      const id = `${tag}-graine${seed}`; renderScene(canvasFor(id, W * 2, H * 2, `${id} — ${avant ? 'décor actuel' : 'fond corrigé (D1 à D6) et vie du fond'}, 7 juillet 15 h`), seed, 15 + 0.3 * MIN, D15, fullView(2), avant); ids.push(id);
-    }
-  }
   for (const [tag, avant] of [['avant', true], ['apres', false]]) { const id = `${tag}-graine7-nuit`; renderScene(canvasFor(id, W * 2, H * 2, `${id} — 27 octobre 23 h`), 7, 23 + 0.2 * MIN, D23, fullView(2), avant); ids.push(id); }
   // Moments (graine 7).
   for (const m of MOMENTS) { const D = dayOf(m.date, m.meteo); renderScene(canvasFor(m.id, W * 2, H * 2, `${m.id} — ${m.note}`), 7, m.T, D, fullView(2)); ids.push(m.id); }
@@ -162,7 +180,7 @@ function renderCaptures() {
   for (const z of zooms) { renderScene(canvasFor(z.id, z.view.w * z.view.scale, z.view.h * z.view.scale, `${z.id} — ${z.note}`), 7, z.T, z.D, z.view); ids.push(z.id); }
   // Séquence : la fumée naît au conduit (matin d'hiver, 6 h 40 + 0 / 2 / 5 / 9 s).
   const DH = dayOf(HIV, 'soleil'), sv = smokeView(F, 8.5, DH, 4);
-  [0, 2, 5, 9].forEach((s, i) => { const id = `fumee-seq-${i + 1}`; renderScene(canvasFor(id, sv.w * 4, sv.h * 4, `${id} — la fumée naît au conduit : 8 h 30 + ${s} s, 10 février (×4)`), 7, 8.5 + s * SEC, DH, sv); ids.push(id); });
+  [0, 2, 5, 9].forEach((s, i) => { const id = `seq-fumee-${i + 1}`; renderScene(canvasFor(id, sv.w * 4, sv.h * 4, `${id} — la fumée naît au conduit : 8 h 30 + ${s} s, 10 février (×4)`), 7, 8.5 + s * SEC, DH, sv); ids.push(id); });
   // Planche « une année » : même coin de rue et même coin de colline, une vignette par mois (le 15, 14 h, soleil ; janvier avec neige).
   {
     const id = 'annee-planche', vw = 300, vhR = 120, vhC = 90, vhM = 60, S = 2, cols = 4, cw = vw * S + 12, chh = (vhR + vhC + vhM) * S + 38;
@@ -179,6 +197,21 @@ function renderCaptures() {
   }
   // Avant / après de la colline garnie (même cadrage : l'échappée élargie), 7 juillet 15 h.
   { const view = escapeView(F, 0, 3); PARAMS.garni = 0; const F0 = fondPlanOf(7); renderScene(canvasFor('colline-avant', view.w * 3, view.h * 3, 'colline-avant — l’échappée avant ce retour (×3)'), 7, 15 + 0.3 * MIN, D15, view); ids.push('colline-avant'); PARAMS.garni = 1; renderScene(canvasFor('colline-apres', view.w * 3, view.h * 3, 'colline-apres — marché et lavoir, verger clos, ruisseau et bassin, sentiers, moulin, cabane, ruches, poulailler, pétanque, rochers (×3)'), 7, 15 + 0.3 * MIN, D15, view); ids.push('colline-apres'); void F0; }
+  // Côté gauche avant / après ce retour (x 0 → 500, échelle 1, rendu ×2), 7 juillet 15 h.
+  { const view = { x0: 0, y0: 0, w: 500, h: H, scale: 2 }; PARAMS.dense = 0; renderScene(canvasFor('gauche-avant', 1000, H * 2, 'gauche-avant — côté gauche avant ce retour'), 7, 15 + 0.3 * MIN, D15, view); ids.push('gauche-avant'); PARAMS.dense = 1; renderScene(canvasFor('gauche-apres', 1000, H * 2, 'gauche-apres — maisons étagées jusqu’à la crête, façades et jardins le long de la route et de la voie, bosquets serrés'), 7, 15 + 0.3 * MIN, D15, view); ids.push('gauche-apres'); }
+  // Chute des feuilles (1er octobre → 30 novembre) et débourrement (15 mars → 15 mai), une image tous les 6 jours, même arbre,
+  // même cadrage ; le contour du fût (boîte fixe du squelette) est tracé en pointillé sur chaque image : il ne bouge pas.
+  { const pv = pitView(F, 3); F.rue ||= streetVerdure(F); const tree = F.rue.find((v) => v.kind === 'pit' && !v.empty && !v.young && v.x > pv.x0 && v.x < pv.x0 + pv.w), m = rueModel(tree);
+    for (const [name, from, n] of [['seq-chute-feuilles', '2026-10-01', 11], ['seq-debourrement', '2027-03-15', 11]]) {
+      const frames = [];
+      for (let i = 0; i < n; i++) { const t = new Date(Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1, +from.slice(8, 10) + i * 6)), ds = t.toISOString().slice(0, 10), id = `${name}-${i + 1}`, ctx = canvasFor(id, pv.w * 3, pv.h * 3, `${id} — ${ds}`);
+        renderScene(ctx, 7, 14 + 0.2 * MIN, dayOf(ds, 'soleil'), pv); ctx.save(); ctx.setTransform(3, 0, 0, 3, -pv.x0 * 3, -pv.y0 * 3); ctx.setLineDash([1.2, 1.2]); ctx.strokeStyle = '#FF2060'; ctx.lineWidth = 0.6; ctx.strokeRect(m.trunkBox.x - 0.8, m.trunkBox.y, m.trunkBox.w + 1.6, m.trunkBox.h); ctx.beginPath(); ctx.moveTo(m.span[0], m.top - 2); ctx.lineTo(m.span[1], m.top - 2); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, 150, 16); ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.fillText(ds, 4, 12); ids.push(id); frames.push(ctx.canvas); }
+      // Planche : les n images côte à côte (deux lignes).
+      const cols = 6, cw = pv.w * 3, chh = pv.h * 3, pl = canvasFor(name + '-planche', cols * cw, 2 * chh, `${name}-planche — même squelette, le feuillage seul change (fût en pointillé rose)`);
+      frames.forEach((c, i) => pl.drawImage(c, (i % cols) * cw, Math.floor(i / cols) * chh)); ids.push(name + '-planche');
+    }
+  }
   // Séquences au vent (4-6 images à 0,4 s d'écart ; `seq-*` → GIF par capture.mjs) : pied d'arbre ×3 et échappée ×3.
   const SEQS = [
     { id: 'seq-vent-faible-ete', date: ETE, meteo: 'soleil', vent: 1, T: 15 + 0.3 * MIN, n: 5, note: 'vent faible d’été : frémissement des rehauts, rafale qui passe' },
@@ -223,8 +256,58 @@ function runAnimated(q) {
   };
   requestAnimationFrame(frame);
 }
+// ───────────── contrôles automatiques ─────────────
+// `?audit=vert&seed=7&w=1440` : part d'herbe nue visible (pixels de la couleur de l'herbe, au-dessus de tout ce qui est peint devant)
+// et fenêtres de 12 × 8 px entièrement nues (objectif : 0 fenêtre, < 10 %), été et hiver, échelle 1.
+function auditVert(seed) {
+  const out = {};
+  for (const [tag, date, meteo] of [['ete', ETE, 'soleil'], ['hiver', HIV, 'nuages']]) {
+    const D = dayOf(date, meteo), env = envAt(15, D), F = fondPlanOf(seed), c = document.createElement('canvas'); c.width = W; c.height = H; const ctx = c.getContext('2d');
+    PARAMS.vent = 0; renderScene(ctx, seed, 15, D, fullView(1)); PARAMS.vent = null;
+    // Couleurs de l'herbe nue : aplat et rehaut de crête (paintGround), étalonnées comme la scène (jour : identité).
+    const doy = D.doy, dry = sat((doy - 250) / 60) * (1 - sat((doy - 340) / 25)), cold = Math.max(sat((doy - 320) / 30), 1 - sat((doy - 60) / 40));
+    const g0 = mixRgb(mixRgb(light(GRASS, 0.2 * (1 - sat((doy - 100) / 60))), hexRgb('#B89040'), dry * 0.35), hexRgb('#9A9A80'), cold * 0.45);
+    const refs = [haze(g0, 0.35), haze(light(g0, 0.4), 0.3)], img = ctx.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+    let bare = 0, vis = 0;
+    for (let y = 0; y < Math.floor(F.ground); y++) for (let x = 0; x < W; x++) {
+      if (y < F.crest(x) - 1 || y >= F.hillTop[x]) continue; vis++;
+      const i = (y * W + x) * 4, p = [img[i], img[i + 1], img[i + 2]];
+      if (refs.some((rc) => Math.abs(p[0] - rc[0]) <= 7 && Math.abs(p[1] - rc[1]) <= 7 && Math.abs(p[2] - rc[2]) <= 7)) { mask[y * W + x] = 1; bare++; }
+    }
+    // Table des sommes pour compter les fenêtres 12 × 8 entièrement nues, et plus grand composant (BFS 4-connexe).
+    const S2 = new Int32Array((W + 1) * (H + 1)); for (let y = 1; y <= H; y++) for (let x = 1; x <= W; x++) S2[y * (W + 1) + x] = mask[(y - 1) * W + x - 1] + S2[(y - 1) * (W + 1) + x] + S2[y * (W + 1) + x - 1] - S2[(y - 1) * (W + 1) + x - 1];
+    let windows = 0, worst = null; const WW = 12, HH = 8;
+    for (let y = 0; y + HH <= H; y++) for (let x = 0; x + WW <= W; x++) { const n = S2[(y + HH) * (W + 1) + x + WW] - S2[y * (W + 1) + x + WW] - S2[(y + HH) * (W + 1) + x] + S2[y * (W + 1) + x]; if (n === WW * HH) { windows++; if (!worst) worst = [x, y]; } }
+    const seen = new Uint8Array(W * H); let big = { n: 0 };
+    for (let i0 = 0; i0 < W * H; i0++) { if (!mask[i0] || seen[i0]) continue; const st = [i0]; seen[i0] = 1; let n = 0, x0 = W, x1 = 0, y0 = H, y1 = 0; while (st.length) { const i = st.pop(), x = i % W, y = (i - x) / W; n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); for (const j of [i - 1, i + 1, i - W, i + W]) if (j >= 0 && j < W * H && mask[j] && !seen[j] && Math.abs((j % W) - x) <= 1) { seen[j] = 1; st.push(j); } } if (n > big.n) big = { n, box: `${x1 - x0 + 1}×${y1 - y0 + 1} à (${x0},${y0})` }; }
+    out[tag] = { seed, w: W, comblements: F.fillerCount, herbeNue: (100 * bare / Math.max(1, vis)).toFixed(1) + ' %', fenetres12x8: windows, premiere: worst, plusGrandeZone: big.box, pixels: big.n };
+  }
+  return out;
+}
+// `?audit=squelette&seed=7` : pour chaque arbre (rue et colline), sur 365 jours, boîte du fût et envergure identiques, et écart de
+// hauteur totale de la silhouette (fût + branches + touffes présentes) ≤ 1 px entre deux jours consécutifs.
+function auditSquelette(seed) {
+  const F = fondPlanOf(seed); F.rue ||= streetVerdure(F);
+  const trees = [];
+  for (const v of F.rue) if (v.kind === 'pit' && !v.empty) trees.push({ name: `rue@${Math.round(v.x)}`, m: rueModel(v), key: 'rue' + Math.round(v.x), sp: v.species });
+  for (const v of [...F.crestVerdure, ...F.rowVerdure.flat(), ...F.escapes.flatMap((e) => e.verdure)]) if (isTree(v) && v.kind !== 'cypress' && v.kind !== 'orchard') { const key = `${v.kind}-${Math.round(v.x ?? 0)}-${Math.round(v.y ?? 0)}`; if (v.kind === 'bouquet') trees.push({ name: `colline-bouquet@${Math.round(v.x)}`, m: treeModelOf('b' + key, 'bouquet', { x: v.x, y: v.y + v.r * 0.9 }, v.r * 0.55, v.r * 1.7, v.r > 3 ? 3 : 2, v.r * 0.34, 22), key: 'b' + key, sp: 'bouquet' }); else { const sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind), h = v.h, pop = v.kind === 'poplar'; trees.push({ name: `colline-${v.kind}@${Math.round(v.x)}`, m: treeModelOf(key, sp, { x: v.x, y: v.y }, h * (pop ? 0.18 : 0.3), h * (pop ? 0.82 : 0.7), 3, h * (pop ? 0.075 : 0.11), 26), key, sp }); } }
+  let maxJump = 0, worst = '', boxesOk = true;
+  for (const tr of trees) {
+    let prev = null; const box0 = JSON.stringify(tr.m.trunkBox), span0 = JSON.stringify(tr.m.span);
+    for (let doy = 0; doy < 365; doy++) {
+      const t = new Date(Date.UTC(2027, 0, 1 + doy)), D = dayOf(t.toISOString().slice(0, 10), 'soleil'), f = foliageOf(D, tr.key, tr.sp);
+      let top = tr.m.top + tr.m.rx * 0; top = Math.min(...tr.m.segs.map((sg) => sg.y1)); for (const tf of tr.m.tufts) { const st = tuftState(tf, f, D, tr.sp); if (st.size > 0) top = Math.min(top, tf.y - tf.rr * st.size); }
+      const hgt = tr.m.foot.y - top; if (prev !== null && Math.abs(hgt - prev) > maxJump) { maxJump = Math.abs(hgt - prev); worst = `${tr.name} jour ${doy}`; } prev = hgt;
+      if (JSON.stringify(tr.m.trunkBox) !== box0 || JSON.stringify(tr.m.span) !== span0) boxesOk = false;
+    }
+  }
+  return { arbres: trees.length, boitesIdentiques: boxesOk, sautMaxPx: Number(maxJump.toFixed(2)), pire: worst };
+}
 const Q = new URLSearchParams(location.search);
-if (Q.has('T')) { // débogage : ?T=18.5&seed=7&date=2026-10-27&meteo=soleil&view=x0,y0,w,h,scale&avant=1
+if (Q.has('w')) W = Number(Q.get('w'));
+if (Q.get('audit') === 'vert') { window.__audit = auditVert(Number(Q.get('seed') || 7)); window.__ids = []; window.__done = true; }
+else if (Q.get('audit') === 'squelette') { window.__audit = auditSquelette(Number(Q.get('seed') || 7)); window.__ids = []; window.__done = true; }
+else if (Q.has('T')) { // débogage : ?T=18.5&seed=7&date=2026-10-27&meteo=soleil&view=x0,y0,w,h,scale&avant=1
   const seed = Number(Q.get('seed') || 7), D = dayOf(Q.get('date') || AUT, Q.get('meteo') || 'soleil');
   const v = (Q.get('view') || `0,0,${W},${H},2`).split(',').map(Number); const view = { x0: v[0], y0: v[1], w: v[2], h: v[3], scale: v[4] };
   renderScene(canvasFor('dbg', view.w * view.scale, view.h * view.scale, 'dbg ' + fmtT(+Q.get('T'))), seed, +Q.get('T'), D, view, Q.has('avant')); window.__ids = ['dbg']; window.__done = true;

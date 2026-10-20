@@ -184,7 +184,7 @@ function paintLampLight(ctx, x, y, on) { if (!on) return; disc(ctx, 'rgba(255,22
 function paintLightsHill(ctx, F, env, counter) {
   const day = { weekday: env.D.weekday, kind: env.D.kind }, gloom = env.D.meteo.gloom;
   // A : fenêtres allumées des maisons de la colline (atténuées par la brume), seuils par fenêtre : allumages un à un.
-  for (const h of F.houses) for (const wn of h.lit) if (windowLit(wn.u, env.minutes, day, env.daylight, gloom)) { counter.fenetres++; ctx.fillStyle = wn.blue ? LIT_BLUE : LIT_WARM; ctx.globalAlpha = 0.5 * (1 - h.haze); ctx.fillRect(wn.x, wn.y, wn.w, wn.h); }
+  for (const h of [...F.houses, ...F.crestHouses, ...F.escapes.flatMap((e) => e.houses)]) for (const wn of h.lit) if (windowLit(wn.u, env.minutes, day, env.daylight, gloom)) { counter.fenetres++; ctx.fillStyle = wn.blue ? LIT_BLUE : LIT_WARM; ctx.globalAlpha = 0.5 * (1 - h.haze); ctx.fillRect(wn.x, wn.y, wn.w, wn.h); }
   ctx.globalAlpha = 1;
   for (const e of F.escapes) {
     for (const l of e.lamps) { const p = roadPoint(e, l.d); paintLampLight(ctx, p.x + 1, p.y - 4, lampOn(l, env)); }

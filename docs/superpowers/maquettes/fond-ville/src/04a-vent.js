@@ -24,43 +24,46 @@ function windAt(x, t, env) {
 const STIFF = { poplar: 1.6, tilleul: 1.0, platane: 0.7, marronnier: 0.8, cerisier: 1.1, chene: 0.75, bouquet: 1.0, cypress: 0.5 };
 const bendOf = (v, wind, env) => Math.max(-0.55, Math.min(0.55, wind * (v.young ? 1.8 : STIFF[v.species] || 1) * (1 + 0.25 * (env.D.meteo.wet || 0)) * (env.D.meteo.storm ? 1.3 : 1) * 0.09));
 
-// ── Sprites cuits des arbres de la rue : une fois par (arbre, date, pluie, neige), 5 couches en coordonnées du monde.
-const LAYERS_RUE = ['skel', 'twigs', 'low', 'high', 'hi'];
+// ── Sprites cuits des arbres de la rue : par (arbre, date, pluie, neige) : ombre, fût, charpentières, rameaux (+ voile, neige,
+// feuilles sèches), puis 4 grappes de touffes (basses / hautes × intérieures / bout des branches). Le fût et les charpentières
+// sont dessinés tels quels (jamais transformés) ; les rameaux fléchissent à peine ; les grappes se déplacent (vent) ; les
+// touffes « lâches » (sur le point de tomber) sont dessinées une à une et frémissent plus.
 function treeSprites(F, v, env, S) {
   const D = env.D, key = `sprite|${F.seed}|${S}|${Math.round(v.x)}|${D.date}|${D.meteo.wet || 0}|${D.meteo.snow ? 1 : 0}`;
   if (CACHE.has(key)) return CACHE.get(key);
-  const r = v.r, box = { x: v.x - r * 2.2, y: v.y - v.h - r * 2.3, w: r * 4.4, h: v.h + r * 2.3 + 3 };
-  const f = foliageOf(D, 'rue' + Math.round(v.x), v.species), cy = v.y - v.h - r * 0.8, k = 'rue' + Math.round(v.x), wet = D.meteo.wet || 0;
-  const layers = {};
-  for (const layer of ['trunk', ...LAYERS_RUE, 'hiPale']) {
-    const c = document.createElement('canvas'); c.width = Math.ceil(box.w * S); c.height = Math.ceil(box.h * S); const ctx = c.getContext('2d'); ctx.scale(S, S); ctx.translate(-box.x, -box.y);
-    if (layer === 'trunk') paintRueTrunk(ctx, v, wet);
-    else paintCrown(ctx, v.x + v.lean, cy, r, v.species, f, D, k, v.y - v.h, { layer: layer === 'hiPale' ? 'hi' : layer, wet, pale: layer === 'hiPale' });
-    layers[layer] = c;
-  }
-  const out = { box, layers, f, cy };
-  CACHE.set(key, out); if (CACHE.size > 120) CACHE.delete(CACHE.keys().next().value);
+  const m = rueModel(v), f = foliageOf(D, 'rue' + Math.round(v.x), v.species), wet = D.meteo.wet || 0, pad = v.r * 0.6;
+  const box = { x: m.span[0] - pad - 6, y: m.top - pad - 4, w: m.span[1] - m.span[0] + 2 * pad + 12, h: v.y - m.top + 2 * pad + 6 };
+  const layers = {}, mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(box.w * S); c.height = Math.ceil(box.h * S); const ctx = c.getContext('2d'); ctx.scale(S, S); ctx.translate(-box.x, -box.y); return [c, ctx]; };
+  let [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { part: 'shadow' }); layers.shadow = c;
+  [c, ctx] = mk(); paintTrunk(ctx, m, rueBark(v), 0, wet, v.young); paintTuteur(ctx, v); paintBranches(ctx, m, 'coarse'); layers.trunk = c;
+  [c, ctx] = mk(); paintBranches(ctx, m, 'fine', { veil: 0.12 * (1 - f.d), snow: D.meteo.snow }); paintDryLeaves(ctx, m, D); layers.twigs = c;
+  for (let k = 0; k < 4; k++) { [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { which: k, wet, loose: false }); layers['c' + k] = c; }
+  const out = { box, layers, f, m };
+  CACHE.set(key, out); if (CACHE.size > 160) CACHE.delete(CACHE.keys().next().value);
   return out;
 }
-// Dessine un calque cisaillé autour du pied (x' = x + (footY − y) · s).
-function drawSheared(ctx, canvas, box, footY, s, S, alpha = 1) {
-  ctx.save(); ctx.setTransform(S, 0, 0, S, 0, 0); ctx.transform(1, 0, s, 1, -s * footY, 0); ctx.globalAlpha = alpha; ctx.drawImage(canvas, box.x, box.y, box.w, box.h); ctx.restore();
-}
+const CLUSTER_AMP = [0.7, 1.6, 0.95, 2.1]; // basses-intérieures, basses-bout, hautes-intérieures, hautes-bout (px par unité de vent)
 function paintArbresRue(ctx, F, env, S, counter) {
   const t = env.seconds, D = env.D, wet = D.meteo.wet || 0;
   for (const v of F.rue) {
     if (v.kind !== 'pit' || v.empty) continue;
-    const sp = treeSprites(F, v, env, S), wind = windAt(v.x, t, env), b = bendOf(v, wind, env), foot = v.y;
+    const sp = treeSprites(F, v, env, S), m = sp.m, wind = windAt(v.x, t, env), stiff = (v.young ? 1.8 : STIFF[v.species] || 1) * (1 + 0.25 * wet) * (D.meteo.storm ? 1.3 : 1), b = wind * stiff;
     if (Math.abs(wind) > 0.03) counter.arbresVent++;
-    // Le tronc fléchit peu, les charpentières un peu, les rameaux et masses basses plus, les masses hautes le plus.
-    drawSheared(ctx, sp.layers.trunk, sp.box, foot, b * 0.18, S);
-    drawSheared(ctx, sp.layers.skel, sp.box, foot, b * 0.35, S);
-    drawSheared(ctx, sp.layers.twigs, sp.box, foot, b * 0.8 + 0.03 * Math.sin(t * 7 + v.x) * Math.min(1, Math.abs(wind)), S);
-    drawSheared(ctx, sp.layers.low, sp.box, foot, b * 0.7, S);
-    drawSheared(ctx, sp.layers.high, sp.box, foot, b * 1.0, S);
-    // Frémissement des rehauts par vent faible (scintillement, déphasé par arbre) ; face claire des feuilles retournées sous vent fort.
-    if (Math.abs(wind) > 0.04 && sp.f.d > 0.15) { const fl = 0.5 + 0.5 * Math.sin(t * (5 + (v.x % 7)) + v.x * 0.3) * Math.sin(t * 2.3 + v.x); drawSheared(ctx, sp.layers.hi, sp.box, foot, b * 1.0, S, 0.6 * fl * Math.min(1, Math.abs(wind) * 2)); }
-    if (Math.abs(wind) > 0.9 && sp.f.d > 0.15) drawSheared(ctx, sp.layers.hiPale, sp.box, foot, b * 1.05, S, Math.min(0.7, (Math.abs(wind) - 0.9) * 0.8) * (0.6 + 0.4 * Math.sin(t * 9 + v.x)));
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+    ctx.drawImage(sp.layers.shadow, sp.box.x, sp.box.y, sp.box.w, sp.box.h);
+    ctx.drawImage(sp.layers.trunk, sp.box.x, sp.box.y, sp.box.w, sp.box.h);                       // fût et charpentières : jamais déplacés
+    // Rameaux fins : léger fléchissement (cisaillement de 3 % de b autour de la racine des charpentières).
+    ctx.save(); ctx.transform(1, 0, 0.03 * b, 1, -0.03 * b * m.rootY, 0); ctx.drawImage(sp.layers.twigs, sp.box.x, sp.box.y, sp.box.w, sp.box.h); ctx.restore();
+    // Grappes de feuilles : translation propre (amplitude par grappe, déphasage par arbre et par grappe, rafales), plus forte au bout et en haut.
+    for (let k = 0; k < 4; k++) {
+      const ph = v.x * 0.37 + k * 1.9, osc = 0.7 + 0.3 * Math.sin(t * (2.6 + k * 0.7) + ph) + 0.15 * Math.sin(t * 7.3 + ph * 2), dx = b * CLUSTER_AMP[k] * osc, dy = -Math.abs(b) * 0.25 * (k >= 2 ? 1 : 0.5) * (0.5 + 0.5 * Math.sin(t * 3.1 + ph));
+      ctx.drawImage(sp.layers['c' + k], sp.box.x + dx, sp.box.y + dy, sp.box.w, sp.box.h);
+    }
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+    // Touffes lâches (automne : sur le point de tomber), frémissement des rehauts par vent faible, face claire sous vent fort.
+    paintLeaves(ctx, m, sp.f, D, { loose: true, wet, shiftX: b * 2.6 * (0.6 + 0.4 * Math.sin(t * 9 + v.x)), shiftY: -Math.abs(b) * 0.5 });
+    if (Math.abs(wind) > 0.04 && sp.f.d > 0.1) { ctx.globalAlpha = 0.5 * Math.min(1, Math.abs(wind) * 2) * (0.5 + 0.5 * Math.sin(t * (5 + (v.x % 7)) + v.x * 0.3) * Math.sin(t * 2.3 + v.x)); paintLeaves(ctx, m, sp.f, D, { part: 'hi', wet, shiftX: b * 1.4 }); ctx.globalAlpha = 1; }
+    if (Math.abs(wind) > 0.9 && sp.f.d > 0.1) { ctx.globalAlpha = Math.min(0.7, (Math.abs(wind) - 0.9) * 0.8) * (0.6 + 0.4 * Math.sin(t * 9 + v.x)); paintLeaves(ctx, m, sp.f, D, { part: 'hi', pale: true, shiftX: b * 1.6 }); ctx.globalAlpha = 1; }
     paintParticlesArbre(ctx, F, v, sp, env, counter);
     paintBirdsArbre(ctx, F, v, sp, env, counter);
   }
@@ -72,19 +75,21 @@ function paintParticlesArbre(ctx, F, v, sp, env, counter) {
   if (!PARAMS.motion) return;
   const t = env.seconds, D = env.D, r = v.r, cx = v.x + v.lean, cy = sp.cy, ground = v.y - 0.5, dir = D.meteo.dir || 1, w = D.meteo.wind;
   const drop = sp.f.drop, petals = v.species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
-  // Feuilles arrachées par les rafales (automne) et pétales (avril) : chaque rafale qui passe l'arbre en détache quelques-unes.
-  if (w >= 0.05 && ((drop > 0 && drop < 1 && sp.f.d > 0.1) || petals > 0.3)) {
-    for (const g of gustsAt(t, env)) {
-      const tp = g.tk + (v.x - g.x0) / (g.dir * g.speed); if (tp > t || t - tp > 45) continue;
-      const rk = mulberry32((hashString(`part-${Math.round(v.x)}-${g.k}`)) >>> 0), n = Math.min(5, Math.floor(g.A * 3 * (petals > 0.3 ? petals : drop)));
+  // Feuilles qui quittent l'arbre (automne) ou pétales (avril) : à chaque rafale qui passe, quelques touffes LÂCHES lâchent des
+  // feuilles de leur couleur, depuis leur position ; elles dérivent, tournoient, retombent au sol et y restent.
+  if (w >= 0.05 && ((drop > 0 && drop < 1) || petals > 0.3)) {
+    const loose = sp.m.tufts.map((tf) => ({ tf, st: tuftState(tf, sp.f, D, v.species) })).filter((o) => petals > 0.3 ? o.st.size > 0 && o.tf.rank > 0.5 : o.st.loose && o.st.size > 0);
+    if (loose.length) for (const g of gustsAt(t, env)) {
+      const tp = g.tk + (v.x - g.x0) / (g.dir * g.speed); if (tp > t || t - tp > 60) continue;
+      const rk = mulberry32((hashString(`part-${Math.round(v.x)}-${g.k}`)) >>> 0), n = Math.min(6, 1 + Math.floor(g.A * 3));
       for (let j = 0; j < n; j++) {
         if (counter.particules >= (petals ? PARTICLE_CAP.petales : PARTICLE_CAP.feuilles)) break;
-        const born = tp + j * 0.18 + rk() * 0.3, a = t - born; if (a < 0) continue;
-        const x0 = cx + (rk() - 0.5) * r * 1.6, y0 = cy + (rk() - 0.5) * r * 1.2, vx = dir * (14 + 22 * w) * (0.7 + rk() * 0.6), fallV = petals ? 2.2 : 3.6, flut = 1.5 + rk() * 2;
+        const o = loose[Math.floor(rk() * loose.length)], born = tp + j * 0.2 + rk() * 0.3, a = t - born; if (a < 0) continue;
+        const x0 = o.tf.x + (rk() - 0.5) * o.tf.rr, y0 = o.tf.y + (rk() - 0.5) * o.tf.rr, vx = dir * (14 + 22 * w) * (0.7 + rk() * 0.6), fallV = petals ? 2.2 : 3.6, flut = 1.5 + rk() * 2;
         const land = (ground - y0) / fallV, aa = Math.min(a, land), x = x0 + vx * aa * (1 - 0.3 * Math.min(1, aa / 4)) + Math.sin(aa * 3 + j) * flut, y = aa >= land ? ground : y0 + fallV * aa - 2.5 * Math.sin(Math.min(aa, 1.2) * 2.6);
         if (a - land > 50 || x < -5 || x > W + 5) continue;
         counter.particules++;
-        ctx.save(); ctx.translate(x, y); ctx.rotate(aa * 4 + j); ctx.fillStyle = petals ? '#F6C0D4' : rgba(sp.f.tones[1], 1); ctx.fillRect(-0.9, -0.5, 1.8, 1); ctx.restore();
+        ctx.save(); ctx.translate(x, y); ctx.rotate(aa * 4 + j); ctx.fillStyle = petals ? '#F6C0D4' : rgba(o.st.tones[1], 1); ctx.fillRect(-0.9, -0.5, 1.8, 1); ctx.restore();
       }
     }
   }
@@ -101,7 +106,7 @@ function paintBirdsArbre(ctx, F, v, sp, env, counter) {
   if (!PARAMS.motion || env.dark || env.D.meteo.precip > 0.4 || sp.f.d < 0.3) return;
   const t = env.seconds, band = Math.floor(v.x / 480), k = Math.floor(t / 110), rk = mulberry32((hashString(`oiseau-${band}-${k}`)) >>> 0);
   const trees = F.rue.filter((p) => p.kind === 'pit' && !p.empty && !p.young && Math.floor(p.x / 480) === band); if (!trees.length || trees[Math.floor(rk() * trees.length)] !== v) return;
-  const t0 = k * 110 + rk() * 40, perch = 20 + rk() * 20, a = t - t0, fromLeft = rk() < 0.5, px = v.x + v.lean + (rk() - 0.5) * v.r, py = sp.cy - v.r * 0.3;
+  const t0 = k * 110 + rk() * 40, perch = 20 + rk() * 20, a = t - t0, fromLeft = rk() < 0.5, px = sp.m.cx + (rk() - 0.5) * v.r, py = sp.m.cy - v.r * 0.3;
   let x, y, flying = true;
   if (a < 0 || a > 6 + perch + 6) return;
   if (a < 6) { const q = smooth(a / 6); x = (fromLeft ? -20 : W + 20) + (px - (fromLeft ? -20 : W + 20)) * q; y = py - 30 * (1 - q) + Math.sin(a * 5) * 1.5; }
@@ -112,14 +117,15 @@ function paintBirdsArbre(ctx, F, v, sp, env, counter) {
   else { fillRect(ctx, ink(0.85), x - 0.7, y - 1.1, 1.4, 1.1); disc(ctx, ink(0.85), x + (fromLeft ? 0.6 : -0.6), y - 1.3, 0.45); }
 }
 
-// ── Colline : calques d'arbres cisaillés par tranches de 96 px autour de la base du rang ; les rameaux d'hiver bougent avec.
+// ── Colline : seuls les calques de FEUILLAGE (`T*c`) ondulent, par tranches de 96 px : translation horizontale ∝ vent local
+// (déphasée par tranche) et cisaillement de 1,5 % autour de la base du rang ; les fûts et branches (`T*k`) restent plantés.
 const SLICE = 96;
-function drawHillTrees(ctx, canvas, env, S, baseY, factor, counter) {
+function drawHillCanopy(ctx, canvas, env, S, baseY, factor, counter) {
   const t = env.seconds;
   for (let x = 0; x < W; x += SLICE) {
-    const wind = windAt(x + SLICE / 2, t, env), s = Math.max(-0.12, Math.min(0.12, wind * factor * 0.05));
-    if (Math.abs(s) > 0.002) counter.tranchesVent++;
-    ctx.save(); ctx.setTransform(S, 0, 0, S, 0, 0); ctx.beginPath(); ctx.rect(x - 6, 0, SLICE + 12, H); ctx.clip(); ctx.transform(1, 0, s, 1, -s * baseY, 0); ctx.drawImage(canvas, 0, 0, W, H); ctx.restore();
+    const wind = windAt(x + SLICE / 2, t, env), osc = 0.75 + 0.25 * Math.sin(t * 2.9 + x * 0.05), dx = Math.max(-2, Math.min(2, wind * factor * 1.1 * osc)), s = Math.max(-0.03, Math.min(0.03, wind * factor * 0.015));
+    if (Math.abs(dx) > 0.02) counter.tranchesVent++;
+    ctx.save(); ctx.setTransform(S, 0, 0, S, 0, 0); ctx.beginPath(); ctx.rect(x - 6, 0, SLICE + 12, H); ctx.clip(); ctx.transform(1, 0, s, 1, -s * baseY + dx, 0); ctx.drawImage(canvas, 0, 0, W, H); ctx.restore();
   }
 }
 // Moulin : les ailes tournent avec le vent local (vitesse ∝ force, à-coups des rafales), figées par calme plat.

@@ -6507,7 +6507,7 @@ var RUE = (function(exports) {
 const { cityPaintPlan, hillCrestY, HILL_ROWS, FAR_HAZE, FAR_ROOF_H, leftOf, paintCityTile, tileCount, cityFacades, FAR_WINDOW, GROUND_FLOOR,
   hashString, mulberry32, SUN, COOL, INK, TAU, shade, light, ink, hexRgb, mixRgb, rgba, gradeFor, windowsLitFraction, windowLit, nightness,
   lampLit, lampsFor, publicHolidays, dayContext, roofLineY, roofSpan } = RUE;
-const W = 1440, H = 340;
+let W = 1440; const H = 340;
 const MIN = 1 / 60, SEC = 1 / 3600;
 const sat = (v) => (v < 0 ? 0 : v > 1 ? 1 : v), lerp = (a, b, t) => a + (b - a) * t, ramp = (T, t0, d) => sat((T - t0) / d), smooth = (t) => t * t * (3 - 2 * t);
 const pick = (l, r) => l[Math.floor(r() * l.length)];
@@ -6562,7 +6562,7 @@ const METEO = {
 METEO.pluie.wet = 1;
 // Réglages d'URL (mode animé / débogage) : `?vent=0..3` force le vent (calme, faible, fort, tempête), `?dir=-1` l'inverse,
 // `?motion=0` = prefers-reduced-motion (arbres immobiles, pas de particules), `?garni=0` = colline d'avant (comparatif).
-const PARAMS = { vent: null, dir: 1, motion: 1, garni: 1 };
+const PARAMS = { vent: null, dir: 1, motion: 1, garni: 1, dense: 1 }; // `dense` : remplissage de ce retour (maisons de crête et de bord de route) ; `?dense=0` pour l'avant
 const WIND_FORCES = [0, 0.2, 0.55, 0.9];
 // Contexte du jour : date ISO, mois, saison, jour de semaine, férié (calendar.ts), météo.
 function dayOf(dateStr, meteoName) {
@@ -6612,17 +6612,19 @@ const TONES = {
   tender: ['#5E9A4A', '#8CC46A', '#C4E89A'], summer: ['#2E6E34', '#56A844', '#A6DC60'],
   gold: ['#8A6A20', '#D8A830', '#F0D060'], roux: ['#7A3A1E', '#C86A2A', '#F0A040'], winter: ['#6A5A50', '#8A7A6A', '#A89888'],
 };
-const mixTones = (a, b, t) => a.map((c, i) => mixRgb(hexRgb(c), hexRgb(b[i]), t));
+const toRgb = (c) => (typeof c === 'string' ? hexRgb(c) : c);
+const mixTones = (a, b, t) => a.map((c, i) => mixRgb(toRgb(c), toRgb(b[i]), t));
 // État du feuillage d'un arbre à la date D : `d` densité 0..1 (0 = nu), `tones` (3 masses), `stage`, `drop` (part tombée).
 //   débourrement 25 mars → 25 avril (vert tendre jusqu'à fin mai) · plein feuillage mai → septembre · jaunissement 1er oct → 15 nov
 //   · chute 20 oct → 25 nov · nu fin novembre → mars. Persistants (cyprès, haies, lierre) : toujours verts.
 function foliageOf(D, key, species = 'bouquet') {
   if (EVERGREENS.has(species)) return { d: 1, tones: EVERGREEN, stage: 'green', drop: 0 };
   const r = mulberry32(hashString('pheno-' + key)), o = (r() - 0.5) * 14, roux = r() < 0.5, lead = AUTUMN_LEAD[species] ?? 0, doy = D.doy;
-  if (doy < 84 + o || doy >= 330 + o + lead) return { d: 0, tones: TONES.winter.map(hexRgb), stage: 'bare', drop: 1 };
-  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: Math.max(0.1, out), tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0 }; }
+  const base = TONES.summer.map(hexRgb), autumn = (roux ? TONES.roux : TONES.gold).map(hexRgb);
+  if (doy < 84 + o || doy >= 330 + o + lead) return { d: 0, tones: TONES.winter.map(hexRgb), stage: 'bare', drop: 1, base, autumn };
+  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: out, tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0, base, autumn }; }
   const yel = sat((doy - (274 + o + lead)) / 45), drop = sat((doy - (293 + o + lead)) / 36);
-  return { d: Math.max(0.1, 1 - drop), tones: mixTones(TONES.summer, roux ? TONES.roux : TONES.gold, yel), stage: yel > 0 ? 'autumn' : 'green', drop };
+  return { d: 1 - drop, tones: mixTones(TONES.summer, roux ? TONES.roux : TONES.gold, yel), stage: yel > 0 ? 'autumn' : 'green', drop, yel, base, autumn };
 }
 // Floraisons à leur date (0..1) : marronniers (chandelles) 25 avril → 25 mai, cerisiers 20 mars → 15 avril, glycine 10 avril → 20 mai,
 // tilleuls 5 → 28 juin, vigne vierge rouge vif 1er octobre → 5 novembre.
@@ -6700,6 +6702,25 @@ function escapeVerdure(rng, e) {
   const dFuni = (x, y) => { const dx = funi.x1 - funi.x0, dy = funi.y1 - funi.y0, t = sat(((x - funi.x0) * dx + (y - funi.y0) * dy) / (dx * dx + dy * dy)); return Math.min(Math.hypot(x - (funi.x0 + dx * t), y - (funi.y0 + dy * t)), Math.hypot(x - funi.x1, y - (funi.y1 - 12)) - 8, Math.hypot(x - funi.x0, y - (funi.y0 + 6)) - 8); };
   const free = (x, y, r) => x > e.c.x + 3 && x < e.c.x1 - 3 && y > y0 - 2 && y < yb - 1 && dRoad(x, y) >= r + 2.5 && dFuni(x, y) >= r + 7 && (!e.hillTop || y + 1 < e.hillTop[Math.max(0, Math.min(W, Math.round(x)))]);
   const taken = [];
+  // Maisons et ateliers bas, étagés le long de la route (des deux côtés, 5 à 13 px du ruban) et autour de la voie : la route et
+  // la voie restent lisibles, bordées de façades ; tirage par position.
+  e.houses = [];
+  if (PARAMS.garni && PARAMS.dense) {
+    const dStairs = (x, y) => { const st = e.stairs; if (!st) return 99; const dx = st.x1 - st.x0, dy = st.y1 - st.y0, t = sat(((x - st.x0) * dx + (y - st.y0) * dy) / (dx * dx + dy * dy)); return Math.hypot(x - (st.x0 + dx * t), y - (st.y0 + dy * t)); };
+    const hs = 0.6, hz = 0.2;
+    for (let x = e.c.x - 34; x < e.c.x1 + 14; x += 3 + rng() * 4) {
+      for (let k = 0; k < 20; k++) {
+        const cy0 = e.crest ? e.crest(x) + 9 : y0, base = cy0 + rng() * (yb - cy0 - 2), w = (9 + rng() * 9) * hs;
+        const dr = Math.min(dRoad(x, base), dRoad(x + w, base)), dr2 = Math.min(dRoad(x, base - 8 * hs), dRoad(x + w, base - 8 * hs));
+        if (dr < 3.5 || dr2 < 2.5 || dr > 40) continue;
+        if (dFuni(x, base) < 5 || dFuni(x + w, base) < 5 || dStairs(x, base) < 5 || dStairs(x + w, base) < 5 || dStairs(x + w / 2, base - 8 * hs) < 5) continue;
+        if (!(e.hillTop && base - 3 < e.hillTop[Math.max(0, Math.min(W, Math.round(x + w / 2)))])) continue;
+        if (e.houses.some((h) => x < h.x + h.w + 1 && x + w > h.x - 1 && Math.abs(h.base - base) < 8 * hs)) continue;
+        const hh = makeHouse(rng, x, base, base < y0 + 4 ? 0.45 : hs, base < y0 + 4 ? 0.34 : hz, base < y0 + 4 ? 0 : base <= (y1 + yb) / 2 ? 1 : 2, `er-${Math.round(x)}-${Math.round(base)}`, 9, 18);
+        e.houses.push(hh); taken.push({ x: x + w / 2, y: base - hh.h / 2, r: Math.max(w, hh.h) / 2 + 1 }); break;
+      }
+    }
+  }
   const rects = []; const place = (r) => { for (let k = 0; k < 40; k++) { const x = rx - 10 + rng() * (rw + 20), y = y0 + 2 + rng() * (yb - y0 - 6); if (free(x, y, r) && !taken.some((t) => Math.hypot(t.x - x, t.y - y) < (t.r + r) * 0.7) && !rects.some((q) => x > q.x - r && x < q.x + q.w + r && y > q.y - r * 0.6 && y < q.y + q.h + r * 0.6)) { taken.push({ x, y, r }); return { x, y }; } } return null; };
   // Vigne en rangs (clin d'œil à Montmartre) puis square : des parcelles libres, testées par leurs coins.
   const patch = (w, h) => { for (let k = 0; k < 60; k++) { const x = rx - 6 + rng() * (rw - w + 12), y = y0 + 3 + rng() * (yb - y0 - h - 6); const pts = []; for (let i = 0; i <= 4; i++) for (let j = 0; j <= 2; j++) pts.push([x + (w * i) / 4, y + (h * j) / 2]); if (pts.every(([px, py]) => free(px, py, 1.5)) && !taken.some((t) => t.x > x - t.r && t.x < x + w + t.r && t.y > y - t.r && t.y < y + h + t.r)) { taken.push({ x: x + w / 2, y: y + h / 2, r: Math.max(w, h) / 2 }); return { x, y, w, h }; } } return null; };
@@ -6712,7 +6733,7 @@ function escapeVerdure(rng, e) {
   if (vine) rects.push(vine); if (lawn) rects.push(lawn);
   // Grands arbres isolés (2-3), bosquets (4-6 groupes de 1-3 bouquets), potager (0-1).
   for (let i = 0, n = 3 + Math.floor(rng() * 3); i < n; i++) { const h = 11 + rng() * 9, p = place(h * 0.3); if (p) out.push({ kind: pick(['chestnut', 'poplar', 'poplar', 'cypress', 'cerisier', 'chene'], rng), ...p, h, s: 0.7 }); }
-  for (let i = 0, n = 9 + Math.floor(rng() * 5); i < n; i++) { const r = 2 + rng() * 3.2, p = place(r); if (!p) continue; out.push({ kind: 'bouquet', ...p, r, s: 0.55 + rng() * 0.2 }); for (let j = 0, m = Math.floor(rng() * 3); j < m; j++) { const r2 = r * (0.6 + rng() * 0.5), x = p.x + (rng() - 0.5) * r * 3, y = p.y + (rng() - 0.3) * r * 1.4; if (free(x, y, r2)) out.push({ kind: 'bouquet', x, y, r: r2, s: 0.55 + rng() * 0.2 }); } }
+  for (let i = 0, n = (PARAMS.dense ? 16 : 9) + Math.floor(rng() * 5); i < n; i++) { const r = 2 + rng() * 3.2, p = place(r); if (!p) continue; out.push({ kind: 'bouquet', ...p, r, s: 0.55 + rng() * 0.2 }); for (let j = 0, m = Math.floor(rng() * 3); j < m; j++) { const r2 = r * (0.6 + rng() * 0.5), x = p.x + (rng() - 0.5) * r * 3, y = p.y + (rng() - 0.3) * r * 1.4; if (free(x, y, r2)) out.push({ kind: 'bouquet', x, y, r: r2, s: 0.55 + rng() * 0.2 }); } }
   if (rng() < 0.7) { const p = place(6); if (p) out.push({ kind: 'garden', x: p.x - 6, y: p.y + 3, w: 12, s: 0.7, hz: 0.2 }); }
   // Haies : le long de deux tronçons de route, côté amont (perpendiculaire à la route, décalage 4 px).
   const n = road.length; for (const [f0, f1] of [[0.14, 0.3], [0.5, 0.66], [0.78, 0.9]]) {
@@ -6743,6 +6764,17 @@ function escapeVerdure(rng, e) {
   }
   // Tout sauf les arbres isolés avant la route (la route, la voie et les gares restent visibles) ; tri par y pour le recouvrement.
   return out.sort((a, b) => (a.y + (a.h || 0)) - (b.y + (b.h || 0)));
+}
+// Maison de remplissage (crête, bords de route) : même tirage de forme que celles du plan (hillPlan), à l'échelle `s`.
+const HILL_WALLS_M = ['#F4E0B8', '#F2C8A0', '#EACFA8', '#F6E6CC', '#E8C0A8', '#F0D4B0', '#DCCDB4', '#F4D0C0'].map(hexRgb);
+const HILL_ROOFS_M = ['#D0583A', '#C86A3E', '#B8503A', '#E07048', '#A84A36', '#C25E44'].map(hexRgb);
+function makeHouse(rng, x, base, s, hz, row, key, wmin = 12, wmax = 24) {
+  const w = (wmin + rng() * (wmax - wmin)) * s, h = (18 + rng() * 18) * s * (w < 11 * s ? 0.8 : 1), kind = rng() < 0.6 ? 'gable' : rng() < 0.5 ? 'mansard' : 'hip';
+  const hh = { row, x, w, h, base, top: base - h, s, haze: hz, wall: pick(HILL_WALLS_M, rng), roof: kind === 'mansard' ? hexRgb('#5A6A84') : pick(HILL_ROOFS_M, rng), kind, dormers: rng() < 0.5, chimney: rng() < 0.6 ? 0.2 + rng() * 0.6 : null, trees: null };
+  const rh = h * 0.32, wins = [];
+  for (let wy = hh.top + rh + 4 * s; wy + 5 * s < base; wy += 9 * s) for (let wx = x + 3 * s; wx + 4 * s < x + w - 2 * s; wx += 7 * s) wins.push({ x: wx, y: wy, w: 3.2 * s, h: 4.5 * s, u: rng(), blue: rng() < 0.25 });
+  const chimney = hh.chimney !== null ? { x: x + w * hh.chimney + 1.5 * s, y: hh.top - 4 * s + rh * 0.4, s, haze: hz, key } : null;
+  return { ...hh, rh, wins, lit: wins.slice(0, 1 + Math.floor(rng() * 2)), chimney, terrace: null, key, filler: true };
 }
 // Lacets arrondis : courbe quadratique par les milieux des segments (points de contrôle = sommets), échantillonnée.
 function smoothPolyline(ctrl) {
@@ -6850,8 +6882,8 @@ function fondPlan(seed) {
     const crane = { x: rx + rw - 10, base: y1 + 1, mast: 26, boom: 22, weeks: new Set(Array.from({ length: 10 }, () => Math.floor(rng() * 52))) };
     // Moulin à vent (clin d'œil au Moulin de la Galette) sur la crête, à droite de la gare haute et de l'escalier ; ses ailes tournent avec le vent (04a-vent.js).
     const mill = PARAMS.garni ? { x: funi.x1 + 34 + rng() * 12, y: crest(funi.x1 + 40) + 1.5, s: 0.55 + rng() * 0.1, phase: rng() * TAU } : null;
-    const eTmp = { c, road, rx, rw, y0, y1, yb, funi, crane, hillTop }; const verdure = escapeVerdure(rng, eTmp);
-    return { ...c, road, segs, L, lamps, funi, stairs, crane, mill, verdure, pathLamps: eTmp.pathLamps || [], lawn: verdure.find((v) => v.kind === 'lawn') || null, trafficU: rng() };
+    const eTmp = { c, road, rx, rw, y0, y1, yb, funi, stairs, crane, hillTop, crest }; const verdure = escapeVerdure(rng, eTmp);
+    return { ...c, road, segs, L, lamps, funi, stairs, crane, mill, verdure, houses: eTmp.houses || [], pathLamps: eTmp.pathLamps || [], lawn: verdure.find((v) => v.kind === 'lawn') || null, trafficU: rng() };
   });
   // Verdure des rangs (entre et derrière les maisons) et de la crête (grands arbres isolés sur le ciel).
   const rowVerdure = [[], [], []];
@@ -6907,12 +6939,27 @@ function fondPlan(seed) {
   // Réverbères de la crête (chapelet) : un tous les ~55 px sur la ligne de crête, allumés en vague.
   const crestLamps = []; { const rng = rngOf(seed, 'fond-crete'); for (let x = 20 + rng() * 30; x < W; x += 48 + rng() * 16) crestLamps.push({ x, y: crest(x) + 1.5, u: 0.4 + rng() * 0.07, off: Math.round(rng() * 30 - 15) }); }
   const landmarks = plan.hill.landmarks.map((l) => ({ ...l, lit: true }));
+  // Rang de crête (« rang 0 bis ») : maisons serrées et étagées entre la crête et les toits du rang 0, sur toute la largeur,
+  // sauf aux repères (chapelle, château d'eau, moulin, tour, dômes), à la voie du funiculaire et à l'escalier : la crête reste
+  // une silhouette de toits et d'arbres sur le ciel ; l'herbe nue n'apparaît plus qu'en petites parcelles.
+  const crestHouses = [];
+  if (PARAMS.garni && PARAMS.dense) {
+    const rng = rngOf(seed, 'rang-crete'), s0 = 0.42, hz0 = 0.4;
+    const banned = (x0, x1) => chapels.some((c) => x1 > c.x - 14 && x0 < c.x + 14) || reservoirs.some((r) => x1 > r.x - 8 && x0 < r.x + 8) || plan.hill.landmarks.some((l) => x1 > l.x - 4 && x0 < l.x + l.w + 4) || escapes.some((e) => (e.mill && x1 > e.mill.x - 6 && x0 < e.mill.x + 6) || (x1 > e.funi.x0 - 2 && x0 < e.funi.x1 + 2) || (x1 > e.stairs.x0 - 2 && x0 < e.stairs.x1 + 2));
+    for (let x = -6 + rng() * 10; x < W + 6; ) {
+      const w0 = (14 + rng() * 12), x1 = x + w0 * s0;
+      if (banned(x, x1)) { x += 4; continue; }
+      const base = crest(x + w0 * s0 / 2) + 8 + rng() * 6;
+      crestHouses.push(makeHouse(rng, x, base, s0, hz0, 0, `cr-${Math.round(x)}`, w0, w0 + 0.01));
+      x = x1 + (rng() < 0.3 ? (3 + rng() * 6) * s0 : 0.4);
+    }
+  }
   // Découpes (Path2D) : ce qui est visible AU-DESSUS du premier plan (vie du mur), et au-dessus du mur du fond aussi (vie de la colline).
   const pathAbove = (arr) => { const p = new Path2D(); p.moveTo(0, -20); for (let x = 0; x <= W; x++) p.lineTo(x, arr[x]); p.lineTo(W, -20); p.closePath(); return p; };
-  return { seed, plan, ground, ruelleY, near, far, houses, landmarks, escapes, crestLamps, rowVerdure, crestVerdure, chapels, reservoirs, nearTop, farTop, hillTop, crest, clipWall: pathAbove(nearTop), clipHill: pathAbove(hillTop) };
+  return { seed, plan, ground, ruelleY, near, far, houses, crestHouses, landmarks, escapes, crestLamps, rowVerdure, crestVerdure, chapels, reservoirs, nearTop, farTop, hillTop, crest, clipWall: pathAbove(nearTop), clipHill: pathAbove(hillTop) };
 }
 const PLANS = new Map();
-const fondPlanOf = (seed) => { const k = `${seed}|${PARAMS.garni}`; if (!PLANS.has(k)) PLANS.set(k, fondPlan(seed)); return PLANS.get(k); };
+const fondPlanOf = (seed) => { const k = `${seed}|${PARAMS.garni}|${PARAMS.dense}|${W}`; if (!PLANS.has(k)) PLANS.set(k, fondPlan(seed)); return PLANS.get(k); };
 
 // ═══════════ 03-fond-peint.js ═══════════
 // ───────────── fond peint corrigé (statique : à peindre dans les tranches, clé = graine + saison + tranche de 10 min) ─────────────
@@ -6982,18 +7029,11 @@ function roadPoint(e, d) {
   const s = e.segs[e.segs.length - 1]; return { x: s.bx, y: s.by, dir: Math.sign(s.bx - s.ax) || 1 };
 }
 // Bouquet d'arbres (le même dessin que ceux des maisons, hill-painter.ts), saison comprise.
-function paintBouquet(ctx, tx, ty, tr, s, hz, D = CUR_D, key = `${Math.round(tx)}-${Math.round(ty)}`) {
-  const f = foliageOf(D, 'b' + key, 'bouquet'), bare = f.d <= 0.1, k = 0.5 + 0.5 * f.d, tones = f.tones, rk = mulberry32(hashString('gui-' + key));
-  if (f.d < 0.85) { const sk = treeSkeleton(key, 'bouquet', tx, ty + tr * 0.95, 2.3 * tr, tr > 3 ? 3 : 2); paintSkeleton(ctx, sk, { hz, veilAlpha: 0.26 * (1 - f.d), snow: D.meteo.snow, mistletoe: rk() < 0.25 && f.d < 0.5 ? 1 : 0 }); }
-  if (bare) return;
-  ctx.strokeStyle = ink((0.85 - hz) * Math.min(1, f.d * 1.5)); ctx.lineWidth = 1.1; ctx.beginPath();
-  ctx.arc(tx, ty, tr * k, 0, TAU); ctx.moveTo(tx + tr * 0.8 + tr * 0.8 * k, ty + tr * 0.3); ctx.arc(tx + tr * 0.8, ty + tr * 0.3, tr * 0.8 * k, 0, TAU); ctx.stroke();
-  for (let t = 0; t < 3; t++) {
-    ctx.fillStyle = rgba(haze(tones[t], hz), 0.3 + 0.7 * f.d); ctx.beginPath();
-    ctx.arc(tx - t * tr * 0.25, ty - t * tr * 0.28, tr * (1 - t * 0.3) * k, 0, TAU);
-    ctx.moveTo(tx + tr * 0.8 - t * tr * 0.25 + tr * 0.8 * (1 - t * 0.3) * k, ty + tr * 0.3 - t * tr * 0.28); ctx.arc(tx + tr * 0.8 - t * tr * 0.25, ty + tr * 0.3 - t * tr * 0.28, tr * 0.8 * (1 - t * 0.3) * k, 0, TAU); ctx.fill();
-  }
-  if (D.meteo.snow) { ctx.fillStyle = rgba(haze(hexRgb('#F0F4F8'), hz), 0.9); ctx.beginPath(); ctx.arc(tx - tr * 0.5, ty - tr * 0.56, tr * 0.42 * k, Math.PI, 0); ctx.arc(tx + tr * 0.3, ty - tr * 0.26, tr * 0.34 * k, Math.PI, 0); ctx.fill(); }
+// Bouquet de la colline : un modèle (fût court, 2-3 niveaux, ≤ 22 touffes) ; `part` 'all' | 'trunk' (fût + branches) | 'canopy'.
+function paintBouquet(ctx, tx, ty, tr, s, hz, D = CUR_D, key = `${Math.round(tx)}-${Math.round(ty)}`, part = 'all') {
+  const m = treeModelOf('b' + key, 'bouquet', { x: tx, y: ty + tr * 0.9 }, tr * 0.55, tr * 1.7, tr > 3 ? 3 : 2, tr * 0.34, 22), f = foliageOf(D, 'b' + key, 'bouquet'), rk = mulberry32(hashString('gui-' + key));
+  if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb('#5A4A40'), hz); paintBranches(ctx, m, 'all', { hz, veil: 0.24 * (1 - f.d), snow: D.meteo.snow, mistletoe: rk() < 0.25 && f.d < 0.5 ? 1 : 0 }); }
+  if (part !== 'trunk') paintLeaves(ctx, m, f, D, { hz });
 }
 let CUR_D = null, F_SEED = 7, CUR_T = 12;
 const TREE_KINDS = new Set(['bouquet', 'chestnut', 'cerisier', 'chene', 'poplar', 'cypress', 'platane', 'orchard']);
@@ -7004,36 +7044,17 @@ const GOODS = { spring: ['#6AB04A', '#F6C62E', '#E8456B', '#FFFFFF'], summer: ['
 const fountainOn = (D) => D.doy >= 74 && D.doy < 319 && !D.meteo.snow;
 // ── Verdure (G) : même langage que les bouquets (masses sombre / moyen / clair, rehaut en haut à gauche, trait encré), brume
 // selon le rang, saison : vert vif au printemps et l'été, roux et or en automne, nus (feuillus) ou sombres (persistants) l'hiver.
-function paintVerdure(ctx, v, hz0 = 0, D = CUR_D) {
+function paintVerdure(ctx, v, hz0 = 0, D = CUR_D, part = 'all') {
   const hz = v.hz ?? hz0, s = v.s || 0.6, key = `${v.kind}-${Math.round(v.x ?? v.pts?.[0]?.[0] ?? 0)}-${Math.round(v.y ?? 0)}`;
   const f = foliageOf(D, key, v.kind === 'cypress' || v.kind === 'hedge' ? 'cypress' : v.kind === 'vineyard' ? 'vigne' : v.kind); let bare = f.d <= 0.1, tones = f.tones; const season = D.season;
   const fill = (c, a = 1) => rgba(haze(c, hz), a);
-  if (v.kind === 'bouquet') return paintBouquet(ctx, v.x, v.y, v.r, s, hz, D, key);
-  if (v.kind === 'chestnut' || v.kind === 'cerisier' || v.kind === 'chene') {
-    const h = v.h, r = h * (v.kind === 'cerisier' ? 0.36 : 0.42), cx = v.x, cy = v.y - h * 0.55, masses = [[0, 0, 1], [-0.62, 0.28, 0.7], [0.62, 0.3, 0.68], [0.05, -0.5, 0.62]];
-    // Cerisier en fleurs (20 mars → 15 avril) : masses roses avant les feuilles.
-    const blc = v.kind === 'cerisier' ? bloomOf(D, 'cerisier') : 0; if (blc > 0) { tones = ['#D88AA8', '#F0B0C8', '#FCDCE8'].map(hexRgb); bare = false; f.d = Math.max(f.d, 0.5 + 0.5 * blc); }
-    const sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind), rk = mulberry32(hashString('gui-' + key));
-    if (f.d < 0.85 || blc > 0) { const sk = treeSkeleton(key, sp, cx, v.y, h, 4); paintSkeleton(ctx, sk, { hz, veilAlpha: 0.26 * (1 - Math.min(1, f.d)), snow: D.meteo.snow, dryLeaves: dryLeavesOf(D, sp), mistletoe: rk() < 0.3 && f.d < 0.5 ? 1 + Math.floor(rk() * 2) : 0 }); }
-    else { ctx.strokeStyle = ink(0.85 - hz); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, v.y); ctx.lineTo(cx, cy + r * 0.4); ctx.stroke(); }
-    if (bare) return;
-    const kd = 0.5 + 0.5 * f.d;
-    ctx.strokeStyle = ink((0.85 - hz) * Math.min(1, f.d * 1.5)); ctx.lineWidth = 1.1; ctx.beginPath(); for (const [mx, my, k] of masses) { ctx.moveTo(cx + mx * r + r * k * kd, cy + my * r); ctx.arc(cx + mx * r, cy + my * r, r * k * kd, 0, TAU); } ctx.stroke();
-    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tones[t], 0.3 + 0.7 * f.d); ctx.beginPath(); for (const [mx, my, k] of masses) { const rr = r * k * (1 - t * 0.28) * kd, x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, TAU); } ctx.fill(); }
-    const bl = bloomOf(D, 'marronnier');
-    if (bl > 0 && v.kind === 'chestnut') { ctx.fillStyle = fill(hexRgb('#FFF4F0'), bl); for (const [mx, my, k] of masses) for (let i = -1; i <= 1; i++) ctx.fillRect(cx + mx * r + i * r * k * 0.5 - 0.3, cy + my * r - r * k * 0.9, 0.6, 1.6); }
-    if (D.meteo.snow) { ctx.fillStyle = fill(hexRgb('#F0F4F8'), 0.9); ctx.beginPath(); for (const [mx, my, k] of masses) ctx.arc(cx + mx * r, cy + my * r - r * k * 0.1, r * k * kd * 0.8, Math.PI, 0); ctx.fill(); }
-    return;
-  }
-  if (v.kind === 'poplar' || v.kind === 'cypress') {
-    const h = v.h, cyp = v.kind === 'cypress', rx = h * (cyp ? 0.14 : 0.2), cy = v.y - h * 0.5, tn = cyp ? EVERGREEN : tones;
-    if (!cyp && f.d < 0.85) { const sk = treeSkeleton(key, 'poplar', v.x, v.y, h, 4); paintSkeleton(ctx, sk, { hz, veilAlpha: 0.28 * (1 - f.d), snow: D.meteo.snow }); }
-    else { ctx.strokeStyle = ink(0.85 - hz); ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(v.x, v.y); ctx.lineTo(v.x, v.y - h * 0.2); ctx.stroke(); }
-    if (bare && !cyp) return;
-    const kd = cyp ? 1 : 0.5 + 0.5 * f.d;
-    ctx.strokeStyle = ink((0.85 - hz) * (cyp ? 1 : Math.min(1, f.d * 1.5))); ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(v.x, cy, rx * kd, h * 0.5 * kd, 0, 0, TAU); ctx.stroke();
-    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tn[t], cyp ? 1 : 0.3 + 0.7 * f.d); ctx.beginPath(); ctx.ellipse(v.x - t * rx * 0.25, cy - t * h * 0.06, rx * (1 - t * 0.3) * kd, h * 0.5 * (1 - t * 0.22) * kd, 0, 0, TAU); ctx.fill(); }
-    if (D.meteo.snow) { ctx.fillStyle = fill(hexRgb('#F0F4F8'), 0.9); ctx.beginPath(); ctx.ellipse(v.x - rx * 0.2, cy - h * 0.3, rx * 0.5, h * 0.12, 0, Math.PI, 0); ctx.fill(); }
+  if (v.kind === 'bouquet') return paintBouquet(ctx, v.x, v.y, v.r, s, hz, D, key, part);
+  if (v.kind === 'chestnut' || v.kind === 'cerisier' || v.kind === 'chene' || v.kind === 'poplar' || v.kind === 'cypress') {
+    const h = v.h, sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind === 'cypress' ? 'poplar' : v.kind), cyp = v.kind === 'cypress';
+    const m = treeModelOf(key, sp, { x: v.x, y: v.y }, h * (cyp ? 0.12 : v.kind === 'poplar' ? 0.18 : 0.3), h * (cyp ? 0.88 : v.kind === 'poplar' ? 0.82 : 0.7), 3, h * (cyp ? 0.07 : v.kind === 'poplar' ? 0.075 : 0.11), cyp ? 30 : 26);
+    const f2 = cyp ? { d: 1, tones: EVERGREEN, stage: 'green', drop: 0 } : f, rk = mulberry32(hashString('gui-' + key));
+    if (part !== 'canopy') { paintTrunk(ctx, m, hexRgb(cyp ? '#4A3A30' : v.kind === 'poplar' ? '#7A6A5A' : '#5A4A40'), hz); paintBranches(ctx, m, 'all', { hz, veil: 0.24 * (1 - f2.d), snow: D.meteo.snow, mistletoe: !cyp && rk() < 0.3 && f2.d < 0.5 ? 1 + Math.floor(rk() * 2) : 0 }); paintDryLeaves(ctx, m, D, hz); }
+    if (part !== 'trunk') paintLeaves(ctx, m, f2, D, { hz });
     return;
   }
   if (v.kind === 'hedge') {
@@ -7042,7 +7063,7 @@ function paintVerdure(ctx, v, hz0 = 0, D = CUR_D) {
     for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tn[t]); ctx.beginPath(); for (let i = 0; i < v.pts.length; i++) { const [x, y] = v.pts[i], rr = r * (1 - t * 0.3); ctx.moveTo(x - t * 0.4 + rr, y - t * 0.4); ctx.arc(x - t * 0.4, y - t * 0.4, rr, 0, TAU); } ctx.fill(); }
     return;
   }
-  if (v.kind === 'platane') return paintVerdure(ctx, { ...v, kind: 'chestnut', species: 'platane' }, hz0, D);
+  if (v.kind === 'platane') return paintVerdure(ctx, { ...v, kind: 'chestnut', species: 'platane' }, hz0, D, part);
   if (v.kind === 'market') {
     // Place du marché : terre battue, étals de saison (ouverts les jours de marché, 04 : fonction de l'heure), lavoir et platanes à part.
     const g = fill(mixRgb(hexRgb('#C8B088'), GRASS, 0.2)), pts = [[v.x + 1, v.y], [v.x + v.w, v.y + 0.8], [v.x + v.w - 1, v.y + v.h], [v.x, v.y + v.h - 0.6]];
@@ -7073,7 +7094,8 @@ function paintVerdure(ctx, v, hz0 = 0, D = CUR_D) {
       const bl = bloomOf(D, 'cerisier'), f2 = foliageOf(D, kkey, 'cerisier');
       ctx.strokeStyle = ink(0.8 - hz); ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(tx, ty + tr); ctx.lineTo(tx, ty - tr * 0.3); if (f2.d < 0.5) { ctx.moveTo(tx, ty); ctx.lineTo(tx - tr * 0.8, ty - tr * 0.9); ctx.moveTo(tx, ty); ctx.lineTo(tx + tr * 0.8, ty - tr * 0.9); } ctx.stroke();
       const tn = bl > 0 ? ['#F0B0C8', '#FCDCE8'].map(hexRgb) : f2.tones, kd = Math.max(f2.d, bl);
-      if (kd > 0.1) { disc(ctx, fill(tn[0], 0.4 + 0.6 * kd), tx, ty - tr * 0.3, tr * (0.5 + 0.5 * kd)); disc(ctx, fill(tn[1], 0.4 + 0.6 * kd), tx - tr * 0.3, ty - tr * 0.6, tr * 0.55 * (0.5 + 0.5 * kd)); if (fruit > 0 && f2.stage === 'green') { ctx.fillStyle = fill(hexRgb('#D83A3A'), fruit); ctx.fillRect(tx + 0.4, ty - 0.2, 0.5, 0.5); ctx.fillRect(tx - 0.8, ty - 0.9, 0.5, 0.5); } }
+      for (const [ox, oy, k, rank] of [[0, -0.3, 1, 0.2], [-0.5, -0.6, 0.6, 0.55], [0.45, -0.55, 0.55, 0.8]]) { const sz = sat((kd - rank) / 0.1); if (sz > 0) disc(ctx, fill(tn[rank < 0.5 ? 0 : 1]), tx + ox * tr, ty + oy * tr, tr * k * sz); }
+      if (fruit > 0 && f2.stage === 'green' && kd > 0.5) { ctx.fillStyle = fill(hexRgb('#D83A3A'), fruit); ctx.fillRect(tx + 0.4, ty - 0.2, 0.5, 0.5); ctx.fillRect(tx - 0.8, ty - 0.9, 0.5, 0.5); }
       if (D.meteo.snow && kd > 0.1) disc(ctx, '#F0F4F8', tx - tr * 0.2, ty - tr * 0.9, tr * 0.4);
     }
     return;
@@ -7341,21 +7363,23 @@ function paintNearShadows(ctx, F) {
 // Calques du fond : `sol` (herbe, route, échappée sans ses arbres, chapelles, château d'eau, moulin), `T0` (arbres de la crête),
 // `H0` (maisons du rang 0), `T1` (arbres du rang 1 et de l'échappée), `H1`, `T2`, `H2`. Les calques d'arbres sont dessinés par
 // tranches cisaillées selon le vent (04a-vent.js) ; `all` = tout dans l'ordre (sans vent).
-const FOND_LAYERS = ['sol', 'T0', 'H0', 'T1', 'H1', 'T2', 'H2'];
+const FOND_LAYERS = ['sol', 'T0k', 'T0c', 'Hc', 'H0', 'T1k', 'T1c', 'H1', 'T2k', 'T2c', 'H2'];
 function paintFondStatic(ctx, F, env, layer = 'all') {
   CUR_D = env.D; F_SEED = F.seed; CUR_T = env.T;
-  const want = (l) => layer === 'all' || layer === l;
+  const want = (l) => layer === 'all' || layer === l, partOf = (l) => (layer === 'all' ? 'all' : l.endsWith('k') ? 'trunk' : 'canopy');
   if (want('sol')) { paintGround(ctx, F, env.D); for (const v of F.crestVerdure) if (!isTree(v)) paintVerdure(ctx, v); for (const e of F.escapes) paintRoad(ctx, e, env.D); for (const ch of F.chapels) paintChapel(ctx, ch); for (const r of F.reservoirs) paintReservoir(ctx, r); }
-  if (want('T0')) for (const v of F.crestVerdure) if (isTree(v)) paintVerdure(ctx, v);
+  for (const l of ['T0k', 'T0c']) if (want(l)) for (const v of F.crestVerdure) if (isTree(v)) paintVerdure(ctx, v, 0, env.D, partOf(l));
+  if (want('Hc')) for (const h of F.crestHouses) paintHouse(ctx, h, env);
   for (let row = 0; row < 3; row++) {
-    if (want(`T${row + 1}`)) {
-      // Verdure des creux du rang (arbres ET petits éléments : les petits éléments restent avec les arbres, peu cisaillés), massifs derrière les maisons.
-      for (const v of F.rowVerdure[row]) if (!v.behind) paintVerdure(ctx, v);
-      for (const v of F.rowVerdure[row]) if (v.behind) paintVerdure(ctx, v);
-      if (row === 1) for (const e of F.escapes) for (const v of e.verdure) if (isTree(v)) paintVerdure(ctx, v, 0.2);
+    for (const l of [`T${row + 1}k`, `T${row + 1}c`]) if (want(l)) {
+      const part = partOf(l);
+      for (const v of F.rowVerdure[row]) if (!v.behind && (part === 'all' || isTree(v) || part === 'trunk')) paintVerdure(ctx, v, 0, env.D, isTree(v) ? part : 'all');
+      for (const v of F.rowVerdure[row]) if (v.behind) paintVerdure(ctx, v, 0, env.D, part);
+      if (row === 1) for (const e of F.escapes) for (const v of e.verdure) if (isTree(v)) paintVerdure(ctx, v, 0.2, env.D, part);
     }
     if (want(`H${row}`)) {
       for (const h of F.houses) if (h.row === row) paintHouse(ctx, h, env);
+      for (const e of F.escapes) for (const h of e.houses) if (h.row === row) paintHouse(ctx, h, env);
       for (const l of F.landmarks) if (Math.abs(l.base - H * HILL_ROWS[row].y) < 1e-6) paintLandmarkC(ctx, l, HILL_ROWS[row].haze);
     }
   }
@@ -7366,25 +7390,28 @@ function paintFarStatic(ctx, F, env) {
 }
 
 // ═══════════ 03a-arbres.js ═══════════
-// ───────────── arbres d'hiver : squelette ramifié (tronc → charpentières → branches → rameaux), tiré par graine ─────────────
-// Port propre à l'essence ; la masse des rameaux fins est un voile gris-brun léger DANS la silhouette (jamais un cercle cerné).
-// Sert aux arbres de la rue (grands) et de la colline (petits, moins de niveaux). La silhouette apparaît aussi au travers
-// des masses qui s'éclaircissent (chute de novembre, débourrement de mars-avril). Peint dans les tranches : aucun nœud animé.
+// ───────────── modèle d'arbre unique (rue et colline) : squelette FIXE + feuilles posées sur les rameaux ─────────────
+// Un arbre = un squelette (fût, charpentières, branches, rameaux) tiré UNE fois de (clé, essence, taille) : il ne dépend ni de
+// la date, ni de la densité du feuillage, ni de la météo. Le feuillage est une liste de touffes attachées aux rameaux (position
+// fixe elle aussi), que la saison habille : chaque touffe a un rang (0 près du tronc → 1 au bout des branches) ; elle est
+// présente si rang < densité du jour, grossit au débourrement, jaunit (les bouts d'abord) et se détache en automne (trous dans
+// la masse, rameaux dénudés du bout vers l'intérieur). Au vent, fût et charpentières ne bougent pas : les touffes (par grappe,
+// déphasées) et un peu les rameaux fins.
 const PORTS = {
-  platane: { n: [3, 5], ang: 0.7, len: 0.56, depth: 4, kink: 0.4, w: 1.1, crown: [1.05, 0.8], trunk: 0.3 },     // étalé, noueux
-  tilleul: { n: [3, 4], ang: 0.42, len: 0.5, depth: 5, kink: 0.15, w: 0.85, crown: [0.72, 1.05], trunk: 0.25 },  // ovale, dense en rameaux
-  marronnier: { n: [3, 4], ang: 0.58, len: 0.52, depth: 4, kink: 0.22, w: 1.0, crown: [0.9, 0.9], trunk: 0.28 },  // arrondi
-  poplar: { n: [3, 5], ang: 0.2, len: 0.62, depth: 4, kink: 0.1, w: 0.7, crown: [0.38, 1.25], trunk: 0.12 },      // fuseau
-  cerisier: { n: [4, 6], ang: 0.5, len: 0.6, depth: 3, kink: 0.25, w: 0.75, crown: [0.95, 0.75], trunk: 0.22 },  // en coupe
-  chene: { n: [3, 4], ang: 0.78, len: 0.5, depth: 4, kink: 0.5, w: 1.15, crown: [1.0, 0.85], trunk: 0.3 },        // tortueux
-  bouquet: { n: [2, 4], ang: 0.6, len: 0.55, depth: 3, kink: 0.3, w: 0.8, crown: [0.95, 0.85], trunk: 0.3 },
+  platane: { n: [3, 5], ang: 0.7, len: 0.56, kink: 0.4, w: 1.1, crown: [1.05, 0.8] },     // étalé, noueux
+  tilleul: { n: [3, 4], ang: 0.42, len: 0.5, kink: 0.15, w: 0.85, crown: [0.72, 1.05] },  // ovale, dense en rameaux
+  marronnier: { n: [3, 4], ang: 0.58, len: 0.52, kink: 0.22, w: 1.0, crown: [0.9, 0.9] },  // arrondi
+  poplar: { n: [3, 5], ang: 0.2, len: 0.62, kink: 0.1, w: 0.7, crown: [0.38, 1.25] },      // fuseau
+  cerisier: { n: [4, 6], ang: 0.5, len: 0.6, kink: 0.25, w: 0.75, crown: [0.95, 0.75] },  // en coupe
+  chene: { n: [3, 4], ang: 0.78, len: 0.5, kink: 0.5, w: 1.15, crown: [1.0, 0.85] },        // tortueux
+  bouquet: { n: [2, 4], ang: 0.6, len: 0.55, kink: 0.3, w: 0.8, crown: [0.95, 0.85] },
 };
 PORTS.chestnut = PORTS.marronnier;
-// Squelette : segments {x0,y0,x1,y1,w,lv} ; `h` hauteur totale (sol → haut des rameaux), `depth` max de niveaux (colline : 2-3).
-function treeSkeleton(key, species, x, y, h, depthMax = 5) {
-  const P = PORTS[species] || PORTS.bouquet, rng = mulberry32(hashString('squelette-' + key)), segs = [], depth = Math.min(P.depth, depthMax);
-  const T = h * P.trunk, w0 = Math.max(0.5, h * 0.045 * P.w);
-  segs.push({ x0: x, y0: y, x1: x, y1: y - T, w: w0, lv: 0 });
+// Modèle : `foot` = pied (x, y), `trunkH` = hauteur du fût, `crownH` = hauteur de la ramure au-dessus du fût, `depth` = niveaux
+// de ramification, `tuftR` = rayon d'une touffe, `maxTufts` = plafond de touffes. Tout est déterministe : même clé → même arbre.
+function treeModel(key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, trunkW) {
+  const P = PORTS[species] || PORTS.bouquet, rng = mulberry32(hashString('squelette-' + key)), segs = [];
+  const w0 = trunkW ?? Math.max(0.5, crownH * 0.07 * P.w), rootY = foot.y - trunkH;
   const rec = (px, py, ang, len, w, lv) => {
     if (lv > depth) return;
     const n = P.n[0] + Math.floor(rng() * (P.n[1] - P.n[0] + 1));
@@ -7392,24 +7419,86 @@ function treeSkeleton(key, species, x, y, h, depthMax = 5) {
       const a = ang + (i - (n - 1) / 2) * P.ang * (0.75 + rng() * 0.5) + (rng() - 0.5) * P.kink;
       const l = len * (0.75 + rng() * 0.5), ex = px + Math.cos(a) * l, ey = py + Math.sin(a) * l;
       segs.push({ x0: px, y0: py, x1: ex, y1: ey, w, lv });
-      rec(ex, ey, a + (rng() - 0.5) * P.kink * 0.6, l * P.len / 0.56 * 0.62, w * 0.62, lv + 1);
+      rec(ex, ey, a + (rng() - 0.5) * P.kink * 0.6, l * (P.len / 0.56) * 0.62, w * 0.62, lv + 1);
     }
   };
-  rec(x, y - T, -Math.PI / 2, (h - T) * 0.5, w0 * 0.75, 1);
-  return { segs, cx: x, cy: y - T - (h - T) * 0.55, rx: (h - T) * P.crown[0] * 0.55, ry: (h - T) * P.crown[1] * 0.5, T, tips: segs.filter((s) => s.lv === depth) };
+  rec(foot.x, rootY, -Math.PI / 2, crownH * 0.5, w0 * 0.75, 1);
+  // Enveloppe réelle du squelette (envergure et hauteur : fixes).
+  let minX = foot.x, maxX = foot.x, minY = rootY; for (const s of segs) { minX = Math.min(minX, s.x1); maxX = Math.max(maxX, s.x1); minY = Math.min(minY, s.y1); }
+  const cx = (minX + maxX) / 2, cy = (minY + rootY) / 2, rx = (maxX - minX) / 2 + tuftR, ry = (rootY - minY) / 2 + tuftR;
+  // Touffes : sur les rameaux (niveaux ≥ 2, ou ≥ 1 si peu de niveaux), échantillonnées sans dépasser `maxTufts`.
+  const twigs = segs.filter((s) => s.lv >= Math.min(2, depth)), rt = mulberry32(hashString('touffes-' + key)), tufts = [];
+  const step = Math.max(1, Math.floor(twigs.length / maxTufts));
+  for (let i = Math.floor(rt() * step); i < twigs.length && tufts.length < maxTufts; i += step) {
+    const s = twigs[i], t = 0.45 + rt() * 0.55, x = s.x0 + (s.x1 - s.x0) * t + (rt() - 0.5) * tuftR * 0.8, y = s.y0 + (s.y1 - s.y0) * t + (rt() - 0.5) * tuftR * 0.8;
+    const dist = Math.hypot((x - cx) / rx, (y - cy) / ry), rank = sat(dist * 0.7 + rt() * 0.4 - 0.05);
+    tufts.push({ x, y, rr: tuftR * (0.8 + rt() * 0.5), rank, tone: Math.floor(rt() * 3), phase: rt() * TAU, yel: rt(), cluster: (y < cy ? 2 : 0) + (dist > 0.75 ? 1 : 0) });
+  }
+  return { key, species, foot, trunkH, rootY, w0, segs, tufts, cx, cy, rx, ry, top: minY - tuftR, trunkBox: { x: foot.x - w0, y: rootY, w: 2 * w0, h: trunkH }, span: [minX, maxX] };
 }
-// Rendu : voile des rameaux, branches (plus fines à chaque niveau), feuilles sèches des chênes en début d'hiver, gui, neige.
-function paintSkeleton(ctx, sk, opts = {}) {
-  const hz = opts.hz || 0, alpha = opts.alpha ?? 1, bark = haze(hexRgb('#4A3A30'), hz);
-  if (opts.veil !== false) { ctx.fillStyle = rgba(haze(hexRgb('#8A7A70'), hz), (opts.veilAlpha ?? 0.22) * alpha); ctx.beginPath(); ctx.ellipse(sk.cx, sk.cy, sk.rx, sk.ry, 0, 0, TAU); ctx.fill(); }
-  ctx.lineCap = 'round'; ctx.strokeStyle = rgba(bark, alpha);
-  for (let lv = 0; lv <= 5; lv++) { let any = false; ctx.beginPath(); for (const s of sk.segs) if (s.lv === lv) { any = true; ctx.lineWidth = s.w; ctx.moveTo(s.x0, s.y0); ctx.lineTo(s.x1, s.y1); } if (any) { ctx.lineWidth = sk.segs.find((s) => s.lv === lv).w; ctx.stroke(); } }
-  if (opts.dryLeaves > 0) { ctx.fillStyle = rgba(haze(hexRgb('#9A6A3A'), hz), 0.9 * opts.dryLeaves * alpha); const r = mulberry32(hashString('sec' + sk.cx)); for (const t of sk.tips) if (r() < 0.55) ctx.fillRect(t.x1 - 0.5, t.y1 - 0.3, 1.1, 0.9); }
-  if (opts.mistletoe) { const r = mulberry32(hashString('gui' + sk.cx)); const mids = sk.segs.filter((s) => s.lv === 2); for (let i = 0; i < opts.mistletoe && mids.length; i++) { const s = mids[Math.floor(r() * mids.length)], rr = Math.max(1, sk.ry * 0.16); disc(ctx, rgba(haze(hexRgb('#3E6A3A'), hz), alpha), (s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, rr); disc(ctx, rgba(haze(hexRgb('#6A9A5A'), hz), alpha), (s.x0 + s.x1) / 2 - rr * 0.3, (s.y0 + s.y1) / 2 - rr * 0.3, rr * 0.5); } }
-  if (opts.snow) { ctx.strokeStyle = `rgba(242,246,250,${0.92 * alpha})`; ctx.lineCap = 'round'; for (const s of sk.segs) { const dx = Math.abs(s.x1 - s.x0), dy = Math.abs(s.y1 - s.y0); if (dy > dx * 1.3 && s.lv > 0) continue; ctx.lineWidth = Math.max(0.5, s.w * 0.7); ctx.beginPath(); ctx.moveTo(s.x0, s.y0 - s.w * 0.5 - 0.3); ctx.lineTo(s.x1, s.y1 - s.w * 0.5 - 0.3); ctx.stroke(); } }
+const MODELS = new Map();
+const treeModelOf = (key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, trunkW) => { const k = `${key}|${species}|${foot.x.toFixed(2)}|${foot.y.toFixed(2)}|${trunkH.toFixed(2)}|${crownH.toFixed(2)}|${depth}|${tuftR.toFixed(2)}|${maxTufts}`; if (!MODELS.has(k)) MODELS.set(k, treeModel(key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, trunkW)); return MODELS.get(k); };
+
+// Fût : polygone fixe du pied à la racine des charpentières ; écorce ; mouillé = plus sombre.
+function paintTrunk(ctx, m, bark0, hz = 0, wet = 0, young = false) {
+  const bark = wet ? mixRgb(bark0, hexRgb('#2A2420'), 0.35 * wet) : bark0, { foot, rootY, w0 } = m, tb = w0 * 1.25, tt = w0 * 0.8;
+  ctx.beginPath(); ctx.moveTo(foot.x - tb, foot.y); ctx.lineTo(foot.x - tt, rootY); ctx.lineTo(foot.x + tt, rootY); ctx.lineTo(foot.x + tb, foot.y); ctx.closePath(); ctx.fillStyle = rgba(haze(bark, hz), 1); ctx.fill();
+  ctx.save(); ctx.clip(); fillRect(ctx, haze(shade(bark, 0.4), hz), foot.x + tt * 0.2, rootY, tb, m.trunkH); if (m.species === 'platane' && !young && m.trunkH > 12) { ctx.fillStyle = rgba(light(bark, 0.5), 1); const r = mulberry32(hashString('ecorce' + m.key)); for (let i = 0; i < 6; i++) ctx.fillRect(foot.x - tb * 0.8 + r() * tb * 1.2, rootY + 2 + r() * (m.trunkH - 6), 1, 1.6 + r()); } ctx.restore();
+  ctx.strokeStyle = ink(0.95 - hz); ctx.lineWidth = m.trunkH > 12 ? 0.7 : 0.5; ctx.stroke();
+}
+// Branches : `part` = 'coarse' (charpentières, niveau 1), 'fine' (rameaux, niveaux ≥ 2) ou 'all' ; voile des rameaux ∝ (1 − d).
+function paintBranches(ctx, m, part = 'all', opts = {}) {
+  const hz = opts.hz || 0, bark = rgba(haze(hexRgb('#4A3A30'), hz), opts.alpha ?? 1), levels = part === 'coarse' ? [1] : part === 'fine' ? [2, 3, 4, 5] : [1, 2, 3, 4, 5];
+  if (part !== 'coarse' && opts.veil > 0) { ctx.fillStyle = rgba(haze(hexRgb('#8A7A70'), hz), opts.veil); ctx.beginPath(); ctx.ellipse(m.cx, m.cy, m.rx * 0.9, m.ry * 0.9, 0, 0, TAU); ctx.fill(); }
+  ctx.lineCap = 'round'; ctx.strokeStyle = bark;
+  for (const lv of levels) { const ss = m.segs.filter((s) => s.lv === lv); if (!ss.length) continue; ctx.lineWidth = Math.max(0.3, ss[0].w); ctx.beginPath(); for (const s of ss) { ctx.moveTo(s.x0, s.y0); ctx.lineTo(s.x1, s.y1); } ctx.stroke(); }
+  if (opts.snow) { ctx.strokeStyle = `rgba(242,246,250,0.92)`; for (const s of m.segs) { if (!levels.includes(s.lv)) continue; const dx = Math.abs(s.x1 - s.x0), dy = Math.abs(s.y1 - s.y0); if (dy > dx * 1.3) continue; ctx.lineWidth = Math.max(0.5, s.w * 0.7); ctx.beginPath(); ctx.moveTo(s.x0, s.y0 - s.w * 0.5 - 0.3); ctx.lineTo(s.x1, s.y1 - s.w * 0.5 - 0.3); ctx.stroke(); } }
+  if (opts.mistletoe) { const r = mulberry32(hashString('gui' + m.key)), mids = m.segs.filter((s) => s.lv === 2); for (let i = 0; i < opts.mistletoe && mids.length; i++) { const s = mids[Math.floor(r() * mids.length)], rr = Math.max(1, m.ry * 0.16); disc(ctx, rgba(haze(hexRgb('#3E6A3A'), hz), 1), (s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, rr); disc(ctx, rgba(haze(hexRgb('#6A9A5A'), hz), 1), (s.x0 + s.x1) / 2 - rr * 0.3, (s.y0 + s.y1) / 2 - rr * 0.3, rr * 0.5); } }
+}
+// État d'une touffe à la date D (f = foliageOf) : taille 0..1 (0 = absente), couleur (jaunissement par touffe : les bouts d'abord).
+function tuftState(tf, f, D, species) {
+  const bl = species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
+  let size = sat((f.d - tf.rank) / 0.2);                                      // apparaît / disparaît sur 0,2 de densité (≈ 6 jours au printemps, 7 en automne : ≤ 1 px par jour)
+  if (f.stage === 'tender') size = Math.min(size, 0.35 + 0.65 * sat((f.d - tf.rank) / 0.3)); // bourgeon → feuille
+  if (bl > 0) size = Math.max(size, 0.6 + 0.4 * bl);
+  const yel = f.yel !== undefined ? sat(f.yel * 1.5 - tf.rank * 0.5 + tf.yel * 0.2 - 0.1) : 0;
+  let tones = f.yel !== undefined && yel > 0 ? mixTones(f.base, f.autumn, yel) : f.tones;
+  if (bl > 0) tones = ['#D88AA8', '#F0B0C8', '#FCDCE8'].map(hexRgb).map((c, i) => mixRgb(c, tones[i], 1 - bl));
+  return { size, tones, loose: f.drop > 0 && f.drop < 1 && f.d - tf.rank > -0.06 && f.d - tf.rank < 0.1, bloom: bl };
+}
+// Feuilles : `which` = filtre de grappe (0-3) ou null ; `shift` = décalage (vent) ; `wet` = pluie ; `hz` = brume ; `part` 'leaves' | 'shadow' | 'hi'.
+function paintLeaves(ctx, m, f, D, opts = {}) {
+  const hz = opts.hz || 0, wet = opts.wet || 0, part = opts.part || 'leaves', sx = opts.shiftX || 0, sy = opts.shiftY || 0;
+  const blm = m.species === 'marronnier' ? bloomOf(D, 'marronnier') : 0, blt = m.species === 'tilleul' ? bloomOf(D, 'tilleul') : 0;
+  for (const tf of m.tufts) {
+    if (opts.which !== undefined && opts.which !== null && tf.cluster !== opts.which) continue;
+    if (opts.loose !== undefined) { const st0 = tuftState(tf, f, D, m.species); if (st0.loose !== opts.loose) continue; }
+    const st = tuftState(tf, f, D, m.species); if (st.size <= 0) continue;
+    const rr = tf.rr * st.size, x = tf.x + sx * (0.5 + tf.rank) + Math.sin(tf.phase) * 0.2 * sx, y = tf.y + sy * (0.5 + tf.rank);
+    if (part === 'shadow') { ctx.fillStyle = `rgba(70,50,130,${(0.14 * st.size).toFixed(3)})`; ctx.beginPath(); ctx.ellipse(x + 4, y + 5, rr * 1.1, rr * 0.9, 0, 0, TAU); ctx.fill(); continue; }
+    const tones = wet ? st.tones.map((c) => mixRgb(c, hexRgb('#1A2A3A'), 0.28 * wet)) : st.tones;
+    if (part === 'hi') { disc(ctx, rgba(haze(opts.pale ? light(tones[2], 0.5) : tones[2], hz), 1), x - rr * 0.3, y - rr * 0.3, rr * 0.5); continue; }
+    ctx.strokeStyle = ink((0.8 - hz) * Math.min(1, st.size * 2)); ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.stroke();
+    disc(ctx, rgba(haze(tones[0], hz), 1), x, y, rr); disc(ctx, rgba(haze(tones[1], hz), 1), x - rr * 0.2, y - rr * 0.25, rr * 0.72); disc(ctx, rgba(haze(tones[2], hz), 1), x - rr * 0.35, y - rr * 0.4, rr * 0.4);
+    if (wet) { ctx.strokeStyle = `rgba(230,240,255,${0.35 * wet})`; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(x, y, rr * 0.9, Math.PI * 1.05, Math.PI * 1.55); ctx.stroke(); }
+    if (blm > 0 && tf.cluster >= 2) { ctx.fillStyle = `rgba(255,244,236,${blm})`; ctx.fillRect(x - 0.3, y - rr - 1.6, 0.6, 2); }
+    if (blt > 0 && tf.yel < 0.5) { ctx.fillStyle = `rgba(250,236,170,${blt})`; ctx.fillRect(x + rr * 0.3, y - rr * 0.2, 0.8, 0.8); }
+    if (D.meteo.snow) { ctx.fillStyle = 'rgba(240,244,248,0.92)'; ctx.beginPath(); ctx.ellipse(x, y - rr * 0.15, rr * 0.95, rr * 0.45, 0, Math.PI, 0); ctx.fill(); }
+  }
 }
 // Feuilles sèches accrochées (chênes) : de la chute à la mi-janvier, en s'éclaircissant.
 const dryLeavesOf = (D, species) => (species === 'chene' ? (D.doy >= 320 ? 1 - (D.doy - 320) / 60 : D.doy < 15 ? 0.3 - D.doy / 50 : 0) : 0);
+function paintDryLeaves(ctx, m, D, hz = 0) { const k = dryLeavesOf(D, m.species); if (k <= 0) return; ctx.fillStyle = rgba(haze(hexRgb('#9A6A3A'), hz), 0.9 * k); const r = mulberry32(hashString('sec' + m.key)); for (const tf of m.tufts) if (tf.rank > 0.5 && r() < 0.55) ctx.fillRect(tf.x - 0.5, tf.y - 0.3, 1.1, 0.9); }
+
+// ── Arbre complet, sans vent (galerie, colline) : fût → charpentières → rameaux (+ voile, neige, gui) → feuilles. ──
+function paintTreeStatic(ctx, m, f, D, opts = {}) {
+  const hz = opts.hz || 0, wet = D.meteo.wet || 0; if (opts.veil === undefined) opts.veil = 0.14;
+  if (opts.shadow) paintLeaves(ctx, m, f, D, { part: 'shadow' });
+  paintTrunk(ctx, m, opts.bark || hexRgb('#6A5A50'), hz, wet, opts.young);
+  paintBranches(ctx, m, 'all', { hz, veil: (opts.veil ?? 0.22) * (1 - f.d), snow: D.meteo.snow, mistletoe: opts.mistletoe || 0 });
+  paintDryLeaves(ctx, m, D, hz);
+  paintLeaves(ctx, m, f, D, { hz, wet });
+}
 
 // ═══════════ 03b-rue-verte.js ═══════════
 // ───────────── verdure de la rue principale (couche peinte PAR-DESSUS le premier plan de l'appli, dans les tranches) ─────────────
@@ -7476,44 +7565,10 @@ function streetVerdure(F) {
 }
 
 // ── peinture (calendrier réel : foliageOf / bloomOf / bedState / leavesOnGround, brume nulle : premier plan) ──
-// `opts.layer` : 'shadow' (ombre sur la façade), 'skel' (charpentières), 'twigs' (rameaux + voile), 'low' (masses basses), 'high'
-// (masses hautes), 'hi' (rehauts seuls, pour le frémissement), 'all'. `opts.wet` : feuillage assombri et luisant (pluie).
-function paintCrown(ctx, cx, cy, r, species, f, D, key, baseY, opts = {}) {
-  const layer = opts.layer || 'all', want = (l) => layer === 'all' || layer === l, wet = opts.wet || 0;
-  const bare = f.d <= 0.1, kd = bare ? 0.55 : 0.4 + 0.6 * f.d, tones0 = f.tones, tones = wet ? tones0.map((c) => mixRgb(c, hexRgb('#1A2A3A'), 0.28 * wet)) : tones0;
-  const massesAll = species === 'tilleul' ? [[0, -0.15, 0.8, 1.3], [-0.5, 0.3, 0.5, 1], [0.5, 0.3, 0.5, 1]] : species === 'marronnier' ? [[0, 0, 0.9, 1], [-0.65, 0.2, 0.62, 1], [0.65, 0.2, 0.62, 1], [0, -0.6, 0.58, 1]] : species === 'cerisier' ? [[0, 0, 0.8, 0.9], [-0.6, 0.1, 0.55, 0.9], [0.6, 0.15, 0.5, 0.9]] : [[0, 0, 0.85, 1], [-0.7, 0.15, 0.58, 1], [0.68, 0.1, 0.56, 1], [-0.25, -0.6, 0.55, 1], [0.35, -0.55, 0.5, 1]];
-  let tn = tones, kk = kd, bb = bare;
-  const blc = species === 'cerisier' ? bloomOf(D, 'cerisier') : 0; if (blc > 0) { tn = ['#D88AA8', '#F0B0C8', '#FCDCE8'].map(hexRgb); kk = Math.max(kk, 0.75 + 0.25 * blc); bb = false; }
-  const dd = bb ? 0 : f.d;
-  if (want('shadow')) { ctx.fillStyle = `rgba(70,50,130,${(0.05 + 0.12 * dd).toFixed(3)})`; ctx.beginPath(); for (const [mx, my, k, ky] of massesAll) { ctx.moveTo(cx + mx * r + 4 + r * k * kk, cy + my * r + 5); ctx.ellipse(cx + mx * r + 4, cy + my * r + 5, r * k * kk, r * k * ky * kk, 0, 0, TAU); } ctx.fill(); }
-  if ((f.d < 0.85 || blc > 0) && (want('skel') || want('twigs'))) {
-    const sk = treeSkeleton(key, species, cx, baseY, baseY - cy + r * 1.05, 5);
-    if (layer === 'all') paintSkeleton(ctx, sk, { veilAlpha: 0.2 * (1 - Math.min(1, f.d)), snow: D.meteo.snow, dryLeaves: dryLeavesOf(D, species), alpha: 1 });
-    else { const coarse = { ...sk, segs: sk.segs.filter((s) => s.lv <= 1), tips: [] }, fine = { ...sk, segs: sk.segs.filter((s) => s.lv >= 2) }; if (want('skel')) paintSkeleton(ctx, coarse, { veil: false, snow: D.meteo.snow }); if (want('twigs')) paintSkeleton(ctx, fine, { veilAlpha: 0.2 * (1 - Math.min(1, f.d)), snow: D.meteo.snow, dryLeaves: dryLeavesOf(D, species) }); }
-  }
-  if (bb) return;
-  const masses = layer === 'low' ? massesAll.filter((m) => m[1] >= 0) : layer === 'high' ? massesAll.filter((m) => m[1] < 0) : massesAll;
-  if (want('low') || want('high')) {
-    ctx.strokeStyle = ink(Math.min(1, f.d * 1.5)); ctx.lineWidth = 1.1; ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * kk; ctx.moveTo(cx + mx * r + rr, cy + my * r); ctx.ellipse(cx + mx * r, cy + my * r, rr, rr * ky, 0, 0, TAU); } ctx.stroke();
-    for (let t = 0; t < 3; t++) { ctx.fillStyle = rgba(tn[t], 0.3 + 0.7 * Math.max(f.d, blc)); ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * (1 - t * 0.28) * kk, x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.ellipse(x, y, rr, rr * ky, 0, 0, TAU); } ctx.fill(); }
-    // Luisance de pluie : liseré clair en haut à gauche des masses.
-    if (wet) { ctx.strokeStyle = `rgba(230,240,255,${0.35 * wet})`; ctx.lineWidth = 0.8; ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * kk; ctx.ellipse(cx + mx * r, cy + my * r, rr * 0.92, rr * ky * 0.92, 0, Math.PI * 1.05, Math.PI * 1.55); ctx.moveTo(cx, cy); } ctx.stroke(); }
-    const blm = species === 'marronnier' ? bloomOf(D, 'marronnier') : 0; if (blm > 0) { ctx.fillStyle = `rgba(255,244,236,${blm})`; for (const [mx, my, k, ky] of masses) for (let i = -1; i <= 1; i++) ctx.fillRect(cx + mx * r + i * r * k * 0.45 - 0.35, cy + my * r - r * k * ky * 0.85, 0.7, 2.2); }
-    const blt = species === 'tilleul' ? bloomOf(D, 'tilleul') : 0; if (blt > 0 && want('high')) { ctx.fillStyle = `rgba(250,236,170,${blt})`; const rr = mulberry32(hashString('til' + key)); for (let i = 0; i < 14; i++) { const a = rr() * TAU, d = Math.sqrt(rr()) * r * 0.8; ctx.fillRect(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 0.8, 0.8); } }
-    if (D.meteo.snow) { ctx.fillStyle = 'rgba(240,244,248,0.92)'; ctx.beginPath(); for (const [mx, my, k, ky] of masses) { const rr = r * k * kk; ctx.moveTo(cx + mx * r + rr, cy + my * r - rr * ky * 0.1); ctx.ellipse(cx + mx * r, cy + my * r - rr * ky * 0.1, rr, rr * ky * 0.4, 0, Math.PI, 0); } ctx.fill(); }
-  }
-  if (layer === 'hi') { // rehauts seuls (frémissement par vent faible, face claire des feuilles sous vent fort)
-    const t = 2; ctx.fillStyle = rgba(opts.pale ? light(tn[2], 0.5) : tn[2], 1); ctx.beginPath(); for (const [mx, my, k, ky] of massesAll) { const rr = r * k * (1 - t * 0.28) * kk, x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.ellipse(x, y, rr, rr * ky, 0, 0, TAU); } ctx.fill();
-  }
-}
-// Tronc d'un arbre de rue (polygone, écorce, tuteur) ; mouillé = plus sombre.
-function paintRueTrunk(ctx, v, wet = 0) {
-  const { x, y } = v, trunkH = v.h, topX = x + v.lean, bark0 = hexRgb(BARK[v.young ? 'jeune' : v.species]), bark = wet ? mixRgb(bark0, hexRgb('#2A2420'), 0.35 * wet) : bark0;
-  const tw = v.young ? 0.7 : 1.3 + v.r * 0.07, tt = v.young ? 0.5 : 0.8 + v.r * 0.04; ctx.beginPath(); ctx.moveTo(x - tw, y); ctx.lineTo(topX - tt, y - trunkH); ctx.lineTo(topX + tt, y - trunkH); ctx.lineTo(x + tw, y); ctx.closePath(); ctx.fillStyle = rgba(bark, 1); ctx.fill();
-  ctx.save(); ctx.clip(); fillRect(ctx, shade(bark, 0.4), x + 0.3, y - trunkH, 3, trunkH); if (v.species === 'platane' && !v.young) { ctx.fillStyle = rgba(light(bark, 0.5), 1); const r = mulberry32(Math.floor(v.flowerSeed * 7)); for (let i = 0; i < 6; i++) ctx.fillRect(x - 1.2 + r() * 1.6, y - trunkH + 2 + r() * (trunkH - 6), 1, 1.6 + r()); } ctx.restore();
-  ctx.strokeStyle = INK; ctx.lineWidth = 0.7; ctx.stroke();
-  if (v.young) { ctx.strokeStyle = '#8A7A5A'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x + 2.2, y); ctx.lineTo(x + 2.2, y - trunkH * 0.7); ctx.stroke(); ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x - 0.5, y - trunkH * 0.5); ctx.lineTo(x + 2.5, y - trunkH * 0.55); ctx.stroke(); }
-}
+// Modèle d'un arbre de rue (squelette fixe : fût = v.h, ramure = 2 × r, 4 niveaux, ≤ 60 touffes de rayon 0,2 r).
+const rueModel = (v) => treeModelOf('rue' + Math.round(v.x), v.species, { x: v.x, y: v.y }, v.h, v.r * 2.0, v.young ? 3 : 4, v.r * (v.young ? 0.3 : 0.2), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
+const rueBark = (v) => hexRgb(BARK[v.young ? 'jeune' : v.species]);
+function paintTuteur(ctx, v) { if (!v.young) return; const { x, y } = v; ctx.strokeStyle = '#8A7A5A'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x + 2.2, y); ctx.lineTo(x + 2.2, y - v.h * 0.7); ctx.stroke(); ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(x - 0.5, y - v.h * 0.5); ctx.lineTo(x + 2.5, y - v.h * 0.55); ctx.stroke(); }
 // Fleurs d'un pied d'arbre, d'un bac ou d'un parterre d'après l'état des parterres (bedState) : pousses, fleurs, fanées, sol nu.
 function paintFlowersRow(ctx, x0, x1, y, D, seedF, dense = 1) {
   const st = bedState(D), r = mulberry32(Math.floor(seedF * 1000));
@@ -7567,7 +7622,7 @@ function paintRueVerdure(ctx, F, env) {
       if (D.meteo.wet) { ctx.fillStyle = 'rgba(60,70,110,0.22)'; ctx.beginPath(); ctx.ellipse(x + 1, y + 1.4, 5 + v.r * 0.15, 1.3, 0, 0, TAU); ctx.fill(); ctx.fillStyle = 'rgba(200,220,240,0.25)'; ctx.beginPath(); ctx.ellipse(x - 0.5, y + 1.1, 2.5, 0.5, 0, 0, TAU); ctx.fill(); }
       ctx.fillStyle = 'rgba(70,50,130,0.26)'; ctx.beginPath(); ctx.moveTo(x - 1, y); ctx.lineTo(x + 1.4, y); ctx.lineTo(x + 1.4 + trunkH * 0.22, y + 1.8); ctx.lineTo(x - 1 + trunkH * 0.22, y + 1.8); ctx.closePath(); ctx.fill();
       // Tronc et houppier : sprites cuits et cisaillés par le vent (04a-vent.js), sauf si la scène est rendue sans vent.
-      if (!F.animTrees) { paintRueTrunk(ctx, v, D.meteo.wet || 0); paintCrown(ctx, x + v.lean, y - trunkH - v.r * 0.8, v.r, v.species, foliageOf(D, 'rue' + Math.round(x), v.species), D, 'rue' + Math.round(x), y - trunkH, { wet: D.meteo.wet || 0 }); }
+      if (!F.animTrees) { const m = rueModel(v); paintTreeStatic(ctx, m, foliageOf(D, 'rue' + Math.round(x), v.species), D, { bark: rueBark(v), shadow: true, veil: 0.2, young: v.young }); paintTuteur(ctx, v); }
     }
   }
 }
@@ -7771,7 +7826,7 @@ function paintLampLight(ctx, x, y, on) { if (!on) return; disc(ctx, 'rgba(255,22
 function paintLightsHill(ctx, F, env, counter) {
   const day = { weekday: env.D.weekday, kind: env.D.kind }, gloom = env.D.meteo.gloom;
   // A : fenêtres allumées des maisons de la colline (atténuées par la brume), seuils par fenêtre : allumages un à un.
-  for (const h of F.houses) for (const wn of h.lit) if (windowLit(wn.u, env.minutes, day, env.daylight, gloom)) { counter.fenetres++; ctx.fillStyle = wn.blue ? LIT_BLUE : LIT_WARM; ctx.globalAlpha = 0.5 * (1 - h.haze); ctx.fillRect(wn.x, wn.y, wn.w, wn.h); }
+  for (const h of [...F.houses, ...F.crestHouses, ...F.escapes.flatMap((e) => e.houses)]) for (const wn of h.lit) if (windowLit(wn.u, env.minutes, day, env.daylight, gloom)) { counter.fenetres++; ctx.fillStyle = wn.blue ? LIT_BLUE : LIT_WARM; ctx.globalAlpha = 0.5 * (1 - h.haze); ctx.fillRect(wn.x, wn.y, wn.w, wn.h); }
   ctx.globalAlpha = 1;
   for (const e of F.escapes) {
     for (const l of e.lamps) { const p = roadPoint(e, l.d); paintLampLight(ctx, p.x + 1, p.y - 4, lampOn(l, env)); }
@@ -7889,43 +7944,46 @@ function windAt(x, t, env) {
 const STIFF = { poplar: 1.6, tilleul: 1.0, platane: 0.7, marronnier: 0.8, cerisier: 1.1, chene: 0.75, bouquet: 1.0, cypress: 0.5 };
 const bendOf = (v, wind, env) => Math.max(-0.55, Math.min(0.55, wind * (v.young ? 1.8 : STIFF[v.species] || 1) * (1 + 0.25 * (env.D.meteo.wet || 0)) * (env.D.meteo.storm ? 1.3 : 1) * 0.09));
 
-// ── Sprites cuits des arbres de la rue : une fois par (arbre, date, pluie, neige), 5 couches en coordonnées du monde.
-const LAYERS_RUE = ['skel', 'twigs', 'low', 'high', 'hi'];
+// ── Sprites cuits des arbres de la rue : par (arbre, date, pluie, neige) : ombre, fût, charpentières, rameaux (+ voile, neige,
+// feuilles sèches), puis 4 grappes de touffes (basses / hautes × intérieures / bout des branches). Le fût et les charpentières
+// sont dessinés tels quels (jamais transformés) ; les rameaux fléchissent à peine ; les grappes se déplacent (vent) ; les
+// touffes « lâches » (sur le point de tomber) sont dessinées une à une et frémissent plus.
 function treeSprites(F, v, env, S) {
   const D = env.D, key = `sprite|${F.seed}|${S}|${Math.round(v.x)}|${D.date}|${D.meteo.wet || 0}|${D.meteo.snow ? 1 : 0}`;
   if (CACHE.has(key)) return CACHE.get(key);
-  const r = v.r, box = { x: v.x - r * 2.2, y: v.y - v.h - r * 2.3, w: r * 4.4, h: v.h + r * 2.3 + 3 };
-  const f = foliageOf(D, 'rue' + Math.round(v.x), v.species), cy = v.y - v.h - r * 0.8, k = 'rue' + Math.round(v.x), wet = D.meteo.wet || 0;
-  const layers = {};
-  for (const layer of ['trunk', ...LAYERS_RUE, 'hiPale']) {
-    const c = document.createElement('canvas'); c.width = Math.ceil(box.w * S); c.height = Math.ceil(box.h * S); const ctx = c.getContext('2d'); ctx.scale(S, S); ctx.translate(-box.x, -box.y);
-    if (layer === 'trunk') paintRueTrunk(ctx, v, wet);
-    else paintCrown(ctx, v.x + v.lean, cy, r, v.species, f, D, k, v.y - v.h, { layer: layer === 'hiPale' ? 'hi' : layer, wet, pale: layer === 'hiPale' });
-    layers[layer] = c;
-  }
-  const out = { box, layers, f, cy };
-  CACHE.set(key, out); if (CACHE.size > 120) CACHE.delete(CACHE.keys().next().value);
+  const m = rueModel(v), f = foliageOf(D, 'rue' + Math.round(v.x), v.species), wet = D.meteo.wet || 0, pad = v.r * 0.6;
+  const box = { x: m.span[0] - pad - 6, y: m.top - pad - 4, w: m.span[1] - m.span[0] + 2 * pad + 12, h: v.y - m.top + 2 * pad + 6 };
+  const layers = {}, mk = () => { const c = document.createElement('canvas'); c.width = Math.ceil(box.w * S); c.height = Math.ceil(box.h * S); const ctx = c.getContext('2d'); ctx.scale(S, S); ctx.translate(-box.x, -box.y); return [c, ctx]; };
+  let [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { part: 'shadow' }); layers.shadow = c;
+  [c, ctx] = mk(); paintTrunk(ctx, m, rueBark(v), 0, wet, v.young); paintTuteur(ctx, v); paintBranches(ctx, m, 'coarse'); layers.trunk = c;
+  [c, ctx] = mk(); paintBranches(ctx, m, 'fine', { veil: 0.12 * (1 - f.d), snow: D.meteo.snow }); paintDryLeaves(ctx, m, D); layers.twigs = c;
+  for (let k = 0; k < 4; k++) { [c, ctx] = mk(); paintLeaves(ctx, m, f, D, { which: k, wet, loose: false }); layers['c' + k] = c; }
+  const out = { box, layers, f, m };
+  CACHE.set(key, out); if (CACHE.size > 160) CACHE.delete(CACHE.keys().next().value);
   return out;
 }
-// Dessine un calque cisaillé autour du pied (x' = x + (footY − y) · s).
-function drawSheared(ctx, canvas, box, footY, s, S, alpha = 1) {
-  ctx.save(); ctx.setTransform(S, 0, 0, S, 0, 0); ctx.transform(1, 0, s, 1, -s * footY, 0); ctx.globalAlpha = alpha; ctx.drawImage(canvas, box.x, box.y, box.w, box.h); ctx.restore();
-}
+const CLUSTER_AMP = [0.7, 1.6, 0.95, 2.1]; // basses-intérieures, basses-bout, hautes-intérieures, hautes-bout (px par unité de vent)
 function paintArbresRue(ctx, F, env, S, counter) {
   const t = env.seconds, D = env.D, wet = D.meteo.wet || 0;
   for (const v of F.rue) {
     if (v.kind !== 'pit' || v.empty) continue;
-    const sp = treeSprites(F, v, env, S), wind = windAt(v.x, t, env), b = bendOf(v, wind, env), foot = v.y;
+    const sp = treeSprites(F, v, env, S), m = sp.m, wind = windAt(v.x, t, env), stiff = (v.young ? 1.8 : STIFF[v.species] || 1) * (1 + 0.25 * wet) * (D.meteo.storm ? 1.3 : 1), b = wind * stiff;
     if (Math.abs(wind) > 0.03) counter.arbresVent++;
-    // Le tronc fléchit peu, les charpentières un peu, les rameaux et masses basses plus, les masses hautes le plus.
-    drawSheared(ctx, sp.layers.trunk, sp.box, foot, b * 0.18, S);
-    drawSheared(ctx, sp.layers.skel, sp.box, foot, b * 0.35, S);
-    drawSheared(ctx, sp.layers.twigs, sp.box, foot, b * 0.8 + 0.03 * Math.sin(t * 7 + v.x) * Math.min(1, Math.abs(wind)), S);
-    drawSheared(ctx, sp.layers.low, sp.box, foot, b * 0.7, S);
-    drawSheared(ctx, sp.layers.high, sp.box, foot, b * 1.0, S);
-    // Frémissement des rehauts par vent faible (scintillement, déphasé par arbre) ; face claire des feuilles retournées sous vent fort.
-    if (Math.abs(wind) > 0.04 && sp.f.d > 0.15) { const fl = 0.5 + 0.5 * Math.sin(t * (5 + (v.x % 7)) + v.x * 0.3) * Math.sin(t * 2.3 + v.x); drawSheared(ctx, sp.layers.hi, sp.box, foot, b * 1.0, S, 0.6 * fl * Math.min(1, Math.abs(wind) * 2)); }
-    if (Math.abs(wind) > 0.9 && sp.f.d > 0.15) drawSheared(ctx, sp.layers.hiPale, sp.box, foot, b * 1.05, S, Math.min(0.7, (Math.abs(wind) - 0.9) * 0.8) * (0.6 + 0.4 * Math.sin(t * 9 + v.x)));
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+    ctx.drawImage(sp.layers.shadow, sp.box.x, sp.box.y, sp.box.w, sp.box.h);
+    ctx.drawImage(sp.layers.trunk, sp.box.x, sp.box.y, sp.box.w, sp.box.h);                       // fût et charpentières : jamais déplacés
+    // Rameaux fins : léger fléchissement (cisaillement de 3 % de b autour de la racine des charpentières).
+    ctx.save(); ctx.transform(1, 0, 0.03 * b, 1, -0.03 * b * m.rootY, 0); ctx.drawImage(sp.layers.twigs, sp.box.x, sp.box.y, sp.box.w, sp.box.h); ctx.restore();
+    // Grappes de feuilles : translation propre (amplitude par grappe, déphasage par arbre et par grappe, rafales), plus forte au bout et en haut.
+    for (let k = 0; k < 4; k++) {
+      const ph = v.x * 0.37 + k * 1.9, osc = 0.7 + 0.3 * Math.sin(t * (2.6 + k * 0.7) + ph) + 0.15 * Math.sin(t * 7.3 + ph * 2), dx = b * CLUSTER_AMP[k] * osc, dy = -Math.abs(b) * 0.25 * (k >= 2 ? 1 : 0.5) * (0.5 + 0.5 * Math.sin(t * 3.1 + ph));
+      ctx.drawImage(sp.layers['c' + k], sp.box.x + dx, sp.box.y + dy, sp.box.w, sp.box.h);
+    }
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+    // Touffes lâches (automne : sur le point de tomber), frémissement des rehauts par vent faible, face claire sous vent fort.
+    paintLeaves(ctx, m, sp.f, D, { loose: true, wet, shiftX: b * 2.6 * (0.6 + 0.4 * Math.sin(t * 9 + v.x)), shiftY: -Math.abs(b) * 0.5 });
+    if (Math.abs(wind) > 0.04 && sp.f.d > 0.1) { ctx.globalAlpha = 0.5 * Math.min(1, Math.abs(wind) * 2) * (0.5 + 0.5 * Math.sin(t * (5 + (v.x % 7)) + v.x * 0.3) * Math.sin(t * 2.3 + v.x)); paintLeaves(ctx, m, sp.f, D, { part: 'hi', wet, shiftX: b * 1.4 }); ctx.globalAlpha = 1; }
+    if (Math.abs(wind) > 0.9 && sp.f.d > 0.1) { ctx.globalAlpha = Math.min(0.7, (Math.abs(wind) - 0.9) * 0.8) * (0.6 + 0.4 * Math.sin(t * 9 + v.x)); paintLeaves(ctx, m, sp.f, D, { part: 'hi', pale: true, shiftX: b * 1.6 }); ctx.globalAlpha = 1; }
     paintParticlesArbre(ctx, F, v, sp, env, counter);
     paintBirdsArbre(ctx, F, v, sp, env, counter);
   }
@@ -7937,19 +7995,21 @@ function paintParticlesArbre(ctx, F, v, sp, env, counter) {
   if (!PARAMS.motion) return;
   const t = env.seconds, D = env.D, r = v.r, cx = v.x + v.lean, cy = sp.cy, ground = v.y - 0.5, dir = D.meteo.dir || 1, w = D.meteo.wind;
   const drop = sp.f.drop, petals = v.species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
-  // Feuilles arrachées par les rafales (automne) et pétales (avril) : chaque rafale qui passe l'arbre en détache quelques-unes.
-  if (w >= 0.05 && ((drop > 0 && drop < 1 && sp.f.d > 0.1) || petals > 0.3)) {
-    for (const g of gustsAt(t, env)) {
-      const tp = g.tk + (v.x - g.x0) / (g.dir * g.speed); if (tp > t || t - tp > 45) continue;
-      const rk = mulberry32((hashString(`part-${Math.round(v.x)}-${g.k}`)) >>> 0), n = Math.min(5, Math.floor(g.A * 3 * (petals > 0.3 ? petals : drop)));
+  // Feuilles qui quittent l'arbre (automne) ou pétales (avril) : à chaque rafale qui passe, quelques touffes LÂCHES lâchent des
+  // feuilles de leur couleur, depuis leur position ; elles dérivent, tournoient, retombent au sol et y restent.
+  if (w >= 0.05 && ((drop > 0 && drop < 1) || petals > 0.3)) {
+    const loose = sp.m.tufts.map((tf) => ({ tf, st: tuftState(tf, sp.f, D, v.species) })).filter((o) => petals > 0.3 ? o.st.size > 0 && o.tf.rank > 0.5 : o.st.loose && o.st.size > 0);
+    if (loose.length) for (const g of gustsAt(t, env)) {
+      const tp = g.tk + (v.x - g.x0) / (g.dir * g.speed); if (tp > t || t - tp > 60) continue;
+      const rk = mulberry32((hashString(`part-${Math.round(v.x)}-${g.k}`)) >>> 0), n = Math.min(6, 1 + Math.floor(g.A * 3));
       for (let j = 0; j < n; j++) {
         if (counter.particules >= (petals ? PARTICLE_CAP.petales : PARTICLE_CAP.feuilles)) break;
-        const born = tp + j * 0.18 + rk() * 0.3, a = t - born; if (a < 0) continue;
-        const x0 = cx + (rk() - 0.5) * r * 1.6, y0 = cy + (rk() - 0.5) * r * 1.2, vx = dir * (14 + 22 * w) * (0.7 + rk() * 0.6), fallV = petals ? 2.2 : 3.6, flut = 1.5 + rk() * 2;
+        const o = loose[Math.floor(rk() * loose.length)], born = tp + j * 0.2 + rk() * 0.3, a = t - born; if (a < 0) continue;
+        const x0 = o.tf.x + (rk() - 0.5) * o.tf.rr, y0 = o.tf.y + (rk() - 0.5) * o.tf.rr, vx = dir * (14 + 22 * w) * (0.7 + rk() * 0.6), fallV = petals ? 2.2 : 3.6, flut = 1.5 + rk() * 2;
         const land = (ground - y0) / fallV, aa = Math.min(a, land), x = x0 + vx * aa * (1 - 0.3 * Math.min(1, aa / 4)) + Math.sin(aa * 3 + j) * flut, y = aa >= land ? ground : y0 + fallV * aa - 2.5 * Math.sin(Math.min(aa, 1.2) * 2.6);
         if (a - land > 50 || x < -5 || x > W + 5) continue;
         counter.particules++;
-        ctx.save(); ctx.translate(x, y); ctx.rotate(aa * 4 + j); ctx.fillStyle = petals ? '#F6C0D4' : rgba(sp.f.tones[1], 1); ctx.fillRect(-0.9, -0.5, 1.8, 1); ctx.restore();
+        ctx.save(); ctx.translate(x, y); ctx.rotate(aa * 4 + j); ctx.fillStyle = petals ? '#F6C0D4' : rgba(o.st.tones[1], 1); ctx.fillRect(-0.9, -0.5, 1.8, 1); ctx.restore();
       }
     }
   }
@@ -7966,7 +8026,7 @@ function paintBirdsArbre(ctx, F, v, sp, env, counter) {
   if (!PARAMS.motion || env.dark || env.D.meteo.precip > 0.4 || sp.f.d < 0.3) return;
   const t = env.seconds, band = Math.floor(v.x / 480), k = Math.floor(t / 110), rk = mulberry32((hashString(`oiseau-${band}-${k}`)) >>> 0);
   const trees = F.rue.filter((p) => p.kind === 'pit' && !p.empty && !p.young && Math.floor(p.x / 480) === band); if (!trees.length || trees[Math.floor(rk() * trees.length)] !== v) return;
-  const t0 = k * 110 + rk() * 40, perch = 20 + rk() * 20, a = t - t0, fromLeft = rk() < 0.5, px = v.x + v.lean + (rk() - 0.5) * v.r, py = sp.cy - v.r * 0.3;
+  const t0 = k * 110 + rk() * 40, perch = 20 + rk() * 20, a = t - t0, fromLeft = rk() < 0.5, px = sp.m.cx + (rk() - 0.5) * v.r, py = sp.m.cy - v.r * 0.3;
   let x, y, flying = true;
   if (a < 0 || a > 6 + perch + 6) return;
   if (a < 6) { const q = smooth(a / 6); x = (fromLeft ? -20 : W + 20) + (px - (fromLeft ? -20 : W + 20)) * q; y = py - 30 * (1 - q) + Math.sin(a * 5) * 1.5; }
@@ -7977,14 +8037,15 @@ function paintBirdsArbre(ctx, F, v, sp, env, counter) {
   else { fillRect(ctx, ink(0.85), x - 0.7, y - 1.1, 1.4, 1.1); disc(ctx, ink(0.85), x + (fromLeft ? 0.6 : -0.6), y - 1.3, 0.45); }
 }
 
-// ── Colline : calques d'arbres cisaillés par tranches de 96 px autour de la base du rang ; les rameaux d'hiver bougent avec.
+// ── Colline : seuls les calques de FEUILLAGE (`T*c`) ondulent, par tranches de 96 px : translation horizontale ∝ vent local
+// (déphasée par tranche) et cisaillement de 1,5 % autour de la base du rang ; les fûts et branches (`T*k`) restent plantés.
 const SLICE = 96;
-function drawHillTrees(ctx, canvas, env, S, baseY, factor, counter) {
+function drawHillCanopy(ctx, canvas, env, S, baseY, factor, counter) {
   const t = env.seconds;
   for (let x = 0; x < W; x += SLICE) {
-    const wind = windAt(x + SLICE / 2, t, env), s = Math.max(-0.12, Math.min(0.12, wind * factor * 0.05));
-    if (Math.abs(s) > 0.002) counter.tranchesVent++;
-    ctx.save(); ctx.setTransform(S, 0, 0, S, 0, 0); ctx.beginPath(); ctx.rect(x - 6, 0, SLICE + 12, H); ctx.clip(); ctx.transform(1, 0, s, 1, -s * baseY, 0); ctx.drawImage(canvas, 0, 0, W, H); ctx.restore();
+    const wind = windAt(x + SLICE / 2, t, env), osc = 0.75 + 0.25 * Math.sin(t * 2.9 + x * 0.05), dx = Math.max(-2, Math.min(2, wind * factor * 1.1 * osc)), s = Math.max(-0.03, Math.min(0.03, wind * factor * 0.015));
+    if (Math.abs(dx) > 0.02) counter.tranchesVent++;
+    ctx.save(); ctx.setTransform(S, 0, 0, S, 0, 0); ctx.beginPath(); ctx.rect(x - 6, 0, SLICE + 12, H); ctx.clip(); ctx.transform(1, 0, s, 1, -s * baseY + dx, 0); ctx.drawImage(canvas, 0, 0, W, H); ctx.restore();
   }
 }
 // Moulin : les ailes tournent avec le vent local (vitesse ∝ force, à-coups des rafales), figées par calme plat.
@@ -8003,7 +8064,7 @@ function paintMillSails(ctx, m, env) {
 //   premier plan) → mur du fond statique → vie du mur (découpe : au-dessus du premier plan) → premier plan (vrai peintre, bundle
 //   RUE) → étalonnage de nuit (feColorMatrix de grade.ts sur tout) → lumières (hors étalonnage, mêmes découpes).
 // Réglages d'URL lus avant tout (le plan et la météo en dépendent) : vent forcé, direction, mouvement réduit, colline garnie.
-{ const q = new URLSearchParams(location.search); if (q.has('vent')) PARAMS.vent = Math.max(0, Math.min(3, Number(q.get('vent')))); if (q.get('dir') === '-1') PARAMS.dir = -1; if (q.get('motion') === '0' || (matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) PARAMS.motion = 0; if (q.get('garni') === '0') PARAMS.garni = 0; }
+{ const q = new URLSearchParams(location.search); if (q.has('vent')) PARAMS.vent = Math.max(0, Math.min(3, Number(q.get('vent')))); if (q.get('dir') === '-1') PARAMS.dir = -1; if (q.get('motion') === '0' || (matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) PARAMS.motion = 0; if (q.get('garni') === '0') PARAMS.garni = 0; if (q.get('dense') === '0') PARAMS.dense = 0; }
 const CACHE = new Map();
 function cached(key, w, h, paint) {
   if (!CACHE.has(key)) { const c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d')); CACHE.set(key, c); if (CACHE.size > 40) CACHE.delete(CACHE.keys().next().value); }
@@ -8018,7 +8079,7 @@ const rueCanvas = (F, env, scale) => { F.rue ||= streetVerdure(F); return cached
 const avantCanvas = (seed, scale) => cached(`avant|${seed}|${scale}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); const plan = AVANT.cityPaintPlan(W, H, seed); for (let t = 0; t < AVANT.tileCount(W); t++) { ctx.save(); ctx.beginPath(); ctx.rect(t * 360, 0, 360, H); ctx.clip(); AVANT.paintCityTile(ctx, plan, t); ctx.restore(); } });
 // Fond statique (poses lentes : tranche de 10 min, date, météo).
 const meteoKey = (D) => `${D.meteo.snow ? 'n' : ''}${D.meteo.precip > 0 ? 'p' : ''}${D.meteo.wet ? 'w' : ''}${D.meteo.fog > 0.4 ? 'b' : ''}${D.meteo.thaw ? 't' : ''}`;
-const fondLayer = (F, env, scale, layer) => cached(`fond|${layer}|${F.seed}|${PARAMS.garni}|${scale}|${env.D.date}|${meteoKey(env.D)}|${bucket10(env.T)}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintFondStatic(ctx, F, { ...env, T: bucket10(env.T) }, layer); });
+const fondLayer = (F, env, scale, layer) => cached(`fond|${layer}|${F.seed}|${PARAMS.garni}${PARAMS.dense}|${W}|${scale}|${env.D.date}|${meteoKey(env.D)}|${bucket10(env.T)}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintFondStatic(ctx, F, { ...env, T: bucket10(env.T) }, layer); });
 const murCanvas = (F, env, scale) => cached(`mur|${F.seed}|${scale}|${env.D.date}|${meteoKey(env.D)}|${bucket10(env.T)}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintFarStatic(ctx, F, { ...env, T: bucket10(env.T) }); });
 
 // Étalonnage : feColorMatrix de grade.ts (gradeFor), appliqué par le filtre du canvas (url(#grade)).
@@ -8034,8 +8095,35 @@ const layer = (name, w, h) => { let c = LAYERS[name]; if (!c) { c = LAYERS[name]
 const newCounter = () => ({ vehicules: 0, fumees: 0, oiseaux: 0, fenetres: 0, drapeaux: 0, brume: 0, grue: 0, arbres: 0, pietons: 0, fontaine: 0, arbresVent: 0, tranchesVent: 0, particules: 0 });
 
 // Rend la scène corrigée (après) à l'instant T. view = { x0, y0, w, h, scale }. `avant` : décor actuel à la place (même ciel, même nuit).
+// Passe de comblement (`dense`) : la colline visible est rendue une fois à l'échelle 1 (été, sans vent) ; chaque fenêtre de
+// 12 × 8 px d'herbe nue d'un seul tenant reçoit un bouquet, un petit arbre, une haie ou des rochers (tirage par position),
+// ajouté au plan dans le calque de son rang ; puis les calques sont repeints. Déterministe (même graine → mêmes comblements).
+function ensureFillers(F) {
+  if (F.fillersDone || !PARAMS.dense) return; F.fillersDone = true;
+  const D = dayOf(ETE, 'soleil'), env = envAt(15, D), v0 = PARAMS.vent; PARAMS.vent = 0;
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const ctx = c.getContext('2d');
+  for (const l of FOND_LAYERS) ctx.drawImage(fondLayer(F, env, 1, l), 0, 0, W, H);
+  PARAMS.vent = v0;
+  const refs = [haze(GRASS, 0.35), haze(light(GRASS, 0.4), 0.3)], img = ctx.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+  for (let y = 0; y < Math.floor(F.ground); y++) for (let x = 0; x < W; x++) { if (y < F.crest(x) - 1 || y >= F.hillTop[x]) continue; const i = (y * W + x) * 4; if (refs.some((rc) => Math.abs(img[i] - rc[0]) <= 7 && Math.abs(img[i + 1] - rc[1]) <= 7 && Math.abs(img[i + 2] - rc[2]) <= 7)) mask[y * W + x] = 1; }
+  const S2 = new Int32Array((W + 1) * (H + 1)); for (let y = 1; y <= H; y++) for (let x = 1; x <= W; x++) S2[y * (W + 1) + x] = mask[(y - 1) * W + x - 1] + S2[(y - 1) * (W + 1) + x] + S2[y * (W + 1) + x - 1] - S2[(y - 1) * (W + 1) + x - 1];
+  const sum = (x, y, w, h) => S2[(y + h) * (W + 1) + x + w] - S2[y * (W + 1) + x + w] - S2[(y + h) * (W + 1) + x] + S2[y * (W + 1) + x];
+  const rng = rngOf(F.seed, 'comblement'), y0 = H * HILL_ROWS[0].y, y1 = H * HILL_ROWS[1].y; let n = 0;
+  for (let y = 0; y + 6 <= H; y += 2) for (let x = 0; x + 8 <= W; x += 2) {
+    if (sum(x, y, 8, 6) < 48) continue;
+    const cx = x + 4.5, cy = y + 6, row = cy < y0 + 2 ? -1 : cy < y1 + 2 ? 0 : 1, s = row < 0 ? 0.5 : HILL_ROWS[row + 1].s, hz = row < 0 ? 0.36 : HILL_ROWS[row + 1].haze, u = rng();
+    const item = u < 0.5 ? { kind: 'bouquet', x: cx - 1.5 * s, y: cy - 2.2 * s, r: (3.2 + rng() * 2) * s, s, hz } : u < 0.7 ? { kind: pick(['chestnut', 'cerisier', 'chene', 'poplar'], rng), x: cx, y: cy + 1, h: (9 + rng() * 5) * s * 1.4, s, hz } : u < 0.85 ? { kind: 'hedge', pts: Array.from({ length: 5 }, (_, k) => [x + 0.5 + k * 2.1, cy - 0.5 + Math.sin(k) * 0.4]), s, hz } : { kind: 'rocks', x: cx, y: cy, n: 2 + Math.floor(rng() * 2), seed: rng() * 100, s, hz };
+    (row < 0 ? F.crestVerdure : F.rowVerdure[row]).push(item); n++;
+    // La zone est comblée : on l'efface du masque (et des sommes) pour ne pas y revenir.
+    for (let yy = y; yy < y + 7; yy++) for (let xx = x - 4; xx < x + 13; xx++) if (xx >= 0 && xx < W) mask[yy * W + xx] = 0;
+    for (let yy = y + 1; yy <= Math.min(H, y + 8); yy++) for (let xx = 1; xx <= W; xx++) S2[yy * (W + 1) + xx] = mask[(yy - 1) * W + xx - 1] + S2[(yy - 1) * (W + 1) + xx] + S2[yy * (W + 1) + xx - 1] - S2[(yy - 1) * (W + 1) + xx - 1];
+    x += 8;
+  }
+  F.fillerCount = n;
+  for (const k of [...CACHE.keys()]) if (k.startsWith('fond|')) CACHE.delete(k);
+}
 function renderScene(ctx, seed, T, D, view, avant = false) {
-  const F = fondPlanOf(seed), env = envAt(T, D), S = view.scale, counter = newCounter(); F.animTrees = true;
+  const F = fondPlanOf(seed), env = envAt(T, D), S = view.scale, counter = newCounter(); F.animTrees = true; ensureFillers(F);
   const base = layer('base', W * S, H * S), b = base.getContext('2d');
   b.setTransform(1, 0, 0, 1, 0, 0); b.clearRect(0, 0, base.width, base.height); b.scale(S, S);
   paintSky(b, env);
@@ -8043,12 +8131,8 @@ function renderScene(ctx, seed, T, D, view, avant = false) {
   else {
     // Fond par calques : sol, puis pour chaque rang ses arbres (tranches cisaillées par le vent) et ses maisons.
     b.drawImage(fondLayer(F, env, S, 'sol'), 0, 0, W, H);
-    drawHillTrees(b, fondLayer(F, env, S, 'T0'), env, S, H * 0.24, 0.9, counter); b.setTransform(S, 0, 0, S, 0, 0);
-    b.drawImage(fondLayer(F, env, S, 'H0'), 0, 0, W, H);
-    drawHillTrees(b, fondLayer(F, env, S, 'T1'), env, S, H * HILL_ROWS[1].y, 1, counter); b.setTransform(S, 0, 0, S, 0, 0);
-    b.drawImage(fondLayer(F, env, S, 'H1'), 0, 0, W, H);
-    drawHillTrees(b, fondLayer(F, env, S, 'T2'), env, S, H * HILL_ROWS[2].y, 1.1, counter); b.setTransform(S, 0, 0, S, 0, 0);
-    b.drawImage(fondLayer(F, env, S, 'H2'), 0, 0, W, H);
+    const rows = [['T0k', 'T0c', H * 0.24, 0.9], ['Hc'], ['H0'], ['T1k', 'T1c', H * HILL_ROWS[1].y, 1], ['H1'], ['T2k', 'T2c', H * HILL_ROWS[2].y, 1.1], ['H2']];
+    for (const [lk, lc, baseY, factor] of rows) { b.drawImage(fondLayer(F, env, S, lk), 0, 0, W, H); if (lc) { drawHillCanopy(b, fondLayer(F, env, S, lc), env, S, baseY, factor, counter); b.setTransform(S, 0, 0, S, 0, 0); } }
     b.save(); b.clip(F.clipHill); for (const e of F.escapes) if (e.mill) paintMillSails(b, e.mill, env); b.restore();
     paintVieColline(b, F, env, counter);
     b.drawImage(murCanvas(F, env, S), 0, 0, W, H);
@@ -8119,11 +8203,6 @@ function renderCaptures() {
   const ids = [];
   const D15 = dayOf(ETE, 'soleil'), D23 = dayOf(AUT, 'soleil');
   // Audit : avant / après sur les graines 1, 7 et 42 (jour), puis la nuit sur la graine 7 (défaut 1 : fenêtres allumées sur les toits).
-  for (const seed of [1, 7, 42]) {
-    for (const [tag, avant] of [['avant', true], ['apres', false]]) {
-      const id = `${tag}-graine${seed}`; renderScene(canvasFor(id, W * 2, H * 2, `${id} — ${avant ? 'décor actuel' : 'fond corrigé (D1 à D6) et vie du fond'}, 7 juillet 15 h`), seed, 15 + 0.3 * MIN, D15, fullView(2), avant); ids.push(id);
-    }
-  }
   for (const [tag, avant] of [['avant', true], ['apres', false]]) { const id = `${tag}-graine7-nuit`; renderScene(canvasFor(id, W * 2, H * 2, `${id} — 27 octobre 23 h`), 7, 23 + 0.2 * MIN, D23, fullView(2), avant); ids.push(id); }
   // Moments (graine 7).
   for (const m of MOMENTS) { const D = dayOf(m.date, m.meteo); renderScene(canvasFor(m.id, W * 2, H * 2, `${m.id} — ${m.note}`), 7, m.T, D, fullView(2)); ids.push(m.id); }
@@ -8161,7 +8240,7 @@ function renderCaptures() {
   for (const z of zooms) { renderScene(canvasFor(z.id, z.view.w * z.view.scale, z.view.h * z.view.scale, `${z.id} — ${z.note}`), 7, z.T, z.D, z.view); ids.push(z.id); }
   // Séquence : la fumée naît au conduit (matin d'hiver, 6 h 40 + 0 / 2 / 5 / 9 s).
   const DH = dayOf(HIV, 'soleil'), sv = smokeView(F, 8.5, DH, 4);
-  [0, 2, 5, 9].forEach((s, i) => { const id = `fumee-seq-${i + 1}`; renderScene(canvasFor(id, sv.w * 4, sv.h * 4, `${id} — la fumée naît au conduit : 8 h 30 + ${s} s, 10 février (×4)`), 7, 8.5 + s * SEC, DH, sv); ids.push(id); });
+  [0, 2, 5, 9].forEach((s, i) => { const id = `seq-fumee-${i + 1}`; renderScene(canvasFor(id, sv.w * 4, sv.h * 4, `${id} — la fumée naît au conduit : 8 h 30 + ${s} s, 10 février (×4)`), 7, 8.5 + s * SEC, DH, sv); ids.push(id); });
   // Planche « une année » : même coin de rue et même coin de colline, une vignette par mois (le 15, 14 h, soleil ; janvier avec neige).
   {
     const id = 'annee-planche', vw = 300, vhR = 120, vhC = 90, vhM = 60, S = 2, cols = 4, cw = vw * S + 12, chh = (vhR + vhC + vhM) * S + 38;
@@ -8178,6 +8257,21 @@ function renderCaptures() {
   }
   // Avant / après de la colline garnie (même cadrage : l'échappée élargie), 7 juillet 15 h.
   { const view = escapeView(F, 0, 3); PARAMS.garni = 0; const F0 = fondPlanOf(7); renderScene(canvasFor('colline-avant', view.w * 3, view.h * 3, 'colline-avant — l’échappée avant ce retour (×3)'), 7, 15 + 0.3 * MIN, D15, view); ids.push('colline-avant'); PARAMS.garni = 1; renderScene(canvasFor('colline-apres', view.w * 3, view.h * 3, 'colline-apres — marché et lavoir, verger clos, ruisseau et bassin, sentiers, moulin, cabane, ruches, poulailler, pétanque, rochers (×3)'), 7, 15 + 0.3 * MIN, D15, view); ids.push('colline-apres'); void F0; }
+  // Côté gauche avant / après ce retour (x 0 → 500, échelle 1, rendu ×2), 7 juillet 15 h.
+  { const view = { x0: 0, y0: 0, w: 500, h: H, scale: 2 }; PARAMS.dense = 0; renderScene(canvasFor('gauche-avant', 1000, H * 2, 'gauche-avant — côté gauche avant ce retour'), 7, 15 + 0.3 * MIN, D15, view); ids.push('gauche-avant'); PARAMS.dense = 1; renderScene(canvasFor('gauche-apres', 1000, H * 2, 'gauche-apres — maisons étagées jusqu’à la crête, façades et jardins le long de la route et de la voie, bosquets serrés'), 7, 15 + 0.3 * MIN, D15, view); ids.push('gauche-apres'); }
+  // Chute des feuilles (1er octobre → 30 novembre) et débourrement (15 mars → 15 mai), une image tous les 6 jours, même arbre,
+  // même cadrage ; le contour du fût (boîte fixe du squelette) est tracé en pointillé sur chaque image : il ne bouge pas.
+  { const pv = pitView(F, 3); F.rue ||= streetVerdure(F); const tree = F.rue.find((v) => v.kind === 'pit' && !v.empty && !v.young && v.x > pv.x0 && v.x < pv.x0 + pv.w), m = rueModel(tree);
+    for (const [name, from, n] of [['seq-chute-feuilles', '2026-10-01', 11], ['seq-debourrement', '2027-03-15', 11]]) {
+      const frames = [];
+      for (let i = 0; i < n; i++) { const t = new Date(Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1, +from.slice(8, 10) + i * 6)), ds = t.toISOString().slice(0, 10), id = `${name}-${i + 1}`, ctx = canvasFor(id, pv.w * 3, pv.h * 3, `${id} — ${ds}`);
+        renderScene(ctx, 7, 14 + 0.2 * MIN, dayOf(ds, 'soleil'), pv); ctx.save(); ctx.setTransform(3, 0, 0, 3, -pv.x0 * 3, -pv.y0 * 3); ctx.setLineDash([1.2, 1.2]); ctx.strokeStyle = '#FF2060'; ctx.lineWidth = 0.6; ctx.strokeRect(m.trunkBox.x - 0.8, m.trunkBox.y, m.trunkBox.w + 1.6, m.trunkBox.h); ctx.beginPath(); ctx.moveTo(m.span[0], m.top - 2); ctx.lineTo(m.span[1], m.top - 2); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, 150, 16); ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.fillText(ds, 4, 12); ids.push(id); frames.push(ctx.canvas); }
+      // Planche : les n images côte à côte (deux lignes).
+      const cols = 6, cw = pv.w * 3, chh = pv.h * 3, pl = canvasFor(name + '-planche', cols * cw, 2 * chh, `${name}-planche — même squelette, le feuillage seul change (fût en pointillé rose)`);
+      frames.forEach((c, i) => pl.drawImage(c, (i % cols) * cw, Math.floor(i / cols) * chh)); ids.push(name + '-planche');
+    }
+  }
   // Séquences au vent (4-6 images à 0,4 s d'écart ; `seq-*` → GIF par capture.mjs) : pied d'arbre ×3 et échappée ×3.
   const SEQS = [
     { id: 'seq-vent-faible-ete', date: ETE, meteo: 'soleil', vent: 1, T: 15 + 0.3 * MIN, n: 5, note: 'vent faible d’été : frémissement des rehauts, rafale qui passe' },
@@ -8222,8 +8316,58 @@ function runAnimated(q) {
   };
   requestAnimationFrame(frame);
 }
+// ───────────── contrôles automatiques ─────────────
+// `?audit=vert&seed=7&w=1440` : part d'herbe nue visible (pixels de la couleur de l'herbe, au-dessus de tout ce qui est peint devant)
+// et fenêtres de 12 × 8 px entièrement nues (objectif : 0 fenêtre, < 10 %), été et hiver, échelle 1.
+function auditVert(seed) {
+  const out = {};
+  for (const [tag, date, meteo] of [['ete', ETE, 'soleil'], ['hiver', HIV, 'nuages']]) {
+    const D = dayOf(date, meteo), env = envAt(15, D), F = fondPlanOf(seed), c = document.createElement('canvas'); c.width = W; c.height = H; const ctx = c.getContext('2d');
+    PARAMS.vent = 0; renderScene(ctx, seed, 15, D, fullView(1)); PARAMS.vent = null;
+    // Couleurs de l'herbe nue : aplat et rehaut de crête (paintGround), étalonnées comme la scène (jour : identité).
+    const doy = D.doy, dry = sat((doy - 250) / 60) * (1 - sat((doy - 340) / 25)), cold = Math.max(sat((doy - 320) / 30), 1 - sat((doy - 60) / 40));
+    const g0 = mixRgb(mixRgb(light(GRASS, 0.2 * (1 - sat((doy - 100) / 60))), hexRgb('#B89040'), dry * 0.35), hexRgb('#9A9A80'), cold * 0.45);
+    const refs = [haze(g0, 0.35), haze(light(g0, 0.4), 0.3)], img = ctx.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+    let bare = 0, vis = 0;
+    for (let y = 0; y < Math.floor(F.ground); y++) for (let x = 0; x < W; x++) {
+      if (y < F.crest(x) - 1 || y >= F.hillTop[x]) continue; vis++;
+      const i = (y * W + x) * 4, p = [img[i], img[i + 1], img[i + 2]];
+      if (refs.some((rc) => Math.abs(p[0] - rc[0]) <= 7 && Math.abs(p[1] - rc[1]) <= 7 && Math.abs(p[2] - rc[2]) <= 7)) { mask[y * W + x] = 1; bare++; }
+    }
+    // Table des sommes pour compter les fenêtres 12 × 8 entièrement nues, et plus grand composant (BFS 4-connexe).
+    const S2 = new Int32Array((W + 1) * (H + 1)); for (let y = 1; y <= H; y++) for (let x = 1; x <= W; x++) S2[y * (W + 1) + x] = mask[(y - 1) * W + x - 1] + S2[(y - 1) * (W + 1) + x] + S2[y * (W + 1) + x - 1] - S2[(y - 1) * (W + 1) + x - 1];
+    let windows = 0, worst = null; const WW = 12, HH = 8;
+    for (let y = 0; y + HH <= H; y++) for (let x = 0; x + WW <= W; x++) { const n = S2[(y + HH) * (W + 1) + x + WW] - S2[y * (W + 1) + x + WW] - S2[(y + HH) * (W + 1) + x] + S2[y * (W + 1) + x]; if (n === WW * HH) { windows++; if (!worst) worst = [x, y]; } }
+    const seen = new Uint8Array(W * H); let big = { n: 0 };
+    for (let i0 = 0; i0 < W * H; i0++) { if (!mask[i0] || seen[i0]) continue; const st = [i0]; seen[i0] = 1; let n = 0, x0 = W, x1 = 0, y0 = H, y1 = 0; while (st.length) { const i = st.pop(), x = i % W, y = (i - x) / W; n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); for (const j of [i - 1, i + 1, i - W, i + W]) if (j >= 0 && j < W * H && mask[j] && !seen[j] && Math.abs((j % W) - x) <= 1) { seen[j] = 1; st.push(j); } } if (n > big.n) big = { n, box: `${x1 - x0 + 1}×${y1 - y0 + 1} à (${x0},${y0})` }; }
+    out[tag] = { seed, w: W, comblements: F.fillerCount, herbeNue: (100 * bare / Math.max(1, vis)).toFixed(1) + ' %', fenetres12x8: windows, premiere: worst, plusGrandeZone: big.box, pixels: big.n };
+  }
+  return out;
+}
+// `?audit=squelette&seed=7` : pour chaque arbre (rue et colline), sur 365 jours, boîte du fût et envergure identiques, et écart de
+// hauteur totale de la silhouette (fût + branches + touffes présentes) ≤ 1 px entre deux jours consécutifs.
+function auditSquelette(seed) {
+  const F = fondPlanOf(seed); F.rue ||= streetVerdure(F);
+  const trees = [];
+  for (const v of F.rue) if (v.kind === 'pit' && !v.empty) trees.push({ name: `rue@${Math.round(v.x)}`, m: rueModel(v), key: 'rue' + Math.round(v.x), sp: v.species });
+  for (const v of [...F.crestVerdure, ...F.rowVerdure.flat(), ...F.escapes.flatMap((e) => e.verdure)]) if (isTree(v) && v.kind !== 'cypress' && v.kind !== 'orchard') { const key = `${v.kind}-${Math.round(v.x ?? 0)}-${Math.round(v.y ?? 0)}`; if (v.kind === 'bouquet') trees.push({ name: `colline-bouquet@${Math.round(v.x)}`, m: treeModelOf('b' + key, 'bouquet', { x: v.x, y: v.y + v.r * 0.9 }, v.r * 0.55, v.r * 1.7, v.r > 3 ? 3 : 2, v.r * 0.34, 22), key: 'b' + key, sp: 'bouquet' }); else { const sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind), h = v.h, pop = v.kind === 'poplar'; trees.push({ name: `colline-${v.kind}@${Math.round(v.x)}`, m: treeModelOf(key, sp, { x: v.x, y: v.y }, h * (pop ? 0.18 : 0.3), h * (pop ? 0.82 : 0.7), 3, h * (pop ? 0.075 : 0.11), 26), key, sp }); } }
+  let maxJump = 0, worst = '', boxesOk = true;
+  for (const tr of trees) {
+    let prev = null; const box0 = JSON.stringify(tr.m.trunkBox), span0 = JSON.stringify(tr.m.span);
+    for (let doy = 0; doy < 365; doy++) {
+      const t = new Date(Date.UTC(2027, 0, 1 + doy)), D = dayOf(t.toISOString().slice(0, 10), 'soleil'), f = foliageOf(D, tr.key, tr.sp);
+      let top = tr.m.top + tr.m.rx * 0; top = Math.min(...tr.m.segs.map((sg) => sg.y1)); for (const tf of tr.m.tufts) { const st = tuftState(tf, f, D, tr.sp); if (st.size > 0) top = Math.min(top, tf.y - tf.rr * st.size); }
+      const hgt = tr.m.foot.y - top; if (prev !== null && Math.abs(hgt - prev) > maxJump) { maxJump = Math.abs(hgt - prev); worst = `${tr.name} jour ${doy}`; } prev = hgt;
+      if (JSON.stringify(tr.m.trunkBox) !== box0 || JSON.stringify(tr.m.span) !== span0) boxesOk = false;
+    }
+  }
+  return { arbres: trees.length, boitesIdentiques: boxesOk, sautMaxPx: Number(maxJump.toFixed(2)), pire: worst };
+}
 const Q = new URLSearchParams(location.search);
-if (Q.has('T')) { // débogage : ?T=18.5&seed=7&date=2026-10-27&meteo=soleil&view=x0,y0,w,h,scale&avant=1
+if (Q.has('w')) W = Number(Q.get('w'));
+if (Q.get('audit') === 'vert') { window.__audit = auditVert(Number(Q.get('seed') || 7)); window.__ids = []; window.__done = true; }
+else if (Q.get('audit') === 'squelette') { window.__audit = auditSquelette(Number(Q.get('seed') || 7)); window.__ids = []; window.__done = true; }
+else if (Q.has('T')) { // débogage : ?T=18.5&seed=7&date=2026-10-27&meteo=soleil&view=x0,y0,w,h,scale&avant=1
   const seed = Number(Q.get('seed') || 7), D = dayOf(Q.get('date') || AUT, Q.get('meteo') || 'soleil');
   const v = (Q.get('view') || `0,0,${W},${H},2`).split(',').map(Number); const view = { x0: v[0], y0: v[1], w: v[2], h: v[3], scale: v[4] };
   renderScene(canvasFor('dbg', view.w * view.scale, view.h * view.scale, 'dbg ' + fmtT(+Q.get('T'))), seed, +Q.get('T'), D, view, Q.has('avant')); window.__ids = ['dbg']; window.__done = true;
