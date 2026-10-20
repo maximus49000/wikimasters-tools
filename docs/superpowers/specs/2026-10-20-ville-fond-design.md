@@ -1,6 +1,6 @@
 # Ville Ghibli — le fond de la ville vivant (design)
 
-Date : 2026-10-20. Statut : **brouillon à valider** (audit fait, catalogue à choisir, maquette à faire avant le code).
+Date : 2026-10-20. Statut : **catalogue choisi par l'utilisateur, maquette Fable en cours** (validation avant tout code).
 
 Chantier 3 sur 3 de la refonte « naturelle et logique » de la scène Ville (1 : façades parisiennes, PR #342 ; 2 : vie au-dessus
 de la rue, PR #343-345). Les deux premiers chantiers avaient explicitement laissé le fond (mur du fond, colline) de côté.
@@ -65,16 +65,27 @@ doit donc se lire par la lumière, la fumée, le mouvement d'ensemble et la silh
 | H | **Linge aux fenêtres du fond** les jours secs, rentré avant la pluie et le soir. | Météo et heure. |
 | I | **Chantier ponctuel** : une grue sur la colline certaines semaines, flèche qui pivote en heures ouvrées. | Semaines tirées par (graine, année) ; arrêt le soir et le week-end. |
 
-Recommandation : A, C, E, F et G en premier. Ce sont celles qui se lisent le mieux à cette taille et qui changent le plus
-l'ambiance pour le coût le plus bas. B et H restent en option. D et I sont plus coûteux, à garder pour une deuxième passe.
+Ajouts proposés par Claude à la demande de l'utilisateur (« je te laisse proposer d'autres éléments ») :
+
+| Réf. | Proposition | Logique naturelle |
+|---|---|---|
+| J | **Funiculaire de la colline** (clin d'œil à Montmartre) : deux cabines qui se croisent à mi-pente, fenêtres éclairées la nuit. | Service de 6 h à 0 h 45, environ toutes les 5 min, plus espacé tard le soir ; arrêt en gare en haut et en bas. |
+| K | **Chapelets de réverbères** de la colline et de la route qui s'allument en vague au crépuscule et s'éteignent à l'aube. | Même seuil de lumière que les lampadaires de la rue, avec un léger décalage par quartier. |
+| L | **Heure pile** : la cloche de la tour fait s'envoler les pigeons du clocher, qui tournent une fois puis se reposent. | Heures de 8 h à 21 h seulement, sans réveil la nuit. |
+| M | **Brume au creux de la colline** les matins frais d'automne et d'hiver, qui se lève dans la matinée. | Saison, heure et humidité (météo). |
+| N | **Monuments illuminés** (tour, dôme) du crépuscule à 1 h ; drapeaux tricolores qui flottent sur les monuments les jours fériés nationaux, au vent. | Calendrier (`city/calendar.ts`) et vent. |
+| O | **Toits-terrasses de la colline** : parasols ouverts les après-midis d'été ensoleillés, plantes en pot. | Saison, météo et heure ; les parasols sont repliés le soir et sous la pluie. |
+
+**Choix de l'utilisateur (2026-10-20)** : tout le catalogue A à I est retenu, avec les ajouts J à O proposés à sa demande.
+Toutes les corrections de l'audit (§2) sont retenues. **Une seule maquette Fable** couvre les corrections et la vie du fond ;
+elle est validée avant tout code.
 
 ## 4. Étapes
 
-1. Choix du catalogue par l'utilisateur (§3) et validation des corrections de l'audit (§2).
+1. ~~Choix du catalogue (§3) et des corrections de l'audit (§2)~~ : fait le 2026-10-20.
 2. Maquette par Fable (règle du projet pour les visuels) : fond corrigé, puis la vie retenue, de jour, au crépuscule, la nuit,
    en hiver et en automne. La validation par l'utilisateur se fait avant le code.
-3. Plan d'implémentation, puis code, au plus deux PR : corrections de l'audit d'abord (elles se voient tout de suite), vie du
-   fond ensuite.
+3. Plan d'implémentation, puis code : corrections de l'audit d'abord, vie du fond ensuite (découpage en PR fixé dans le plan).
 4. Captures au banc comparées à la maquette, puis fusion et `npm run preprod`.
 
 ## 5. Hors périmètre
