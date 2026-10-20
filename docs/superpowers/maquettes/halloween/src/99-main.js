@@ -41,4 +41,4 @@ if (Q.has('T')) { // débogage : ?T=18.98&date=2026-10-24&view=x0,y0,w,h,scale
   const D = dayContext(Q.get('date') || '2026-10-24');
   const v = (Q.get('view') || '0,0,900,400,2').split(',').map(Number); const view = { x0: v[0], y0: v[1], w: v[2], h: v[3], scale: v[4] };
   renderScene(canvasFor('dbg', view.w * view.scale, view.h * view.scale, 'dbg ' + fmtT(+Q.get('T'))), +Q.get('T'), D, view); window.__ids = ['dbg']; window.__done = true;
-} else if (Q.has('h')) runAnimated(Q); else renderCaptures();
+} else if (Q.has('h')) runAnimated(Q); else if (Q.has('nuit')) renderN31Captures(); else renderCaptures();

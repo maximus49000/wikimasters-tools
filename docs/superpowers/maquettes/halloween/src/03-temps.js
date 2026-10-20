@@ -1,16 +1,17 @@
 // ───────────── temps, soleil, ambiance ─────────────
 // Lever / coucher à Paris (heure locale, DST comprise), par mois.
 const SUNS = [[8.7, 17.3], [8.1, 18.2], [7.2, 19.0], [7.1, 20.7], [6.3, 21.4], [5.8, 21.9], [6.1, 21.8], [6.8, 21.1], [7.5, 20.1], [8.2, 19.0], [8.0, 17.3], [8.6, 16.9]];
-function dayness(T, month) { const [sr, ss] = SUNS[month - 1]; const a = sat((T - (sr - 0.7)) / 1.3), b = 1 - sat((T - (ss - 0.5)) / 1.1); return Math.min(a, b); }
+// Après le passage à l'heure d'hiver (dernier dimanche d'octobre), le soleil se couche vers 17 h 22 à Paris.
+function dayness(T, month, date) { const [sr, ss] = month === 10 && date >= '2026-10-25' ? [7.35, 17.37] : SUNS[month - 1]; const a = sat((T - (sr - 0.7)) / 1.3), b = 1 - sat((T - (ss - 0.5)) / 1.1); return Math.min(a, b); }
 // D = contexte du jour : { date, month, weekday (0 dim..6 sam), weekend, event, couvreur }
 function dayContext(dateStr, event) {
   const d = new Date(dateStr + 'T12:00:00');
   const month = d.getMonth() + 1, weekday = d.getDay(), md = dateStr.slice(5);
   const ev = event || (md === '07-14' ? 'feux' : md === '12-31' ? 'nouvel-an' : md === '06-21' ? 'musique' : null);
-  return { date: dateStr, month, weekday, weekend: weekday === 0 || weekday === 6, event: ev, decembre: month === 12, winter: month <= 3 || month >= 11, couvreur: weekday === 2 || weekday === 4 };
+  return { date: dateStr, rain: ev === 'pluie', month, weekday, weekend: weekday === 0 || weekday === 6, event: ev, decembre: month === 12, winter: month <= 3 || month >= 11, couvreur: weekday === 2 || weekday === 4 };
 }
 function setEnvAt(T, D) {
-  const dn = dayness(T, D.month), tw = 4 * dn * (1 - dn);
+  const dn = dayness(T, D.month, D.date), tw = 4 * dn * (1 - dn);
   ENV = { dark: 0.64 * (1 - dn), tint: mix(NIGHT, DUSK, tw * 0.9), hour: T, T, litFrac: litFraction(T) * (dn < 0.7 ? 1 : 0), dayness: dn, twilight: tw, month: D.month, D };
 }
 const isNight = () => ENV.dark > 0.2;
