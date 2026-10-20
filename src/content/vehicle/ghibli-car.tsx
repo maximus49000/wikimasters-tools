@@ -1,5 +1,5 @@
 // src/content/vehicle/ghibli-car.tsx
-import { useRef, type ReactElement } from 'react';
+import { useId, useRef, type ReactElement } from 'react';
 import { anchorsOf } from '../../core/library/figure/bake';
 import { shapeOf, signatureOf } from '../../core/library/figure/dress';
 import type { ArmPose, Gait } from '../../core/library/figure/skeleton';
@@ -63,6 +63,7 @@ type GhibliCarProps = {
 export function GhibliCar({ look, dir, sky, rainy, lights, still = false, roll, paintNow = false, occupied = true, blink = false }: GhibliCarProps): ReactElement {
   const reg = useCarRegistry();
   const root = useRef<SVGGElement | null>(null);
+  const beamId = `beam${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const art = look.art;
   const { day, night } = litOf(sky);
   const lit: Lit = { day, night, dir };
@@ -161,16 +162,54 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false, roll, 
         </rect>
       ))}
       {art.head.round && <circle cx={n2(head.x)} cy={n2(head.y)} r={1.3} fill={lights ? '#FFF2C0' : t('#E8E2D0')} stroke={t('#33241f')} strokeWidth={0.6} />}
-      {lights && (
-        <g data-headlight="">
-          <circle cx={n2(head.x)} cy={n2(head.y)} r={4} fill="#FFECAA" opacity={0.35} />
-          <path d={`M${n2(head.x)} ${n2(head.y)} L${n2(head.x + 22 * dir)} ${n2(head.y + 5)} L${n2(head.x + 22 * dir)} ${n2(head.y - 5)}Z`} fill="#FFE9A0" opacity={0.22} />
-        </g>
-      )}
+      {lights && <Headlight id={beamId} x={head.x} y={head.y} dir={dir} rainy={rainy} tail={tail} />}
       <g data-brake="" opacity={0}>
         <circle cx={n2(tail.x)} cy={n2(tail.y)} r={2.4} fill="#FF3C28" opacity={0.3} />
         <circle cx={n2(tail.x)} cy={n2(tail.y)} r={1.1} fill="#FF3B2F" />
       </g>
+    </g>
+  );
+}
+
+// Phares de croisement la nuit (repère du véhicule, sol à y = 0) : lueur douce autour de l'optique (cœur blanc, halo chaud qui
+// s'éteint en dégradé, pas de disque net), faisceau abaissé qui s'ouvre vers la chaussée et s'estompe sur sa longueur (bord
+// haut presque à l'horizontale, bord bas qui touche le sol), tache de lumière allongée sur la chaussée devant la voiture.
+// Sous la pluie, l'air chargé de gouttes rend le faisceau plus visible et la chaussée mouillée renvoie une tache plus vive.
+// Feux de position arrière : petite lueur rouge.
+const BEAM_LEN = 30;
+function Headlight({ id, x, y, dir, rainy, tail }: { id: string; x: number; y: number; dir: 1 | -1; rainy: boolean; tail: { x: number; y: number } }): ReactElement {
+  const tip = x + BEAM_LEN * dir;
+  const ground = -0.2;
+  const touch = x + Math.min(BEAM_LEN * 0.55, Math.max(6, -y * 2.2)) * dir; // le bord bas du faisceau rejoint le sol
+  const beam = `M${n2(x)} ${n2(y - 0.7)} L${n2(tip)} ${n2(y + 1.6)} L${n2(tip)} ${n2(ground)} L${n2(touch)} ${n2(ground)} L${n2(x)} ${n2(y + 0.7)}Z`;
+  const pool = x + BEAM_LEN * 0.6 * dir;
+  return (
+    <g data-headlight="">
+      <defs>
+        <linearGradient id={`${id}-b`} gradientUnits="userSpaceOnUse" x1={n2(x)} y1={0} x2={n2(tip)} y2={0}>
+          <stop offset={0} stopColor="#FFF4D0" stopOpacity={rainy ? 0.42 : 0.26} />
+          <stop offset={0.35} stopColor="#FFE9B0" stopOpacity={rainy ? 0.2 : 0.11} />
+          <stop offset={1} stopColor="#FFE2A0" stopOpacity={0} />
+        </linearGradient>
+        <radialGradient id={`${id}-g`}>
+          <stop offset={0} stopColor="#FFFFFF" stopOpacity={0.95} />
+          <stop offset={0.18} stopColor="#FFF2C8" stopOpacity={0.7} />
+          <stop offset={0.5} stopColor="#FFDE98" stopOpacity={0.22} />
+          <stop offset={1} stopColor="#FFD580" stopOpacity={0} />
+        </radialGradient>
+        <radialGradient id={`${id}-p`}>
+          <stop offset={0} stopColor="#FFEFC4" stopOpacity={rainy ? 0.38 : 0.2} />
+          <stop offset={1} stopColor="#FFEFC4" stopOpacity={0} />
+        </radialGradient>
+        <radialGradient id={`${id}-t`}>
+          <stop offset={0} stopColor="#FF5A3C" stopOpacity={0.6} />
+          <stop offset={1} stopColor="#FF3B2F" stopOpacity={0} />
+        </radialGradient>
+      </defs>
+      <ellipse cx={n2(pool)} cy={n2(ground)} rx={BEAM_LEN * 0.55} ry={1.4} fill={`url(#${id}-p)`} />
+      <path d={beam} fill={`url(#${id}-b)`} />
+      <circle cx={n2(x)} cy={n2(y)} r={rainy ? 5.5 : 4.2} fill={`url(#${id}-g)`} />
+      <circle cx={n2(tail.x)} cy={n2(tail.y)} r={2.6} fill={`url(#${id}-t)`} />
     </g>
   );
 }

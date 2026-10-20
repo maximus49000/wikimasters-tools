@@ -292,7 +292,14 @@ describe('pluie naturelle — canvas dans la scène', () => {
     // Ville : bords qui gouttent (au plus 40), caniveau à la bordure, lampadaires allumés la nuit seulement
     const city = rainWorldFor('city', 720, 216, 1);
     expect(city.drips.length).toBeGreaterThan(0);
-    expect(city.drips.length).toBeLessThanOrEqual(40);
+    expect(city.drips.filter((d) => d.kind !== 'gouttiere').length).toBeLessThanOrEqual(40);
+    // descentes de gouttière peintes : l'eau sort à leur pied, sur le trottoir ; dessus des bandeaux des boutiques en rebords
+    const pipes = city.drips.filter((d) => d.kind === 'gouttiere');
+    expect(pipes.length).toBeGreaterThan(0);
+    expect(pipes.length).toBeLessThanOrEqual(10);
+    for (const d of pipes) expect(d.y).toBeLessThan(city.groundTop + 0.01);
+    expect(city.ledges?.length ?? 0).toBeGreaterThan(0);
+    expect(rainWorldFor('countryside', 720, 216, 1).ledges ?? []).toHaveLength(0);
     expect(city.drips.every((d) => d.x >= 0 && d.x <= 720 && d.y >= 0 && d.y < city.groundTop)).toBe(true);
     expect(new Set(city.drips.map((d) => d.kind)).size).toBeGreaterThan(1);
     // tailles ramenées au monde de l'app (≈ 0,55 à 340 de haut), vitesses à la même durée de traversée (hauteur / 460)

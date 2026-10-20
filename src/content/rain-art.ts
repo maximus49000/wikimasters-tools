@@ -8,7 +8,7 @@
 import { hexRgb, mixRgb, rgba, type Rgb } from '../core/library/paint/color';
 import { mulberry32 } from '../core/library/scene-world';
 import type { GlassSim, GlassTrailPoint, Pane } from '../core/library/weather/glass-rain';
-import { gust, LAYERS, type RainEnv, type RainSim, type RainWorld } from '../core/library/weather/rain-drops';
+import { gust, LAYERS, type RainCar, type RainEnv, type RainSim, type RainWorld } from '../core/library/weather/rain-drops';
 
 export type RainLight = { x: number; y: number; w: number; color: string; k: number }; // lampadaire (w ≤ 10) ou vitrine
 export type LightField = {
@@ -228,7 +228,7 @@ function cachesOf(ctx: CanvasRenderingContext2D): Caches {
 export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: RainWorld, env: RainEnv, field: LightField): void {
   const P = clamp01(env.precip);
   const daylight = clamp01(env.daylight);
-  if (P <= 0 && sim.drops.length === 0 && sim.drips.length === 0) return;
+  if (P <= 0 && sim.drops.length === 0 && sim.drips.length === 0 && sim.sprays.length === 0 && sim.splashes.length === 0) return;
   const night = 1 - daylight;
   const nb = nightStep(daylight);
   const baseStr = tone('base', nb);
@@ -319,14 +319,35 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
       const a = alphaAt(field, daylight, pt.x, pt.y, DRIP_A) * pearl;
       ctx.fillStyle = baseStr; ctx.globalAlpha = a;
       ctx.beginPath(); ctx.ellipse(pt.x, pt.y + r * 0.6, r * 0.8, r, 0, 0, TAU); ctx.fill();
-      // la gouttière coule en filet au-delà de P = 0,55
-      if (pt.kind === 'gouttiere' && P > 0.55) {
-        ctx.strokeStyle = baseStr; ctx.globalAlpha = a * 0.6 * (P - 0.55) / 0.45; ctx.lineWidth = 1.4;
-        ctx.beginPath(); ctx.moveTo(pt.x, pt.y);
-        for (let y = pt.y; y < world.groundTop; y += 6) ctx.lineTo(pt.x + Math.sin(y * 0.4 + env.t * 9) * 1.2, y + 6);
-        ctx.stroke();
+      // pied d'une descente de gouttière : dès P = 0,15, l'eau jaillit du dauphin en un filet courbe qui grossit avec l'averse
+      if (pt.kind === 'gouttiere' && P > 0.15) {
+        const f = clamp01((P - 0.15) / 0.4);
+        const reach = (3 + 7 * P) * K, drop = (4 + 3 * P) * K, wob = Math.sin(env.t * 11 + i) * 0.4 * K;
+        ctx.strokeStyle = baseStr; ctx.globalAlpha = Math.min(1, alphaAt(field, daylight, pt.x, pt.y, 0.42) * f); ctx.lineWidth = (0.6 + 0.8 * P) * Math.sqrt(K);
+        ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.quadraticCurveTo(pt.x + reach * 0.8, pt.y, pt.x + reach + wob, pt.y + drop); ctx.stroke();
       }
     }
+  }
+  // gouttes écrasées sur les rebords et les toits des voitures (par-dessus les acteurs)
+  for (const s of sim.splashes) {
+    if (!s.top) continue;
+    const u = s.age / 0.3;
+    const a = Math.min(1, alphaAt(field, daylight, s.x, s.y, 0.8) * (1 - u));
+    if (a <= 0) continue;
+    RINGS.push(a * 0.7, 0, s.x, s.y, (1 + u * 5) * s.k, (0.3 + u * 1.2) * s.k);
+    for (const p of s.parts) DOTS.push(a, 0, p.x, p.y, 0.8 * s.k, 0);
+  }
+  const topStr = night > 0.3 ? tone('bouillon', nb) : baseStr;
+  RINGS.flush(ctx, topStr, () => 0.7, 'ring');
+  DOTS.flush(ctx, topStr, () => 1, 'dot');
+  // gerbes des roues : gouttelettes (points) et nuée fine (larges taches pâles), qui s'éteignent avec l'âge
+  if (sim.sprays.length > 0) {
+    for (const p of sim.sprays) {
+      const u = p.age / p.life;
+      const a = alphaAt(field, daylight, p.x, p.y, p.mist ? 0.16 : 0.6) * (1 - u) * (p.mist ? Math.min(1, u * 4) : 1);
+      if (a > 0.01) DOTS.push(a, 0, p.x, p.y, p.r * (p.mist ? 1 + u : 1), 0);
+    }
+    DOTS.flush(ctx, tone('ripple', nb), () => 1, 'dot');
   }
   // brume de pluie : voile clair qui s'épaissit avec l'averse (jour) ; de nuit, voile bleuté léger
   if (P > 0) { ctx.fillStyle = tone('brume', nb); ctx.globalAlpha = P * (0.1 + 0.06 * night); ctx.fillRect(0, 0, world.width, world.height); }
@@ -337,7 +358,7 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
 const REFLECT_RNG: Float32Array = (() => { const g = mulberry32(11), a = new Float32Array(4096); for (let i = 0; i < a.length; i++) a[i] = g(); return a; })();
 
 /** Sol mouillé : reflets des lumières, éclaboussures, anneaux dans les flaques, lame du caniveau. */
-export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, world: RainWorld, env: RainEnv & { wet?: number }, field: LightField): void {
+export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, world: RainWorld, env: RainEnv & { wet?: number }, field: LightField, cars: readonly RainCar[] = []): void {
   const P = clamp01(env.precip);
   const daylight = clamp01(env.daylight);
   const wet = env.wet === undefined ? Math.min(1, P * 4) : clamp01(env.wet);
@@ -366,16 +387,46 @@ export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, worl
       }
     }
   }
-  // éclaboussures : couronne (anneau qui s'ouvre) + gouttelettes ; regroupées par alpha (une couronne/des points par groupe)
+  // reflets des feux des véhicules sur la chaussée mouillée (nuit) : phares jaunes, feux arrière rouges, rompus par les rides
+  if (wet > 0.05 && night > 0.25 && cars.length > 0) {
+    const K = worldScale(world);
+    let ri = 97;
+    const rr = (): number => REFLECT_RNG[ri++ & (REFLECT_RNG.length - 1)]!;
+    const glow = wet * clamp01((night - 0.25) / 0.35);
+    for (const c of cars) {
+      if (!c.lit) continue;
+      const kf = c.far ? 0.6 : 1;
+      for (const [L, color, k] of [[c.head, '#FFE7A8', 0.55], [c.tail, '#FF4A3A', 0.4]] as const) {
+        const len = 34 * K * kf, ww0 = 2.4 * K * kf;
+        ctx.fillStyle = color;
+        for (let y = c.y + 1; y < c.y + 1 + len; y += (1.5 + rr() * 2.5) * Math.sqrt(K)) {
+          const u = (y - c.y - 1) / len;
+          if (rr() < 0.3) continue;
+          const ww = ww0 * (0.6 + 0.6 * rr()) * (1 + u * 0.8);
+          ctx.globalAlpha = Math.min(1, glow * k * (1 - u) * (1 - u) * (0.6 + rr() * 0.6));
+          ctx.fillRect(L.x - ww + (rr() - 0.5) * 2 * K, y, ww * 2, 1.2 * Math.sqrt(K));
+        }
+      }
+      // faisceau des phares sur l'eau, devant la voiture : nappe claire allongée
+      const bx = c.head.x + c.dir * 18 * K * kf;
+      ctx.globalAlpha = Math.min(1, glow * 0.18);
+      ctx.fillStyle = '#FFF2CC';
+      ctx.beginPath(); ctx.ellipse(bx, c.y + 1.5 * K, 22 * K * kf, 2.2 * K * kf, 0, 0, TAU); ctx.fill();
+    }
+  }
+  // éclaboussures : couronne (anneau qui s'ouvre) + gouttelettes ; regroupées par alpha (une couronne/des points par groupe).
+  // La nuit, d'un ton plus clair (le sol mouillé renvoie la lumière : sans lui elles se perdaient dans l'ombre).
   for (const s of sim.splashes) {
+    if (s.top) continue;
     const u = s.age / 0.3;
     const a = Math.min(1, groundAlphaAt(field, daylight, s.x, s.y, 0.85) * (1 - u));
     if (a <= 0) continue;
     RINGS.push(a * 0.8, 0, s.x, s.y, (1 + u * 7) * s.k, (0.4 + u * 2) * s.k);
     for (const p of s.parts) DOTS.push(a, 0, p.x, p.y, 0.9 * s.k, 0);
   }
-  RINGS.flush(ctx, baseStr, () => 0.8, 'ring');
-  DOTS.flush(ctx, baseStr, () => 1, 'dot');
+  const splashStr = night > 0.3 ? tone('bouillon', nb) : baseStr;
+  RINGS.flush(ctx, splashStr, () => 0.8 + 0.4 * night, 'ring');
+  DOTS.flush(ctx, splashStr, () => 1, 'dot');
   // anneaux dans les flaques
   const K = worldScale(world);
   for (const rp of sim.ripples) {
