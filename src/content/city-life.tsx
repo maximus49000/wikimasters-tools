@@ -67,6 +67,9 @@ import { useSceneLife, type SceneLife } from './use-scene-life';
 import { WindowLifeLayer } from './window-life';
 import { RoofLifeLayer } from './roof-life-layer';
 import { HalloweenLayer } from './halloween-layer';
+import { HalloweenNightLayer, nightHalls } from './halloween-night-layer';
+import { halloweenNight, isHalloweenNight, type NightPlan } from '../core/library/city/halloween-night';
+import { halloweenDoorIds } from '../core/library/city/install';
 
 // Vie de la scène Ville : passants, habitants qui sortent de leur immeuble ou y rentrent, deux files de circulation,
 // les événements de la ville (vague 1b-i), les clients des commerces et l'équipe d'un chantier (vague 1b-iv-a,
@@ -427,6 +430,23 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Vie des logements (même objet que celui du calque des fenêtres de CityScene : cache partagé de use-scene-life) : vie
   // derrière les fenêtres, Ghibli seulement. Déménagement : un local de la rue change de commerce aujourd'hui.
   const life = useSceneLife(facades, city, seed, shops.street.some((s) => s.change !== null));
+  // Nuit d'Halloween (Ghibli) : plan de la soirée du 31 (city/halloween-night.ts) ; entrées décorées et immeubles à citrouille.
+  const nightDay = city.day.date;
+  const nightPlan = useMemo<NightPlan | null>(() => {
+    if (!ghibli || !isHalloweenNight(nightDay) || doors.length === 0) return null;
+    const decorated = halloweenDoorIds(nightDay, 17 * 60, width, height, seed);
+    const pumpkins = new Set<string>();
+    for (const it of life?.halloween?.items ?? []) {
+      if (it.kind !== 'pumpkin') continue;
+      const dx = life!.byFacadeHome.get(it.dwelling)?.doorX;
+      if (dx === null || dx === undefined) continue;
+      const d = doors.reduce((a, b) => (Math.abs(b.x + DOOR_WIDTH / 2 - dx) < Math.abs(a.x + DOOR_WIDTH / 2 - dx) ? b : a));
+      if (Math.abs(d.x + DOOR_WIDTH / 2 - dx) < 3 * DOOR_WIDTH) pumpkins.add(d.id);
+    }
+    return halloweenNight(nightDay, { doors, decorated, pumpkins, width, unit: metrics.unit }, seed, city.precip >= 0.2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghibli, nightDay.y, nightDay.m, nightDay.d, doors, width, height, seed, metrics.unit, life, city.precip >= 0.2]);
+  const nightHallBuf = useRef<Map<number, number>>(new Map());
   // Ciel de mauvais temps (RoomView : précipitations 0,1 par temps couvert, 0,7 sous la pluie) : on allume en plein jour.
   const gloom = city.precip > 0 || city.storm;
   // Bouts de trajet des clients : les entrées d'immeubles (centres), comme les habitants.
@@ -500,6 +520,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   };
   // Minute de la scène (fractionnaire) à l'instant mural s, dans le repère de l'horloge de la scène (retours accrochés).
   const sceneMinuteAt = (s: number): number => (sceneClock.current ? sceneClock.current.m + (s - sceneClock.current.base) / 60 : city.minutes);
+  // Seconde de la journée de la scène à l'instant mural s.
+  const sceneSecondsAt = (s: number): number => sceneMinuteAt(s) * 60;
 
   // Terrasses : météo de la minute et des 10 précédentes (hystérésis du moteur).
   const terraceSky = useTerraceWeather(weather, rainy, city.minutes);
@@ -874,6 +896,15 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         // Clients des commerces hors scène G4b (ceux de la scène : placeScene).
         warmCustomers(nodes, shopVisits, gates, width, metrics, t, figures, customerWarm, muted, visitLock.current);
       }
+      // Nuit d'Halloween : on sonne, l'habitant descend ouvrir ; le hall s'allume (même minuterie que les habitants).
+      if (nightPlan && !still) {
+        const s = sceneSecondsAt(t);
+        for (const [x, until] of nightHalls(nightPlan, s, nightHallBuf.current)) {
+          const wall = t + (until - s);
+          if ((hallUntil.current.get(x) ?? -Infinity) < wall) hallUntil.current.set(x, wall);
+          if ((stairUntil.current.get(x) ?? -Infinity) < wall) stairUntil.current.set(x, wall);
+        }
+      }
       // Halls : allumés tant que la minuterie court et qu'il fait sombre ; n'écrire qu'à la bascule (allumage franc, extinction douce).
       for (const [x, node] of hallNodes) {
         const on = hallLit(hallUntil.current, x, t, hallDark);
@@ -946,7 +977,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, guises, sceneShops, traffic, litLamps, hallDark, stairs, dodgeZones, life]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, guises, sceneShops, traffic, litLamps, hallDark, stairs, dodgeZones, life, nightPlan]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -1207,6 +1238,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         })}
         {of((e) => e.layer === 'sidewalk').map(eventNode)}
         {/* Foule du défilé du 14 juillet : au bord du trottoir, derrière les barrières (posées sur la chaussée) et les équipes. */}
+        {nightPlan && <HalloweenNightLayer plan={nightPlan} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} minutes={city.minutes} sceneS={sceneSecondsAt} frozenT={frozen.current!} />}
         <ParadeCrowd width={width} seed={seed} sky={sky} still={still} rainy={rainy} dayFests={dayFests} minutes={city.minutes} metrics={metrics} doorXs={doorXs} ghibli={ghibli} />
         {/* Scène, équipes à l'échelle et porteurs : devant les passants (un passant passe toujours derrière une équipe). */}
         <InstallLayer {...install} part="crew" />
