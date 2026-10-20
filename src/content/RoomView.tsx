@@ -268,6 +268,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     return rainLightsRef.current.lights;
   }, [weatherOn, room.scene, room.id, width, wallH, view.minutes, view.sky.daylight, forcedNight, shopViews, shopFrames]);
   const glasses = useMemo(() => windows.map((w) => glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }))), [room.layout]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Pluie de la vue pièce : animée et dessinée dans l'englobant de TOUTES les vitres seulement (stable pendant un glissé).
+  const rainClip = useMemo(() => boundingRect(glasses), [glasses]);
   // Occulteurs et lampes allumées du calque de lumière ; la signature change quand l'un d'eux bouge ou s'allume.
   // HEIGHT est une constante : seuls le layout et wallH font varier la géométrie.
   const lightGeom = { wallH, floorH: HEIGHT - wallH };
@@ -854,7 +856,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
           </g>
           {/* Météo : deux groupes (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. Sans météo, les acteurs seuls. */}
           {weatherOn && view.weather ? (
-            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} gloom={gloom} between={actors} rainLights={rainLights} rainSoft={!outside} />
+            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} gloom={gloom} between={actors} rainLights={rainLights} rainSoft={!outside} rainClip={outside ? null : rainClip} />
           ) : (
             actors
           )}

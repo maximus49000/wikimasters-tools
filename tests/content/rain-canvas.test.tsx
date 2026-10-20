@@ -126,6 +126,24 @@ describe('pluie naturelle — canvas dans la scène', () => {
     expect(air).toBeGreaterThan(sky.findIndex((k) => k.matches('[data-wx="fog"]')));
   });
 
+  it('vue pièce : pluie « air » et « sol » bornées à l’englobant des vitres (vue rue : tout le monde)', () => {
+    const box = (sel: string) => { const f = container.querySelector(sel)!; return ['x', 'y', 'width', 'height'].map((a) => Number(f.getAttribute(a))); };
+    showRoom({ outside: true });
+    const full = box('[data-rain-canvas="air"]');
+    showRoom();
+    const glass = box('[data-rain-canvas="glass"]');
+    const air = box('[data-rain-canvas="air"]');
+    expect(air[2]).toBeLessThan(full[2]!);
+    // l'air couvre l'englobant des vitres (à l'arrondi près), pas plus
+    expect(air[0]).toBeLessThanOrEqual(glass[0]!);
+    expect(air[0]! + air[2]!).toBeGreaterThanOrEqual(glass[0]! + glass[2]! - 1);
+    expect(air[0]).toBeGreaterThanOrEqual(glass[0]! - 1);
+    expect(air[0]! + air[2]!).toBeLessThanOrEqual(glass[0]! + glass[2]! + 1);
+    const ground = box('[data-rain-canvas="ground"]');
+    expect(ground[0]).toBe(air[0]);
+    expect(ground[2]).toBe(air[2]);
+  });
+
   it('vue pièce : canvas vitre avant les châssis et les meubles', () => {
     showRoom();
     const glass = container.querySelector('[data-rain-canvas="glass"]');

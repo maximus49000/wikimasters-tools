@@ -18,6 +18,10 @@ export type LightField = {
   rgbAt?(x: number, y: number, out: number[]): void;
   /** Sources connues (reflets au sol, halos). */
   lights?: readonly RainLight[];
+  /** Mêmes valeurs lues dans une grille précalculée (nœuds tous les 8 px, interpolation bilinéaire) : les lumières ne changent
+   *  qu'à la minute, alors que chaque goutte en demandait une à chaque image (O(gouttes × sources), premier poste du profil). */
+  lightFast?(x: number, y: number): number;
+  rgbFast?(x: number, y: number, out: number[]): void;
 };
 export type FogMask = {
   erase(trail: readonly { x: number; y: number; r: number }[]): void;
@@ -83,7 +87,10 @@ function contrib(l: Src, x: number, y: number): number {
   return f * l.k;
 }
 
-export function makeLightField(lights: readonly RainLight[], sky: { top: string; bottom: string }, height: number): LightField {
+const GRID = 8; // pas de la grille de lumière (px de scène)
+
+/** Champ de lumière. Avec `width`, une grille paresseuse (nœud calculé à sa première lecture) sert `lightFast` / `rgbFast`. */
+export function makeLightField(lights: readonly RainLight[], sky: { top: string; bottom: string }, height: number, width?: number): LightField {
   const srcs: Src[] = lights.map((l) => ({ ...l, rgb: hexRgb(l.color), lamp: l.w <= 10 }));
   const top = hexRgb(sky.top), bottom = hexRgb(sky.bottom);
   const h = height > 0 ? height : 1;
@@ -95,23 +102,54 @@ export function makeLightField(lights: readonly RainLight[], sky: { top: string;
       if (w > 0.01) mixInto(out, out, l.rgb, Math.min(1, w));
     }
   };
-  return {
+  const lightAt = (x: number, y: number): number => {
+    let f = 0;
+    for (const l of srcs) f += contrib(l, x, y);
+    return f;
+  };
+  const field: LightField = {
     lights,
-    lightAt: (x, y) => {
-      let f = 0;
-      for (const l of srcs) f += contrib(l, x, y);
-      return f;
-    },
+    lightAt,
     rgbAt,
     colorAt: (x, y) => {
       rgbAt(x, y, scratch);
       return `rgba(${Math.round(scratch[0]!)},${Math.round(scratch[1]!)},${Math.round(scratch[2]!)},1)`;
     },
   };
+  if (!(width !== undefined && width > 0 && Number.isFinite(width) && height > 0)) return field;
+  const cols = Math.ceil(width / GRID) + 1, rows = Math.ceil(h / GRID) + 1;
+  const n = cols * rows;
+  const done = new Uint8Array(n), L = new Float32Array(n), C = new Float32Array(n * 3);
+  const tmp = [0, 0, 0];
+  const node = (i: number, j: number): number => {
+    const k = j * cols + i;
+    if (!done[k]) {
+      done[k] = 1;
+      const x = i * GRID, y = j * GRID;
+      L[k] = lightAt(x, y);
+      rgbAt(x, y, tmp);
+      C[k * 3] = tmp[0]!; C[k * 3 + 1] = tmp[1]!; C[k * 3 + 2] = tmp[2]!;
+    }
+    return k;
+  };
+  // Cellule et poids bilinéaires d'un point (hors du monde : bord le plus proche).
+  let k00 = 0, k10 = 0, k01 = 0, k11 = 0, fx = 0, fy = 0;
+  const locate = (x: number, y: number): void => {
+    const gx = clamp(Number.isFinite(x) ? x / GRID : 0, 0, cols - 1.0001), gy = clamp(Number.isFinite(y) ? y / GRID : 0, 0, rows - 1.0001);
+    const i = Math.floor(gx), j = Math.floor(gy);
+    fx = gx - i; fy = gy - j;
+    k00 = node(i, j); k10 = node(i + 1, j); k01 = node(i, j + 1); k11 = node(i + 1, j + 1);
+  };
+  const bil = (a: Float32Array, s: number, o: number): number =>
+    (a[k00 * s + o]! * (1 - fx) + a[k10 * s + o]! * fx) * (1 - fy) + (a[k01 * s + o]! * (1 - fx) + a[k11 * s + o]! * fx) * fy;
+  field.lightFast = (x, y) => { locate(x, y); return bil(L, 1, 0); };
+  field.rgbFast = (x, y, out) => { locate(x, y); out[0] = bil(C, 3, 0); out[1] = bil(C, 3, 1); out[2] = bil(C, 3, 2); };
+  return field;
 }
 
 const RGB_RE = /(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)/;
 function sample(field: LightField, x: number, y: number, out: number[]): void {
+  if (field.rgbFast) return field.rgbFast(x, y, out);
   if (field.rgbAt) return field.rgbAt(x, y, out);
   const s = field.colorAt(x, y);
   if (s.startsWith('#')) { const c = hexRgb(s); out[0] = c[0]; out[1] = c[1]; out[2] = c[2]; return; }
@@ -122,7 +160,7 @@ function sample(field: LightField, x: number, y: number, out: number[]): void {
 // alpha d'une goutte selon la lumière locale (nuit : visible à 30 % hors des cônes, ressort dedans et devant les vitrines)
 function alphaAt(field: LightField, daylight: number, x: number, y: number, a: number): number {
   if (daylight > 0.95) return a;
-  return a * lerp(0.3 + 0.9 * Math.min(1.2, field.lightAt(x, y)), 1, daylight);
+  return a * lerp(0.3 + 0.9 * Math.min(1.2, field.lightFast ? field.lightFast(x, y) : field.lightAt(x, y)), 1, daylight);
 }
 
 // Échelles du monde (tailles et vitesses par rapport à la maquette, voir `RainWorld.scale` / `speed`).
@@ -135,7 +173,7 @@ const EDGE_STR = 'rgba(84,102,128,1)'; // liseré gris-bleu de la bruine de jour
 // ramenées à l'échelle du monde, elles disparaissaient la nuit hors des cônes ; le sol mouillé renvoie la lumière diffuse.
 function groundAlphaAt(field: LightField, daylight: number, x: number, y: number, a: number): number {
   if (daylight > 0.95) return a;
-  return a * lerp(0.75 + 0.5 * Math.min(1, field.lightAt(x, y)), 1, daylight);
+  return a * lerp(0.75 + 0.5 * Math.min(1, field.lightFast ? field.lightFast(x, y) : field.lightAt(x, y)), 1, daylight);
 }
 
 // ───────────── caches par contexte : dégradés des traits (par longueur et pas de nuit) et halos (par lampadaire) ─────────────
@@ -484,6 +522,93 @@ function drawTrail(ctx: CanvasRenderingContext2D, tr: readonly GlassTrailPoint[]
 
 const inPane = (p: Pane, x: number, y: number): boolean => x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h;
 
+// ───────────── gouttes posées : un calque hors écran par vitre, mis à jour par morceaux ─────────────
+// Les gouttes posées ne bougent pas : les redessiner toutes (3 échantillons de couleur + un sprite chacune) à chaque image
+// coûtait ≈ 10 ms/image au banc. Chaque vitre garde un calque (en pixels du tampon, aligné sur eux) ; à chaque image, seules
+// les zones qui ont changé (goutte arrivée, absorbée, séchée, rayon changé de plus de 0,15 px) sont effacées puis redessinées
+// avec toutes les gouttes qui les touchent, dans l'ordre du tableau : le résultat est celui d'un dessin complet. Tout est
+// refait quand la nuit change de pas, quand les lumières/le ciel changent, ou quand la taille du tampon change.
+type DropMark = { x: number; y: number; r: number; q: number; seen: number };
+type StaticLayer = {
+  cv: HTMLCanvasElement; c: CanvasRenderingContext2D;
+  key: string; field: LightField | null;
+  dx0: number; dy0: number; a: number; e: number; f: number;
+  marks: Map<object, DropMark>; stamp: number;
+};
+const STATIC_LAYERS = new WeakMap<object, (StaticLayer | null | undefined)[]>();
+const R_EPS = 0.15; // pas de rayon (px) au-delà duquel une goutte est redessinée
+// Pas de rayon d'une goutte, décalé d'une phase propre (tirée de sa position) : toutes les gouttes grossissent au même rythme,
+// sans ce décalage elles franchiraient leur pas dans la même image (tout redessiné d'un coup toutes les ~2 s).
+const rStep = (x: number, y: number, r: number): number => { const ph = x * 0.6180339 + y * 0.4142135; return Math.floor(r / R_EPS + ph - Math.floor(ph)); };
+const MAX_RECTS = 24; // au-delà, un dessin complet coûte moins cher
+const reach = (r: number): number => 3.3 * r + 2; // demi-côté du sprite le plus large (halo compris) : 3,2 r × 1,25 + 1,5 au plus
+const RECTS: number[] = [];
+
+function drawStatics(ctx: CanvasRenderingContext2D, sim: GlassSim, i: number, p: Pane, field: LightField, ns: number, k: number): void {
+  const t = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  const a = t && Number.isFinite(t.a) && t.a > 0 ? t.a : 1;
+  const e = t && Number.isFinite(t.e) ? t.e : 0, f = t && Number.isFinite(t.f) ? t.f : 0;
+  const dx0 = Math.floor(a * p.x + e), dy0 = Math.floor(a * p.y + f);
+  const w = Math.max(1, Math.ceil(a * (p.x + p.w) + e) - dx0), h = Math.max(1, Math.ceil(a * (p.y + p.h) + f) - dy0);
+  let layers = STATIC_LAYERS.get(sim.statics);
+  if (!layers) STATIC_LAYERS.set(sim.statics, (layers = []));
+  let L = layers[i];
+  if (L === undefined) {
+    const made = makeCanvas(w, h);
+    L = layers[i] = made ? { cv: made.cv, c: made.c, key: '', field: null, dx0, dy0, a, e, f, marks: new Map(), stamp: 0 } : null;
+  }
+  if (!L) { for (const s of sim.statics) if (s.pane === i) drawDropSprite(ctx, field, s.x, s.y, s.r, ns, k, 1); return; } // repli
+  const key = `${ns}|${k}|${w}x${h}`;
+  let full = key !== L.key || field !== L.field || a !== L.a || dx0 - e !== L.dx0 - L.e || dy0 - f !== L.dy0 - L.f;
+  if (full) {
+    if (L.cv.width !== w) L.cv.width = w;
+    if (L.cv.height !== h) L.cv.height = h;
+    L.key = key; L.field = field; L.a = a; L.e = e; L.f = f; L.dx0 = dx0; L.dy0 = dy0;
+  }
+  const c = L.c;
+  c.setTransform(a, 0, 0, a, e - dx0, f - dy0);
+  const stamp = ++L.stamp;
+  RECTS.length = 0;
+  const push = (x: number, y: number, r: number): void => { const q = reach(r); RECTS.push(x - q, y - q, x + q, y + q); };
+  for (const s of sim.statics) {
+    if (s.pane !== i) continue;
+    const m = L.marks.get(s);
+    const q = rStep(s.x, s.y, s.r);
+    if (!m) { L.marks.set(s, { x: s.x, y: s.y, r: s.r, q, seen: stamp }); if (!full) push(s.x, s.y, s.r); continue; }
+    m.seen = stamp;
+    if (q !== m.q || s.x !== m.x || s.y !== m.y) {
+      if (!full) { push(m.x, m.y, Math.max(m.r, s.r)); if (s.x !== m.x || s.y !== m.y) push(s.x, s.y, Math.max(m.r, s.r)); }
+      m.x = s.x; m.y = s.y; m.r = s.r; m.q = q;
+    }
+  }
+  for (const [d, m] of L.marks) if (m.seen !== stamp) { if (!full) push(m.x, m.y, m.r); L.marks.delete(d); }
+  if (!full && RECTS.length / 4 > MAX_RECTS) full = true;
+  c.globalAlpha = 1;
+  if (full) {
+    c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, L.cv.width, L.cv.height); c.restore();
+    for (const s of sim.statics) if (s.pane === i) { const m = L.marks.get(s)!; drawDropSprite(c, field, s.x, s.y, m.r, ns, k, 1); }
+  } else {
+    for (let q = 0; q < RECTS.length; q += 4) {
+      const x0 = RECTS[q]!, y0 = RECTS[q + 1]!, x1 = RECTS[q + 2]!, y1 = RECTS[q + 3]!;
+      c.save();
+      c.beginPath(); c.rect(x0, y0, x1 - x0, y1 - y0); c.clip();
+      c.clearRect(x0, y0, x1 - x0, y1 - y0);
+      for (const s of sim.statics) {
+        if (s.pane !== i) continue;
+        const m = L.marks.get(s)!, qr = reach(m.r);
+        if (m.x + qr < x0 || m.x - qr > x1 || m.y + qr < y0 || m.y - qr > y1) continue;
+        drawDropSprite(c, field, m.x, m.y, m.r, ns, k, 1);
+      }
+      c.restore();
+    }
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.drawImage(L.cv, dx0, dy0);
+  ctx.restore();
+}
+
 /** Gouttes sur la vitre : buée, traces, gouttes posées, coulures — découpées à chaque vitre. */
 export function drawGlass(ctx: CanvasRenderingContext2D, sim: GlassSim, env: { precip: number; daylight: number }, field: LightField, fog: FogMask): void {
   if (sim.panes.length === 0) return;
@@ -501,7 +626,7 @@ export function drawGlass(ctx: CanvasRenderingContext2D, sim: GlassSim, env: { p
     for (const tr of sim.trails) if (tr.length > 1 && inPane(p, tr[tr.length - 1]!.x, tr[tr.length - 1]!.y)) drawTrail(ctx, tr, ns);
     for (const R of sim.runners) if (R.pane === i) drawTrail(ctx, R.trail, ns);
     ctx.globalAlpha = 1;
-    for (const s of sim.statics) if (s.pane === i) drawDropSprite(ctx, field, s.x, s.y, s.r, ns, k, 1);
+    drawStatics(ctx, sim, i, p, field, ns, k);
     // coulures : goutte étirée vers le haut quand elle court (queue), ronde quand elle attend
     for (const R of sim.runners) {
       if (R.pane !== i) continue;
@@ -529,9 +654,14 @@ type FogCell = {
   marks: [number, number, number][];
   gradKey: number;
   grad: CanvasGradient | null;
+  /** Masque changé depuis la dernière composition ; images dessinées depuis (la buée est recomposée à ~6 Hz, pas à 30). */
+  dirty: boolean;
+  since: number;
+  composed: boolean;
 };
 
 const FOG_REGROW = 0.03; // repousse de la buée : 3 %/s
+const FOG_EVERY = 5; // images entre deux recompositions de la buée (≈ 6 Hz à 30 Hz)
 const REGROW_EVERY = 0.5; // s entre deux repeints du masque (pas assez fin sur 8 bits à chaque image)
 
 export function createFogMask(panes: readonly Pane[]): FogMask {
@@ -542,7 +672,7 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
     const rng = mulberry32(31 + i);
     const marks: [number, number, number][] = [];
     for (let m = 0; m < 26; m++) marks.push([rng() * p.w, p.h * (0.45 + rng() * 0.4), p.h]);
-    return { pane: { ...p }, mask, fog: ok ? makeCanvas(Math.ceil(p.w), Math.ceil(p.h)) : null, marks, gradKey: -1, grad: null };
+    return { pane: { ...p }, mask, fog: ok ? makeCanvas(Math.ceil(p.w), Math.ceil(p.h)) : null, marks, gradKey: -1, grad: null, dirty: true, since: 0, composed: false };
   });
   const find = (x: number, y: number): FogCell | undefined => {
     for (let i = 0; i < cells.length; i++) if (inPane(cells[i]!.pane, x, y)) return cells[i];
@@ -573,6 +703,7 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
       for (let i = from + 1; i < trail.length; i++) m.lineTo((trail[i]!.x - p.x) / 2, (trail[i]!.y - p.y) / 2);
       m.stroke();
       m.globalCompositeOperation = 'source-over';
+      cell.dirty = true;
     },
     regrow(dt) {
       // Le masque est sur 8 bits : 0,03 × dt à 30 Hz (0,001 par image) s'arrondissait à 0 et la buée ne repoussait jamais.
@@ -590,6 +721,7 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
         cell.mask.c.fillStyle = regrowStr;
         cell.mask.c.fillRect(0, 0, cell.mask.cv.width, cell.mask.cv.height);
         cell.mask.c.globalCompositeOperation = 'source-over';
+        cell.dirty = true;
       }
     },
     draw(ctx, pane, env) {
@@ -599,6 +731,12 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
       const ns = nightStepOf(env.daylight), n = ns / NIGHT_STEPS;
       const P = Math.round(clamp01(env.precip) * 20);
       const key = P * (NIGHT_STEPS + 1) + ns;
+      cell.since++;
+      // Recomposition (dégradé + marques + masque) seulement si la teinte a changé, ou si le masque a changé et que 5 images
+      // (~170 ms à 30 Hz) ont passé : sinon le calque déjà composé est reposé tel quel.
+      const recompose = !cell.composed || key !== cell.gradKey || (cell.dirty && cell.since >= FOG_EVERY);
+      if (!recompose) { ctx.drawImage(cell.fog.cv, p.x, p.y); return; }
+      cell.composed = true; cell.dirty = false; cell.since = 0;
       if (key !== cell.gradKey || !cell.grad) { // voile plus dense en bas (0 à 45 % de la hauteur → max en bas) ; teinte et densité en fondu jour → nuit
         const fogC = mixRgb(FOG_DAY, FOG_NIGHT, n), fogA = (0.1 + 0.14 * (P / 20)) * lerp(1, 0.7, n);
         const g = f.createLinearGradient(0, p.h * 0.45, 0, p.h);

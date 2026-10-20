@@ -186,6 +186,15 @@ describe('pluie dehors : moteur', () => {
     for (const sp of small.splashes) expect(sp.k).toBeLessThanOrEqual(1.6 * 0.5 + 1e-9);
   });
 
+  it('bande vue (vue pièce) : gouttes seulement au-dessus d’elle, même densité', () => {
+    const span = { x0: 300, x1: 500 };
+    const sim = make({ ...RUE, span }, 7);
+    prefillRain(sim, env(1, 0));
+    expect(sim.drops.length).toBe(Math.round(900 * (200 + 200) / (1000 + 200)));
+    run(sim, 1, 5, 0, (s) => { for (const d of s.drops) { expect(d.x).toBeGreaterThanOrEqual(span.x0 - 100); expect(d.x).toBeLessThanOrEqual(span.x1 + 100); } });
+    expect(rainTarget(1, RAIN_BUDGET_PHONE, false, 0.5)).toBe(175); // budget téléphone au prorata
+  });
+
   it('rafales : gust entre 0,45 et 1,55', () => {
     for (let t = 0; t < 200; t += 0.37) {
       expect(gust(t)).toBeGreaterThanOrEqual(0.45);

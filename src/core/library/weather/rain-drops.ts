@@ -28,11 +28,17 @@ export type RainWorld = {
   /** Échelle des TAILLES (longueur des traits, rayons des gouttes des bords, éclaboussures, anneaux) par rapport à la maquette
    *  (scène 1000 × 460 aux grands immeubles) ; 1 par défaut. Les épaisseurs suivent √scale (un trait sous 1 px disparaît). */
   scale?: number;
+  /** Bande horizontale réellement vue (vue pièce : l'englobant des vitres) ; tout le monde par défaut. Les gouttes ne naissent
+   *  et ne tournent que là (même densité : population au prorata de la largeur). */
+  span?: { x0: number; x1: number };
   /** Échelle des VITESSES (même durée de traversée qu'à la maquette : hauteur du monde / 460) ; 1 par défaut. */
   speed?: number;
 };
 
 const sizeOf = (w: RainWorld): number => (w.scale !== undefined && Number.isFinite(w.scale) && w.scale > 0 ? w.scale : 1);
+// Bande des gouttes (x0, largeur) et part de la population qui lui revient (marges de 100 px de chaque côté comprises).
+const spanOf = (w: RainWorld): [number, number] => (w.span && w.span.x1 > w.span.x0 ? [w.span.x0, w.span.x1 - w.span.x0] : [0, w.width]);
+export const spanShare = (w: RainWorld): number => { const [, sw] = spanOf(w); return Math.min(1, (sw + 200) / (w.width + 200)); };
 const speedOf = (w: RainWorld): number => (w.speed !== undefined && Number.isFinite(w.speed) && w.speed > 0 ? w.speed : 1);
 
 export type RainLayer = { name: string; part: number; v: [number, number]; len: [number, number]; w: number; a: number; blur: number; sway: number; splash: number };
@@ -92,10 +98,10 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 export const gust = (t: number): number => 1 + 0.32 * Math.sin(t * 0.61) * Math.sin(t * 0.23 + 1.3) + 0.22 * Math.sin(t * 1.7 + 0.4) * Math.max(0, Math.sin(t * 0.13));
 
 /** Population visée : round(P^1,25 × 900), × 0,7 derrière la vitre, plafonnée au budget. */
-export function rainTarget(precip: number, budget: RainBudget, soft: boolean): number {
+export function rainTarget(precip: number, budget: RainBudget, soft: boolean, share = 1): number {
   const P = clamp01(Number.isFinite(precip) ? precip : 0);
-  const full = Math.round(Math.pow(P, 1.25) * 900);
-  return Math.min(Math.round(full * (soft ? 0.7 : 1)), budget.drops);
+  const full = Math.pow(P, 1.25) * 900 * share;
+  return Math.min(Math.round(Math.round(full) * (soft ? 0.7 : 1)), Math.round(budget.drops * share));
 }
 
 export function createRainSim(world: RainWorld, seed: number, opts: { soft: boolean; budget: RainBudget }): RainSim {
@@ -124,7 +130,7 @@ function spawnDrop(sim: RainSim, layer: 0 | 1 | 2, fromTop = true): RainDrop {
   const k = sizeOf(w), sp = speedOf(w);
   return {
     layer,
-    x: r() * (w.width + 200) - 100,
+    x: spanOf(w)[0] + r() * (spanOf(w)[1] + 200) - 100,
     y: fromTop ? -r() * 60 - 10 : r() * ground,
     v: lerp(L.v[0], L.v[1], r()) * sp,
     len: lerp(L.len[0], L.len[1], r()) * (0.6 + r() * 0.9) * k,
@@ -162,7 +168,7 @@ function addSplash(sim: RainSim, x: number, y: number, k: number): void {
  *  à des hauteurs réparties sur toute la colonne, sans éclaboussures. La montée progressive ne vaut que pour
  *  une pluie qui commence pendant qu'on regarde. */
 export function prefillRain(sim: RainSim, env: RainEnv): void {
-  const target = rainTarget(env.precip, sim.budget, sim.soft);
+  const target = rainTarget(env.precip, sim.budget, sim.soft, spanShare(sim.world));
   while (sim.drops.length < target) sim.drops.push(spawnDrop(sim, pickLayer(sim), false));
   sim.spawnAcc = 0;
 }
@@ -179,7 +185,8 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
   const K = sizeOf(w), SP = speedOf(w);
 
   // population : monte au plus de 40/s vers la cible ; en trop, les gouttes finissent leur chute avant de partir
-  const target = rainTarget(P, sim.budget, sim.soft);
+  const target = rainTarget(P, sim.budget, sim.soft, spanShare(w));
+  const [sx0, sw] = spanOf(w);
   if (sim.drops.length < target) {
     sim.spawnAcc = Math.min(sim.spawnAcc + SPAWN_RATE * dt, SPAWN_RATE * MAX_DT);
     while (sim.drops.length < target && sim.spawnAcc >= 1) {
@@ -197,8 +204,8 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
     const vx = d.v * (0.08 + lean * 0.55) + Math.sin(t * 3.1 + d.ph) * L.sway * 18 * SP; // dérive + léger balancement (proche)
     d.y += d.v * dt;
     d.x += vx * dt;
-    if (d.x > w.width + 60) d.x -= w.width + 160;
-    if (d.x < -100) d.x += w.width + 160;
+    if (d.x > sx0 + sw + 60) d.x -= sw + 160;
+    if (d.x < sx0 - 100) d.x += sw + 160;
     if (d.y >= d.ground) {
       if (L.splash > 0 && r() < L.splash * (sim.soft ? 0.4 : 1)) addSplash(sim, d.x, d.ground, d.big ? 1.6 : 1);
       if (excess > 0) {

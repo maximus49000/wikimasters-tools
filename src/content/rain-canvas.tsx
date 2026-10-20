@@ -54,12 +54,15 @@ const RAIN_SIZE = 0.55;
 /** Monde de la pluie d'une scène. Ville : bords qui gouttent accrochés au vrai décor (corniches et bouts de toit des façades du
  *  premier plan, bandeau des boutiques), caniveau à la bordure du trottoir et une grille tirée. Autres scènes : sans bâti ;
  *  mer : pas d'éclaboussures au sol. */
-export function rainWorldFor(scene: SceneId, width: number, height: number, seed: number): RainWorld {
+export function rainWorldFor(scene: SceneId, width: number, height: number, seed: number, clip?: Box): RainWorld {
   const frac = GROUND[scene];
   const groundTop = height * (frac ?? SEA_TOP);
+  // Vue pièce : seule la bande des vitres est vue ; flaques et bords hors d'elle ne servent à rien.
+  const span = clip && clip.w > 0 ? { x0: clip.x, x1: clip.x + clip.w } : undefined;
+  const near = (x: number, m: number): boolean => !span || (x >= span.x0 - m && x <= span.x1 + m);
   const base: RainWorld = {
-    width, height, groundTop, groundBottom: height, puddles: weatherPuddles(scene, width, height, seed), drips: [], gutter: null, splashGround: scene !== 'sea',
-    scale: RAIN_SIZE * (height / 340), speed: height / 460,
+    width, height, groundTop, groundBottom: height, puddles: weatherPuddles(scene, width, height, seed).filter((p) => near(p.x, p.rx)), drips: [], gutter: null, splashGround: scene !== 'sea',
+    scale: RAIN_SIZE * (height / 340), speed: height / 460, ...(span ? { span } : {}),
   };
   if (scene !== 'city') return base;
   const rng = mulberry32(seed ^ hashString('rain-drips'));
@@ -91,7 +94,7 @@ export function rainWorldFor(scene: SceneId, width: number, height: number, seed
     const j = Math.floor(rng() * (i + 1));
     [drips[i], drips[j]] = [drips[j]!, drips[i]!];
   }
-  const kept = drips.slice(0, MAX_DRIPS).sort((a, b) => a.x - b.x);
+  const kept = drips.slice(0, MAX_DRIPS).filter((d) => near(d.x, 20)).sort((a, b) => a.x - b.x);
   return { ...base, drips: kept, gutter: { y: m.curb, grateX: Math.round(width * (0.25 + 0.5 * rng())) } };
 }
 
@@ -339,7 +342,7 @@ export function createRainHub(): RainHub {
       lastWet = -1;
     }
     if (!field || !fieldKey || fieldKey.lights !== c.lights || fieldKey.top !== c.sky.top || fieldKey.bottom !== c.sky.bottom || fieldKey.h !== c.world.height) {
-      field = makeLightField(c.lights, c.sky, c.world.height);
+      field = makeLightField(c.lights, c.sky, c.world.height, c.world.width);
       fieldKey = { lights: c.lights, top: c.sky.top, bottom: c.sky.bottom, h: c.world.height };
       lastWet = -1;
     }
@@ -382,6 +385,8 @@ export type RainCanvasProps = {
   soft?: boolean;
   /** Simulation partagée avec l'autre canvas de la vue ; sans elle, ce canvas a la sienne. */
   hub?: RainHub;
+  /** Vue pièce : rectangle réellement vu (englobant des vitres) ; le canvas ne couvre que lui. */
+  clip?: Box;
 };
 
 // Haut du canvas « sol » : un peu au-dessus du sol (gouttelettes des éclaboussures qui rebondissent).
@@ -396,8 +401,12 @@ function useOwnHub(hub: RainHub | undefined): RainHub {
 function RainLayerCanvas(p: RainCanvasProps & { role: 'ground' | 'air' }): ReactElement {
   const hub = useOwnHub(p.hub);
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const top = p.role === 'ground' ? Math.max(0, Math.floor(p.world.groundTop - SPLASH_ROOM)) : 0;
-  const box = useMemo<Box>(() => ({ x: 0, y: top, w: p.width, h: Math.max(1, p.height - top) }), [top, p.width, p.height]);
+  const top0 = p.role === 'ground' ? Math.max(0, Math.floor(p.world.groundTop - SPLASH_ROOM)) : 0;
+  const cx = p.clip ? Math.max(0, Math.floor(p.clip.x)) : 0;
+  const cx1 = p.clip ? Math.min(p.width, Math.ceil(p.clip.x + p.clip.w)) : p.width;
+  const top = p.clip ? Math.max(top0, Math.floor(p.clip.y)) : top0;
+  const bottom = p.clip ? Math.min(p.height, Math.ceil(p.clip.y + p.clip.h)) : p.height;
+  const box = useMemo<Box>(() => ({ x: cx, y: top, w: Math.max(1, cx1 - cx), h: Math.max(1, bottom - top) }), [cx, cx1, top, bottom]);
   // Branché une fois par canvas ; la boîte change sans remonter (redimensionnement : même élément, tampon refait).
   useLayoutEffect(() => {
     const cv = ref.current;
@@ -471,7 +480,7 @@ export function RainGlassCanvas(p: RainGlassProps): ReactElement | null {
   const live = useRef(p);
   live.current = p;
   const field = useMemo(
-    () => makeLightField(p.lights, p.sky, p.worldHeight ?? (box ? box.y + box.h : 1)),
+    () => makeLightField(p.lights, p.sky, p.worldHeight ?? (box ? box.y + box.h : 1), box ? box.x + box.w : undefined),
     [p.lights, p.sky.top, p.sky.bottom, p.worldHeight, box], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const fieldRef = useRef(field);

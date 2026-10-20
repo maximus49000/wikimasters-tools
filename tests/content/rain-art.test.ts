@@ -186,12 +186,13 @@ describe('drawGlass', () => {
     const sim = createGlassSim(PANES, 11, GLASS_BUDGET_PHONE);
     prefillGlass(sim, genv);
     for (let i = 0; i < 60; i++) stepGlass(sim, genv, 1 / 30);
-    const field = makeLightField(LIGHTS, SKY_NIGHT, 460);
+    const field = makeLightField(LIGHTS, SKY_NIGHT, 460, 1000);
     const fog = createFogMask(PANES);
     const e = { precip: 0.85, daylight: 0 };
     const ctx1 = fakeCtx();
     drawGlass(asCtx(ctx1), sim, e, field, fog);
-    expect(ctx1.images).toBeGreaterThan(sim.statics.length); // buée + une image par goutte posée au moins
+    // gouttes posées : un calque par vitre (une image chacun) + buée + coulures
+    expect(ctx1.images).toBeGreaterThanOrEqual(2 * PANES.length);
     const after1 = created;
     expect(after1).toBeGreaterThan(0);
     const ctx2 = fakeCtx();
@@ -199,6 +200,55 @@ describe('drawGlass', () => {
     expect(created).toBe(after1);
     expect(ctx2.images).toBe(ctx1.images);
     expect(ctx1.filterSets + ctx2.filterSets).toBe(0);
+  });
+
+  it('gouttes posées en calque : rien de redessiné tant que rien ne change, puis seules les zones changées', () => {
+    // Faux contextes qui gardent la trace des sprites posés (centre) et des effacements : à la fin, le calque de chaque vitre
+    // montre exactement les gouttes présentes (aucune goutte absorbée ou séchée qui resterait affichée, aucune manquante).
+    type Spy = FakeCtx & { cv: { width: number; height: number }; alive: [number, number][]; sprites: number };
+    const spies: Spy[] = [];
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+      const c = fakeCtx() as Spy;
+      const cv = this;
+      c.cv = cv; c.alive = []; c.sprites = 0;
+      Object.assign(c, {
+        drawImage: (_img: unknown, x: number, y: number, w?: number, h?: number) => { c.images++; if (w !== undefined && h !== undefined) { c.sprites++; c.alive.push([x + w / 2, y + h / 2]); } },
+        clearRect: (x: number, y: number, w: number, h: number) => {
+          if (x === 0 && y === 0 && w === cv.width && h === cv.height) c.alive = [];
+          else c.alive = c.alive.filter(([px, py]) => !(px >= x && px <= x + w && py >= y && py <= y + h));
+        },
+      });
+      spies.push(c);
+      return c as never;
+    });
+    const sim = createGlassSim(PANES, 13, GLASS_BUDGET_WIDE);
+    prefillGlass(sim, genv);
+    const field = makeLightField([], SKY_DAY, 460, 1000);
+    const fog = createFogMask(PANES);
+    const fogCtxs = spies.length; // canvases de la buée : créés avant
+    const e = { precip: 0.85, daylight: 1 };
+    drawGlass(asCtx(fakeCtx()), sim, e, field, fog);
+    const layers = spies.slice(fogCtxs).filter((c) => PANES.some((p) => c.cv.width === Math.ceil(p.w) && c.cv.height === Math.ceil(p.h)) && c.sprites > 0);
+    expect(layers).toHaveLength(PANES.length);
+    const sprites = (): number => layers.reduce((a, c) => a + c.sprites, 0);
+    const first = sprites();
+    expect(first).toBe(sim.statics.length);
+    drawGlass(asCtx(fakeCtx()), sim, e, field, fog);
+    expect(sprites()).toBe(first); // rien n'a changé : aucun sprite redessiné
+    let worst = 0;
+    for (let f = 0; f < 240; f++) {
+      stepGlass(sim, genv, 1 / 30);
+      const before = sprites();
+      drawGlass(asCtx(fakeCtx()), sim, e, field, fog);
+      worst = Math.max(worst, sprites() - before);
+    }
+    expect(worst).toBeLessThan(sim.statics.length / 2); // par morceaux, jamais tout à chaque image
+    const key = (x: number, y: number): string => `${x.toFixed(2)},${y.toFixed(2)}`;
+    PANES.forEach((_, i) => {
+      const want = new Set(sim.statics.filter((d) => d.pane === i).map((d) => key(d.x, d.y)));
+      const got = new Set(layers.find((c) => c.cv.width === Math.ceil(PANES[i]!.w))!.alive.map(([x, y]) => key(x, y)));
+      expect(got).toEqual(want);
+    });
   });
 
   it('aucun appel à ctx.filter, et la buée s\'efface le long des coulures sans exception', () => {
@@ -318,6 +368,49 @@ describe('drawGlass', () => {
     expect(mask.px).toBeLessThan(0.75 * 255);
     for (let i = 0; i < 30 * 30; i++) fog.regrow(1 / 30);
     expect(mask.px).toBe(255); // et revient jusqu'à la buée pleine
+  });
+
+  it('buée recomposée à ~6 Hz seulement, même quand les coulures l’effacent à chaque image', () => {
+    const ctxs: FakeCtx[] = [];
+    let composed = 0;
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
+      const c = fakeCtx();
+      const cc = c as unknown as { drawImage: (...a: unknown[]) => void; globalCompositeOperation?: string };
+      const di = cc.drawImage;
+      cc.drawImage = (...args: unknown[]) => { if (cc.globalCompositeOperation === 'destination-in') composed++; di(...args); };
+      ctxs.push(c);
+      return c as never;
+    });
+    const fog = createFogMask(PANES);
+    const main = fakeCtx();
+    for (let f = 0; f < 60; f++) {
+      fog.erase([{ x: 200, y: 100 + f, r: 3 }, { x: 200, y: 102 + f, r: 3 }]);
+      fog.draw(asCtx(main), { ...PANES[0]! }, { precip: 0.85, daylight: 1 });
+    }
+    expect(main.images).toBe(60); // le calque est reposé à chaque image…
+    expect(composed).toBeGreaterThanOrEqual(10); // …mais recomposé une image sur 5 (≈ 6 Hz à 30 Hz)
+    expect(composed).toBeLessThanOrEqual(13);
+    // une teinte qui change (nuit) recompose tout de suite
+    const before = composed;
+    fog.draw(asCtx(main), { ...PANES[0]! }, { precip: 0.85, daylight: 0 });
+    expect(composed).toBe(before + 1);
+  });
+
+  it('grille de lumière : mêmes valeurs que le calcul exact, à l’interpolation près', () => {
+    const exact = makeLightField(LIGHTS, SKY_NIGHT, 460);
+    const fast = makeLightField(LIGHTS, SKY_NIGHT, 460, 1000);
+    expect(exact.lightFast).toBeUndefined();
+    let dl = 0, dc = 0, n = 0;
+    const a = [0, 0, 0], b = [0, 0, 0];
+    for (let x = 3; x < 1000; x += 7.3) for (let y = 2; y < 460; y += 6.1) {
+      dl += Math.abs(fast.lightFast!(x, y) - exact.lightAt(x, y));
+      fast.rgbFast!(x, y, a); exact.rgbAt!(x, y, b);
+      dc += Math.abs(a[0]! - b[0]!) + Math.abs(a[1]! - b[1]!) + Math.abs(a[2]! - b[2]!);
+      n++;
+    }
+    expect(dl / n).toBeLessThan(0.02);
+    expect(dc / n / 3).toBeLessThan(3);
+    expect(fast.lightFast!(5000, -50)).toBeGreaterThanOrEqual(0); // hors du monde : le bord, sans exception
   });
 
   it('pièce sans fenêtre : rien, aucune exception', () => {

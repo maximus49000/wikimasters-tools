@@ -39,6 +39,8 @@ type Props = {
   // Tableau STABLE (la couche est mémoïsée et le cache des halos est indexé par lampadaire).
   rainLights?: readonly RainLight[];
   rainSoft?: boolean;
+  /** Vue pièce : rectangle réellement vu (englobant des vitres, objet STABLE) ; la pluie n'est animée et dessinée que là. */
+  rainClip?: { x: number; y: number; w: number; h: number } | null;
 };
 const NO_LIGHTS: readonly RainLight[] = [];
 
@@ -318,7 +320,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   return placeRef;
 }
 
-function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, between, gloom = false, rainLights = NO_LIGHTS, rainSoft = false }: Props): ReactElement {
+function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, between, gloom = false, rainLights = NO_LIGHTS, rainSoft = false, rainClip = null }: Props): ReactElement {
   // Préfixe des motifs/dégradés, propre à chaque pièce (deux pièces affichées ne partagent pas leurs motifs).
   const uid = `wx${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const floorFrac = CLOUD_FLOOR[scene] ?? 0.45;
@@ -378,8 +380,8 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const puddles = useMemo(() => weatherPuddles(scene, width, height, seed), [scene, seed, width, height]);
   // Pluie naturelle : une simulation partagée par le canvas du sol (sous les acteurs) et celui de l'air (au-dessus).
   const rainHub = useRainHub();
-  const rainWorld = useMemo(() => rainWorldFor(scene, width, height, seed), [scene, width, height, seed]);
-  const rainProps = { width, height, scene, seed, clock, sky, lights: rainLights, world: rainWorld, soft: rainSoft, hub: rainHub };
+  const rainWorld = useMemo(() => rainWorldFor(scene, width, height, seed, rainClip ?? undefined), [scene, width, height, seed, rainClip]);
+  const rainProps = { width, height, scene, seed, clock, sky, lights: rainLights, world: rainWorld, soft: rainSoft, hub: rainHub, clip: rainClip ?? undefined };
   const arcFoot = height * (ARC_FOOT[scene] ?? 0.78);
   const arc = width * 0.28;
   // Filets : éventail vers le bas depuis le soleil (posé au milieu la nuit, éteint de toute façon).
