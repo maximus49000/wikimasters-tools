@@ -31,7 +31,7 @@ nouveau calque) : `01-outils` (cellulo, temps, météo, ciel), `02-plan-fond` (p
 | `hiver-8h.png` | 10 février 8 h, nuages : fumées, brume au creux de la colline, lève-tôt, arbres nus, aube. |
 | `14juillet-14h.png` | drapeaux tricolores sur la tour et les dômes, parasols. |
 | `pluie-11h.png` | 8 juillet, pluie : linge rentré, parasols repliés, ciel bas, pas de vols. |
-| `zoom-colline-{ete,hiver}.png` | l'échappée ×3 : route en lacets, réverbères, funiculaire, bouquets, cabine à quai ; fumées et brume l'hiver. |
+| `zoom-colline-{ete,hiver}.png` | l'échappée ×3 : route en lacets bordée de haies, bosquets, vigne en rangs, square, grands arbres, réverbères, funiculaire, cabine à quai ; fumées, brume et arbres nus l'hiver. |
 | `zoom-funiculaire{,-nuit}.png` | croisement des deux cabines à mi-pente (18 h 30 min 55 s), cabines éclairées la nuit. |
 | `zoom-tour{,-14juillet,-nuit}.png` | pigeons qui tournent à l'heure pile (15 h 00 min 12 s), posés sur le beffroi avec le drapeau, cadran de nuit. |
 | `zoom-ruelle.png` | une fente du premier plan : mur du fond à étages, fenêtres sous l'égout, ruelle en retrait sous le haut du rez-de-chaussée. |
@@ -83,6 +83,25 @@ du premier plan » (`nearTop`, échantillon de `roofLineY` tous les px) et « au
 | N | monuments, drapeaux | (L) lavis chaud alpha 0,28 (tour, flèche, dôme) ; (S) drapeau : 3 polygones, 3 poses clés | lavis du crépuscule (`daylight < 0,4`) à 1 h (fondu 0 h 54-1 h) ; drapeaux les 14 juillet, 8 mai, 11 novembre (`publicHolidays`), hissés 8 h, amenés au coucher, cadence `2 + 6 × vent` poses/s. |
 | O | terrasses | (T) tranche de 10 min (`parasolK`) | 40 % des maisons à croupe / mansarde des rangs 1-2 ; pots toujours ; parasol ouvert (20 s) été, `cloud < 0,5`, 12 h-13 h 30 → 19 h-20 h, replié sous la pluie. |
 
+**Verdure de la colline (retour utilisateur : « la colline est trop vide »)** — tout est **peint dans les tranches** (T), aucun
+nœud animé ajouté ; le balancement (G) reste limité aux bouquets des maisons déjà comptés. Même langage que les bouquets
+(masses sombre / moyen / clair, rehaut en haut à gauche, trait encré), brume selon le rang, saison appliquée (vert vif au
+printemps et l'été, roux et or en automne, nus l'hiver ; persistants sombres : cyprès, haies ; vigne en feuilles l'été, en
+ceps nus l'hiver). Tirage par graine et position (`verdure-rang-<rang>`, `verdure-crete`, échappée), jamais régulier :
+
+- **Échappée** (`escapeVerdure`, 02-plan-fond.js) : 6-9 bosquets de 1-3 bouquets (r 2-5 px), 2-3 grands arbres isolés
+  (marronnier à quatre masses, peupliers en fuseau, cyprès), haies le long de deux ou trois tronçons de route (côté amont,
+  4 px de la chaussée), un square (pelouse claire, allée, arbre), une **vigne en rangs** (parcelle en pente, rangs de 3,2 px,
+  ceps tous les 2,8 px), parfois un potager. Rien ne couvre la route (distance ≥ rayon + 2,5), la voie du funiculaire
+  (≥ rayon + 7) ni les gares ; la route, la voie et les gares sont peintes après la verdure. Coût : 25-40 formes par échappée.
+- **Rangs de maisons** : dans chaque creux ≥ 3 × s entre deux maisons, un bouquet, un grand arbre (si ≥ 6 s) ou un potager
+  derrière la maison (si ≥ 10 s, 30 %), sauf si la maison y a déjà son bouquet ; 22 % des maisons ont un massif qui dépasse
+  derrière le toit (peint avant la maison). Coût : ~1 forme par creux (≈ 60-90 par scène de 1 440 px, 3 rangs).
+- **Crête** : un grand arbre ou un bouquet tous les 40-115 px sur la ligne de crête, brume 0,38 (silhouettes sur le ciel) :
+  ≈ 20 par scène.
+- Coût total : ≈ 150 formes cellulo de plus par scène, peintes une fois par tranche (≈ 1-2 ms par tranche de 360 px) ;
+  **zéro nœud animé ajouté**.
+
 **Éléments animés en vue, scène de 1 440 px (graine 7, compte du HUD)** : été 15 h → 2-3 véhicules + 2 cabines + 6 pigeons
 (à l'heure pile) ; crépuscule d'automne → 2 véhicules, 2 cabines, 36 étourneaux (un seul `<g>`), 151 fenêtres (opacité) ;
 nuit 23 h → 2 cabines, 1 véhicule, 140 fenêtres ; matin d'hiver → 34 fumées (à plafonner à 12), brume, 2 cabines, 2
@@ -99,6 +118,8 @@ un parasol ou une pièce de linge change dans la tranche : on peut ne repeindre 
   DOME_C, BRICK, GLASS_FAR `#5A7AA8`, HILL_WALLS/ROOFS, SHUTTERS). Ajouts : ROAD `#E4C89A`, CABIN `#C8463A`, BUS `#E8B040`,
   CARS (6), drapeau `#2E4A9A / #F4F0E8 / #D84040`, fumée `#ECE8E4`, brume `rgba(232,238,246, α)`, lumières `#FFDFA0` /
   `#C4D8FF` (celles de `GhibliWindows`), réverbère `#FFE8B0` + halo 0,25.
+- Verdure : persistants `#2E5A3A #3E7048 #5C8E5A` (cyprès), haie d'hiver `#4A5A48 #5A6E56 #6E8468`, vigne : sol `#B89A6A`
+  mêlé d'herbe, feuilles été `#3A7A38 #62A848`, automne `#B07A2A #D8A840`, ceps d'hiver encrés ; potager : terre `#A8865E`.
 - Saisons des feuillages : printemps `#4E8A3A #8CC46A #F4C8D8`, été = TREE_TONES, automne `#8A4A24 #D07A30 #F0B040`, hiver
   `#6A5A50 #8A7A6A #A89888` à 55 % + branches encrées ; herbe : été GRASS, printemps `light(GRASS, 0.2)`, automne mélangée
   à `#B89040` (35 %), hiver mélangée à `#9A9A80` (45 %), neige `#E8ECF0`.
@@ -133,4 +154,5 @@ un parasol ou une pièce de linge change dans la tranche : on peut ne repeindre 
 5. Les volets du fond en tranche de 10 min repeignent la tranche jusqu'à 6 fois par heure : acceptable, ou volets figés par
    demi-journée (fermés la nuit, ouverts le jour, sans l'après-midi d'été) ?
 6. Nuées d'étourneaux de 36 points : taille (36) et nombre de passages (3) à ajuster ?
-7. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.
+7. Densité de la verdure : ≈ 150 formes par scène (bosquets, haies, vigne, square, potagers, arbres de crête) ; en vouloir plus ou moins ?
+8. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.

@@ -41,7 +41,7 @@ function paintRoad(ctx, e) {
   ctx.strokeStyle = rgba(haze(shade(ROAD, 0.45), 0.2), 1); ctx.lineWidth = 4.6; ctx.beginPath(); e.road.forEach(([x, y], i) => (i ? ctx.lineTo(x, y + 0.9) : ctx.moveTo(x, y + 0.9))); ctx.stroke();
   ctx.strokeStyle = rgba(haze(ROAD, 0.2), 1); ctx.lineWidth = 3.6; ctx.beginPath(); e.road.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
   ctx.strokeStyle = rgba(haze(light(ROAD, 0.5), 0.2), 1); ctx.lineWidth = 0.7; ctx.beginPath(); e.road.forEach(([x, y], i) => (i ? ctx.lineTo(x, y - 1.3) : ctx.moveTo(x, y - 1.3))); ctx.stroke();
-  for (const t of e.trees) paintBouquet(ctx, t.x, t.y, t.r, t.s, 0.2);
+  for (const v of e.verdure) paintVerdure(ctx, v, 0.2);
   for (const l of e.lamps) { const p = roadPoint(e, l.d); ctx.strokeStyle = ink(0.7); ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - 4); ctx.lineTo(p.x + 1, p.y - 4); ctx.stroke(); }
   // Voie du funiculaire (J) : bande de pierre, deux rails, gares en haut et en bas (petites halles au toit rouge).
   const f = e.funi;
@@ -74,6 +74,61 @@ function paintBouquet(ctx, tx, ty, tr, s, hz, season = CUR_SEASON) {
   }
 }
 let CUR_SEASON = 'summer';
+// ── Verdure (G) : même langage que les bouquets (masses sombre / moyen / clair, rehaut en haut à gauche, trait encré), brume
+// selon le rang, saison : vert vif au printemps et l'été, roux et or en automne, nus (feuillus) ou sombres (persistants) l'hiver.
+const EVERGREEN = ['#2E5A3A', '#3E7048', '#5C8E5A'].map(hexRgb);
+function paintVerdure(ctx, v, hz0 = 0, season = CUR_SEASON) {
+  const hz = v.hz ?? hz0, bare = season === 'winter', tones = LEAF_SEASON[season].map(hexRgb), s = v.s || 0.6;
+  const fill = (c, a = 1) => rgba(haze(c, hz), a);
+  if (v.kind === 'bouquet') return paintBouquet(ctx, v.x, v.y, v.r, s, hz, season);
+  if (v.kind === 'chestnut') {
+    const h = v.h, r = h * 0.42, cx = v.x, cy = v.y - h * 0.55, masses = [[0, 0, 1], [-0.62, 0.28, 0.7], [0.62, 0.3, 0.68], [0.05, -0.5, 0.62]];
+    ctx.strokeStyle = ink(0.85 - hz); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, v.y); ctx.lineTo(cx, cy + r * 0.4); ctx.stroke();
+    if (bare) { ctx.lineWidth = 0.7; ctx.beginPath(); for (const [mx, my] of masses) { ctx.moveTo(cx, cy + r * 0.4); ctx.lineTo(cx + mx * r * 1.1, cy + my * r - r * 0.4); } ctx.stroke(); }
+    ctx.lineWidth = 1.1; ctx.beginPath(); for (const [mx, my, k] of masses) { ctx.moveTo(cx + mx * r + r * k, cy + my * r); ctx.arc(cx + mx * r, cy + my * r, r * k, 0, TAU); } ctx.stroke();
+    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tones[t], bare ? 0.5 : 1); ctx.beginPath(); for (const [mx, my, k] of masses) { const rr = r * k * (1 - t * 0.28) * (bare ? 0.7 : 1), x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, TAU); } ctx.fill(); }
+    return;
+  }
+  if (v.kind === 'poplar' || v.kind === 'cypress') {
+    const h = v.h, cyp = v.kind === 'cypress', rx = h * (cyp ? 0.14 : 0.2), cy = v.y - h * 0.5, tn = cyp ? EVERGREEN : tones;
+    ctx.strokeStyle = ink(0.85 - hz); ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(v.x, v.y); ctx.lineTo(v.x, v.y - h * (bare && !cyp ? 0.95 : 0.2)); ctx.stroke();
+    if (bare && !cyp) { ctx.lineWidth = 0.6; ctx.beginPath(); for (let k = 0; k < 5; k++) { const y = v.y - h * (0.25 + k * 0.14); ctx.moveTo(v.x, y); ctx.lineTo(v.x + (k % 2 ? 1 : -1) * rx * 0.9, y - h * 0.12); } ctx.stroke(); }
+    ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(v.x, cy, rx, h * 0.5, 0, 0, TAU); ctx.stroke();
+    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tn[t], bare && !cyp ? 0.45 : 1); ctx.beginPath(); ctx.ellipse(v.x - t * rx * 0.25, cy - t * h * 0.06, rx * (1 - t * 0.3), h * 0.5 * (1 - t * 0.22), 0, 0, TAU); ctx.fill(); }
+    return;
+  }
+  if (v.kind === 'hedge') {
+    const tn = bare ? ['#4A5A48', '#5A6E56', '#6E8468'].map(hexRgb) : tones, r = 1.5 * s;
+    ctx.strokeStyle = ink(0.8 - hz); ctx.lineWidth = 0.9; ctx.beginPath(); v.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tn[t]); ctx.beginPath(); for (let i = 0; i < v.pts.length; i++) { const [x, y] = v.pts[i], rr = r * (1 - t * 0.3); ctx.moveTo(x - t * 0.4 + rr, y - t * 0.4); ctx.arc(x - t * 0.4, y - t * 0.4, rr, 0, TAU); } ctx.fill(); }
+    return;
+  }
+  if (v.kind === 'lawn') {
+    const g = bare ? mixRgb(GRASS, hexRgb('#9A9A80'), 0.4) : light(tones[1], 0.25), pts = [[v.x + 2, v.y], [v.x + v.w, v.y + 1], [v.x + v.w - 2, v.y + v.h], [v.x, v.y + v.h - 1]];
+    poly(ctx, fill(g), pts); inkPath(ctx, pts, 0.5, 0.6 - hz, true);
+    ctx.strokeStyle = fill(haze(ROAD, 0.1)); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(v.x + v.w * 0.5, v.y); ctx.quadraticCurveTo(v.x + v.w * 0.3, v.y + v.h * 0.6, v.x + v.w * 0.55, v.y + v.h); ctx.stroke();
+    disc(ctx, fill(bare ? hexRgb('#6A5A50') : tones[1]), v.x + v.w * 0.75, v.y + v.h * 0.45, 1.6); disc(ctx, fill(bare ? hexRgb('#8A7A6A') : tones[2]), v.x + v.w * 0.75 - 0.5, v.y + v.h * 0.45 - 0.5, 1);
+    return;
+  }
+  if (v.kind === 'vineyard') {
+    const soil = fill(mixRgb(hexRgb('#B89A6A'), GRASS, 0.45)), leaf = season === 'autumn' ? ['#B07A2A', '#D8A840'] : season === 'winter' ? null : ['#3A7A38', '#62A848'];
+    poly(ctx, soil, [[v.x, v.y], [v.x + v.w, v.y - v.slant * 4], [v.x + v.w, v.y + v.h - v.slant * 4], [v.x, v.y + v.h]]);
+    for (let r = 2; r < v.h - 1; r += 3.2) {
+      const y = v.y + r; ctx.strokeStyle = ink(0.45 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(v.x + 1, y); ctx.lineTo(v.x + v.w - 1, y - v.slant * 4); ctx.stroke();
+      for (let x = v.x + 2; x < v.x + v.w - 1; x += 2.8) { const yy = y - v.slant * 4 * ((x - v.x) / v.w); if (leaf) { disc(ctx, fill(hexRgb(leaf[0])), x, yy - 0.5, 0.85); disc(ctx, fill(hexRgb(leaf[1])), x - 0.3, yy - 0.8, 0.5); } else fillRect(ctx, ink(0.7 - hz), x - 0.25, yy - 1.6, 0.5, 1.6); }
+    }
+    inkPath(ctx, [[v.x, v.y], [v.x + v.w, v.y - v.slant * 4], [v.x + v.w, v.y + v.h - v.slant * 4], [v.x, v.y + v.h]], 0.5, 0.5 - hz, true);
+    return;
+  }
+  if (v.kind === 'garden') {
+    // Potager derrière la maison : rangs de terre, légumes verts (vides l'hiver), clôture de piquets.
+    const w = v.w, y = v.y, soil = fill(hexRgb('#A8865E'));
+    fillRect(ctx, fill(mixRgb(GRASS, hexRgb('#A8865E'), 0.35)), v.x, y - 6 * s, w, 6 * s);
+    for (let k = 0; k < 3; k++) { const yy = y - 5 * s + k * 1.8 * s; fillRect(ctx, soil, v.x + 1, yy, w - 2, 0.7 * s); if (!bare && k < 2) for (let x = v.x + 2; x < v.x + w - 1.5; x += 1.8 * s) disc(ctx, fill(tones[k === 0 ? 1 : 2]), x, yy - 0.2, 0.55 * s); }
+    ctx.strokeStyle = ink(0.7 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); for (let x = v.x; x <= v.x + w; x += 1.6 * s) { ctx.moveTo(x, y); ctx.lineTo(x, y - 1.6 * s); } ctx.moveTo(v.x, y - 1 * s); ctx.lineTo(v.x + w, y - 1 * s); ctx.stroke();
+    return;
+  }
+}
 // Maison de la colline (port de paintHillHouse) + saison des arbres (G), terrasse (O).
 function paintHouse(ctx, h, env) {
   const { x, w, s, haze: hz, base, top, rh } = h, D = env.D;
@@ -191,8 +246,12 @@ function paintNearShadows(ctx, F) {
 function paintFondStatic(ctx, F, env) {
   CUR_SEASON = env.D.season;
   paintGround(ctx, F, env.D);
+  for (const v of F.crestVerdure) paintVerdure(ctx, v);
   for (const e of F.escapes) paintRoad(ctx, e);
   for (let row = 0; row < 3; row++) {
+    // Massifs qui dépassent derrière les maisons du rang précédent, puis verdure des creux du rang, puis les maisons.
+    for (const v of F.rowVerdure[row]) if (!v.behind) paintVerdure(ctx, v);
+    for (const v of F.rowVerdure[row]) if (v.behind) paintVerdure(ctx, v);
     for (const h of F.houses) if (h.row === row) paintHouse(ctx, h, env);
     for (const l of F.landmarks) if (Math.abs(l.base - H * HILL_ROWS[row].y) < 1e-6) paintLandmarkC(ctx, l, HILL_ROWS[row].haze);
   }

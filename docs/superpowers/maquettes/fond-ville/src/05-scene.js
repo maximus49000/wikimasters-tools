@@ -66,9 +66,9 @@ function renderScene(ctx, seed, T, D, view, avant = false) {
 
 // ───────────── vues ─────────────
 const fullView = (scale = 2) => ({ x0: 0, y0: 0, w: W, h: H, scale });
-const escapeView = (F, k = 0, scale = 3) => { const e = F.escapes[k]; return { x0: Math.round(e.x - 60), y0: 30, w: 260, h: 140, scale }; };
-const funiView = (F, k = 0, scale = 3) => { const f = F.escapes[k].funi; return { x0: Math.round((f.x0 + f.x1) / 2 - 70), y0: Math.round(f.y1 - 24), w: 150, h: 110, scale }; };
-const towerView = (F, scale = 3) => { const t = F.landmarks.find((l) => l.kind === 'tower'); return { x0: Math.round(t.x - 60), y0: Math.max(0, Math.round(t.top - 14)), w: 150, h: 110, scale }; };
+const escapeView = (F, k = 0, scale = 3) => { const e = F.escapes[k]; return { x0: Math.max(0, Math.round(e.x - 60)), y0: 30, w: 260, h: 140, scale }; };
+const funiView = (F, k = 0, scale = 3) => { const f = F.escapes[k].funi; return { x0: Math.max(0, Math.round((f.x0 + f.x1) / 2 - 70)), y0: Math.round(f.y1 - 24), w: 150, h: 110, scale }; };
+const towerView = (F, scale = 3) => { const t = F.landmarks.find((l) => l.kind === 'tower'); return { x0: Math.max(0, Math.round(t.x - 60)), y0: Math.max(0, Math.round(t.top - 14)), w: 150, h: 110, scale }; };
 // Une ruelle : la plus large fente entre deux immeubles du premier plan (≥ 6 px), vue du toit du fond jusqu'au trottoir.
 function alleyView(F, scale = 3) {
   const near = F.near.slice().sort((a, b) => a.x - b.x); let best = null;
@@ -78,9 +78,9 @@ function alleyView(F, scale = 3) {
 // Vue sur une cheminée de la colline qui fume à l'instant T (visible au-dessus du mur du fond).
 function smokeView(F, T, D, scale = 4) {
   const env = envAt(T, D), ch = F.houses.map((h) => h.chimney).filter((c) => c && smokeK(T, D, c, F.seed) > 0 && F.hillTop[Math.round(c.x)] > c.y + 2)[0] || F.houses.find((h) => h.chimney).chimney;
-  return { x0: Math.round(ch.x - 70), y0: Math.max(0, Math.round(ch.y - 45)), w: 150, h: 90, scale };
+  return { x0: Math.max(0, Math.round(ch.x - 70)), y0: Math.max(0, Math.round(ch.y - 45)), w: 150, h: 90, scale };
 }
-const wallView = (F, scale = 3) => { const b = F.far.reduce((m, b) => (b.nFloors > m.nFloors ? b : m), F.far[0]); return { x0: Math.round(b.x - 60), y0: Math.max(0, Math.round(b.top - 20)), w: 180, h: 130, scale }; };
+const wallView = (F, scale = 3) => { const b = F.far.reduce((m, b) => (b.nFloors > m.nFloors ? b : m), F.far[0]); return { x0: Math.max(0, Math.round(b.x - 60)), y0: Math.max(0, Math.round(b.top - 20)), w: 180, h: 130, scale }; };
 
 // ───────────── galerie ─────────────
 function canvasFor(id, w, h, label) {
