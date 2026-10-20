@@ -69,6 +69,11 @@ const cloudPoolSize = (width: number): number => Math.min(140, Math.round((34 * 
 // Ghibli Ville : les cumulus peints sont 1,5 à 2 fois plus grands que les ellipses — moitié moins de nuages (au moins un).
 const paintedPoolSize = (width: number): number => Math.max(1, Math.round(cloudPoolSize(width) * 0.5));
 const windSpeed = (wind: number): number => 4 + 14 * Math.max(0, wind); // px/s : les nuages ne s'arrêtent jamais
+const outermostSvg = (el: SVGElement): SVGSVGElement | null => {
+  let svg = el.ownerSVGElement;
+  while (svg?.ownerSVGElement) svg = svg.ownerSVGElement;
+  return svg;
+};
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Motifs de points (neige) : la boucle ne fait que les translater — aucun nœud par flocon. La pluie n'est plus un motif
@@ -145,7 +150,9 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     };
     const set = (node: SVGElement | null, value: number): void => put(node, 'opacity', value.toFixed(3));
     const still = reducedMotion();
-    const svg = el.ownerSVGElement;
+    // Variables posées sur le <svg> le plus extérieur de la pièce : elles descendent (héritage CSS) jusqu'au décor des fenêtres,
+    // dessiné dans un <svg> imbriqué, et le calque de lumière (qui lit --wmt-sun-hidden) est hors de ce <svg> imbriqué.
+    const svg = outermostSvg(el);
 
     // Opacité courante de chaque nuage (−1 : pas encore posé) ; un nuage apparaît ou s'efface en fondu, jamais d'un coup.
     const cloudOpacity = cloudNodes.map(() => -1);
