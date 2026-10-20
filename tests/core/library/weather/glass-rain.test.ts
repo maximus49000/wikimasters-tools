@@ -76,6 +76,18 @@ describe('vitre : moteur des gouttes', () => {
     expect(sim.statics.length - before).toBeLessThanOrEqual(2); // 40/s × 1/30 s ≈ 1,33
   });
 
+  it('5 min d’averse au budget téléphone : peu de gouttes pendues au plafond des coulures (r ≥ 3,9)', () => {
+    // Mesuré (graine 3, une vitre ou trois) : 1 à 4 % des gouttes posées, à toute minute ; seuil d'alerte à 30 %.
+    for (const panes of [[PANE], [{ x: 20, y: 30, w: 170, h: 130 }, { x: 330, y: 30, w: 230, h: 170 }, { x: 650, y: 90, w: 320, h: 260 }]]) {
+      const sim = createGlassSim(panes, 3, GLASS_BUDGET_PHONE);
+      prefillGlass(sim, env(1, 0));
+      let worst = 0;
+      run(sim, 1, 300, 0, (s) => { worst = Math.max(worst, s.statics.filter((d) => d.r >= 3.9).length / Math.max(1, s.statics.length)); });
+      expect(worst).toBeLessThan(0.3);
+      expect(sim.statics.length).toBeLessThanOrEqual(220);
+    }
+  });
+
   it('les coulures descendent et absorbent les gouttes sur leur passage', () => {
     const sim = createGlassSim([PANE], 9, GLASS_BUDGET_WIDE);
     const x = PANE.x + 300;
