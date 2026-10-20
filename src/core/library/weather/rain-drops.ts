@@ -5,12 +5,13 @@
 // Tout est piloté par precip (0-1) et wind (0-1) : aucune densité réglée à part.
 import { mulberry32 } from '../scene-world';
 
-export type RainEnv = { precip: number; wind: number; daylight: number; t: number };
-export type RainBudget = { drops: number; splashes: number; ripples: number };
+/** `wet` : sol mouillé (0-1), pour les gerbes des roues ; absent = suit la pluie. */
+export type RainEnv = { precip: number; wind: number; daylight: number; t: number; wet?: number };
+export type RainBudget = { drops: number; splashes: number; ripples: number; sprays?: number };
 
 // Budgets : téléphone (notes §Android, basse définition) / grand écran (valeurs de la maquette).
-export const RAIN_BUDGET_PHONE: RainBudget = { drops: 350, splashes: 80, ripples: 40 };
-export const RAIN_BUDGET_WIDE: RainBudget = { drops: 900, splashes: 160, ripples: 90 };
+export const RAIN_BUDGET_PHONE: RainBudget = { drops: 350, splashes: 80, ripples: 40, sprays: 140 };
+export const RAIN_BUDGET_WIDE: RainBudget = { drops: 900, splashes: 160, ripples: 90, sprays: 320 };
 
 export type RainDripKind = 'auvent' | 'corniche' | 'toit' | 'gouttiere';
 export type RainWorld = {
@@ -33,6 +34,17 @@ export type RainWorld = {
   span?: { x0: number; x1: number };
   /** Échelle des VITESSES (même durée de traversée qu'à la maquette : hauteur du monde / 460) ; 1 par défaut. */
   speed?: number;
+  /** Rebords du décor (dessus des bandeaux de boutiques…) : les gouttes des couches moyenne et proche s'y écrasent. */
+  ledges?: readonly RainLedge[];
+};
+export type RainLedge = { x0: number; x1: number; y: number };
+
+/** Véhicule vu par la pluie (px de scène) : `y` = sol sous les roues, `roof` = haut du toit, `half` = demi-longueur,
+ *  `v` = vitesse (px/s, ≥ 0), `dir` = sens. `head` / `tail` : phares et feux arrière (reflets sur le sol mouillé la nuit),
+ *  `lit` : feux allumés. `far` : voie du fond (plus petit, gerbes réduites). */
+export type RainCar = {
+  id: string; x: number; y: number; half: number; roof: number; v: number; dir: 1 | -1;
+  head: { x: number; y: number }; tail: { x: number; y: number }; lit: boolean; far: boolean;
 };
 
 const sizeOf = (w: RainWorld): number => (w.scale !== undefined && Number.isFinite(w.scale) && w.scale > 0 ? w.scale : 1);
@@ -65,9 +77,12 @@ export type RainDrop = {
   /** Ordonnée où la goutte touche le sol. */
   ground: number;
 };
-export type RainSplash = { x: number; y: number; age: number; k: number; parts: { x: number; y: number; vx: number; vy: number }[] };
+/** `top` : sur un rebord ou un toit (dessinée par-dessus les acteurs, pas dans le sol). */
+export type RainSplash = { x: number; y: number; age: number; k: number; parts: { x: number; y: number; vx: number; vy: number }[]; top?: boolean };
 export type RainRipple = { x: number; y: number; age: number; life: number; R: number };
 export type RainFallingDrip = { x: number; y: number; vy: number; r: number; ground: number };
+/** Gouttelette soulevée par une roue (ou gerbe d'une flaque) ; `mist` : nuée fine, plus large et plus pâle. */
+export type RainSpray = { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number; floor: number; mist: boolean };
 
 export type RainSim = {
   world: RainWorld;
@@ -84,6 +99,12 @@ export type RainSim = {
   dripTimers: { phase: number }[];
   /** Réserve de gouttes à faire naître (montée progressive, ≤ 40/s). */
   spawnAcc: number;
+  /** Gerbes des roues et des flaques traversées. */
+  sprays: RainSpray[];
+  /** Réserve de gouttelettes à émettre par roue (clé : id du véhicule). */
+  sprayAcc: Map<string, number>;
+  /** Dernière gerbe de chaque flaque (s de simulation) : une seule gerbe par passage de roue. */
+  puddleHit: number[];
 };
 
 const SPAWN_RATE = 40; // gouttes nouvelles par seconde au plus
@@ -118,6 +139,9 @@ export function createRainSim(world: RainWorld, seed: number, opts: { soft: bool
     drips: [],
     dripTimers: world.drips.map(() => ({ phase: rng() })),
     spawnAcc: 0,
+    sprays: [],
+    sprayAcc: new Map(),
+    puddleHit: world.puddles.map(() => -Infinity),
   };
 }
 
@@ -150,8 +174,8 @@ function pickLayer(sim: RainSim): 0 | 1 | 2 {
   return sim.soft && li === 2 && sim.rng() < 0.5 ? 1 : li;
 }
 
-function addSplash(sim: RainSim, x: number, y: number, k: number): void {
-  if (!sim.world.splashGround || sim.splashes.length >= sim.budget.splashes) return;
+function addSplash(sim: RainSim, x: number, y: number, k: number, onTop = false): void {
+  if ((!sim.world.splashGround && !onTop) || sim.splashes.length >= sim.budget.splashes) return;
   k *= sizeOf(sim.world); // couronne, gouttelettes et leur envol à l'échelle du monde
   const r = sim.rng;
   const parts: RainSplash['parts'] = [];
@@ -161,7 +185,7 @@ function addSplash(sim: RainSim, x: number, y: number, k: number): void {
     const v = (60 + r() * 90) * k;
     parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v });
   }
-  sim.splashes.push({ x, y, age: 0, k, parts });
+  sim.splashes.push(onTop ? { x, y, age: 0, k, parts, top: true } : { x, y, age: 0, k, parts });
 }
 
 /** Pluie déjà là (ouverture de la scène, redimensionnement) : pose tout de suite la population cible,
@@ -173,7 +197,18 @@ export function prefillRain(sim: RainSim, env: RainEnv): void {
   sim.spawnAcc = 0;
 }
 
-export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
+// Haut d'un obstacle sous la goutte (rebord du décor, toit d'un véhicule) franchi pendant ce pas : son ordonnée, sinon NaN.
+function hitTop(world: RainWorld, cars: readonly RainCar[], x: number, y0: number, y1: number): number {
+  const ledges = world.ledges;
+  if (ledges) for (const l of ledges) if (y0 < l.y && y1 >= l.y && x >= l.x0 && x <= l.x1) return l.y;
+  for (const c of cars) if (y0 < c.roof && y1 >= c.roof && x >= c.x - c.half * 0.7 && x <= c.x + c.half * 0.7) return c.roof;
+  return NaN;
+}
+
+const NO_CARS: readonly RainCar[] = [];
+
+/** Un pas de la pluie. `cars` : véhicules de la scène (gouttes sur les toits, gerbes des roues, flaques traversées). */
+export function stepRain(sim: RainSim, env: RainEnv, dtIn: number, cars: readonly RainCar[] = NO_CARS): void {
   const dt = Number.isFinite(dtIn) ? Math.min(MAX_DT, Math.max(0, dtIn)) : 0;
   if (dt === 0) return;
   sim.t += dt;
@@ -196,13 +231,26 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
   } else sim.spawnAcc = 0;
 
   const lean = W * gust(t); // dérive horizontale = fraction de la vitesse
+  const hasLedges = (w.ledges?.length ?? 0) > 0;
   let excess = sim.drops.length - target;
   let write = 0;
   for (let i = 0; i < sim.drops.length; i++) {
     const d = sim.drops[i]!;
     const L = LAYERS[d.layer]!;
     const vx = d.v * (0.08 + lean * 0.55) + Math.sin(t * 3.1 + d.ph) * L.sway * 18 * SP; // dérive + léger balancement (proche)
+    const y0 = d.y;
     d.y += d.v * dt;
+    // couches moyenne et proche : la goutte s'écrase sur un rebord ou un toit de voiture (plus de chute derrière lui)
+    if (d.layer > 0 && !sim.soft && (hasLedges || cars.length > 0) && d.y < d.ground) {
+      const top = hitTop(w, cars, d.x, y0, d.y);
+      if (top === top) {
+        if (r() < 0.7) addSplash(sim, d.x, top, d.layer === 2 ? 0.8 : 0.55, true);
+        if (excess > 0) { excess--; continue; }
+        Object.assign(d, spawnDrop(sim, d.layer));
+        sim.drops[write++] = d;
+        continue;
+      }
+    }
     d.x += vx * dt;
     if (d.x > sx0 + sw + 60) d.x -= sw + 160;
     if (d.x < sx0 - 100) d.x += sw + 160;
@@ -263,4 +311,76 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
     addSplash(sim, d.x, d.ground, 1.3);
     return false;
   });
+
+  stepSprays(sim, env, P, dt, cars);
+}
+
+const SPRAY_LIFE: [number, number] = [0.35, 0.75];
+const SPRAY_V_REF = 160; // vitesse (px/s à l'échelle 1) d'une gerbe pleine
+
+function pushSpray(sim: RainSim, s: RainSpray): void {
+  if (sim.sprays.length < (sim.budget.sprays ?? 200)) sim.sprays.push(s);
+}
+
+// Gerbes des roues : gouttelettes soulevées derrière chaque roue (plus nombreuses et plus hautes avec la vitesse et le sol
+// mouillé), nuée fine derrière la voiture ; flaque traversée : grande gerbe des deux côtés et anneaux. Voie du fond : × 0,55.
+function stepSprays(sim: RainSim, env: RainEnv, P: number, dt: number, cars: readonly RainCar[]): void {
+  const w = sim.world, r = sim.rng, K = sizeOf(w), SP = speedOf(w);
+  const wet = clamp01(env.wet !== undefined && Number.isFinite(env.wet) ? env.wet : Math.min(1, P * 4));
+  if (wet > 0.15 && w.splashGround) {
+    const seen = new Set<string>();
+    for (const c of cars) {
+      seen.add(c.id);
+      const vn = Math.min(1.4, c.v / (SPRAY_V_REF * SP));
+      if (vn < 0.08) { sim.sprayAcc.delete(c.id); continue; }
+      const kf = c.far ? 0.55 : 1;
+      let acc = (sim.sprayAcc.get(c.id) ?? 0) + dt * 70 * wet * vn * kf;
+      const wheels = [c.x - c.half * 0.62, c.x + c.half * 0.62];
+      while (acc >= 1) {
+        acc -= 1;
+        const wx = wheels[r() < 0.5 ? 0 : 1]!;
+        const mist = r() < 0.3;
+        const up = (40 + 110 * r()) * K * kf * Math.sqrt(vn);
+        pushSpray(sim, {
+          x: wx - c.dir * 2 * K * kf, y: c.y - 0.5,
+          vx: -c.dir * c.v * (0.12 + 0.3 * r()) + (r() - 0.5) * 30 * K, vy: -up,
+          age: 0, life: lerp(SPRAY_LIFE[0], SPRAY_LIFE[1], r()) * (mist ? 1.4 : 1),
+          r: (mist ? 2.6 + 2 * r() : 0.7 + 0.5 * r()) * K * kf, floor: c.y + 1, mist,
+        });
+      }
+      sim.sprayAcc.set(c.id, acc);
+      // flaque traversée par une roue : une grande gerbe par passage
+      if (vn < 0.25) continue;
+      w.puddles.forEach((p, i) => {
+        if (sim.t - sim.puddleHit[i]! < 0.8) return;
+        if (Math.abs(p.y - c.y) > p.rx * 0.18 + 3 * K) return;
+        if (!wheels.some((x) => Math.abs(x - p.x) < p.rx * 0.8)) return;
+        sim.puddleHit[i] = sim.t;
+        const n = Math.round((10 + 10 * vn) * kf);
+        for (let k = 0; k < n; k++) {
+          const side = r() < 0.6 ? -c.dir : c.dir; // surtout vers l'arrière
+          pushSpray(sim, {
+            x: p.x + (r() - 0.5) * p.rx * 0.6, y: c.y - 0.5,
+            vx: side * (30 + c.v * 0.35 * r()) * (0.6 + 0.4 * kf), vy: -(110 + 170 * r()) * K * kf * Math.sqrt(vn),
+            age: 0, life: 0.55 + 0.35 * r(), r: (0.9 + 0.7 * r()) * K * kf, floor: c.y + 2, mist: false,
+          });
+        }
+        if (sim.ripples.length < sim.budget.ripples) sim.ripples.push({ x: p.x, y: p.y, age: 0, life: 0.9, R: p.rx * 0.7 });
+      });
+    }
+    if (sim.sprayAcc.size > seen.size) for (const id of sim.sprayAcc.keys()) if (!seen.has(id)) sim.sprayAcc.delete(id);
+  }
+  if (sim.sprays.length === 0) return;
+  let write = 0;
+  for (const s of sim.sprays) {
+    s.age += dt;
+    if (s.age >= s.life) continue;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.vy += GRAVITY * K * (s.mist ? 0.25 : 0.75) * dt;
+    s.vx *= 1 - Math.min(1, (s.mist ? 3 : 1.2) * dt); // freinée par l'air
+    if (s.y > s.floor) { s.y = s.floor; s.vy = 0; }
+    sim.sprays[write++] = s;
+  }
+  sim.sprays.length = write;
 }

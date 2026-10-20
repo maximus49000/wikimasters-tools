@@ -27,6 +27,8 @@ import { EnterWait3D, GhibliFigure, gateEntering, poseFigure, prewarmCitizen, pr
 import { PropImage } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { useWallClockLoop } from './use-wallclock-loop';
+import { rainCarSlot, useRainTraffic } from './rain-traffic';
+import type { RainCar } from '../core/library/weather/rain-drops';
 
 // Circulation de la scène Ville (spec véhicules §1, livraison V1). Un moteur par pièce (useTraffic, dans CityLifeLayer),
 // partagé par les deux voies dessinées (TrafficLane) : chaque voie le fait avancer à l'horloge murale (le second appel de
@@ -138,6 +140,32 @@ function placeMarquee(w: TrafficWorld, a: Agent, node: Element, t: number): void
   g.setAttribute('transform', `translate(${(-((t * MARQUEE.speed) % tw)).toFixed(2)} 0)`);
 }
 
+// Véhicule vu par la pluie (px de scène) : centre, sol sous les roues, toit, phares et feux arrière. Voiture peinte : repères
+// de son dessin ; sprite classique : repères du sprite (feux à mi-hauteur, toit à 14 unités).
+function publishRainCar(lane: { cars: RainCar[]; n: number }, w: TrafficWorld, a: Agent, look: VehicleLook | null, m: CityMetrics, t: number, lights: boolean): void {
+  const v = agentView(w, a, t);
+  const k = kOf(a, m);
+  const dir = TRACK_DIR[a.track];
+  const y = yOf(a, v.lat, m);
+  const c = rainCarSlot(lane, lane.n++);
+  c.id = a.id; c.y = y; c.v = Math.abs(a.v); c.dir = dir; c.lit = lights; c.far = a.track === 'far';
+  if (look) {
+    const art = look.art;
+    c.x = v.x + ((art.x0 + art.x1) / 2) * k * dir;
+    c.half = ((art.x1 - art.x0) / 2) * k;
+    c.roof = y + art.top * k;
+    c.head.x = v.x + art.head.x * k * dir; c.head.y = y + art.head.y * k;
+    c.tail.x = v.x + art.tail.x * k * dir; c.tail.y = y + art.tail.y * k;
+    return;
+  }
+  const half = a.car ? a.car.L / 2 : (SPRITE_HALF[a.kind] ?? 20);
+  c.x = v.x;
+  c.half = half * k;
+  c.roof = y - (a.kind === 'bus' || a.kind === 'school-bus' || a.kind === 'tram' || a.kind === 'garbage-truck' ? 30 : 14) * k;
+  c.head.x = v.x + (half - 1) * k * dir; c.head.y = y - 7 * k;
+  c.tail.x = v.x - (half - 1.2) * k * dir; c.tail.y = y - 9 * k;
+}
+
 type LaneProps = {
   handle: TrafficHandle;
   lane: 'near' | 'far';
@@ -162,6 +190,8 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
   // Fumée d'échappement (Ghibli) : pool fixe de la voie.
   const puffs = useRef(createPuffs(48)).current;
   const smoke = useRef<SVGGElement | null>(null);
+  // Pluie : place des véhicules de la voie publiée à chaque image (toits, roues, feux), relue par la boucle de la pluie.
+  const rainTraffic = useRainTraffic();
   const place = useMemo(
     () => (now: number): void => {
       const t = still ? frozenT : now;
@@ -186,12 +216,15 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
       const el = root.current;
       if (!el) return;
       const alive = new Set<string>();
+      const rainLane = rainTraffic && !still ? rainTraffic.lanes[lane] : null;
+      if (rainLane) rainLane.n = 0;
       for (const node of el.children) {
         const id = node.getAttribute('data-life-id');
         const a = id ? w.agents.find((x) => x.id === id) : undefined;
         if (!a) continue;
         const look = paintedLook(a, ghibli);
         node.setAttribute('transform', transformOf(w, a, metrics, t, look !== null));
+        if (rainLane && a.kind !== 'bike' && a.kind !== 'delivery-bike' && a.kind !== 'moto') publishRainCar(rainLane, w, a, look, metrics, t, lights);
         if (ghibli && CITIZENS_3D && !still) {
           // Habitants 3D : véhicule caché hors champ tant qu'un de ses personnages attend sa 3D ; entré dans le champ, toujours entier.
           const half = (a.car ? a.car.L / 2 : (SPRITE_HALF[a.kind] ?? 20)) * kOf(a, metrics);
@@ -228,6 +261,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
         // Cycliste, et livreur du vélo de livraison (G5) : pédalage réglé sur la distance parcourue.
         if (ghibli && (a.kind === 'bike' || a.kind === 'delivery-bike') && !still) poseFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), riderPose(1, crankPhase(a.dist / kOf(a, metrics)), a.v < FOOT_DOWN_V * metrics.unit));
       }
+      if (rainLane) rainLane.at = Date.now();
       if (ghibli) {
         forgetPuffSources(puffs, alive);
         placePuffs(smoke.current?.firstElementChild ?? null, puffs, t);
@@ -235,7 +269,7 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
       }
     },
     // Ciel et pluie (occupants rendus d'avance) : seulement avec les habitants 3D, sinon la boucle n'est pas relancée (comme avant).
-    [w, handle, metrics, still, frozenT, ghibli, figures, cars, puffs, CITIZENS_3D ? sky : null, CITIZENS_3D ? rainy : null],
+    [w, handle, metrics, still, frozenT, ghibli, figures, cars, puffs, rainTraffic, lane, lights, CITIZENS_3D ? sky : null, CITIZENS_3D ? rainy : null],
   );
   useWallClockLoop(place, [place]);
   // Mouvement réduit : un seul placement après le montage.

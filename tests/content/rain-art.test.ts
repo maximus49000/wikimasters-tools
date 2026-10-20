@@ -175,6 +175,26 @@ describe('drawRainAir', () => {
   });
 });
 
+describe('drawRainGround — feux des véhicules', () => {
+  const car = { id: 'c', x: 400, y: 380, half: 20, roof: 364, v: 100, dir: 1 as const, head: { x: 419, y: 373 }, tail: { x: 381, y: 371 }, lit: true, far: false };
+  // fillRect en plus de la même scène sans voiture (la lame du caniveau en fait déjà un)
+  const fills = (daylight: number, lit: boolean, wet: number): number => {
+    const count = (cars: (typeof car)[]): number => {
+      const ctx = fakeCtx();
+      const sim = createRainSim(WORLD, 3, { soft: false, budget: RAIN_BUDGET_WIDE });
+      drawRainGround(asCtx(ctx), sim, WORLD, { precip: 0.6, wind: 0, daylight, t: 1, wet }, makeLightField([], SKY_NIGHT, 460), cars);
+      return ctx.ops.filter((o) => o.op === 'fillRect').length;
+    };
+    return count([{ ...car, lit }]) - count([]);
+  };
+  it('la nuit sur sol mouillé : reflets des phares et des feux arrière ; rien de jour, feux éteints ou sol sec', () => {
+    expect(fills(0, true, 1)).toBeGreaterThan(10);
+    expect(fills(1, true, 1)).toBe(0);
+    expect(fills(0, false, 1)).toBe(0);
+    expect(fills(0, true, 0)).toBe(0);
+  });
+});
+
 describe('makeLightField', () => {
   it('lightAt : cône sous le lampadaire, rien loin de tout ; colorAt : ciel teinté par la lumière', () => {
     const field = makeLightField(LIGHTS, SKY_NIGHT, 460);
