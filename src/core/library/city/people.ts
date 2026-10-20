@@ -81,6 +81,37 @@ export function festiveMark(p: Pedestrian, i: CityIntensity): FestiveMark | null
   return markU(p.id) < f.share ? mark : null;
 }
 
+// Halloween : déguisement complet (`Costume`) ou simple accessoire (`Touch` : chapeau pointu, cornes, oreilles de chat), porté
+// par-dessus la tenue (pantin : figure/dress.ts et bake.ts).
+export const COSTUMES = ['witch', 'ghost', 'skeleton', 'vampire', 'mummy', 'zombie', 'devil', 'pumpkin', 'cat', 'hero'] as const;
+export type Costume = (typeof COSTUMES)[number];
+export const TOUCHES = ['witch-hat', 'horns', 'ears'] as const;
+export type Touch = (typeof TOUCHES)[number];
+export type Guise = Costume | Touch;
+// Poids des déguisements d'adulte (passants, adultes qui vont à une soirée).
+export const ADULT_COSTUMES: Readonly<Partial<Record<Costume, number>>> = { witch: 1.4, vampire: 1.3, devil: 1, skeleton: 1, zombie: 0.8, mummy: 0.6, cat: 1 };
+// Tirage pondéré d'un déguisement avec une valeur u ∈ [0, 1).
+export function pickWeighted<K extends string>(w: Readonly<Partial<Record<K, number>>>, u: number): K {
+  const e = Object.entries(w) as [K, number][];
+  let a = u * e.reduce((s, [, v]) => s + v, 0);
+  for (const [k, v] of e) {
+    a -= v;
+    if (a < 0) return k;
+  }
+  return e[e.length - 1]![0];
+}
+// Hachages de l'id (aucun tirage déplacé, et indépendants de `u`, qui décide de la présence) : appartenance à la part des
+// déguisés, puis choix du déguisement.
+const guiseU = (id: string, k: string): number => ((hashString(`guise:${k}:${id}`) >>> 0) % 10000) / 10000;
+
+// Déguisement d'un passant ordinaire le soir d'Halloween (et quelques-uns la veille et le lendemain) : costume complet pour les
+// trois quarts des déguisés, accessoire pour les autres. Ni les enfants qui jouent ni les accompagnés (écoliers, Pâques).
+export function guiseOf(p: Pedestrian, i: CityIntensity): Guise | null {
+  const f = i.festive;
+  if (!f || f.id !== 'halloween' || p.role !== 'general' || p.profile === 'jogger' || guiseU(p.id, 'on') >= f.share) return null;
+  return guiseU(p.id, 'full') < 0.75 ? pickWeighted(ADULT_COSTUMES, guiseU(p.id, 'kind')) : TOUCHES[Math.floor(guiseU(p.id, 'kind') * TOUCHES.length)]!;
+}
+
 // Marge hors champ (px) où un passant peut changer de présence : il ne surgit ni ne s'efface jamais dans la rue visible.
 export const EDGE_PAD = 12;
 // Présence affichée : la présence voulue (pedestrianGate, à la minute) n'est prise que lorsque le passant est hors champ ;

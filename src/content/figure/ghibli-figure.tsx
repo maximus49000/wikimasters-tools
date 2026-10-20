@@ -1,9 +1,9 @@
 // src/content/figure/ghibli-figure.tsx
 import { createContext, useContext, useLayoutEffect, useRef, type ReactElement, type ReactNode } from 'react';
 import { anchorsOf, keyString, type Anchor, type FigureKey } from '../../core/library/figure/bake';
-import { shapeOf, signatureOf, type Work } from '../../core/library/figure/dress';
+import { GUISE_COLORS, guiseOutfit, shapeOf, signatureOf, type Work } from '../../core/library/figure/dress';
 import type { ArmPose } from '../../core/library/figure/skeleton';
-import type { Outfit } from '../../core/library/city/people';
+import type { Guise, Outfit } from '../../core/library/city/people';
 import { mixHex, type Sky } from '../../core/library/sky';
 import { hashString } from '../../core/library/scene-world';
 import { citizenFromOutfit, type CitizenDesc, type CitizenKind, type Emotion } from '../../core/citizens/catalogue';
@@ -36,16 +36,17 @@ export const citizenLight = (sky: Sky): number => NIGHT_LIGHT + (1 - NIGHT_LIGHT
 // clé de palette est complète) ; `haze` (0–1) : pantin lointain, couleurs mélangées au bleu de brume du décor du fond
 // (#9CC0E4) avant la teinte du moment ; `silhouette` : palette unie SILHOUETTE (contre-jour derrière une fenêtre allumée la
 // nuit, vie aux fenêtres), sans teinte du moment.
-export type FigureLook = { santa?: boolean; haze?: number; silhouette?: boolean };
+// `guise` : déguisement d'Halloween (couleurs de ses pièces : cases `cos`, `cos2`, `cos3`, `bone`).
+export type FigureLook = { santa?: boolean; haze?: number; silhouette?: boolean; guise?: Guise };
 const HAZE = '#9CC0E4';
 export const SILHOUETTE = '#1A1422';
 export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, c3d?: { key: string; light: number }, look: FigureLook = {}): Palette {
-  const { santa = false, haze = 0, silhouette = false } = look;
+  const { santa = false, haze = 0, silhouette = false, guise } = look;
   const lit: Sky = { ...sky, daylight: step(sky.daylight) };
   const t = (c: string): string => tone(haze > 0 ? mixHex(c, HAZE, haze) : c, lit);
   const slots: Record<string, string> = {
     skin: o.skin,
-    top: rainOutfit(o, rainy).topColor,
+    top: guise ? o.topColor : rainOutfit(o, rainy).topColor,
     bottom: o.bottomColor,
     hair: o.hairColor,
     hat: o.hatColor,
@@ -64,6 +65,7 @@ export function figurePalette(o: Outfit, sky: Sky, rainy: boolean, c3d?: { key: 
     buckle: '#E8B93A',
     nose: '#E8A090',
     cheek: '#F0A8A0',
+    ...(guise ? GUISE_COLORS[guise] : {}),
   };
   const p: Palette = { 'f-ink': t('#33241f'), 'f-ground': '#3a2f5a' };
   for (const [k, c] of Object.entries(slots)) {
@@ -281,7 +283,7 @@ function track(reg: FigureRegistry, node: Element, pk: string, key: FigureKey, w
 // détenue) reste et la nouvelle clé est mise en file ; la boucle (poseFigure, data-palette déjà à jour) la pose dès qu'elle
 // est peinte. Seule une première apparition peint tout de suite (ensure). La clé affichée est détenue dès la mise en page,
 // libérée au démontage ; les sprites de l'ancienne palette, libérés, partent avec le plafond.
-// `work` : tenue de travail (dans la signature) ; `santa` : tenue du père Noël (dans la signature et la palette) ; `held` :
+// `guise` : déguisement d'Halloween (signature, palette, pantin 2D forcé) ; `work` : tenue de travail (dans la signature) ; `santa` : tenue du père Noël (dans la signature et la palette) ; `held` :
 // objets tenus, posés aux accroches de la pose affichée dès le rendu (les foules immobiles n'appellent jamais poseFigure),
 // déplacés ensuite par poseFigure, cachés avec la figure. `santa` et `haze` (pantin voilé de brume) : toujours le pantin 2D,
 // même avec CITIZENS_3D (pas de base 3D du père Noël, pas de brume sur les sprites 3D) ; de même `flat` (pantin derrière une
@@ -309,6 +311,7 @@ export function GhibliFigure({
   pin,
   flat = false,
   silhouette = false,
+  guise,
 }: {
   outfit: Outfit;
   sky: Sky;
@@ -329,14 +332,17 @@ export function GhibliFigure({
   pin?: Anchor;
   flat?: boolean;
   silhouette?: boolean;
+  guise?: Guise | null;
 }): ReactElement {
   const reg = useFigureRegistry();
   if (useContext(EnterWait3D)) waitFor3D = true;
   const ref = useRef<SVGGElement | null>(null);
-  const sig = signatureOf(shapeOf(outfit, umbrella, work, santa));
+  // Déguisé (Halloween) : tenue de base du déguisement, toujours le pantin 2D (pas de déguisement sur la base 3D).
+  if (guise) outfit = guiseOutfit(outfit, guise);
+  const sig = signatureOf(shapeOf(outfit, umbrella, work, santa, guise ?? undefined));
   const pk = reg.addPalette(
-    santa || haze > 0 || flat || silhouette
-      ? figurePalette(outfit, sky, rainy, undefined, { santa, haze, silhouette })
+    santa || haze > 0 || flat || silhouette || guise
+      ? figurePalette(outfit, sky, rainy, undefined, { santa, haze, silhouette, guise: guise ?? undefined })
       : citizenPalette(reg, outfit, sky, rainy, umbrella, work, { citizen, kind, emotion, sex, beard }),
   );
   const key = keyOf(sig, initial);

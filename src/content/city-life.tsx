@@ -12,7 +12,7 @@ import { busArrivals, serviceKindOf } from '../core/library/city/traffic/bus-tim
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { actorShadow, nearestLamp } from '../core/library/city/night-light';
-import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
+import { EDGE_PAD, festiveMark, guiseOf, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { CUSTOMER_SCALE, customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
 import { paradeOn } from '../core/library/city/parade';
 import { inScene } from '../core/library/city/shops/scene/slots';
@@ -23,6 +23,7 @@ import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import type { StaffShift } from '../core/library/city/shops/staff';
 import type { Vehicle } from '../core/library/city/vehicles';
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
+import type { ArmPose } from '../core/library/figure/skeleton';
 import { loopX } from '../core/library/scene-world';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
@@ -642,6 +643,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const zonesNow = useRef<DodgeZone[]>([]);
   const pedsByDepth = useMemo(() => [...peds].sort((a, b) => b.depth - a.depth), [peds]);
   const marks = useMemo(() => new Map(peds.map((p) => [p.id, festiveMark(p, intensity)] as const)), [peds, intensity]);
+  // Halloween : déguisement de chaque passant (zombie : bras tendus, sauf sous un parapluie).
+  const guises = useMemo(() => new Map(peds.map((p) => [p.id, guiseOf(p, intensity)] as const)), [peds, intensity]);
+  const pedArms = (id: string): ArmPose => {
+    const arms = markArms(marks.get(id));
+    return arms === 'swing' && guises.get(id) === 'zombie' && !intensity.umbrellas ? 'handlebar' : arms;
+  };
   // Placement à chaque image. La table des nœuds est remplie au premier appel (après le montage) ;
   // tout est placé une fois, puis bougent les présents et, pendant leur fondu, ceux qui viennent de disparaître.
   const place = useMemo(() => {
@@ -778,7 +785,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           const pose = pedPose(p, metrics, t, still);
           // Le chef du groupe (dernière figure) tient son signe de fête : bras `hold` pour un objet à la main.
           const figs = pedFigs.get(p.id) ?? [];
-          const arms = markArms(marks.get(p.id));
+          const arms = pedArms(p.id);
           figs.forEach((fig, i) => poseFigure(figures, fig, i === figs.length - 1 && arms !== 'swing' ? { ...pose, arms } : pose));
         }
       }
@@ -939,7 +946,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps, hallDark, stairs, dodgeZones, life]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, guises, sceneShops, traffic, litLamps, hallDark, stairs, dodgeZones, life]);
   useWallClockLoop(place, [place]);
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
@@ -1163,6 +1170,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-role={p.role}
               data-profile={p.profile}
               data-mark={mark ?? undefined}
+              data-guise={guises.get(p.id) ?? undefined}
               data-active={active ? 'true' : 'false'}
               transform={pedTransform(p, metrics, width, t0, !ghibli, dodgeZones)}
               opacity={active ? 1 : 0}
@@ -1183,8 +1191,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   sky={sky}
                   rainy={rainy}
                   umbrella={intensity.umbrellas}
-                  initial={{ ...pedPose(p, metrics, t0, still), arms: markArms(mark) }}
+                  initial={{ ...pedPose(p, metrics, t0, still), arms: pedArms(p.id) }}
                   hidden={!active}
+                  guise={guises.get(p.id)}
                   citizen={citizenSeed(p.id)}
                   kind={kindOfProfile(p.profile)}
                   waitFor3D

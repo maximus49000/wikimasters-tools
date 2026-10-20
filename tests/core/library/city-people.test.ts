@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FestivityId } from '../../../src/core/library/city/calendar';
 import { type CityIntensity } from '../../../src/core/library/city/intensity';
-import { festiveMark, outfitFor, pedShown, pedestrianGate, pedestriansFor } from '../../../src/core/library/city/people';
+import { COSTUMES, TOUCHES, festiveMark, guiseOf, outfitFor, pedShown, pedestrianGate, pedestriansFor } from '../../../src/core/library/city/people';
 import { hashString, mulberry32 } from '../../../src/core/library/scene-world';
 
 const zero: CityIntensity = { traffic: 0, walkers: 0, suits: 0, schoolTo: 0, schoolFrom: 0, kids: 0, sport: 0, umbrellas: false, weekendLike: false, festive: null, closed: false };
@@ -91,6 +91,28 @@ describe('passants festifs', () => {
     const n = base.filter((p) => festiveMark(p, festive('bastille', 0.5)) !== null).length;
     expect(n).toBeGreaterThan(base.length * 0.2);
     expect(n).toBeLessThan(base.length * 0.8);
+  });
+});
+
+describe('déguisements d’Halloween', () => {
+  const peds = [1, 2, 3, 4, 5, 6].flatMap((s) => pedestriansFor(1440, s));
+  const hw = (share: number): CityIntensity => ({ ...zero, festive: { id: 'halloween', share } });
+  it('aucun hors d’Halloween, ni pour les enfants, les écoliers ou les joggeurs', () => {
+    for (const p of peds) expect(guiseOf(p, zero)).toBeNull();
+    for (const p of peds.filter((q) => q.role !== 'general' || q.profile === 'jogger')) expect(guiseOf(p, hw(1))).toBeNull();
+  });
+  it('une part proche du partage, déterministe, sans toucher la présence ni les tirages', () => {
+    const general = peds.filter((p) => p.role === 'general' && p.profile !== 'jogger');
+    const n = general.filter((p) => guiseOf(p, hw(0.45)) !== null).length;
+    expect(n / general.length).toBeGreaterThan(0.3);
+    expect(n / general.length).toBeLessThan(0.6);
+    expect(general.map((p) => guiseOf(p, hw(0.45)))).toEqual(general.map((p) => guiseOf(p, hw(0.45))));
+    expect(pedestriansFor(1440, 1)).toEqual(pedestriansFor(1440, 1));
+    const all = general.map((p) => guiseOf(p, hw(1)));
+    expect(all.filter((g) => g && (COSTUMES as readonly string[]).includes(g)).length).toBeGreaterThan(all.filter((g) => g && (TOUCHES as readonly string[]).includes(g)).length);
+    // la part ne dépend pas de `u` (présence) : des déguisés parmi les u élevés comme parmi les bas
+    expect(general.filter((p) => p.u > 0.5 && guiseOf(p, hw(0.45))).length).toBeGreaterThan(0);
+    expect(general.filter((p) => p.u < 0.5 && guiseOf(p, hw(0.45))).length).toBeGreaterThan(0);
   });
 });
 
