@@ -47,7 +47,13 @@ export function paintFacade(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding
   ctx.clip();
   // Ton d'ombre : bande droite (côté opposé au soleil) + ombre portée du voisin de gauche, bords nets.
   fillRect(ctx, shade(wall, 0.28), x + w * 0.72, eave, w * 0.28, h);
-  if (left && left.top < top) poly(ctx, shade(wall, 0.28), [[x, left.top], [x + (ground - left.top) * SHADOW_K, ground], [x, ground]]);
+  // Ombre portée seulement d'un voisin mitoyen plus haut, sur un étage sous l'égout (audit D3 : plus de triangle jusqu'au trottoir).
+  if (left && left.x + left.w >= x - 2 && left.top < top) {
+    const y1 = Math.min(ground - GROUND_FLOOR, eave + 14);
+    const wa = Math.min(w * 0.45, SHADOW_K * (eave - left.top));
+    const wb = Math.min(w * 0.45, SHADOW_K * (y1 - left.top));
+    poly(ctx, shade(wall, 0.28), [[x, eave], [x + wa, eave], [x + wb, y1], [x, y1]]);
+  }
   // Rehaut : liseré clair côté soleil ; salissure du pied (pas sous une tour de jumeaux : le socle la couvrirait).
   fillRect(ctx, light(wall, 0.45), x, eave, 1.6, h);
   if (b.podiumTop === null) fillRect(ctx, shade(wall, 0.18), x, ground - 3, w, 3);

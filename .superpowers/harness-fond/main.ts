@@ -1,7 +1,6 @@
 // Banc du fond de la ville : décor peint (vrai peintre) + fenêtres du fond allumées par le calque SVG (en orange).
 import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
 import { paintCityTile, tileCount } from '../../src/core/library/paint/city-painter';
-import { cityFacades } from '../../src/core/library/city/facades';
 import { FAR_WINDOW } from '../../src/core/library/city/facades';
 import type { PaintCtx } from '../../src/core/library/paint/paint-ctx';
 
@@ -30,6 +29,6 @@ for (let t = 0; t < tileCount(W); t++) {
 }
 if (LAMPS) {
   ctx.fillStyle = '#FF8800';
-  for (const b of cityFacades(W, H, SEED)) for (const w of b.farWindows) ctx.fillRect(w.x, w.y, FAR_WINDOW.w, FAR_WINDOW.h);
+  for (const b of plan.buildings) for (const w of b.lit) ctx.fillRect(w.x, w.y, FAR_WINDOW.w, FAR_WINDOW.h);
 }
 (window as unknown as { done: boolean }).done = true;

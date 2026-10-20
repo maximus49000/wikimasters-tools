@@ -15,7 +15,7 @@ import type { PaintCtx } from './paint-ctx';
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 9;
+export const PAINT_VERSION = 10;
 
 const LEAVES = ['#2A6A2E', '#52A23C', '#A8DC58'].map(hexRgb);
 const BARK = hexRgb('#9A8468');
@@ -296,7 +296,7 @@ function paintFurniture(ctx: PaintCtx, plan: CityPaintPlan, f: Furniture): void 
 // façade : ni volets ni jardinières) ; l'allure ne sert pas.
 function podiumHost(p: PaintPodium): PaintBuilding {
   const look: Look = { wall: p.stone, roof: p.stone, roofKind: 'zinc', roofH: 0, shutters: null, boxes: false, balconyRow: null, ivy: null, chimney: null, antenna: false, pipe: false, laundry: false };
-  return { id: p.id, x: p.x, w: p.w, top: p.top, far: false, wins: p.wins, look, podiumTop: null, layout: null, homes: p.layout?.homes ?? [] };
+  return { id: p.id, x: p.x, w: p.w, top: p.top, far: false, wins: p.wins, lit: [], look, podiumTop: null, layout: null, homes: p.layout?.homes ?? [] };
 }
 
 // Socle commun des jumeaux (maquette batiments-larges/rue.html) : pierre de taille claire d'un seul tenant sous les deux

@@ -1,6 +1,7 @@
 # Ville Ghibli — le fond de la ville vivant (design)
 
-Date : 2026-10-20. Statut : **catalogue choisi par l'utilisateur, maquette Fable en cours** (validation avant tout code).
+Date : 2026-10-20. Statut : **maquette VALIDÉE par l'utilisateur le 2026-10-20** (« C'est ok ! ») : `docs/superpowers/maquettes/fond-ville/`
+(`maquette.html` assemblée par `build.mjs` depuis `src/*.js`, `notes.md` = correspondance avec le code, captures). Prochaine étape : plan puis code.
 
 Chantier 3 sur 3 de la refonte « naturelle et logique » de la scène Ville (1 : façades parisiennes, PR #342 ; 2 : vie au-dessus
 de la rue, PR #343-345). Les deux premiers chantiers avaient explicitement laissé le fond (mur du fond, colline) de côté.
@@ -94,10 +95,32 @@ réagissent à la pluie, à l'orage, à la neige et aux saisons (feuilles et pé
 oiseaux), de la façon la plus naturelle possible, à coût borné sur Android ; immobiles en mouvement réduit. La colline
 reçoit encore plus d'éléments.
 
+## 3 bis. Décisions finales (validation du 2026-10-20)
+
+L'utilisateur a validé la maquette telle quelle. Pour les questions ouvertes de `notes.md` §6 qu'il n'a pas tranchées une à
+une, on retient les propositions de la maquette :
+
+- **Mur du fond** : plafond à 0,20-0,28 H, tiré par immeuble.
+- **Échappée** : une par bande de 1 080 px, avec route, funiculaire et grue réunis.
+- **Fumées** : 30 % des cheminées, au plus 12 panaches en vue.
+- **Volets du fond** : par tranche de 10 min.
+- **Étourneaux** : nuées de 36, 3 passages.
+- **Heure pile** : marquée par les pigeons.
+- **Rue** : arbres espacés de 70 à 110 px ; grimpantes sur 15 % des façades.
+- **Calendrier** : celui de `notes.md` §3 ter.
+- **Herbe nue** : 8-11 %, en parcelles de moins de 12 × 8 px.
+- **Piétons de la colline** : 12 par heure.
+
+Arbres : squelette fixe toute l'année, feuillage en masses posé dessus (§3 d et §3 e de `notes.md`), test des 365 jours.
+
+**Performance Android** : on mesure avant d'animer. Le vent des arbres se fait par sprites cuits par masse et transformations
+à 15 Hz. Si le banc ralenti ×4 dépasse le budget, seuls les arbres de la rue et ceux de l'échappée sont animés, et le reste
+de la colline reste immobile (option prévue). Sur Android, la colline est animée par tranches de 240 px.
+
 ## 4. Étapes
 
 1. ~~Choix du catalogue (§3) et des corrections de l'audit (§2)~~ : fait le 2026-10-20.
-2. Maquette par Fable (règle du projet pour les visuels) : fond corrigé, puis la vie retenue, de jour, au crépuscule, la nuit,
+2. ~~Maquette par Fable~~ : validée le 2026-10-20. Maquette par Fable (règle du projet pour les visuels) : fond corrigé, puis la vie retenue, de jour, au crépuscule, la nuit,
    en hiver et en automne. La validation par l'utilisateur se fait avant le code.
 3. Plan d'implémentation, puis code : corrections de l'audit d'abord, vie du fond ensuite (découpage en PR fixé dans le plan).
 4. Captures au banc comparées à la maquette, puis fusion et `npm run preprod`.

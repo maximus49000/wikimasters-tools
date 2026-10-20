@@ -1,7 +1,8 @@
-import { TAU, disc, fillRect, ink, light, poly, shade } from './cel';
-import { FAR_HAZE, hillCrestY, type CityPaintPlan, type HillHouse, type Landmark, type PaintBuilding } from './city-plan';
+import { SHADOW_K, TAU, disc, fillRect, ink, light, poly, shade } from './cel';
+import { FAR_FLOOR, FAR_HAZE, hillCrestY, type CityPaintPlan, type HillHouse, type Landmark, type PaintBuilding } from './city-plan';
 import { hexRgb, mixRgb, rgba, type Rgb } from './color';
 import type { PaintCtx } from './paint-ctx';
+import { GROUND_FLOOR } from '../city/metrics';
 
 // Fond de la ville peinte (vague Ghibli, décor cellulo) : colline verte, rangs de maisons empilées (toits terracotta,
 // lucarnes, cheminées, bouquets d'arbres), tour-horloge et dômes, puis le mur du fond existant redessiné en
@@ -185,13 +186,16 @@ export function paintLandmark(ctx: PaintCtx, l: Landmark, hz: number): void {
   ctx.strokeRect(x, base - 26 * s, 26 * s, 26 * s);
 }
 
-// Mur du fond existant (immeubles `far`, contigus) : quatrième rang de la colline, à peine brumeux. Fenêtres aux positions
-// de `farWindows` (le calque SVG les allume la nuit au même endroit).
+// Mur du fond (immeubles `far`, contigus) : quatrième rang de la colline, à peine brumeux. Hauteur et grille corrigées par le
+// plan (farTops, city-plan.ts) : étages à bandeau, fenêtres sous l'égout (le calque SVG allume `lit` aux mêmes places),
+// volets ouverts quand l'immeuble en a, ombre portée seulement d'un voisin mitoyen et sur un étage, et sous le haut du
+// rez-de-chaussée une ruelle ou une cour en retrait (ton d'ombre, porches, pavés) : vue dans les fentes du premier plan.
 export function paintFarWall(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding, left: PaintBuilding | null): void {
   const hz = FAR_HAZE;
   const { x, w, top } = b;
   const eave = top + b.look.roofH;
-  const h = plan.ground - eave;
+  const bottom = plan.ground - GROUND_FLOOR;
+  const h = bottom - eave;
   const wall = haze(b.look.wall, hz);
   const rc = haze(b.look.roof, hz);
   fillRect(ctx, wall, x, eave, w, h);
@@ -200,12 +204,59 @@ export function paintFarWall(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildin
   ctx.rect(x, eave, w, h);
   ctx.clip();
   fillRect(ctx, shade(wall, 0.28), x + w * 0.72, eave, w * 0.28, h);
-  if (left && left.top < top) poly(ctx, shade(wall, 0.28), [[x, left.top], [x + (plan.ground - left.top) * 0.55, plan.ground], [x, plan.ground]]);
+  if (left && left.x + left.w >= x - 2 && left.top < top) {
+    const y1 = Math.min(bottom, eave + FAR_FLOOR);
+    const wa = Math.min(w * 0.45, SHADOW_K * (eave - left.top));
+    const wb = Math.min(w * 0.45, SHADOW_K * (y1 - left.top));
+    poly(ctx, shade(wall, 0.28), [[x, eave], [x + wa, eave], [x + wb, y1], [x, y1]]);
+  }
   fillRect(ctx, light(wall, 0.4), x, eave, 1.2, h);
+  // Bandeaux d'étage : ligne claire, ombre nette sous chaque plancher.
+  for (let by = eave + FAR_FLOOR + 0.5; by < bottom - 1; by += FAR_FLOOR) {
+    fillRect(ctx, light(wall, 0.5), x, by - 0.8, w, 0.8);
+    fillRect(ctx, shade(wall, 0.38), x, by, w, 0.6);
+  }
+  // Fenêtres : linteau clair, vitre, volets ouverts de part et d'autre.
+  const glass = haze(GLASS_FAR, 0.3);
+  const sh = b.look.shutters ? haze(b.look.shutters, hz) : null;
+  for (const v of b.wins) {
+    fillRect(ctx, light(wall, 0.5), v.x - 0.6, v.y - 0.7, v.w + 1.2, 0.7);
+    fillRect(ctx, glass, v.x, v.y, v.w, v.h);
+    if (sh) {
+      fillRect(ctx, sh, v.x - 0.8, v.y, 0.7, v.h);
+      fillRect(ctx, shade(sh, 0.3), v.x + v.w + 0.1, v.y, 0.7, v.h);
+    }
+  }
   ctx.restore();
-  // Pas de débord (même ligne de toit que `roofLineY` pour la neige).
-  const o = 0;
-  const pts: [number, number][] = b.look.roofKind === 'gable' ? [[x - o, eave], [x + w / 2, top], [x + w + o, eave]] : [[x - o, eave], [x + 1.5, top + 1], [x + w - 1.5, top + 1], [x + w + o, eave]];
+  // Ruelle ou cour en retrait sous le haut du rez-de-chaussée.
+  const ru = shade(wall, 0.5);
+  fillRect(ctx, ru, x, bottom, w, plan.ground - bottom);
+  fillRect(ctx, shade(ru, 0.3), x + w * 0.72, bottom, w * 0.28, plan.ground - bottom);
+  fillRect(ctx, shade(wall, 0.2), x, plan.ground - 3, w, 3);
+  fillRect(ctx, light(wall, 0.5), x, bottom - 0.8, w, 0.8);
+  fillRect(ctx, ink(0.75), x, bottom, w, 0.9);
+  // Porches et portes de service tous les 14 px (une fente en montre toujours un), pavés de la cour.
+  ctx.fillStyle = ink(0.7);
+  for (let px = x + 5 + ((b.id * 7) % 9); px + 5 < x + w - 2; px += 14) {
+    const arch = Math.floor(px) % 2 === 0;
+    ctx.fillRect(px, plan.ground - (arch ? 10 : 8), arch ? 5 : 3.5, arch ? 7 : 5);
+    if (arch) {
+      ctx.beginPath();
+      ctx.arc(px + 2.5, plan.ground - 10, 2.5, Math.PI, 0);
+      ctx.fill();
+    }
+  }
+  ctx.strokeStyle = rgba(shade(wall, 0.4), 0.8);
+  ctx.lineWidth = 0.4;
+  ctx.beginPath();
+  for (let px = x + 2; px < x + w; px += 4) {
+    ctx.moveTo(px, plan.ground - 3);
+    ctx.lineTo(px - 1, plan.ground);
+  }
+  ctx.stroke();
+  fillRect(ctx, shade(ru, 0.25), x, bottom + 3, w, 0.6);
+  // Toit sans débord (même ligne que `roofLineY` pour la neige), corniche sous l'égout.
+  const pts: [number, number][] = b.look.roofKind === 'gable' ? [[x, eave], [x + w / 2, top], [x + w, eave]] : [[x, eave], [x + 1.5, top + 1], [x + w - 1.5, top + 1], [x + w, eave]];
   poly(ctx, rc, pts);
   ctx.save();
   ctx.beginPath();
@@ -222,18 +273,12 @@ export function paintFarWall(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildin
   ctx.closePath();
   ctx.stroke();
   fillRect(ctx, shade(wall, 0.42), x, eave, w, 2);
+  fillRect(ctx, light(wall, 0.55), x, eave + 2, w, 0.6);
   if (b.look.chimney !== null) {
     const cx = x + w * b.look.chimney;
     fillRect(ctx, haze(BRICK, hz), cx, top + 1, 3, b.look.roofH * 0.6);
     fillRect(ctx, ink(0.7), cx - 0.4, top + 1, 3.8, 0.8);
   }
-  // Grille de fenêtres sur toute la hauteur (même grille que `farWindows` : colonnes de 8 px, rangées de 11 px, 3,5 × 5),
-  // puis les fenêtres de `farWindows` par-dessus (celles que le calque SVG allume la nuit).
-  ctx.fillStyle = rgba(haze(GLASS_FAR, 0.3), 1);
-  const cols = Math.max(1, Math.floor((w - 6) / 8));
-  for (let wy = top + 5; wy + 5 <= plan.ground - 8; wy += 11) for (let c = 0; c < cols; c++) ctx.fillRect(x + 4 + c * 8, wy, 3.5, 5);
-  ctx.fillStyle = rgba(haze(GLASS_FAR, 0.2), 1);
-  for (const win of b.wins) ctx.fillRect(win.x, win.y, win.w, win.h);
   ctx.strokeStyle = ink(0.8 - hz);
   ctx.lineWidth = 0.6;
   ctx.strokeRect(x, eave, w, h);

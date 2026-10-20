@@ -12,7 +12,8 @@ import type { HomeState } from '../core/library/city/home-state';
 import { windowShutters } from './window-life-art';
 
 // Calque des fenêtres de la ville peinte (vague Ghibli), hors filtre d'étalonnage, au-dessus des tranches du décor. Ordre :
-// 1. lumières du mur du fond (déjà privées de celles que cache le premier plan, facades.ts) ;
+// 1. lumières du mur du fond : celles du plan peint (sous l'égout, privées de celles que cache le premier plan, farTops de
+//    city-plan.ts), à défaut celles de facades.ts ;
 // 2. vitres éteintes de nuit, un groupe par immeuble proche puis par socle de jumeaux (opacité = obscurité du ciel, jamais
 //    le mauvais temps : un ciel couvert à midi ne bleuit pas les vitres) ;
 // 3. fenêtres allumables (logements), une par fenêtre. Avec `life` (use-scene-life.ts) : allumée si la pièce de la fenêtre
@@ -97,7 +98,7 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
   return (
     <g data-ghibli-windows="">
       <GlowDefs prefix={prefix} sizes={sizes} />
-      {buildings.map((b, i) => b.farWindows.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} />))}
+      {(plan ? plan.buildings.map((b) => b.lit) : buildings.map((b) => b.farWindows)).map((wins, i) => wins.map((win, j) => <FarLight key={`f${i}-${j}`} win={win} lit={windowLit(win.u, minutes, day, daylight, gloom)} dim={dim} farLight={farLight} />))}
       {panes.map((p) => <NightGlass key={p.key} layout={p.layout} wall={p.wall} opacity={glass} curtains={!life} />)}
       {slots.map(({ win, home, level, facadeX, dMax, group }, k) => {
         const light = life && states ? windowLight(life, states, group, win.bay, dark, tones, String(k), home.tone) : null;

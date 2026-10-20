@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
 import { CORNICE, LEFT_GAP, leftOf, paintBuilding, paintCityTile, paintPodium, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
 import { doorsFor } from '../../../../src/core/library/city/doors';
+import { GROUND_FLOOR } from '../../../../src/core/library/city/metrics';
 import { roofOutline } from '../../../../src/core/library/city/facade-layout';
 import { PAINT_VERSION } from '../../../../src/core/library/paint/city-painter';
 import { paintParisRoof } from '../../../../src/core/library/paint/roof-painter';
@@ -69,14 +70,35 @@ describe('peintre de tranche', () => {
     }
   });
 
-  it('ombre portée du voisin plus haut : un triangle à bord net depuis son toit', () => {
-    const plan = cityPaintPlan(2160, 340, 1);
-    const b = plan.buildings.find((x) => !x.far && leftOf(plan, x) !== null && leftOf(plan, x)!.top < x.top)!;
-    expect(b).toBeDefined();
-    const ctx = recordingCtx();
-    paintBuilding(ctx, plan, b);
-    const left = leftOf(plan, b)!;
-    expect(ctx.ops.some((o) => o.op === 'moveTo' && o.args[0] === b.x && o.args[1] === left.top)).toBe(true);
+  it('ombre portée : seulement d’un voisin mitoyen plus haut, sur un étage sous l’égout (audit D3)', () => {
+    let mitoyens = 0;
+    let separes = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const plan = cityPaintPlan(2160, 340, seed);
+      for (const b of plan.buildings) {
+        if (b.far) continue;
+        const left = leftOf(plan, b);
+        if (!left || left.top >= b.top) continue;
+        const eave = b.top + b.look.roofH;
+        const ctx = recordingCtx();
+        paintBuilding(ctx, plan, b);
+        const i = ctx.ops.findIndex((o, k) => o.op === 'moveTo' && o.args[0] === b.x && o.args[1] === eave && ctx.ops[k + 1]?.op === 'lineTo' && ctx.ops[k + 1]!.args[1] === eave && (ctx.ops[k + 1]!.args[0] as number) > b.x);
+        // Plus jamais de triangle tiré du toit du voisin jusqu'au trottoir.
+        expect(ctx.ops.some((o) => o.op === 'moveTo' && o.args[0] === b.x && o.args[1] === left.top)).toBe(false);
+        if (left.x + left.w >= b.x - 2) {
+          mitoyens++;
+          expect(i).toBeGreaterThanOrEqual(0);
+          const y1 = Math.min(plan.ground - GROUND_FLOOR, eave + 14);
+          expect(ctx.ops[i + 2]!.args[1]).toBe(y1);
+          expect((ctx.ops[i + 1]!.args[0] as number) - b.x).toBeLessThanOrEqual(b.w * 0.45 + 1e-9);
+        } else {
+          separes++;
+          expect(i).toBe(-1);
+        }
+      }
+    }
+    expect(mitoyens).toBeGreaterThan(0);
+    expect(separes).toBeGreaterThan(0);
   });
 
   it('raccord : un immeuble à cheval est peint des deux côtés avec les mêmes points', () => {
@@ -175,8 +197,7 @@ describe('peintre de tranche', () => {
         const ctx = recordingCtx();
         paintBuilding(ctx, plan, b);
         const y0 = touching ? (left.top > b.top ? left.top + left.look.roofH : b.top + b.look.roofH) : NaN;
-        const i = ctx.ops.findIndex((o) => o.op === 'moveTo' && o.args[0] === b.x && o.args[1] === y0);
-        const joint = i >= 0 && ctx.ops[i + 1]!.op === 'lineTo' && ctx.ops[i + 1]!.args[0] === b.x && ctx.ops[i + 1]!.args[1] === plan.ground;
+        const joint = ctx.ops.some((o, i) => o.op === 'moveTo' && o.args[0] === b.x && o.args[1] === y0 && ctx.ops[i + 1]!.op === 'lineTo' && ctx.ops[i + 1]!.args[0] === b.x && ctx.ops[i + 1]!.args[1] === plan.ground);
         expect(joint).toBe(touching);
         if (touching) found++;
       }
@@ -184,8 +205,8 @@ describe('peintre de tranche', () => {
     expect(found).toBeGreaterThan(0);
   });
 
-  it('PAINT_VERSION vaut 9', () => {
-    expect(PAINT_VERSION).toBe(9);
+  it('PAINT_VERSION vaut 10', () => {
+    expect(PAINT_VERSION).toBe(10);
   });
 
   it('tranches : aucun volet ni rideau peint (le calque de la vie aux fenêtres les dessine)', () => {

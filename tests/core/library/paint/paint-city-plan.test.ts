@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { doorsFor } from '../../../../src/core/library/city/doors';
-import { cityFacades, GROUND_FLOOR } from '../../../../src/core/library/city/facades';
+import { cityFacades, FAR_WINDOW, FAR_WINDOWS_MAX, GROUND_FLOOR } from '../../../../src/core/library/city/facades';
 import { hexRgb } from '../../../../src/core/library/paint/color';
 import { TILE, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
-import { cityPaintPlan, silhouetteTop } from '../../../../src/core/library/paint/city-plan';
+import { cityPaintPlan, FAR_BAY, FAR_FLOOR, nearSilhouette, silhouetteTop } from '../../../../src/core/library/paint/city-plan';
 
 describe('plan de la ville peinte', () => {
   for (const seed of [1, 7, 42]) {
@@ -15,7 +15,8 @@ describe('plan de la ville peinte', () => {
       plan.buildings.forEach((b, i) => {
         expect(b.x).toBe(facades[i]!.x);
         expect(b.w).toBe(facades[i]!.w);
-        expect(b.top).toBeCloseTo(plan.ground - facades[i]!.h, 6);
+        // Premier plan : hauteur tirée ; mur du fond : hauteur corrigée (voir « mur du fond corrigé »).
+        if (!b.far) expect(b.top).toBeCloseTo(plan.ground - facades[i]!.h, 6);
         expect(b.far).toBe(facades[i]!.far);
       });
     });
@@ -24,10 +25,10 @@ describe('plan de la ville peinte', () => {
       plan.buildings.forEach((b, i) => {
         const f = facades[i]!;
         if (b.far) {
-          expect(b.wins.length).toBe(f.farWindows.length);
           expect(b.layout).toBeNull();
           return;
         }
+        expect(b.lit).toEqual([]);
         // Lucarnes peintes par le toit, rangée du socle peinte sur le socle : ni l'une ni l'autre dans les fenêtres de la tour.
         const floors = (f.layout?.windows ?? []).filter((w) => w.kind !== 'dormer');
         expect(b.wins.map((w) => [w.x, w.y, w.w, w.h, w.kind])).toEqual(floors.map((w) => [w.x, w.y, w.w, w.h, w.kind]));
@@ -162,14 +163,65 @@ describe('plan de la ville peinte', () => {
     expect(pairs).toBeGreaterThan(20);
   });
 
-  it('PAINT_VERSION vaut 9 (cache des tranches invalidé)', () => {
+  it('PAINT_VERSION vaut 10 (cache des tranches invalidé)', () => {
     const plan = cityPaintPlan(720, 340, 1);
-    expect(tileKey(plan, 0).startsWith('9|')).toBe(true);
+    expect(tileKey(plan, 0).startsWith('10|')).toBe(true);
   });
 });
 
 describe('mouettes du plan peint (G5)', () => {
   it('plus de mouettes figées : elles volent dans leur calque animé', () => {
     for (const seed of [1, 7, 42]) expect(cityPaintPlan(1080, 340, seed).hill.gulls).toEqual([]);
+  });
+});
+
+// Audit du 2026-10-20 (maquette fond-ville) : carrés de couleur et immeubles du fond mal coupés.
+describe('mur du fond corrigé', () => {
+  const cases = [1, 7, 42].flatMap((seed) => [720, 1440, 2880].map((w) => ({ seed, w })));
+  for (const { seed, w } of cases) {
+    const plan = cityPaintPlan(w, 340, seed);
+    const far = plan.buildings.filter((b) => b.far);
+    const near = nearSilhouette(plan.buildings, plan.podiums, w, plan.ground);
+    const ruelleY = plan.ground - GROUND_FLOOR;
+
+    it(`graine ${seed}, ${w} px : fenêtres sous l'égout, au-dessus de la ruelle, en travées et en étages (D1, D4)`, () => {
+      for (const b of far) {
+        const eave = b.top + b.look.roofH;
+        expect(b.wins.length).toBeGreaterThan(0);
+        for (const v of b.wins) {
+          expect(v.y).toBeGreaterThanOrEqual(eave + 3 - 1e-9);
+          expect(v.y + v.h).toBeLessThanOrEqual(ruelleY);
+          expect(v.x).toBeGreaterThanOrEqual(b.x + 4 - 1e-9);
+          expect(v.x + v.w).toBeLessThanOrEqual(b.x + b.w - 2);
+          expect((v.x - b.x - 4) % FAR_BAY).toBeCloseTo(0, 6);
+          expect((v.y - eave - 3) % FAR_FLOOR).toBeCloseTo(0, 6);
+        }
+      }
+    });
+
+    it(`graine ${seed}, ${w} px : fenêtres allumables parmi la grille, jamais cachées par le premier plan, 8 au plus`, () => {
+      for (const b of far) {
+        expect(b.lit.length).toBeLessThanOrEqual(FAR_WINDOWS_MAX);
+        for (const l of b.lit) {
+          expect(b.wins.some((v) => v.x === l.x && v.y === l.y)).toBe(true);
+          // Jamais sous le voisin du fond peint par-dessus.
+          for (const o of far) if (o.x > b.x && o.x < b.x + b.w) expect(l.x + FAR_WINDOW.w).toBeLessThanOrEqual(o.x);
+          for (let x = Math.floor(l.x); x <= Math.ceil(l.x + FAR_WINDOW.w); x++) if (x < near.length) expect(near[x]!).toBeGreaterThan(l.y + FAR_WINDOW.h);
+        }
+      }
+    });
+
+    it(`graine ${seed}, ${w} px : un étage au-dessus de la rue ou au plafond de 0,20-0,28 H (D2, D5, D6)`, () => {
+      for (const b of far) {
+        let nearMin = Infinity;
+        for (let x = Math.max(0, Math.floor(b.x)); x <= Math.min(w, Math.ceil(b.x + b.w)); x++) nearMin = Math.min(nearMin, near[x]!);
+        expect(b.top).toBeGreaterThanOrEqual(340 * 0.2 - 0.25);
+        expect(b.top).toBeLessThanOrEqual(Math.max(nearMin - FAR_FLOOR, 340 * 0.28) + 0.25);
+      }
+    });
+  }
+
+  it('déterministe', () => {
+    expect(cityPaintPlan(1440, 340, 7).buildings.map((b) => [b.top, b.lit])).toEqual(cityPaintPlan(1440, 340, 7).buildings.map((b) => [b.top, b.lit]));
   });
 });

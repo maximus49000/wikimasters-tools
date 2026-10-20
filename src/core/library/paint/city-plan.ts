@@ -1,6 +1,6 @@
 import { doorsFor, DOOR_MARGIN, DOOR_WIDTH } from '../city/doors';
-import { PLASTERS, STONES as LAYOUT_STONES, TILES, ZINCS, type FacadeLayout, type Home, type PodiumLayout, type Roof, type WindowKind } from '../city/facade-layout';
-import { cityFacades, FAR_WINDOW, GROUND_FLOOR } from '../city/facades';
+import { heightOn, PLASTERS, roofOutline, STONES as LAYOUT_STONES, TILES, ZINCS, type FacadeLayout, type Home, type PodiumLayout, type Roof, type WindowKind } from '../city/facade-layout';
+import { cityFacades, FAR_WINDOW, FAR_WINDOWS_MAX, GROUND_FLOOR, type FarWindow } from '../city/facades';
 import { cityMetrics } from '../city/metrics';
 import { shopSlotsFor } from '../city/shops/slots';
 import { hashString, mulberry32 } from '../scene-world';
@@ -35,8 +35,10 @@ export type Look = {
 // `podiumTop` : haut du socle commun sous la tour (jumeaux), sinon null. `layout` : mise en page de la façade (premier plan ;
 // null au fond et pour un immeuble de moins de 12 px visibles) ; 2e tour d'un socle : mur et toit de la teinte voisine s'ils
 // égalent ceux de la 1re. `homes` : logements de la façade (index `home` des fenêtres de `layout`). `wins` du premier plan :
-// fenêtres d'étage de la mise en page (lucarnes exclues : peintes par le toit), rideau d'après le logement.
-export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; look: Look; podiumTop: number | null; layout: FacadeLayout | null; homes: Home[] };
+// fenêtres d'étage de la mise en page (lucarnes exclues : peintes par le toit), rideau d'après le logement. Mur du fond :
+// `top` corrigé (farTops), `wins` = grille complète sous l'égout et au-dessus de la ruelle, `lit` = celles que le calque des
+// fenêtres allume la nuit (vide au premier plan).
+export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; lit: FarWindow[]; look: Look; podiumTop: number | null; layout: FacadeLayout | null; homes: Home[] };
 // Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumLayout` (`layout` :
 // la mise en page de son étage, fenêtres et logements, pour les peindre comme celles des façades ; null hors du monde).
 export type PaintPodium = { id: number; x: number; w: number; top: number; stone: Rgb; wins: Win[]; layout: PodiumLayout | null };
@@ -284,6 +286,65 @@ function furnitureFor(width: number, unit: number, seed: number, blocked: Span[]
 
 const TREE_STEP = 170;
 
+// ── Mur du fond corrigé (audit du 2026-10-20, maquette fond-ville) ─────────────────────────────────────────────────────
+// Tirage de `citySkyline` inchangé : seules la hauteur dessinée et la grille de fenêtres changent.
+// D2 / D5 : toujours un étage au-dessus du plus haut voisin du premier plan sur sa largeur (plus de bout de toit coincé dans
+// une fente) ; D6 : plafonné entre 0,20 et 0,28 × H (tiré par immeuble) ; D1 : fenêtres sous l'égout ; D4 : rien sous le haut
+// du rez-de-chaussée (la ruelle y est peinte).
+export const FAR_FLOOR = 11;
+export const FAR_BAY = 8;
+const FAR_CAP = 0.2;
+const FAR_CAP_SPREAD = 0.08;
+
+// Haut du premier plan (immeubles, corniches, socles) en chaque x entier de [0, width] ; `ground` là où il n'y a rien.
+export function nearSilhouette(buildings: readonly PaintBuilding[], podiums: readonly PaintPodium[], width: number, ground: number): Float32Array {
+  const a = new Float32Array(Math.ceil(width) + 1).fill(ground);
+  const put = (x0: number, x1: number, y: (x: number) => number): void => {
+    for (let x = Math.max(0, Math.ceil(x0)); x <= Math.min(a.length - 1, Math.floor(x1)); x++) a[x] = Math.min(a[x]!, y(x));
+  };
+  for (const b of buildings) {
+    if (b.far) continue;
+    // Même ligne que roofLineY (snow-painter.ts) : contour du toit, relevé par la corniche (±1,5 px, 0,8 sous l'égout).
+    const pts = b.layout ? roofOutline(b.layout) : [[b.x - 2, b.top + b.look.roofH], [b.x + 0.42 * b.w, b.top + 0.5], [b.x + b.w + 2, b.top + b.look.roofH]] as [number, number][];
+    const cornice = b.top + b.look.roofH - 0.8;
+    put(Math.min(pts[0]![0], b.x - 1.5), Math.max(pts.at(-1)![0], b.x + b.w + 1.5), (x) => (x >= b.x - 1.5 && x <= b.x + b.w + 1.5 ? Math.min(heightOn(pts, x), cornice) : heightOn(pts, x)));
+  }
+  for (const p of podiums) put(p.x - 1.5, p.x + p.w + 1.5, () => p.top - 0.8);
+  return a;
+}
+
+const minOver = (a: Float32Array, x0: number, x1: number): number => {
+  let m = Infinity;
+  for (let x = Math.max(0, Math.floor(x0)); x <= Math.min(a.length - 1, Math.ceil(x1)); x++) m = Math.min(m, a[x]!);
+  return m;
+};
+
+function farTops(buildings: PaintBuilding[], podiums: readonly PaintPodium[], width: number, height: number, ground: number, seed: number): void {
+  const near = nearSilhouette(buildings, podiums, width, ground);
+  const ruelleY = ground - GROUND_FLOOR;
+  for (const b of buildings) {
+    if (!b.far) continue;
+    const rng = mulberry32(seed ^ hashString('fond-mur') ^ Math.round(b.x * 8));
+    const nearMin = minOver(near, b.x, b.x + b.w);
+    const top = Math.max(Math.min(b.top, nearMin - FAR_FLOOR), height * (FAR_CAP + FAR_CAP_SPREAD * rng()));
+    b.top = Math.round(top * 2) / 2;
+    const eave = b.top + b.look.roofH;
+    const floors = Math.max(0, Math.floor((ruelleY - eave - 2) / FAR_FLOOR));
+    const cols = Math.max(1, Math.floor((b.w - 6) / FAR_BAY));
+    b.wins = [];
+    for (let f = 0; f < floors; f++) for (let c = 0; c < cols; c++) b.wins.push({ x: b.x + 4 + c * FAR_BAY, y: eave + 3 + f * FAR_FLOOR, w: FAR_WINDOW.w, h: FAR_WINDOW.h, dormer: false, curtain: false });
+    // Fenêtres allumables : au plus FAR_WINDOWS_MAX, tirées sans remise parmi celles que ni le premier plan ni le voisin du
+    // fond peint par-dessus (chevauchement de 4 px) ne cachent : la lueur SVG se verrait sur leur mur.
+    const next = Math.min(...buildings.filter((o) => o.far && o.x > b.x && o.x < b.x + b.w).map((o) => o.x));
+    const seen = b.wins.filter((v) => v.x + v.w <= next && minOver(near, v.x, v.x + v.w) > v.y + v.h);
+    for (let i = seen.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [seen[i], seen[j]] = [seen[j]!, seen[i]!];
+    }
+    b.lit = seen.slice(0, FAR_WINDOWS_MAX).map((v) => ({ x: v.x, y: v.y, u: rng(), blue: rng() < 0.3 }));
+  }
+}
+
 export function cityPaintPlan(width: number, height: number, seed: number): CityPaintPlan {
   const m = cityMetrics(height);
   const facades = cityFacades(width, height, seed);
@@ -304,10 +365,9 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     const podiumTop = f.podium ? m.ground - f.podium.h : null;
     const homes = layout?.homes ?? [];
     // Premier plan : fenêtres d'étage de la mise en page (les lucarnes sont peintes par le toit, la rangée du socle sur le socle).
-    const wins: Win[] = f.far
-      ? f.farWindows.map((v) => ({ x: v.x, y: v.y, w: FAR_WINDOW.w, h: FAR_WINDOW.h, dormer: false, curtain: false }))
-      : (layout?.windows ?? []).filter((v) => v.kind !== 'dormer').map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, dormer: false, curtain: v.home >= 0 && !!homes[v.home]?.curtain, kind: v.kind }));
-    return { id, x: f.x, w: f.w, top, far: f.far, wins, look, podiumTop, layout, homes };
+    // Mur du fond : grille et fenêtres allumables posées par farTops, une fois le premier plan connu.
+    const wins: Win[] = f.far ? [] : (layout?.windows ?? []).filter((v) => v.kind !== 'dormer').map((v) => ({ x: v.x, y: v.y, w: v.w, h: v.h, dormer: false, curtain: v.home >= 0 && !!homes[v.home]?.curtain, kind: v.kind }));
+    return { id, x: f.x, w: f.w, top, far: f.far, wins, lit: [], look, podiumTop, layout, homes };
   });
   const podiums: PaintPodium[] = [];
   for (const f of facades) {
@@ -346,6 +406,9 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
       }
     }
   }
+  const furniture = furnitureFor(width, m.unit, seed, blocked, trees, buildings);
+  // Mur du fond corrigé après les arbres et le mobilier (placés sur les hauteurs tirées, comme avant la correction).
+  farTops(buildings, podiums, width, height, m.ground, seed);
   return {
     width,
     height,
@@ -360,7 +423,7 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     trees,
     blocked,
     hill: hillPlan(width, height, seed),
-    furniture: furnitureFor(width, m.unit, seed, blocked, trees, buildings),
+    furniture,
     doors: doorsFor(width, height, seed).map((d) => ({ x: d.x, variant: d.variant, cx: d.x + DOOR_WIDTH / 2, base: m.doorY, s: entranceScale(m.unit) })),
   };
 }
