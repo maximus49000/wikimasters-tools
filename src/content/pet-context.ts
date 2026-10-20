@@ -5,7 +5,7 @@ import { createOutsideWatch } from '../core/library/pets/outside';
 import { hashString } from '../core/library/scene-world';
 import { streetPassesAt } from './street-passes';
 import { CELL_H, CELL_W, HEIGHT, WALL_ROWS, pxRect } from '../core/library/room-grid';
-import { celestialPlace } from './scene-panorama';
+import { sunPlace } from './sky-place';
 import { WEATHER_SCENES } from './scene-weather';
 import { glassRect } from './window-art';
 import type { SceneView } from './RoomView';
@@ -31,7 +31,7 @@ function computeSun(room: Room, sceneView: SceneView, hasSky: boolean, lightOn: 
     glasses: windows.map((w) => glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }))),
     wallH: WALL_H, floorH: HEIGHT - WALL_H, cols: room.cols,
     sunFrac: sceneView.sky.sunFrac,
-    sunX: celestialPlace(sceneView.sky.sunFrac, room.cols * CELL_W, WALL_H).x,
+    sunX: sunPlace(sceneView.sky, room.cols * CELL_W, WALL_H)!.x,
     blocked: false,
   });
 }

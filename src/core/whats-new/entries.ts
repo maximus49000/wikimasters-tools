@@ -2537,6 +2537,47 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
+    id: 'ciel-reel-2026-10',
+    theme: 'collection',
+    glyph: '🌗',
+    title: 'Soleil, lune et nuages réels',
+    summary: 'Le soleil et la lune sont à leur vraie place pour votre lieu, la lune montre sa phase du jour, les nuages suivent la météo réelle',
+    steps: [
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Le soleil à sa vraie place',
+        text: 'Derrière les fenêtres, le soleil est là où vous le verriez dehors : à 12 h à Trélazé en octobre, il est encore au sud-est (le plein sud arrive vers 13 h 45), haut en été, bas en hiver. Il passe au-dessus de la colline dès qu’il est levé.',
+        details: [
+          { label: 'D’où viennent les données', text: 'La hauteur et la direction du soleil sont calculées sur votre appareil d’après le lieu de la scène (menu ☁️), la date et l’heure. Rien n’est envoyé.' },
+          { label: 'Comment ça marche', text: 'La scène regarde vers le sud : l’est est à gauche, l’ouest à droite (l’inverse dans l’hémisphère sud, qui regarde le nord). La lumière qui entre par les fenêtres suit la même place.' },
+          { label: 'À savoir', text: 'En « Toujours le jour », « Toujours la nuit » ou « Choisir l’heure », le soleil et la lune prennent la place qu’ils ont à cette heure-là, le jour même.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'La lune et sa phase',
+        text: 'La lune montre sa phase du jour (croissant, quartier, gibbeuse, pleine), le côté éclairé tourné vers le soleil. Elle n’est là que quand elle est levée : parfois en journée, pâle sur le bleu, et pas autour de la nouvelle lune.',
+        details: [
+          { label: 'Comment ça marche', text: 'La place de la lune et sa part éclairée sont calculées sur l’appareil, comme pour le soleil. La nuit, la partie sombre d’un croissant se devine (lumière cendrée).' },
+          { label: 'À savoir', text: 'Une nuit sans lune est normale : elle peut être couchée, ou presque nouvelle. Le chien ne hurle à la lune que si elle est dans le ciel.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Nuages et météo réelle',
+        text: 'En météo réelle, les nuages bas et moyens se dessinent, le voile d’altitude blanchit le ciel sans cacher le soleil, et les nuages défilent dans le sens du vent du lieu. Soleil et lune disparaissent derrière les nuages, sous un ciel couvert et dans la brume.',
+        details: [
+          { label: 'Comment faire', text: 'Menu ☁️ › « Météo réelle », avec un lieu choisi (géolocalisation ou ville).' },
+          { label: 'D’où viennent les données', text: 'D’Open-Meteo par le relais de l’extension : couverture des nuages par étage, pluie, vent (force et direction) et visibilité, pour les coordonnées arrondies du lieu, relus tous les quarts d’heure.' },
+          { label: 'Limites', text: 'Les nuages dessinés sont un portrait du ciel, pas une photo : leur nombre suit la couverture réelle, leur place est imaginée. En météo aléatoire ou forcée, ils défilent toujours vers la droite.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+    ],
+  },
+  {
     id: 'ouvrir-objet',
     theme: 'collection',
     glyph: '💿',

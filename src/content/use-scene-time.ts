@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore, useState } from 'react';
+import { astroAt, withRealSky } from '../core/library/astro';
 import type { YMD } from '../core/library/city/calendar';
 import type { TimeSetting } from '../core/library/library-types';
 import { localClock } from '../core/library/scene-clock';
@@ -10,7 +11,7 @@ import { currentPosition, sceneTimeZone, subscribePosition } from './scene-posit
 // `tz` : fuseau de la scène (ville choisie) ou null (appareil).
 export type SceneTime = { minutes: number; sky: Sky; times: SunTimes; date: YMD; mode: TimeSetting['mode']; tz: string | null };
 
-// Minute courante, ciel, heures de lever/coucher et date du jour, dans le fuseau de la scène. En heure réelle la minute est relue toutes
+// Minute courante, ciel (astres à leur place réelle pour le lieu et la date, phase de la lune), heures de lever/coucher et date du jour, dans le fuseau de la scène. En heure réelle la minute est relue toutes
 // les 30 s ; un changement de lieu (abonnés de la position) recalcule tout aussitôt.
 export function useSceneTime(setting: TimeSetting): SceneTime {
   const [now, setNow] = useState(() => new Date());
@@ -31,7 +32,8 @@ export function useSceneTime(setting: TimeSetting): SceneTime {
   const offsetMin = clock.offsetMin;
   return useMemo(() => {
     const times = sunTimes(date, position, offsetMin);
-    return { minutes, times, sky: skyAt(minutes, times), date, mode, tz };
+    const sky = withRealSky(skyAt(minutes, times), astroAt(date, minutes, position, offsetMin));
+    return { minutes, times, sky, date, mode, tz };
     // `now` n'entre que par la date et le décalage du fuseau : la minute vient de `minutes`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minutes, position.lat, position.lon, date, mode, offsetMin, tz]);

@@ -26,7 +26,7 @@ export async function proxyWeather(url: URL, deps: { fetch: Fetcher; now: () => 
   const query = new URLSearchParams({
     latitude: rounded(lat).toFixed(1),
     longitude: rounded(lon).toFixed(1),
-    current: 'weather_code,temperature_2m,cloud_cover,precipitation,wind_speed_10m,visibility',
+    current: 'weather_code,temperature_2m,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,wind_speed_10m,wind_direction_10m,visibility',
     wind_speed_unit: 'kmh',
   });
   const result = await forward(deps.fetch, `${BASE}?${query.toString()}`);
@@ -49,6 +49,11 @@ export async function proxyWeather(url: URL, deps: { fetch: Fetcher; now: () => 
     precip: num('precipitation') ?? 0,
     wind: num('wind_speed_10m') ?? 0,
     visibility: num('visibility') ?? 20000,
+    // Étages nuageux (cumulus bas et moyens / voile d'altitude) et provenance du vent (°) : nuages du décor au plus près du ciel réel.
+    cloudLow: num('cloud_cover_low'),
+    cloudMid: num('cloud_cover_mid'),
+    cloudHigh: num('cloud_cover_high'),
+    windDir: num('wind_direction_10m'),
   });
   if (cache.size >= CACHE_MAX) cache.clear();
   cache.set(key, { at: deps.now(), body });

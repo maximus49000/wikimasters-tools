@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRealWeather, realToWeather, type RealObservation } from '../../../src/core/library/weather/weather-real';
+import { cloudDrift, cloudLayers, createRealWeather, realToWeather, type RealObservation } from '../../../src/core/library/weather/weather-real';
 
 const obs = (over: Partial<RealObservation> = {}): RealObservation => ({ code: 0, tempC: 15, cloud: 10, precipMm: 0, windKmh: 10, visibilityM: 20000, ...over });
 
@@ -37,6 +37,28 @@ describe('realToWeather', () => {
   it('le vent est normalisé', () => {
     expect(realToWeather(obs({ windKmh: 100 })).wind).toBe(1);
     expect(realToWeather(obs({ windKmh: 0 })).wind).toBe(0);
+  });
+  it('voile d’altitude seul (100 % de cirrus) : peu de nuages dessinés, ciel voilé, soleil visible', () => {
+    const w = realToWeather(obs({ code: 2, cloud: 100, cloudLow: 0, cloudMid: 5, cloudHigh: 100 }));
+    expect(w.cloud).toBeLessThan(0.1);
+    expect(w.veil).toBeGreaterThan(0.85);
+  });
+  it('nuages bas et moyens : comptés dans la couverture dessinée ; code 3 (couvert) : ciel gris', () => {
+    expect(cloudLayers(obs({ cloud: 80, cloudLow: 60, cloudMid: 50, cloudHigh: 0 })).cloud).toBeCloseTo(1 - 0.4 * (1 - 0.425), 5);
+    expect(realToWeather(obs({ code: 3, cloud: 100, cloudLow: 10, cloudMid: 10, cloudHigh: 100 })).cloud).toBeGreaterThan(0.8);
+  });
+  it('sans les étages (ancien relais, ancien cache) : couverture totale, pas de voile, défilement vers la droite', () => {
+    const w = realToWeather(obs({ cloud: 70 }));
+    expect(w.cloud).toBeCloseTo(0.7, 5);
+    expect(w.veil).toBe(0);
+    expect(w.drift).toBe(1);
+  });
+  it('vent d’ouest : les nuages vont vers la gauche (décor tourné vers le sud) ; vers la droite dans l’hémisphère sud', () => {
+    expect(cloudDrift(270, 47)).toBeCloseTo(-1, 5);
+    expect(cloudDrift(90, 47)).toBeCloseTo(1, 5);
+    expect(cloudDrift(270, -33)).toBeCloseTo(1, 5);
+    expect(Math.abs(cloudDrift(0, 47))).toBeGreaterThanOrEqual(0.35);
+    expect(realToWeather(obs({ windDir: 250 }), 47.45).drift).toBeLessThan(-0.9);
   });
 });
 

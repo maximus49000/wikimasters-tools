@@ -3,13 +3,40 @@ import { minCloudFor, type Weather } from './weather-types';
 
 export const WEATHER_RELAY = `${RELAY_BASE}/weather`;
 
-export type RealObservation = { code: number; tempC: number; cloud: number; precipMm: number; windKmh: number; visibilityM: number };
+// `cloudLow/Mid/High` (%) et `windDir` (° d'où vient le vent) : absents des anciennes réponses du relais et des anciens caches.
+export type RealObservation = {
+  code: number; tempC: number; cloud: number; precipMm: number; windKmh: number; visibilityM: number;
+  cloudLow?: number; cloudMid?: number; cloudHigh?: number; windDir?: number;
+};
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const between = (n: number, lo: number, hi: number): boolean => n >= lo && n <= hi;
 
-// Code météo WMO d'Open-Meteo → mêmes valeurs continues que la météo simulée.
-export function realToWeather(obs: RealObservation): Weather {
+// Couverture des nuages qui se dessinent (bas et moyens, les cumulus du décor) et voile d'altitude (cirrus) : la couverture
+// totale d'Open-Meteo compte les cirrus, si bien qu'un ciel voilé mais ensoleillé y vaut 100 %. Sans les étages : la totale.
+export function cloudLayers(obs: RealObservation): { cloud: number; veil: number } {
+  const total = clamp01(obs.cloud / 100);
+  if (!isNum(obs.cloudLow) || !isNum(obs.cloudMid) || !isNum(obs.cloudHigh)) return { cloud: total, veil: 0 };
+  const low = clamp01(obs.cloudLow / 100);
+  const mid = clamp01(obs.cloudMid / 100);
+  const high = clamp01(obs.cloudHigh / 100);
+  const cloud = 1 - (1 - low) * (1 - 0.85 * mid);
+  return { cloud, veil: high * (1 - cloud) };
+}
+
+// Sens de défilement des nuages : le vent souffle vers l'opposé de sa provenance. Le décor regarde l'équateur (sud dans
+// l'hémisphère nord : l'est à gauche, voir astro.ts) ; un vent d'ouest pousse donc les nuages vers la gauche.
+export function cloudDrift(windDir: number | undefined, lat: number): number {
+  if (!isNum(windDir)) return 1;
+  const towardEast = -Math.sin(windDir * (Math.PI / 180));
+  const screen = lat >= 0 ? -towardEast : towardEast;
+  // Vent presque nord-sud : un lent défilement reste (les nuages ne s'arrêtent jamais), dans le sens de la composante.
+  return Math.sign(screen || 1) * Math.max(0.35, Math.abs(screen));
+}
+
+// Code météo WMO d'Open-Meteo → mêmes valeurs continues que la météo simulée. `lat` : sens du décor (défilement des nuages).
+export function realToWeather(obs: RealObservation, lat = 45): Weather {
   const thunder = obs.code >= 95;
   const snowy = between(obs.code, 71, 77) || obs.code === 85 || obs.code === 86;
   const drizzly = between(obs.code, 51, 57);
@@ -19,8 +46,11 @@ export function realToWeather(obs: RealObservation): Weather {
   const precip = clamp01(Math.max(byCode, byCode > 0 ? clamp01(obs.precipMm / 4) : 0));
   const kind: Weather['kind'] = snowy ? 'snow' : 'rain';
   const wetting = !snowy && (rainy || drizzly);
+  const layers = cloudLayers(obs);
+  // Ciel couvert selon le code (3) : le voile gris est de mise, quels que soient les étages.
+  const cloud = clamp01(Math.max(layers.cloud, obs.code === 3 ? 0.85 : 0, precip > 0 ? minCloudFor(precip) : 0));
   return {
-    cloud: clamp01(Math.max(obs.cloud / 100, precip > 0 ? minCloudFor(precip) : 0)),
+    cloud,
     precip,
     kind,
     fog: foggy ? 0.85 : clamp01(((10000 - obs.visibilityM) / 10000) * 0.6),
@@ -28,6 +58,8 @@ export function realToWeather(obs: RealObservation): Weather {
     lightning: thunder ? 1 : 0,
     wet: wetting ? clamp01(precip * 1.4 + 0.2) : 0,
     snowCover: snowy ? clamp01(precip * 1.6 + 0.2) : 0,
+    veil: clamp01(layers.veil * (1 - cloud)),
+    drift: cloudDrift(obs.windDir, lat),
   };
 }
 
@@ -46,7 +78,6 @@ const FRESH_MS = 15 * 60_000;
 const BACKOFF_MS = [60_000, 120_000, 300_000];
 const round1 = (v: number): number => Math.round(v * 10) / 10;
 const cell = (p: Pos): string => `${round1(p.lat).toFixed(1)},${round1(p.lon).toFixed(1)}`;
-const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 // Réponse du relais ({ ok, code, temp, cloud, precip, wind, visibility }) → observation, ou null si mal formée.
 function parseReply(raw: unknown): RealObservation | null {
@@ -54,7 +85,13 @@ function parseReply(raw: unknown): RealObservation | null {
   const r = raw as Record<string, unknown>;
   if (r.ok !== true || !isNum(r.code) || !isNum(r.temp)) return null;
   const n = (v: unknown, fallback: number): number => (isNum(v) ? v : fallback);
-  return { code: r.code, tempC: r.temp, cloud: n(r.cloud, 0), precipMm: n(r.precip, 0), windKmh: n(r.wind, 0), visibilityM: n(r.visibility, 20000) };
+  return { code: r.code, tempC: r.temp, cloud: n(r.cloud, 0), precipMm: n(r.precip, 0), windKmh: n(r.wind, 0), visibilityM: n(r.visibility, 20000), ...extras(r) };
+}
+
+// Étages nuageux et direction du vent, seulement s'ils sont tous valides (relais à jour).
+function extras(r: Record<string, unknown>): Pick<RealObservation, 'cloudLow' | 'cloudMid' | 'cloudHigh' | 'windDir'> {
+  const layers = isNum(r.cloudLow) && isNum(r.cloudMid) && isNum(r.cloudHigh) ? { cloudLow: r.cloudLow, cloudMid: r.cloudMid, cloudHigh: r.cloudHigh } : {};
+  return { ...layers, ...(isNum(r.windDir) ? { windDir: r.windDir } : {}) };
 }
 
 function parseSaved(text: string | null): Saved | null {
@@ -63,7 +100,7 @@ function parseSaved(text: string | null): Saved | null {
   const o = s.obs;
   if (!isNum(s.at) || !o) return null;
   if (![o.code, o.tempC, o.cloud, o.precipMm, o.windKmh, o.visibilityM].every(isNum)) return null;
-  const obs: RealObservation = { code: o.code as number, tempC: o.tempC as number, cloud: o.cloud as number, precipMm: o.precipMm as number, windKmh: o.windKmh as number, visibilityM: o.visibilityM as number };
+  const obs: RealObservation = { code: o.code as number, tempC: o.tempC as number, cloud: o.cloud as number, precipMm: o.precipMm as number, windKmh: o.windKmh as number, visibilityM: o.visibilityM as number, ...extras(o) };
   const savedCell = typeof s.cell === 'string' && /^-?\d+\.\d,-?\d+\.\d$/.test(s.cell) ? s.cell : null;
   return { at: s.at, obs, cell: savedCell };
 }

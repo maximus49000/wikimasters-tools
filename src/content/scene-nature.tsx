@@ -3,6 +3,7 @@ import { lampLit } from '../core/library/activity';
 import { CHUNK, mulberry32 } from '../core/library/scene-world';
 import { mixHex } from '../core/library/sky';
 import type { SceneBodyProps } from './scene-panorama';
+import { moonPlace, sunPlace } from './sky-place';
 
 const tone = (day: string, night: string, daylight: number): string => mixHex(night, day, daylight);
 
@@ -117,6 +118,7 @@ export function SeaScene({ width, height, sky, minutes, seed, gloom = false }: S
   const deep = tone('#2F78B0', '#0F1838', sky.daylight);
   const rng = mulberry32(seed ^ 0x5ea);
   const waves = Array.from({ length: Math.round(width / 28) }, (_, i) => ({ i, x: rng() * width, y: horizon + 8 + rng() * (height - horizon - 12), w: 18 + rng() * 34 }));
+  const reflectX = (sunPlace(sky, width, height) ?? moonPlace(sky, width, height))?.x ?? width / 2;
   const quay = Array.from({ length: Math.max(1, Math.round(width / 260)) }, (_, i) => ({ i, x: 40 + i * 260 + rng() * 120, u: rng() * 0.8 }));
   return (
     <g data-scene-body data-scene-art="sea">
@@ -129,7 +131,7 @@ export function SeaScene({ width, height, sky, minutes, seed, gloom = false }: S
       {/* Reflet du soleil ou de la lune : bande claire sous l'astre le plus haut */}
       <g opacity={0.25}>
         {Array.from({ length: 8 }, (_, i) => (
-          <rect key={i} x={width * (0.04 + 0.92 * (sky.sunFrac ?? sky.moonFrac ?? 0.5)) - 20 + i * 2} y={horizon + 4 + i * 14} width={40 - i * 3} height={3} fill="#FFF3B8" />
+          <rect key={i} x={reflectX - 20 + i * 2} y={horizon + 4 + i * 14} width={40 - i * 3} height={3} fill="#FFF3B8" />
         ))}
       </g>
       {quay.map((q) => (

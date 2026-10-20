@@ -1,3 +1,5 @@
+import type { MoonPhase, SkyPoint } from './astro';
+
 export type Position = { lat: number; lon: number };
 export type Ymd = { y: number; m: number; d: number };
 export type SunTimes = { kind: 'normal'; sunrise: number; sunset: number } | { kind: 'polar'; polar: 'day' | 'night' };
@@ -14,6 +16,11 @@ export type Sky = {
   stars: number;
   top: string;
   bottom: string;
+  // Ciel réel (astro.ts), quand le jour et le lieu sont connus : place des astres en fractions du monde et phase de la lune.
+  // Absents (aperçus, ciels d'exemple) : les astres suivent leur fraction de course.
+  sunAt?: SkyPoint;
+  moonAt?: SkyPoint;
+  moonPhase?: MoonPhase;
 };
 
 const RAD = Math.PI / 180;
