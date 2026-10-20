@@ -109,7 +109,7 @@ export const FAMILLES: Famille[] = [
     lourde: true,
     fichiers: [
       ...c('ghibli-sky.*', 'ghibli-weather.*', 'painted-sky.*', 'scene-weather.*', 'scene-nature.*', 'scene-space.*', 'library-weather-ui.*', 'use-weather.*', 'position-setting.*', 'scene-position.*', 'location-*', 'city-gloom.*', 'rain-*'),
-      ...lib('sky.*', 'scene-location.*', 'geocode.*', 'weather-*', 'deco-weather.*', 'weather/**', 'weather/rain-drops.*', 'weather/glass-rain.*', 'library-weather-setting.*', 'paint/paint-sky-*', 'paint/paint-snow.*'),
+      ...lib('sky.*', 'astro.*', 'scene-location.*', 'geocode.*', 'weather-*', 'deco-weather.*', 'weather/**', 'weather/rain-drops.*', 'weather/glass-rain.*', 'library-weather-setting.*', 'paint/paint-sky-*', 'paint/paint-snow.*'),
     ],
   },
   {

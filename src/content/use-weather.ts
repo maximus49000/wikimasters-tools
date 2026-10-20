@@ -65,14 +65,14 @@ export function useWeather(setting: WeatherSetting): WeatherView {
   }, [mode, known, lat, lon, real]);
 
   // Clé des VALEURS de l'observation : un même code météo avec d'autres mesures relance le fondu, une lecture identique (cache) non.
-  const obsKey = observation ? [observation.code, observation.tempC, observation.cloud, observation.precipMm, observation.windKmh, observation.visibilityM].join('|') : '';
+  const obsKey = observation ? [observation.code, observation.tempC, observation.cloud, observation.precipMm, observation.windKmh, observation.visibilityM, observation.cloudLow, observation.cloudMid, observation.cloudHigh, observation.windDir].join('|') : '';
   // La latitude n'intervient que pour la météo aléatoire : un changement de position ne relance pas le fondu en réel ou forcé.
   const randomLat = useObservation || forcedState ? null : lat;
   useEffect(() => {
     let source: WeatherSource;
     if (forcedState) source = steadySource(forcedState);
     else if (useObservation && observation) {
-      const w = realToWeather(observation);
+      const w = realToWeather(observation, lat);
       source = () => w;
     } else source = (now) => weatherAtRandom({ seed: WEATHER_SEED, lat: randomLat ?? lat }, now);
     clock.setSource(source, Date.now());

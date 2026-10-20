@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactElement } from 'react';
 import { MOON_SIZE, SKY_TEXTURE, SUN_SIZE } from '../core/library/paint/sky-painter';
 import { mixHex } from '../core/library/sky';
+import type { MoonPhase } from '../core/library/astro';
 import type { PaintedSky } from './painted-sky';
 
 // Ciel peint de la Ville (vague Ghibli, G2), dans le décor fixe : aucune animation ici (la copie `<use>` d’une fenêtre soulevée
@@ -61,30 +62,63 @@ export function GhibliSun({ x, y, twilight, painted, shown, still }: { x: number
     <g data-ghibli-sun="" transform={`translate(${x} ${y})`} style={fadeStyle(shown, still)}>
       <defs>
         <radialGradient id={id}>
-          <stop offset="0" stopColor={mixHex('#FFF6CD', '#FFAA5A', dusk)} stopOpacity={0.55} />
+          <stop offset="0" stopColor={mixHex('#FFF6CD', '#FFAA5A', dusk)} stopOpacity={0.65} />
+          <stop offset="0.35" stopColor={mixHex('#FFF3C4', '#FFB070', dusk)} stopOpacity={0.3} />
           <stop offset="1" stopColor="#FFF0C8" stopOpacity={0} />
         </radialGradient>
       </defs>
-      <circle r={52} fill={`url(#${id})`} />
+      <circle r={70} fill={`url(#${id})`} />
       <image href={painted.sunDay} x={-half} y={-half} width={SUN_SIZE} height={SUN_SIZE} opacity={1 - dusk} />
       <image href={painted.sunDusk} x={-half} y={-half} width={SUN_SIZE} height={SUN_SIZE} opacity={dusk} />
     </g>
   );
 }
 
-export function GhibliMoon({ x, y, painted, shown, still }: { x: number; y: number; painted: PaintedSky; shown: boolean; still: boolean }): ReactElement {
-  const id = `moonhalo${uid(useId())}`;
+// De jour, la lune levée reste pâle sur le bleu.
+export const moonOpacity = (daylight: number): number => Number((1 - 0.55 * clamp01(daylight)).toFixed(2));
+
+// Partie éclairée d'une lune de rayon `r` dont la part éclairée vaut `lit` (0 à 1), bord éclairé vers la droite (+x) :
+// demi-disque côté droit, refermé par le terminateur (demi-ellipse) qui bombe vers la droite pour un croissant, vers la
+// gauche pour une lune gibbeuse. Tourner le chemin oriente le bord éclairé.
+export function moonLitPath(r: number, lit: number): string {
+  const k = clamp01(lit);
+  const rx = Number((r * Math.abs(1 - 2 * k)).toFixed(2));
+  return `M0 ${-r}A${r} ${r} 0 0 1 0 ${r}A${rx} ${r} 0 0 ${k < 0.5 ? 0 : 1} 0 ${-r}Z`;
+}
+
+// Rayon du disque de la lune peinte (16 px de touches et leur étalement).
+const MOON_R = 17;
+
+// Lune peinte à sa phase : le disque peint entier, très atténué, donne la lumière cendrée (surtout visible sur un croissant) ; la partie éclairée est découpée
+// dans le même disque, tournée vers le soleil. De jour, elle pâlit.
+export function GhibliMoon({ x, y, phase, daylight, painted, shown, still }: { x: number; y: number; phase: MoonPhase; daylight: number; painted: PaintedSky; shown: boolean; still: boolean }): ReactElement {
+  const raw = uid(useId());
+  const halo = `moonhalo${raw}`;
+  const clip = `moonlit${raw}`;
+  const disc = `moondisc${raw}`;
   const half = MOON_SIZE / 2;
+  const night = 1 - clamp01(daylight);
+  const deg = ((phase.limb * 180) / Math.PI).toFixed(1);
   return (
-    <g data-ghibli-moon="" transform={`translate(${x} ${y})`} style={fadeStyle(shown, still)}>
+    <g data-ghibli-moon="" data-moon-lit={phase.lit.toFixed(2)} transform={`translate(${x} ${y})`} style={fadeStyle(shown, still)}>
       <defs>
-        <radialGradient id={id}>
+        <radialGradient id={halo}>
           <stop offset="0.3" stopColor="#DCE4FF" stopOpacity={0.35} />
           <stop offset="1" stopColor="#DCE4FF" stopOpacity={0} />
         </radialGradient>
+        {/* Bord net : les touches qui débordent du disque peint sont coupées. */}
+        <clipPath id={clip}>
+          <path d={moonLitPath(MOON_R, phase.lit)} transform={`rotate(${deg})`} />
+        </clipPath>
+        <clipPath id={disc}>
+          <circle r={MOON_R} />
+        </clipPath>
       </defs>
-      <circle r={40} fill={`url(#${id})`} />
-      <image href={painted.moon} x={-half} y={-half} width={MOON_SIZE} height={MOON_SIZE} />
+      <g opacity={moonOpacity(daylight)}>
+        <circle r={40} fill={`url(#${halo})`} opacity={Number(((0.25 + 0.75 * phase.lit) * night).toFixed(2))} />
+        <image href={painted.moon} x={-half} y={-half} width={MOON_SIZE} height={MOON_SIZE} clipPath={`url(#${disc})`} opacity={Number((0.16 * (1 - phase.lit) * night).toFixed(2))} />
+        <image href={painted.moon} x={-half} y={-half} width={MOON_SIZE} height={MOON_SIZE} clipPath={`url(#${clip})`} />
+      </g>
     </g>
   );
 }

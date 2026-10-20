@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { proxyWeather } from '../../relay/src/weather';
 
 const upstream = {
-  current: { weather_code: 61, temperature_2m: 7.4, cloud_cover: 90, precipitation: 1.2, wind_speed_10m: 18, visibility: 9000 },
+  current: { weather_code: 61, temperature_2m: 7.4, cloud_cover: 90, cloud_cover_low: 70, cloud_cover_mid: 40, cloud_cover_high: 95, precipitation: 1.2, wind_speed_10m: 18, wind_direction_10m: 250, visibility: 9000 },
 };
+const sent0 = (f: { mock: { calls: unknown[][] } }): URL => new URL(String(f.mock.calls[0]?.[0] ?? ''));
 const run = (path: string, now = 0, deps?: Partial<Parameters<typeof proxyWeather>[1]>) => {
   const fetchFn = vi.fn(async (_url: string) => new Response(JSON.stringify(upstream), { status: 200 }));
   return { fetchFn, result: proxyWeather(new URL(`https://relais.test${path}`), { fetch: fetchFn, now: () => now, ...deps }) };
@@ -14,7 +15,8 @@ describe('proxyWeather', () => {
     const { fetchFn, result } = run('/weather?lat=48.8566&lon=2.3522');
     const out = await result;
     expect(out.status).toBe(200);
-    expect(JSON.parse(out.body)).toEqual({ ok: true, code: 61, temp: 7.4, cloud: 90, precip: 1.2, wind: 18, visibility: 9000 });
+    expect(JSON.parse(out.body)).toEqual({ ok: true, code: 61, temp: 7.4, cloud: 90, precip: 1.2, wind: 18, visibility: 9000, cloudLow: 70, cloudMid: 40, cloudHigh: 95, windDir: 250 });
+    expect(sent0(fetchFn).searchParams.get('current')).toContain('cloud_cover_high');
     const sent = new URL(fetchFn.mock.calls[0]?.[0] ?? '');
     expect(sent.origin).toBe('https://api.open-meteo.com');
     expect(sent.searchParams.get('latitude')).toBe('48.9');

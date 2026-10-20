@@ -3,7 +3,7 @@ import { buildLightMap, type Glass, type LightInput, type LightMap } from '../co
 import type { Box, LampSource } from '../core/library/light/occluders';
 import type { Sky } from '../core/library/sky';
 import type { Weather } from '../core/library/weather/weather-types';
-import { celestialPlace } from './scene-panorama';
+import { sunPlace } from './sky-place';
 
 export type LightLayerProps = {
   windows: readonly Glass[];
@@ -68,7 +68,7 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
       const r = (v: number, q: number): number => Math.round(v / q);
       const pets = getPetBoxes?.() ?? [];
       const pk = petKey(pets);
-      const key = [r(s.sunFrac ?? -1, 0.005), r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01), signature, pk].join('|');
+      const key = [r(s.sunFrac ?? -1, 0.005), r(s.sunAt?.x ?? -1, 0.002), r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01), signature, pk].join('|');
       if (key === lastKey && image.hasAttribute('href')) return;
       lastKey = key;
       lastPetKey = pk;
@@ -79,7 +79,7 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
         width, height, wallH, windows, sunX: null, sunFrac: null, daylight: 0, twilight: 0, cloud: 0, precip: 0, hidden: 0, boxes, lamps, noSky, pets,
       } : {
         width, height, wallH, windows,
-        sunX: s.sunFrac === null ? null : celestialPlace(s.sunFrac, width, wallH).x,
+        sunX: sunPlace(s, width, wallH)?.x ?? null,
         sunFrac: s.sunFrac, daylight: s.daylight, twilight: s.twilight, cloud: w.cloud, precip: w.precip, hidden, boxes, lamps, pets,
       };
       const url = toUrl(buildLightMap(input));

@@ -170,20 +170,38 @@ export function paintSun(ctx: PaintCtx, dusk: boolean, seed: number): void {
 }
 
 export const MOON_SIZE = 48;
-const MOON_LIT = hexRgb('#F4F2E6');
-const MOON_SHADE = hexRgb('#C9CCD9');
-// Lune : disque de touches (rayon 16) éclairé à gauche, trois cratères ; le halo est un dégradé SVG.
+const MOON_LIT = hexRgb('#F6F3E4');
+const MOON_LIMB = hexRgb('#DCDCE2');
+const MOON_SEA = hexRgb('#A9AEBF');
+// Mers lunaires (face visible, nord en haut) : position en fractions du rayon, rayon, force. Pluies, Sérénité, Tranquillité,
+// Crises, océan des Tempêtes, Nuées, Fécondité.
+const MARIA = [
+  [-0.3, -0.38, 0.3, 0.9], [0.18, -0.36, 0.2, 0.8], [0.3, -0.05, 0.24, 0.85], [0.66, -0.2, 0.13, 0.9],
+  [-0.62, 0.02, 0.32, 0.6], [-0.18, 0.36, 0.22, 0.55], [0.5, 0.22, 0.16, 0.6],
+] as const;
+// Lune : disque de touches (rayon 16) éclairé de face, un peu assombri au bord, mers lunaires en touches grises et quelques
+// cratères clairs ; la phase est découpée au rendu (ghibli-sky), le halo est un dégradé SVG.
 export function paintMoon(ctx: PaintCtx, seed: number): void {
   const rng = mulberry32(seed ^ hashString('ghibli-moon'));
   const c = MOON_SIZE / 2;
-  for (let i = 0; i < 320; i++) {
+  const R = 16;
+  for (let i = 0; i < 360; i++) {
     const a = rng() * Math.PI * 2;
-    const d = Math.sqrt(rng()) * 16;
-    const shade = clamp01((Math.cos(a) * d) / 16 + 0.2);
-    dab(ctx, rng, c + Math.cos(a) * d, c + Math.sin(a) * d, 1.6 + rng() * 2.4, mixRgb(MOON_LIT, MOON_SHADE, shade), 0.6, 1.2);
+    const d = Math.sqrt(rng()) * R;
+    dab(ctx, rng, c + Math.cos(a) * d, c + Math.sin(a) * d, 1.6 + rng() * 2.4, jitter(mixRgb(MOON_LIT, MOON_LIMB, (d / R) ** 3), 5, rng), 0.6, 1.2);
   }
-  ctx.fillStyle = 'rgba(150,155,175,0.35)';
-  for (const [dx, dy, r] of [[-5, -4, 3.5], [5, 3, 2.6], [-2, 7, 2]] as const) {
+  for (const [mx, my, mr, k] of MARIA) {
+    for (let i = 0; i < 26; i++) {
+      const a = rng() * Math.PI * 2;
+      const d = Math.sqrt(rng()) * mr * R;
+      const x = mx * R + Math.cos(a) * d;
+      const y = my * R + Math.sin(a) * d;
+      if (Math.hypot(x, y) > R - 1.5) continue;
+      dab(ctx, rng, c + x, c + y, 1.2 + rng() * 1.8, jitter(MOON_SEA, 6, rng), 0.22 * k, 1.1);
+    }
+  }
+  ctx.fillStyle = 'rgba(255,253,240,0.45)';
+  for (const [dx, dy, r] of [[-3, 11, 1.4], [6, 9, 1], [-9, -9, 0.9]] as const) {
     ctx.beginPath();
     ctx.ellipse(c + dx, c + dy, r, r, 0, 0, Math.PI * 2);
     ctx.fill();

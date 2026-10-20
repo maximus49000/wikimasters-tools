@@ -14,7 +14,7 @@ import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
 import { fadeStyle, useShownAfterMount } from './ghibli-sky';
 import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
-import { celestialPlace } from './scene-panorama';
+import { sunPlace } from './sky-place';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
 import type { RainTraffic } from './rain-traffic';
@@ -153,6 +153,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     let lastStep = '';
     let lastHidden = '';
     let lastOvercast = '';
+    let lastCelestial = '';
+    let lastHaze = '';
     let lastMs = Date.now();
     // Positions intégrées (vitesse × durée) : un changement de vent change la VITESSE, jamais la position d'un coup.
     // Posées une fois (premier lancement), puis reprises telles quelles à chaque relance.
@@ -170,6 +172,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       lastMs = now;
       const w = clock.read(now);
       const { daylight, sunFrac } = skyRef.current;
+      const sunAt = sunPlace(skyRef.current, width, height);
       const snow = w.kind === 'snow' ? w.precip : 0;
 
       // Ciel : de vrais nuages (leur NOMBRE = la couverture) ; leur teinte et l'obscurité du ciel suivent l'intensité de la pluie.
@@ -207,6 +210,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         const overcastColor = mixHex('#1A1E2B', mixHex('#D4D8DD', '#2E3440', rainDark), daylight);
         for (const stop of overcastStops) put(stop, 'stop-color', overcastColor);
         svg?.style.setProperty('--wmt-overcast-color', overcastColor);
+        // Voile d'altitude : blanc laiteux le jour, à peine plus clair que le ciel la nuit.
+        svg?.style.setProperty('--wmt-haze-color', mixHex('#3A4160', '#EEF2F6', daylight));
       }
       set(nodes.tint, 0.92 * thick);
       // Ciel entièrement couvert : le voile gris doit cacher le bleu (même sans pluie), pas seulement le tamiser.
@@ -217,6 +222,19 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       if (overcastText !== lastOvercast) {
         lastOvercast = overcastText;
         svg?.style.setProperty('--wmt-overcast', overcastText);
+      }
+      // Soleil et lune : cachés par le ciel couvert, noyés dans la brume, tamisés par le voile d'altitude (les nuages, eux,
+      // passent devant). Lu par le décor fixe sur le <svg> de la pièce.
+      const veil = clamp01(w.veil ?? 0);
+      const celestialText = ((1 - overcast) * (1 - 0.8 * clamp01(w.fog)) * (1 - 0.35 * veil)).toFixed(2);
+      if (celestialText !== lastCelestial) {
+        lastCelestial = celestialText;
+        svg?.style.setProperty('--wmt-celestial', celestialText);
+      }
+      const hazeText = (0.45 * veil).toFixed(2);
+      if (hazeText !== lastHaze) {
+        lastHaze = hazeText;
+        svg?.style.setProperty('--wmt-haze', hazeText);
       }
       // Nombre de nuages = couverture × réserve ; le nuage « à la frontière » est partiellement visible, et chacun suit sa cible en fondu.
       const wanted = w.cloud * cloudNodes.length;
@@ -231,7 +249,9 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         if (shownOpacity <= 0) put(node, 'display', 'none');
         else if (node.hasAttribute('display')) node.removeAttribute('display');
       });
-      m.drift = positiveMod(m.drift + dt * windSpeed(w.wind), width);
+      // Sens du vent réel (météo réelle) ; sinon vers la droite.
+      const dir = w.drift ?? 1;
+      m.drift = positiveMod(m.drift + dt * windSpeed(w.wind) * dir, width);
       put(nodes.drift, 'transform', `translate(${m.drift.toFixed(1)} 0)`);
 
       set(nodes.fog, w.fog * 0.8);
@@ -248,8 +268,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         put(patterns.fog, 'patternTransform', `translate(${m.fogX.toFixed(1)} 0)`);
       }
       const tm = still ? 0 : t;
-      m.snowFarX += dt * 8 * (w.wind + 0.2);
-      m.snowNearX += dt * 14 * (w.wind + 0.2);
+      m.snowFarX += dt * 8 * (w.wind + 0.2) * dir;
+      m.snowNearX += dt * 14 * (w.wind + 0.2) * dir;
       if (snow > 0) {
         put(patterns.snowFar, 'patternTransform', `translate(${((Math.sin(tm * 0.6) * 12 + m.snowFarX) % TILE).toFixed(1)} ${((tm * 18) % TILE).toFixed(1)})`);
         put(patterns.snowNear, 'patternTransform', `translate(${((Math.sin(tm * 0.8) * 18 + m.snowNearX) % TILE).toFixed(1)} ${((tm * 34) % TILE).toFixed(1)})`);
@@ -273,7 +293,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       if (sunFrac === null) hidden = 1;
       else if (now - coveredAt >= COVER_MS || still) {
         coveredAt = now;
-        const sun = celestialPlace(sunFrac, width, height);
+        const sun = sunAt!;
         const cov = sunCoverage(sun.x, sun.y, coverRef.current.filter((_, i) => (cloudOpacity[i] ?? 0) >= 0.5), m.drift, width);
         hidden = 1 - (1 - cov) * (1 - clamp01(overcast));
       }
@@ -293,7 +313,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         nodes.godrays?.removeAttribute('display');
         set(nodes.godrays, rayStrength);
         if (nodes.rays && sunFrac !== null && !still) {
-          const sun = celestialPlace(sunFrac, width, height);
+          const sun = sunAt!;
           put(nodes.rays, 'transform', `rotate(${(Math.sin(t * 0.15) * 4).toFixed(2)} ${sun.x.toFixed(1)} ${sun.y.toFixed(1)})`);
         }
       }
@@ -304,6 +324,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       return () => {
         placeRef.current = null;
         svg?.style.removeProperty('--wmt-sun-hidden');
+        svg?.style.removeProperty('--wmt-celestial');
+        svg?.style.removeProperty('--wmt-haze');
       };
     }
     let frame = 0;
@@ -319,6 +341,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       window.cancelAnimationFrame(frame);
       placeRef.current = null;
       svg?.style.removeProperty('--wmt-sun-hidden');
+      svg?.style.removeProperty('--wmt-celestial');
+      svg?.style.removeProperty('--wmt-haze');
     };
   }, [sky, ground, clock, seed, width, height, pool, coverRef, skyRef, layout]);
   return placeRef;
@@ -392,7 +416,7 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const arcFoot = height * (ARC_FOOT[scene] ?? 0.78);
   const arc = width * 0.28;
   // Filets : éventail vers le bas depuis le soleil (posé au milieu la nuit, éteint de toute façon).
-  const sun = sky.sunFrac === null ? { x: width / 2, y: 0 } : celestialPlace(sky.sunFrac, width, height);
+  const sun = sunPlace(sky, width, height) ?? { x: width / 2, y: 0 };
   const rayLength = 0.9 * height;
   // Styles de fondu partagés par tous les nuages de la réserve (calculés une fois par rendu).
   const classicStyle = fadeStyle(!showPainted, still);

@@ -10,6 +10,11 @@ export type Weather = {
   lightning: number; // probabilité d'éclairs (orage)
   wet: number; // sol mouillé (flaques)
   snowCover: number; // neige au sol
+  // Météo réelle : voile de nuages d'altitude (cirrus), qui blanchit le ciel et tamise les astres sans les cacher. Absent : 0.
+  veil?: number;
+  // Sens de défilement des nuages à l'écran (+1 vers la droite, −1 vers la gauche), d'après la direction réelle du vent.
+  // Absent : +1.
+  drift?: number;
 };
 
 type Target = Omit<Weather, 'wet' | 'snowCover'>;
@@ -71,6 +76,9 @@ export function blend(from: Weather, to: Weather, k: number): Weather {
     lightning: mix(from.lightning, to.lightning, x),
     wet: mix(from.wet, to.wet, x),
     snowCover: mix(from.snowCover, to.snowCover, x),
+    // Champs de la météo réelle : seulement si l'une des deux sources les porte.
+    ...(from.veil !== undefined || to.veil !== undefined ? { veil: mix(from.veil ?? 0, to.veil ?? 0, x) } : {}),
+    ...(from.drift !== undefined || to.drift !== undefined ? { drift: mix(from.drift ?? 1, to.drift ?? 1, x) } : {}),
   };
 }
 

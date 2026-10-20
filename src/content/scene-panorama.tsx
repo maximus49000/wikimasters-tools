@@ -3,6 +3,7 @@ import { actorActive } from '../core/library/activity';
 import type { CityContext } from '../core/library/city/intensity';
 import type { SceneId } from '../core/library/library-types';
 import { actorX, actorsFor, mulberry32, type Actor } from '../core/library/scene-world';
+import type { MoonPhase } from '../core/library/astro';
 import type { Sky } from '../core/library/sky';
 import type { Weather } from '../core/library/weather/weather-types';
 import { useArtStyle } from './art-setting';
@@ -12,9 +13,10 @@ import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
 import { PropContext, PropRegistry } from './prop/prop-host';
 import { CityScene } from './scene-city';
-import { GhibliMoon, GhibliSkyTexture, GhibliStarCrosses, GhibliSun, fadeStyle, reducedMotion, useShownAfterMount } from './ghibli-sky';
+import { GhibliMoon, GhibliSkyTexture, GhibliStarCrosses, GhibliSun, fadeStyle, moonLitPath, moonOpacity, reducedMotion, useShownAfterMount } from './ghibli-sky';
 import { usePaintedSky, type PaintedSky } from './painted-sky';
 import { CountrysideScene, MountainScene, SeaScene } from './scene-nature';
+import { moonPlace, sunPlace } from './sky-place';
 import { ActorSprite } from './scene-sprites';
 import { EarthScene, SpaceScene } from './scene-space';
 
@@ -50,6 +52,8 @@ function SkyAndStars({ width, height, sky, seed, painted, shown, still }: SceneB
       <rect data-sky x={0} y={0} width={width} height={height} fill={`url(#${gradientId})`} />
       {/* Ciel couvert : gris plein, sous les immeubles (variables posées par la couche météo sur le <svg> de la pièce). */}
       <rect data-sky-veil x={0} y={0} width={width} height={height} style={{ fill: 'var(--wmt-overcast-color, #B9C0CA)', opacity: 'var(--wmt-overcast, 0)' }} />
+      {/* Voile d'altitude (cirrus de la météo réelle) : ciel laiteux, posé par la couche météo. */}
+      <rect data-sky-haze x={0} y={0} width={width} height={height} style={{ fill: 'var(--wmt-haze-color, #EEF2F6)', opacity: 'var(--wmt-haze, 0)' }} />
       {painted && <GhibliSkyTexture width={width} height={height} url={painted.texture} shown={shown} still={still} daylight={sky.daylight} />}
       <g opacity={sky.stars} style={{ transition: 'opacity 4s ease' }}>
         {sky.stars > 0 && stars.map((s) => <circle key={s.i} data-star="" cx={s.x} cy={s.y} r={s.r} fill="#FFFFFF" />)}
@@ -59,33 +63,34 @@ function SkyAndStars({ width, height, sky, seed, painted, shown, still }: SceneB
   );
 }
 
-// Position d'un astre (soleil ou lune) selon sa fraction de course (0 = lever, 1 = coucher), dans le repère du monde.
-export const celestialPlace = (frac: number, width: number, height: number): { x: number; y: number } => ({
-  x: width * (0.04 + 0.92 * frac),
-  y: height * 0.7 - Math.sin(Math.PI * frac) * height * 0.55,
-});
+// Sans phase connue (aperçus) : lune gibbeuse, bord éclairé à gauche, comme l'ancien dessin.
+const DEFAULT_PHASE: MoonPhase = { lit: 0.85, limb: Math.PI };
+
+export { celestialPlace, moonPlace, sunPlace } from './sky-place';
 
 // Soleil et lune traversent toute la largeur du monde : ils passent d'une fenêtre à l'autre au fil de la journée.
 function Celestial({ width, height, sky, painted, shown, still }: SceneBodyProps & PaintedProps): ReactElement {
-  const place = (frac: number): { x: number; y: number } => celestialPlace(frac, width, height);
-  const sun = sky.sunFrac === null ? null : place(sky.sunFrac);
-  const moon = sky.moonFrac === null ? null : place(sky.moonFrac);
+  const sun = sunPlace(sky, width, height);
+  const moon = moonPlace(sky, width, height);
+  const phase = sky.moonPhase ?? DEFAULT_PHASE;
+  const limbDeg = (phase.limb * 180) / Math.PI;
   return (
-    <g data-celestial style={{ opacity: 'calc(1 - var(--wmt-overcast, 0))' }}>
+    <g data-celestial style={{ opacity: 'var(--wmt-celestial, calc(1 - var(--wmt-overcast, 0)))' }}>
       {sun && (
         <g data-sun="" data-classic-sun="" transform={`translate(${sun.x} ${sun.y})`} style={fadeStyle(!shown, still)}>
-          <circle r={34} fill="#FFE27A" opacity={0.25} />
+          <circle r={40} fill="#FFE27A" opacity={0.22} />
           <circle r={22} fill={sky.twilight > 0.4 ? '#FF9A4A' : '#FFE27A'} />
         </g>
       )}
       {moon && (
-        <g data-moon="" data-classic-moon="" transform={`translate(${moon.x} ${moon.y})`} style={fadeStyle(!shown, still)}>
-          <circle r={18} fill="#E8ECFF" />
-          <circle cx={6} cy={-4} r={16} fill={sky.bottom} opacity={0.35} />
+        <g data-moon="" data-classic-moon="" data-moon-lit={phase.lit.toFixed(2)} transform={`translate(${moon.x} ${moon.y})`} opacity={moonOpacity(sky.daylight)} style={fadeStyle(!shown, still)}>
+          {/* Lumière cendrée : la part sombre se devine la nuit, surtout sur un croissant. */}
+          <circle r={18} fill="#B8C0DC" opacity={Number((0.2 * (1 - phase.lit) * (1 - sky.daylight)).toFixed(2))} />
+          <path d={moonLitPath(18, phase.lit)} transform={`rotate(${limbDeg.toFixed(1)})`} fill="#E8ECFF" />
         </g>
       )}
       {painted && sun && <GhibliSun x={sun.x} y={sun.y} twilight={sky.twilight} painted={painted} shown={shown} still={still} />}
-      {painted && moon && <GhibliMoon x={moon.x} y={moon.y} painted={painted} shown={shown} still={still} />}
+      {painted && moon && <GhibliMoon x={moon.x} y={moon.y} phase={phase} daylight={sky.daylight} painted={painted} shown={shown} still={still} />}
     </g>
   );
 }
