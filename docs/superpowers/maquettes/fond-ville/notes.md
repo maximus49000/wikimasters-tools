@@ -41,7 +41,7 @@ nouveau calque) : `01-outils` (cellulo, temps, météo, ciel), `02-plan-fond` (p
 | `rue-ete-15h.png`, `rue-automne-15h.png`, `rue-novembre-15h.png` | 7 juillet (platanes, tilleuls, marronniers, géraniums et lavande) ; 27 octobre (jaunissement, vigne vierge rouge, chrysanthèmes, feuilles mortes) ; 14 novembre (chute en cours, tapis de feuilles). |
 | `rue-hiver-11h.png`, `rue-neige-11h.png`, `rue-nuit-22h.png` | 10 février (arbres nus, bruyères et paillage) ; 20 janvier sous la neige (branches et parterres enneigés) ; 27 octobre 22 h (houppiers éclairés par les lampadaires). |
 | `zoom-pied-arbre{,-printemps}.png`, `zoom-parterre{,-automne}.png` | pied d'arbre ×3 (fosse à grille, pied fleuri, ombre au sol, houppier devant la façade avec son ombre) ; parterre, bacs, pots ×3. |
-| `annee-planche.png` | une année : même coin de rue (haut) et même coin de colline (bas), le 15 de chaque mois à 14 h (janvier sous la neige). |
+| `annee-planche.png` | une année : même coin de rue (haut), même échappée (milieu), mêmes toits du mur du fond (bas), le 15 de chaque mois à 14 h (janvier sous la neige, 15 août un dimanche : fanfare). |
 
 ## 2. Corrections de l'audit (D1 à D6) — correspondance avec le code
 
@@ -116,6 +116,44 @@ pour la fumée et la brume, 30 pour les cabines et les véhicules (ils sont peti
 **Clé de cache des tranches** (poses lentes B, H, O, G-saison, neige sur les toits) : `PAINT_VERSION | seed | height | tile |
 … | saison | neige | tranche de 10 min`. Une tranche se repeint donc au plus 6 fois par heure (en pratique quand un volet,
 un parasol ou une pièce de linge change dans la tranche : on peut ne repeindre que si le hachage des états change).
+
+## 3 a. Arbres d'hiver et fond garni (retour du 20 octobre : « arbres bizarres en décembre », « fond encore un peu vide »)
+
+**Arbres nus (`src/03a-arbres.js`, rue et colline)** : squelette ramifié tiré par graine (`treeSkeleton`) — tronc, charpentières,
+branches, rameaux (jusqu'à 5 niveaux en rue, 2-3 sur la colline), angles et longueurs tirés, port par essence (`PORTS` :
+platane étalé et noueux, tilleul ovale dense, marronnier arrondi, peuplier en fuseau, cerisier en coupe, chêne tortueux,
+bouquet) ; voile gris-brun léger de rameaux fins dans la silhouette (ellipse à 22 %), jamais un cercle cerné ; feuilles sèches
+accrochées sur les chênes de la chute à la mi-janvier ; boules de gui sur 25-30 % des arbres de la colline (visibles quand
+le feuillage est tombé) ; neige posée sur le dessus des branches (branches à moins de 50° de l'horizontale). Le squelette est
+aussi peint SOUS les masses dès que la densité passe sous 85 % (chute de novembre, débourrement de mars-avril) : les masses
+rétrécissent (0,4 + 0,6 d) et pâlissent (0,3 + 0,7 d), la ramure apparaît au travers. Tout est dans les tranches.
+
+**Taille des arbres de la rue** : adultes 34-52 px de fût + houppier r 16-24 px (3-4 étages), tronc 2,6-3,6 px de large,
+masses espacées (la façade se devine entre elles, et à travers les branches l'hiver) ; jeunes au tuteur inchangés (13 px,
+r 4-5,5) ; espacement 70-110 px ; mêmes interdits (portes, vitrines, lampadaires, couloir des passants).
+
+**Fond garni** (tout fixe dans les tranches, tirage par graine et position) :
+- Échappée : escalier de Montmartre le long de la voie (marches tous les 2,4 px, deux rampes, trois réverbères allumés par
+  la vie, neige sur les marches), deux murets de pierre de jardins en terrasses (interrompus par la route, la voie et les
+  parcelles ; neige sur le chaperon), square agrandi (30-38 px) avec kiosque à musique et fontaine, voitures et vélos garés
+  (1-3 par jour, tirage graine + date), chapelle secondaire sur la crête (une par bande, nef + clocher à flèche, neige).
+- Mur du fond : toits-terrasses végétalisés ou potagers (35 % des mansardes), verrières d'atelier (25 %), antennes râteau
+  (40 %), 1-3 souches par cheminée ; linge tendu des maisons de la colline à leur bouquet.
+- Animé (calque, budget) : piétons minuscules (1 × 3 px) sur la route et l'escalier (12/h de 8 h à 20 h, 4/h en soirée,
+  entrée/sortie derrière une maison ou par une gare ; ≈ 0,4 en vue par échappée), fanfare du kiosque (4 musiciens + 6 badauds
+  arrivent par la route les dimanches de mai à septembre, 14 h 50 → 18 h, hors pluie), jet de la fontaine (2 poses clés, 2 Hz).
+
+**Saisons de ces éléments** : potagers des toits verts du 5 mai au 27 octobre, bruns ensuite, bâchés gris du 1er décembre au
+19 février ; terrasses des toits : bacs feuillus selon `foliageOf` ; fontaine en eau du 15 mars au 15 novembre, coupée l'hiver
+et sous la neige ; kiosque animé les dimanches de mai à septembre seulement ; linge de la colline : 30 % des maisons par jour
+sec l'été, 15 % en demi-saison, 5 % l'hiver ; neige sur toits-terrasses, murets, marches, kiosque, chapelle, fontaine ; herbe
+et vigne selon le mois (§3 ter). Vérifié mois par mois sur `annee-planche.png` (trois lignes : rue, échappée, toits du fond).
+
+**Compte des nœuds mobiles (graine 7, 1 440 px, HUD)** : été 15 h → 3 véhicules + 2 cabines + 0-2 piétons + jet + 6 pigeons à
+l'heure pile ; 14 juillet 14 h → 4 véhicules/cabines, 2 piétons, 5 drapeaux, jet ; matin d'hiver 8 h → 4, 1 piéton, 32 fumées
+(**à plafonner à 12**), brume ; dimanche d'été 15 h-18 h → + 10 silhouettes du kiosque (mobiles ≈ 1 min à l'arrivée et au
+départ, figées entre). Hors fumées et fenêtres, toujours ≤ 25 nœuds mobiles ; avec 12 fumées plafonnées (7 cercles chacune,
+un `<g>` par panache) ≤ 40 nœuds.
 
 ## 3 bis. Verdure de la rue principale (`src/03b-rue-verte.js`, couche peinte PAR-DESSUS le premier plan)
 
@@ -210,4 +248,5 @@ platane − 10 j, tilleul − 8, peuplier − 5, marronnier − 4, cerisier − 
 7. Rue : espacement des arbres (52-82 px) et part des fosses vides / jeunes arbres ; faut-il des arbres aussi devant les cafés (les terrasses sont entre la façade et `walkY`, la fosse à la bordure : pas de conflit) ? Les grimpantes sur 15 % des façades : trop ?
 8. Calendrier : dates à ajuster (avance des platanes, fréquence du balayage un matin sur trois) ? Magnolias non faits (cerisiers seulement).
 9. Densité de la verdure de la colline : ≈ 150 formes par scène (bosquets, haies, vigne, square, potagers, arbres de crête) ; en vouloir plus ou moins ?
-10. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.
+10. Fond garni : faut-il aussi un petit marché avec étals de saison (non fait : la place manque dans l'échappée) et un lavoir ? Fréquence des piétons (12/h) et de la fanfare ?
+11. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.

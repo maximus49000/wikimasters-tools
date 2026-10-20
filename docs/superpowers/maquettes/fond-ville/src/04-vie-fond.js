@@ -189,6 +189,7 @@ function paintLightsHill(ctx, F, env, counter) {
   for (const e of F.escapes) {
     for (const l of e.lamps) { const p = roadPoint(e, l.d); paintLampLight(ctx, p.x + 1, p.y - 4, lampOn(l, env)); }
     const f = e.funi; paintLampLight(ctx, f.x0 - 7.5, f.y0 + 1, lampOn({ u: 0.44, off: 5 }, env)); paintLampLight(ctx, f.x1 + 7.5, f.y1 - 15, lampOn({ u: 0.45, off: 0 }, env));
+    const st = e.stairs, sdx = st.x1 - st.x0, sdy = st.y1 - st.y0, sL = Math.hypot(sdx, sdy), snx = -sdy / sL * 3.2, sny = sdx / sL * 3.2; for (const q of [0.2, 0.5, 0.8]) paintLampLight(ctx, st.x0 + sdx * q + snx + 0.8, st.y0 + sdy * q + sny - 4.5, lampOn({ u: 0.42 + q * 0.04, off: 3 }, env));
     // J : fenêtres des cabines éclairées la nuit ; D : phares et feux rouges ; I : feu rouge de la grue.
     if (env.dark) {
       const st = funiAt(e, env), at = (p, o) => ({ x: f.x0 + (f.x1 - f.x0) * p + o, y: f.y0 + (f.y1 - f.y0) * p });
@@ -217,11 +218,51 @@ function paintLightsWall(ctx, F, env, counter) {
   ctx.globalAlpha = 1;
 }
 
+// Piétons minuscules (silhouettes 1 × 3 px) sur la route et l'escalier : départs par heure (3/h de 8 h à 20 h, 1/h en soirée, 0 la
+// nuit ; en moyenne 0,4 piéton en vue par échappée), 2,3 px/s ; ils entrent et sortent derrière une maison (bouts de la route) ou par une gare (escalier).
+const WALK_RATE = (h) => (h >= 8 && h < 20 ? 12 : h >= 20 && h < 23 ? 4 : h === 7 ? 4 : 0);
+function walkersAt(e, env, seed) {
+  const out = [];
+  for (let h = Math.floor(env.T) - 2; h <= Math.floor(env.T); h++) {
+    const hh = (h + 24) % 24, r = rngOf(seed, `pietons-${e.band}-${hh}`, env.D.date), rate = WALK_RATE(hh) * (env.D.meteo.precip > 0.3 ? 0.4 : 1), n = Math.floor(rate) + (r() < rate % 1 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const t0 = h + r(), stairs = r() < 0.4, up = r() < 0.5, speed = 2 + r() * 0.8, d = (env.T - t0) * 3600 * speed;
+      if (stairs) { const st = e.stairs, L = Math.hypot(st.x1 - st.x0, st.y1 - st.y0); if (d < 0 || d > L) continue; const q = up ? d / L : 1 - d / L; out.push({ x: st.x0 + (st.x1 - st.x0) * q, y: st.y0 + (st.y1 - st.y0) * q - 2.4, dir: up ? Math.sign(st.x1 - st.x0) : -Math.sign(st.x1 - st.x0), key: `${hh}-${k}` }); }
+      else { if (d < 0 || d > e.L) continue; const p = roadPoint(e, up ? e.L - d : d); out.push({ x: p.x + (up ? 2.2 : -2.2), y: p.y - 0.6, dir: up ? -p.dir : p.dir, key: `${hh}-${k}` }); }
+    }
+  }
+  return out;
+}
+function paintWalker(ctx, w, t) { const step = Math.sin(t * 6 + w.x) * 0.5; fillRect(ctx, ink(0.85), w.x - 0.6, w.y - 3.2, 1.2, 2.6); disc(ctx, ink(0.85), w.x, w.y - 3.6, 0.6); ctx.strokeStyle = ink(0.85); ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(w.x, w.y - 0.8); ctx.lineTo(w.x - step, w.y); ctx.moveTo(w.x, w.y - 0.8); ctx.lineTo(w.x + step, w.y); ctx.stroke(); }
+// Fanfare du kiosque, les dimanches de mai à septembre, 15 h – 18 h : quatre musiciens et six badauds arrivent par la route
+// (25 s de marche depuis le point le plus proche), restent, repartent par la route ; jamais sous la pluie.
+function kioskAt(e, env, seed) {
+  const D = env.D, k = e.verdure.find((v) => v.kind === 'kiosk'); if (!k || D.weekday !== 0 || D.doy < 121 || D.doy >= 274 || D.meteo.precip > 0) return [];
+  let best = null; for (let d = 0; d < e.L; d += 4) { const p = roadPoint(e, d); const dd = Math.hypot(p.x - k.x, p.y - k.y); if (!best || dd < best.dd) best = { ...p, dd, d }; }
+  const out = [];
+  for (let i = 0; i < 10; i++) {
+    const r = rngOf(seed, `fanfare-${e.band}-${i}`, D.date), musician = i < 4, tin = 14 + 50 * MIN + i * 2.5 * MIN + r() * MIN, tout = 18 + i * 1.5 * MIN + r() * 2 * MIN;
+    const spot = musician ? { x: k.x - 4 + i * 2.6, y: k.y + 2.6 } : { x: k.x - 10 + r() * 20, y: k.y + 4.5 + r() * 3 };
+    const T = env.T; if (T < tin - 60 * SEC || T > tout + 60 * SEC) continue;
+    const q = T < tin ? (T - (tin - 60 * SEC)) / (60 * SEC) : T > tout ? 1 - (T - tout) / (60 * SEC) : 1, ease = smooth(sat(q));
+    const dx = spot.x - best.x, dy = spot.y - best.y, far = Math.hypot(dx, dy);
+    out.push({ x: best.x + dx * ease, y: best.y + dy * ease, dir: dx > 0 ? 1 : -1, moving: q < 1, musician, key: `f${i}`, far });
+  }
+  return out;
+}
+function paintVieEchappee(ctx, e, env, counter) {
+  const t = env.seconds;
+  for (const w of walkersAt(e, env, F_SEED)) { counter.pietons++; paintWalker(ctx, w, t); }
+  for (const w of kioskAt(e, env, F_SEED)) { if (w.moving) counter.pietons++; paintWalker(ctx, w, w.moving ? t : 0); if (w.musician && !w.moving) { fillRect(ctx, '#E8C040', w.x + 0.4, w.y - 2.6, 1, 0.8); if (Math.floor(t * 2) % 2) fillRect(ctx, 'rgba(255,255,255,0.7)', w.x - 1.5 + (t * 3 % 3), w.y - 5.5, 0.5, 0.5); } }
+  // Jet de la fontaine (deux poses clés, 2 Hz), du 15 mars au 15 novembre, hors neige.
+  const f = e.verdure.find((v) => v.kind === 'fountain');
+  if (f && fountainOn(env.D)) { counter.fontaine = 1; const pose = Math.floor(t * 2) % 2; ctx.strokeStyle = 'rgba(200,230,255,0.9)'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(f.x, f.y - 3); ctx.quadraticCurveTo(f.x - 1.5, f.y - 7 - pose * 0.6, f.x - 2.2, f.y - 1.2); ctx.moveTo(f.x, f.y - 3); ctx.quadraticCurveTo(f.x + 1.5, f.y - 7 + pose * 0.6, f.x + 2.2, f.y - 1.2); ctx.moveTo(f.x, f.y - 3); ctx.lineTo(f.x, f.y - 8 + pose); ctx.stroke(); disc(ctx, 'rgba(255,255,255,0.8)', f.x, f.y - 8 + pose, 0.5); }
+}
 // Vie de la colline (sous le mur du fond) et du mur (sous le premier plan), avec les découpes de visibilité.
 function paintVieColline(ctx, F, env, counter) {
   ctx.save(); ctx.clip(F.clipHill);
   paintMist(ctx, env, counter);
-  for (const e of F.escapes) { for (const v of vehiclesAt(e, env, F.seed)) { counter.vehicules++; paintVehicle(ctx, v); } paintFuni(ctx, e, env, counter); paintCrane(ctx, e, env, counter); }
+  for (const e of F.escapes) { for (const v of vehiclesAt(e, env, F.seed)) { counter.vehicules++; paintVehicle(ctx, v); } paintVieEchappee(ctx, e, env, counter); paintFuni(ctx, e, env, counter); paintCrane(ctx, e, env, counter); }
   paintTreeSway(ctx, F, env, counter);
   for (const h of F.houses) if (h.chimney) paintSmoke(ctx, h.chimney, env, F.seed, counter);
   for (const l of F.landmarks) { if (l.kind === 'tower') { if (!env.dark) paintClock(ctx, l, env); paintPigeons(ctx, l, env, counter); } paintFlag(ctx, l, env, counter); }

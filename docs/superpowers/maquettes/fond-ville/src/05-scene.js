@@ -29,7 +29,7 @@ function gradeFilter(env) {
 }
 const LAYERS = {};
 const layer = (name, w, h) => { let c = LAYERS[name]; if (!c) { c = LAYERS[name] = document.createElement('canvas'); } if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } return c; };
-const newCounter = () => ({ vehicules: 0, fumees: 0, oiseaux: 0, fenetres: 0, drapeaux: 0, brume: 0, grue: 0, arbres: 0 });
+const newCounter = () => ({ vehicules: 0, fumees: 0, oiseaux: 0, fenetres: 0, drapeaux: 0, brume: 0, grue: 0, arbres: 0, pietons: 0, fontaine: 0 });
 
 // Rend la scène corrigée (après) à l'instant T. view = { x0, y0, w, h, scale }. `avant` : décor actuel à la place (même ciel, même nuit).
 function renderScene(ctx, seed, T, D, view, avant = false) {
@@ -152,15 +152,15 @@ function renderCaptures() {
   [0, 2, 5, 9].forEach((s, i) => { const id = `fumee-seq-${i + 1}`; renderScene(canvasFor(id, sv.w * 4, sv.h * 4, `${id} — la fumée naît au conduit : 8 h 30 + ${s} s, 10 février (×4)`), 7, 8.5 + s * SEC, DH, sv); ids.push(id); });
   // Planche « une année » : même coin de rue et même coin de colline, une vignette par mois (le 15, 14 h, soleil ; janvier avec neige).
   {
-    const id = 'annee-planche', vw = 300, vhR = 120, vhC = 90, S = 2, cols = 4, cw = vw * S + 12, chh = (vhR + vhC) * S + 34;
-    const ctx = canvasFor(id, cols * cw, 3 * chh, `${id} — une année de la rue (haut) et de l’échappée de la colline (bas), le 15 de chaque mois à 14 h`);
+    const id = 'annee-planche', vw = 300, vhR = 120, vhC = 90, vhM = 60, S = 2, cols = 4, cw = vw * S + 12, chh = (vhR + vhC + vhM) * S + 38;
+    const ctx = canvasFor(id, cols * cw, 3 * chh, `${id} — une année : la rue (haut), l’échappée de la colline (milieu), les toits du mur du fond (bas), le 15 de chaque mois à 14 h (dimanche 15 août pour la fanfare)`);
     ctx.fillStyle = '#1c1a22'; ctx.fillRect(0, 0, cols * cw, 3 * chh);
-    const pv = pitView(F, S), rueV = { x0: pv.x0, y0: F.ground - 95, w: vw, h: vhR, scale: S }, colV = { ...escapeView(F, 0, S), w: vw, h: vhC, y0: 40 };
+    const pv = pitView(F, S), rueV = { x0: pv.x0, y0: F.ground - 95, w: vw, h: vhR, scale: S }, colV = { ...escapeView(F, 0, S), w: vw, h: vhC, y0: 40 }, murB = F.far.find((b) => b.roof.terrace && b.x > 100 && b.x < W - 320) || F.far[3], murV = { x0: Math.max(0, Math.round(murB.x - 60)), y0: Math.max(0, Math.round(murB.top - 22)), w: vw, h: vhM, scale: S };
     const NOMS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
     for (let m = 0; m < 12; m++) {
       const D = dayOf(`2027-${String(m + 1).padStart(2, '0')}-15`, m === 0 ? 'neige' : 'soleil'), ox = (m % cols) * cw, oy = Math.floor(m / cols) * chh;
       ctx.fillStyle = '#e8e0cc'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(`15 ${NOMS[m]}${m === 0 ? ' (neige)' : ''}`, ox + 4, oy + 18);
-      for (const [v, dy] of [[rueV, 24], [colV, 24 + vhR * S + 4]]) { const c = document.createElement('canvas'); c.width = v.w * S; c.height = v.h * S; renderScene(c.getContext('2d'), 7, 14 + 0.2 * MIN, D, v); ctx.drawImage(c, ox, oy + dy); }
+      for (const [v, dy] of [[rueV, 24], [colV, 24 + vhR * S + 4], [murV, 24 + (vhR + vhC) * S + 8]]) { const c = document.createElement('canvas'); c.width = v.w * S; c.height = v.h * S; renderScene(c.getContext('2d'), 7, 14 + 0.2 * MIN, D, v); ctx.drawImage(c, ox, oy + dy); }
     }
     ids.push(id);
   }
@@ -188,7 +188,7 @@ function runAnimated(q) {
   const frame = (now) => {
     const dt = (now - last) / 1000; last = now; if (!paused) T = ((T + dt * spd * MIN) % 24 + 24) % 24;
     const r = renderScene(ctx, seed, T, D, view);
-    if (q.get('hud') !== '0') { const c = r.counter; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, 560, 16); ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.fillText(`${fmtT(T)} · ×${spd.toFixed(1)} · animés en vue : véhicules ${c.vehicules}, fumées ${c.fumees}, oiseaux ${c.oiseaux}, arbres ${c.arbres}, drapeaux ${c.drapeaux}, brume ${c.brume}, grue ${c.grue} · fenêtres allumées ${c.fenetres}`, 4, 12); ctx.restore(); }
+    if (q.get('hud') !== '0') { const c = r.counter; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, 700, 16); ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.fillText(`${fmtT(T)} · ×${spd.toFixed(1)} · animés en vue : véhicules ${c.vehicules}, piétons ${c.pietons}, fumées ${c.fumees}, oiseaux ${c.oiseaux}, arbres ${c.arbres}, drapeaux ${c.drapeaux}, brume ${c.brume}, grue ${c.grue}, fontaine ${c.fontaine} · fenêtres allumées ${c.fenetres}`, 4, 12); ctx.restore(); }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

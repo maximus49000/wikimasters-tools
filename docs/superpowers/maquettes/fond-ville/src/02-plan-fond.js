@@ -46,9 +46,11 @@ function escapeVerdure(rng, e) {
   // Vigne en rangs (clin d'œil à Montmartre) puis square : des parcelles libres, testées par leurs coins.
   const patch = (w, h) => { for (let k = 0; k < 30; k++) { const x = rx - 6 + rng() * (rw - w + 12), y = y0 + 3 + rng() * (yb - y0 - h - 6); if ([[x, y], [x + w, y], [x, y + h], [x + w, y + h], [x + w / 2, y + h / 2]].every(([px, py]) => free(px, py, 1))) { taken.push({ x: x + w / 2, y: y + h / 2, r: Math.max(w, h) / 2 }); return { x, y, w, h }; } } return null; };
   const vine = patch(22 + rng() * 10, 12 + rng() * 5); if (vine) out.push({ kind: 'vineyard', ...vine, slant: 0.35 + rng() * 0.2 });
-  const lawn = patch(16 + rng() * 8, 9 + rng() * 4); if (lawn) out.push({ kind: 'lawn', ...lawn });
+  const lawn = patch(30 + rng() * 8, 13 + rng() * 3); if (lawn) { out.push({ kind: 'lawn', ...lawn }); out.push({ kind: 'kiosk', x: lawn.x + lawn.w * 0.68, y: lawn.y + lawn.h * 0.55, s: 1 }); out.push({ kind: 'fountain', x: lawn.x + lawn.w * 0.26, y: lawn.y + lawn.h * 0.6 }); }
+  // Murets de pierre et jardins en terrasses : deux lignes de niveau, là où rien ne gêne (route, voie, parcelles).
+  for (const yy of [y0 + 9 + rng() * 4, yb - 10 - rng() * 4]) { let run = []; for (let x = rx - 8; x <= rx + rw + 8; x += 2) { const ok = free(x, yy, 1.5) && !taken.some((t) => Math.abs(t.x - x) < t.r + 2 && Math.abs(t.y - yy) < t.r * 0.8 + 2); if (ok) run.push([x, yy + Math.sin(x * 0.15) * 0.4]); else { if (run.length >= 6) out.push({ kind: 'wall', pts: run }); run = []; } } if (run.length >= 6) out.push({ kind: 'wall', pts: run }); }
   // Grands arbres isolés (2-3), bosquets (4-6 groupes de 1-3 bouquets), potager (0-1).
-  for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++) { const h = 11 + rng() * 9, p = place(h * 0.3); if (p) out.push({ kind: pick(['chestnut', 'poplar', 'poplar', 'cypress', 'cerisier'], rng), ...p, h, s: 0.7 }); }
+  for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++) { const h = 11 + rng() * 9, p = place(h * 0.3); if (p) out.push({ kind: pick(['chestnut', 'poplar', 'poplar', 'cypress', 'cerisier', 'chene'], rng), ...p, h, s: 0.7 }); }
   for (let i = 0, n = 6 + Math.floor(rng() * 4); i < n; i++) { const r = 2 + rng() * 3.2, p = place(r); if (!p) continue; out.push({ kind: 'bouquet', ...p, r, s: 0.55 + rng() * 0.2 }); for (let j = 0, m = Math.floor(rng() * 3); j < m; j++) { const r2 = r * (0.6 + rng() * 0.5), x = p.x + (rng() - 0.5) * r * 3, y = p.y + (rng() - 0.3) * r * 1.4; if (free(x, y, r2)) out.push({ kind: 'bouquet', x, y, r: r2, s: 0.55 + rng() * 0.2 }); } }
   if (rng() < 0.7) { const p = place(6); if (p) out.push({ kind: 'garden', x: p.x - 6, y: p.y + 3, w: 12, s: 0.7, hz: 0.2 }); }
   // Haies : le long de deux tronçons de route, côté amont (perpendiculaire à la route, décalage 4 px).
@@ -118,8 +120,11 @@ function fondPlan(seed) {
     const lit = cells.filter((wn) => minOver(nearTop, wn.x, wn.x + wn.w) > wn.y + wn.h).slice(0, FAR_LIT_MAX);
     const chimney = b.look.chimney !== null ? { x: b.x + b.w * b.look.chimney + 1.5, y: top + 1, s: 1, haze: FAR_HAZE, key: `mur-${b.id}` } : null;
     const laundryFloor = nFloors > 1 && nCols > 1 ? 1 + Math.floor(rng() * (nFloors - 1)) : null;
+    // Toit : terrasse végétalisée ou potager (mansardes, 35 %), verrière d'atelier (25 %), antenne râteau (40 %), 1-3 souches.
+    const roofKind = b.look.roofKind, rr = rng();
+    const roof = { terrace: roofKind === 'mansard' && rr < 0.35 && b.w >= 30 ? { x: b.x + 4 + rng() * (b.w - 22), w: 12 + rng() * 6, potager: rng() < 0.5 } : null, verriere: rr >= 0.35 && rr < 0.6 && b.w >= 26 ? { x: b.x + 3 + rng() * (b.w - 16), w: 7 + rng() * 4 } : null, antenna: rng() < 0.4 ? b.x + 3 + rng() * (b.w - 6) : null, pots: 1 + Math.floor(rng() * 3) };
     const laundryCol = nCols > 1 ? Math.floor(rng() * (nCols - 1)) : 0;
-    return { id: b.id, x: b.x, w: b.w, top, rawTop: b.top, eave, nFloors, nCols, wins, lit, look: b.look, roofKind: b.look.roofKind, shutter, chimney, laundryFloor, laundryCol, u: rng() };
+    return { id: b.id, x: b.x, w: b.w, top, rawTop: b.top, eave, nFloors, nCols, wins, lit, look: b.look, roofKind: b.look.roofKind, shutter, chimney, laundryFloor, laundryCol, roof, u: rng() };
   });
   const farTop = new Float32Array(W + 1).fill(ground);
   for (const b of far) for (let x = Math.max(0, Math.floor(b.x)); x <= Math.min(W, Math.ceil(b.x + b.w)); x++) farTop[x] = Math.min(farTop[x], farRoofY(b, x));
@@ -129,7 +134,7 @@ function fondPlan(seed) {
   const funiOf = (c) => ({ x0: c.x + 14, y0: H * HILL_ROWS[2].y + 1, x1: c.x + 26, y1: crest(c.x + 26) + 1 });
   const houses = plan.hill.houses.filter((h) => {
     const c = inCol(h.x - 2, h.x + h.w + 2); if (!c) return true;
-    if (h.row === 0) { const f = funiOf(c); return h.x + h.w + 2 < f.x0 - 8 || h.x - 2 > f.x1 + 10; }
+    if (h.row === 0) { const f = funiOf(c); return h.x + h.w + 2 < f.x0 - 8 || h.x - 2 > f.x1 + 18; }
     return false;
   }).map((h, i) => {
     const rng = rngOf(seed, `fond-maison-${h.row}-${Math.round(h.x)}`);
@@ -155,9 +160,11 @@ function fondPlan(seed) {
     for (let i = 1; i < road.length; i++) { const [ax, ay] = road[i - 1], [bx, by] = road[i]; const l = Math.hypot(bx - ax, by - ay); segs.push({ ax, ay, bx, by, l, s0: L }); L += l; }
     const lamps = []; for (let d = 18; d < L - 60; d += 22 + rng() * 8) lamps.push({ d, u: 0.4 + rng() * 0.06, off: Math.round(rng() * 30 - 15) });
     const funi = funiOf(c);
+    // Escalier (Montmartre) le long de la voie, côté droit : rampes, marches, trois réverbères.
+    const stairs = { x0: funi.x0 + 11, y0: funi.y0 - 2, x1: funi.x1 + 11, y1: funi.y1 + 1 };
     const crane = { x: rx + rw - 10, base: y1 + 1, mast: 26, boom: 22, weeks: new Set(Array.from({ length: 10 }, () => Math.floor(rng() * 52))) };
     const verdure = escapeVerdure(rng, { c, road, rx, rw, y0, y1, yb, funi, crane });
-    return { ...c, road, segs, L, lamps, funi, crane, verdure, trafficU: rng() };
+    return { ...c, road, segs, L, lamps, funi, stairs, crane, verdure, lawn: verdure.find((v) => v.kind === 'lawn') || null, trafficU: rng() };
   });
   // Verdure des rangs (entre et derrière les maisons) et de la crête (grands arbres isolés sur le ciel).
   const rowVerdure = [[], [], []];
@@ -168,19 +175,23 @@ function fondPlan(seed) {
       const cx = a.x + a.w + g / 2, u = rng();
       if (a.trees && Math.abs(a.trees.x - cx) < g) continue; // la maison a déjà son bouquet dans ce creux
       if (g >= 10 * s && u < 0.3) rowVerdure[row].push({ kind: 'garden', x: cx - Math.min(g, 16 * s) / 2, y: base, w: Math.min(g, 16 * s), s, hz });
-      else if (g >= 6 * s && u < 0.55) rowVerdure[row].push({ kind: pick(['poplar', 'poplar', 'cypress', 'chestnut'], rng), x: cx, y: base, h: (10 + rng() * 8) * s, s, hz });
+      else if (g >= 6 * s && u < 0.55) rowVerdure[row].push({ kind: pick(['poplar', 'poplar', 'cypress', 'chestnut', 'chene'], rng), x: cx, y: base, h: (10 + rng() * 8) * s, s, hz });
       else rowVerdure[row].push({ kind: 'bouquet', x: cx - 2 * s, y: base - 2 * s, r: Math.min(g * 0.55, (4 + rng() * 4) * s), s, hz });
     }
     // Derrière chaque maison du rang (au-dessus de son toit, sur l'herbe du rang suivant) : parfois un massif qui dépasse.
     for (const h of rowH) if (rng() < 0.22) rowVerdure[row].push({ kind: 'bouquet', x: h.x + h.w * (0.2 + rng() * 0.5), y: h.top + 1, r: (3 + rng() * 2.5) * s, s, hz: Math.min(0.4, hz + 0.08), behind: true });
   }
-  const crestVerdure = []; { const rng = rngOf(seed, 'verdure-crete'); for (let x = 20 + rng() * 40; x < W; x += 40 + rng() * 75) { const kind = pick(['poplar', 'poplar', 'cypress', 'chestnut', 'bouquet', 'bouquet', 'cerisier'], rng); crestVerdure.push(kind === 'bouquet' ? { kind, x, y: crest(x) + 1, r: 2.8 + rng() * 2.4, s: 0.5, hz: 0.38 } : { kind, x, y: crest(x) + 1.5, h: 7 + rng() * 6, s: 0.5, hz: 0.38 }); } }
+  const crestVerdure = []; { const rng = rngOf(seed, 'verdure-crete'); for (let x = 20 + rng() * 40; x < W; x += 40 + rng() * 75) { const kind = pick(['poplar', 'poplar', 'cypress', 'chestnut', 'bouquet', 'bouquet', 'cerisier', 'chene'], rng); crestVerdure.push(kind === 'bouquet' ? { kind, x, y: crest(x) + 1, r: 2.8 + rng() * 2.4, s: 0.5, hz: 0.38 } : { kind, x, y: crest(x) + 1.5, h: 7 + rng() * 6, s: 0.5, hz: 0.38 }); } }
+  // Chapelle secondaire sur la crête : une par bande, à l'écart de la tour, des dômes et de l'échappée.
+  const chapels = [];
+  for (let k = 0; k * BAND < W; k++) { const rng = rngOf(seed, `chapelle-${k}`); for (let t = 0; t < 12; t++) { const x = k * BAND + 150 + rng() * (BAND - 300); if (x > W - 40) continue; if (plan.hill.landmarks.some((l) => Math.abs(l.x - x) < 90) || cols.some((c) => x > c.x - 30 && x < c.x1 + 30)) continue; chapels.push({ x, y: crest(x) + 1.5, s: 0.5 + rng() * 0.15, hz: 0.36 }); break; } }
+  for (const ch of chapels) for (let i = crestVerdure.length - 1; i >= 0; i--) if (Math.abs(crestVerdure[i].x - ch.x) < 16) crestVerdure.splice(i, 1);
   // Réverbères de la crête (chapelet) : un tous les ~55 px sur la ligne de crête, allumés en vague.
   const crestLamps = []; { const rng = rngOf(seed, 'fond-crete'); for (let x = 20 + rng() * 30; x < W; x += 48 + rng() * 16) crestLamps.push({ x, y: crest(x) + 1.5, u: 0.4 + rng() * 0.07, off: Math.round(rng() * 30 - 15) }); }
   const landmarks = plan.hill.landmarks.map((l) => ({ ...l, lit: true }));
   // Découpes (Path2D) : ce qui est visible AU-DESSUS du premier plan (vie du mur), et au-dessus du mur du fond aussi (vie de la colline).
   const pathAbove = (arr) => { const p = new Path2D(); p.moveTo(0, -20); for (let x = 0; x <= W; x++) p.lineTo(x, arr[x]); p.lineTo(W, -20); p.closePath(); return p; };
-  return { seed, plan, ground, ruelleY, near, far, houses, landmarks, escapes, crestLamps, rowVerdure, crestVerdure, nearTop, farTop, hillTop, crest, clipWall: pathAbove(nearTop), clipHill: pathAbove(hillTop) };
+  return { seed, plan, ground, ruelleY, near, far, houses, landmarks, escapes, crestLamps, rowVerdure, crestVerdure, chapels, nearTop, farTop, hillTop, crest, clipWall: pathAbove(nearTop), clipHill: pathAbove(hillTop) };
 }
 const PLANS = new Map();
 const fondPlanOf = (seed) => { if (!PLANS.has(seed)) PLANS.set(seed, fondPlan(seed)); return PLANS.get(seed); };
