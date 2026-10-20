@@ -10,7 +10,11 @@ import { dayNumber } from './shops/hours';
 // l'élément k occupe le k-ième créneau (de même durée) de la fenêtre de montage, puis de démontage.
 
 export type Equipment = 'ladder' | 'lift' | 'hand';
-export type ItemKind = 'lamp-flag' | 'door-flag' | 'stage-floor' | 'stage-frame' | 'stage-spots' | 'barrier' | 'stand-counter' | 'stand-awning';
+export type ItemKind = 'lamp-flag' | 'door-flag' | 'stage-floor' | 'stage-frame' | 'stage-spots' | 'barrier' | 'stand-counter' | 'stand-awning'
+  | 'lamp-pumpkin' | 'lamp-bats' | 'door-web' | 'door-ghost';
+// Décors de lampadaire (posés au camion élévateur, à la place du drapeau) et d'entrée (posés à l'échelle, au-dessus de la porte).
+export const LAMP_KINDS: ReadonlySet<ItemKind> = new Set(['lamp-flag', 'lamp-pumpkin', 'lamp-bats']);
+export const DOOR_KINDS: ReadonlySet<ItemKind> = new Set(['door-flag', 'door-web', 'door-ghost']);
 // `x` : centre de l'élément ; `u` / `removeU` : ordre d'intervention au montage / au démontage (croissant).
 // `lane` : barrière posée EN TRAVERS de la chaussée, dans cette file (rue privatisée de la Fête de la musique) ; absent =
 // au bord du trottoir (défilé). `group` : élément d'un ensemble (stand de bière `stand-k` : comptoir et auvent).
@@ -20,8 +24,9 @@ export type DecorWindow = { dayOffset: number; from: number; to: number }; // mi
 // `transport` : véhicule où le décor est ENTREPOSÉ (spec §7.2, table des transports) : il y est pris à la pose et rangé à la
 // dépose, avant que le véhicule reparte. `van` : camionnette (barrières, échelles) ; `cargo-bike` : vélo porteur (drapeaux
 // d'entrée, légers, et l'échelle) ; `truck` : camion plateau (scène, stands de bière) ; `lift` : plateau du camion élévateur
-// lui-même (drapeaux de lampadaires).
-export type Transport = 'van' | 'cargo-bike' | 'truck' | 'lift';
+// lui-même (drapeaux de lampadaires) ; `door` : aucun véhicule, un habitant sort de l'immeuble avec sa petite échelle et le
+// décor, et y rentre (Halloween).
+export type Transport = 'van' | 'cargo-bike' | 'truck' | 'lift' | 'door';
 export type DecorSet = { id: string; fest: FestivityId; day: number; equipment: Equipment; transport: Transport; install: DecorWindow; remove: DecorWindow; items: DecorItem[] };
 export type CrewStep = string; // voir STEPS_BY_EQUIPMENT
 export type ItemPhase = { phase: 'absent' } | { phase: 'present' } | { phase: 'installing' | 'removing'; step: string; progress: number };
@@ -82,6 +87,7 @@ function setsForFest(fest: FestivityId, day: number, width: number, height: numb
         .map((d) => ({ id: d.id, kind: 'door-flag', x: d.x + DOOR_WIDTH / 2, high: true, ...drawn(seed, doorsId, d.id) })),
     });
   }
+  if (fest === 'halloween') out.push(...halloweenSets(day, width, height, seed));
   if (fest === 'bastille') {
     const id = 'barriers-bastille';
     const items: DecorItem[] = [];
@@ -135,6 +141,60 @@ function setsForFest(fest: FestivityId, day: number, width: number, height: numb
   return out;
 }
 
+// ---------- Halloween : lampadaires (mairie) et entrées (habitants) ----------
+// Lampadaires : lanterne citrouille ou guirlande de chauves-souris, posées au camion élévateur le samedi d'avant (24 octobre)
+// et retirées le mardi 3 novembre, de 9 h à 17 h (spec 2026-10-20 « Halloween » §4).
+export const HALLOWEEN_LAMPS = { install: { dayOffset: -7, from: 540, to: 1020 }, remove: { dayOffset: 3, from: 540, to: 1020 } } as const;
+// Entrées : un habitant sur deux à trois décore la sienne (toile d'araignée ou fantôme), à l'échelle, un jour du 24 au 31
+// octobre ; il la retire un jour du 1er au 8 novembre. Jours pondérés et heures de tendance comme les décors des logements
+// (city/halloween.ts) ; un geste dure DOOR_GESTURE minutes (sortie, échelle, pose, retour).
+const DOOR_SHARE = 0.6;
+const DOOR_GESTURE = 12;
+const DOOR_INSTALL: readonly (readonly [number, number])[] = [[-7, 3], [-6, 3], [-5, 1], [-4, 1], [-3, 1.2], [-2, 1], [-1, 1.4], [0, 1.6]];
+const DOOR_REMOVE: readonly (readonly [number, number])[] = [[1, 2], [2, 1], [3, 1], [4, 1.2], [5, 1], [6, 1], [7, 2.2], [8, 1.2]];
+const drawOffset = (list: readonly (readonly [number, number])[], r: number): number => {
+  const tot = list.reduce((acc, [, w]) => acc + w, 0);
+  let a = r * tot;
+  for (const [o, w] of list) {
+    a -= w;
+    if (a < 0) return o;
+  }
+  return list[list.length - 1]![0];
+};
+// Heure de tendance d'un geste (minutes) le jour `day` (dayNumber) : en journée le week-end et le 1er novembre, le 31 avant la
+// soirée, après le travail en semaine.
+function doorMinute(day: number, offset: number, r: number): number {
+  const wd = new Date(day * 86_400_000).getUTCDay();
+  if (offset === 0) return Math.round(600 + r * 300);
+  if (wd === 0 || wd === 6 || offset === 1) return Math.round(600 + r * 420);
+  return Math.round(1080 + r * 120);
+}
+function halloweenSets(day: number, width: number, height: number, seed: number): DecorSet[] {
+  const year = new Date(day * 86_400_000).getUTCFullYear();
+  const base = seed ^ hashString(`halloween${year}`);
+  const lampsId = 'lamps-halloween';
+  const out: DecorSet[] = [{
+    id: lampsId, fest: 'halloween', day, equipment: 'lift', transport: 'lift', install: { ...HALLOWEEN_LAMPS.install }, remove: { ...HALLOWEEN_LAMPS.remove },
+    items: lampsFor(width, seed).map((l) => ({ id: l.id, kind: mulberry32(base ^ hashString(l.id))() < 0.55 ? 'lamp-pumpkin' : 'lamp-bats', x: l.x, high: true, ...drawn(base, lampsId, l.id) })),
+  }];
+  for (const d of doorsFor(width, height, seed)) {
+    // Toujours les mêmes tirages par porte, dans le même ordre.
+    const r = mulberry32(base ^ hashString(`door:${d.id}`));
+    const rOn = r(), rKind = r(), rIn = r(), rOut = r(), rAt = r(), rRat = r();
+    if (rOn >= DOOR_SHARE) continue;
+    const inOff = drawOffset(DOOR_INSTALL, rIn);
+    const outOff = drawOffset(DOOR_REMOVE, rOut);
+    const from = doorMinute(day + inOff, inOff, rAt);
+    const to = doorMinute(day + outOff, outOff, rRat);
+    out.push({
+      id: `halloween-${d.id}`, fest: 'halloween', day, equipment: 'ladder', transport: 'door',
+      install: { dayOffset: inOff, from, to: from + DOOR_GESTURE }, remove: { dayOffset: outOff, from: to, to: to + DOOR_GESTURE },
+      items: [{ id: d.id, kind: rKind < 0.6 ? 'door-web' : 'door-ghost', x: d.x + DOOR_WIDTH / 2, high: true, u: 0, removeU: 0 }],
+    });
+  }
+  return out;
+}
+
 // ---------- Fête de la musique : scènes et stands de bière (positions) ----------
 // Barrières de la rue privatisée : à cette distance (px) de chaque bord du monde.
 export const MUSIC_BARRIER_EDGE = 24;
@@ -181,14 +241,22 @@ export function beerStandsFor(width: number, height: number, seed: number): Beer
   });
 }
 
-// Les jeux dont la fête tombe la veille, le jour même ou le lendemain de `date` (un décor déborde sur les jours voisins).
+// Fêtes dont les décors débordent plus loin que la veille et le lendemain (Halloween : de −7 à +8 jours).
+const LOOK_BACK = 8;
+const LOOK_AHEAD = 7;
+// Les jeux dont la fête tombe la veille, le jour même ou le lendemain de `date` (un décor déborde sur les jours voisins), et,
+// plus loin, ceux dont une fenêtre de pose ou de retrait couvre ce jour (Halloween).
 export function decorSetsFor(date: YMD, width: number, height: number, seed: number): DecorSet[] {
   const out: DecorSet[] = [];
-  for (const k of [-1, 0, 1]) {
+  const today = dayNumber(date);
+  for (let k = -LOOK_BACK; k <= LOOK_AHEAD; k++) {
     const d = addDays(date, k);
     // Une fête qui passe minuit (Fête de la musique jusqu'à 4 h 30 le 22/6) n'a ses décors qu'une fois : au jour où elle commence.
     const fests = festivitiesOn(d).map((f) => f.id).filter((id, i, all) => all.indexOf(id) === i && festivityStartsOn(d, id));
-    for (const fest of fests) out.push(...setsForFest(fest, dayNumber(d), width, height, seed));
+    for (const fest of fests) {
+      const sets = setsForFest(fest, dayNumber(d), width, height, seed);
+      out.push(...(Math.abs(k) <= 1 ? sets : sets.filter((s) => today >= s.day + s.install.dayOffset && today <= s.day + s.remove.dayOffset)));
+    }
   }
   return out;
 }

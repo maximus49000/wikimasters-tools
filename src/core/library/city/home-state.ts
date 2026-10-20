@@ -1,5 +1,5 @@
 import type { Dwelling, Room } from './households';
-import type { Choreo, LightTone, Schedule, Segment, Where } from './schedules';
+import type { Choreo, LightTone, Schedule, SceneDecor, Segment, Where } from './schedules';
 
 // État d'un logement à la minute (port de `trackValue`, `homeState`, `ANIMATED`, `PRIO`, `cullAnimated` de
 // docs/superpowers/maquettes/vie-etages/src/05-etat.js, en minutes ; spec 2026-10-19 « vie au-dessus de la rue » §5.1).
@@ -13,6 +13,7 @@ export type Actor = {
   dwelling: string; room: Room; where: Where; m: number; choreo: Choreo; p: number; t: number;
   seat: number; party: number; desk: boolean; slot: number; reverse: boolean;
   from?: number; // place (en largeurs de fenêtre) d'où part et où revient le pantin (réaction à la sirène d'un membre assis)
+  decor?: SceneDecor; // décor d'Halloween posé (ou retiré, `reverse`) pendant la scène
   animated: boolean; prio: number; culled: boolean;
 };
 // shut / curt / win : 0 fermé → 1 ouvert (persiennes ou battants, rideaux tirés à 1, fenêtre ouverte à 1).
@@ -27,12 +28,12 @@ export const MAX_ANIM = 8;
 const DAY = 1440;
 // Seule pièce dont les emplois du temps tirent les rideaux (le soir) ; cuisine et chambre n'en ont pas qui bougent.
 const CURTAIN_ROOM: Room = 'salon';
-const ANIMATED: ReadonlySet<Choreo> = new Set(['openShutters', 'closeShutters', 'armsUp', 'drawCurtains', 'cross', 'water', 'shake', 'smoke', 'dance', 'cook']);
-// Priorités de la borne : événement 5 > traversée, rideaux 4 > volets, arrosage, tapis, fumeur 3 > penché, balcon, danse 2 >
+const ANIMATED: ReadonlySet<Choreo> = new Set(['openShutters', 'closeShutters', 'armsUp', 'drawCurtains', 'cross', 'water', 'shake', 'smoke', 'dance', 'cook', 'decorLean', 'decorBalcony']);
+// Priorités de la borne : événement 5 > traversée, rideaux, décor d'Halloween 4 > volets, arrosage, tapis, fumeur 3 > penché, balcon, danse 2 >
 // cuisine 1 (et poses fixes).
 const EVENT_PRIO = 5;
 const PRIO: Partial<Record<Choreo, number>> = {
-  cross: 4, drawCurtains: 4, openShutters: 3, closeShutters: 3, armsUp: 3, water: 3, shake: 3, smoke: 3, lean: 2, leanRail: 2, dance: 2, cook: 1,
+  cross: 4, drawCurtains: 4, decorLean: 4, decorBalcony: 4, openShutters: 3, closeShutters: 3, armsUp: 3, water: 3, shake: 3, smoke: 3, lean: 2, leanRail: 2, dance: 2, cook: 1,
 };
 
 const sat = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -90,7 +91,7 @@ export function homeState(d: Dwelling, today: Schedule, yesterday: Schedule | nu
           dwelling: d.id, room: span.room, where: span.where, m: span.m, choreo: span.choreo,
           p: (T - span.t0) / (span.t1 - span.t0), t: T - span.t0,
           seat: span.seat ?? 0, party: span.party ?? 1, desk: !!span.desk, slot: span.slot ?? 0, reverse: !!span.reverse,
-          animated, prio: span.event ? EVENT_PRIO : (PRIO[span.choreo] ?? 1), culled: false, ...(span.from !== undefined ? { from: span.from } : {}),
+          animated, prio: span.event ? EVENT_PRIO : (PRIO[span.choreo] ?? 1), culled: false, ...(span.from !== undefined ? { from: span.from } : {}), ...(span.decor ? { decor: span.decor } : {}),
         });
       }
     }

@@ -212,6 +212,7 @@ function buildModel(facades: readonly Facade[], lives: readonly SceneLife[], min
       const s = members.get(a.m) ?? new Set<HandProp>();
       const h = HELD[a.choreo];
       if (h) s.add(h);
+      if (a.decor) s.add(a.decor.kind);
       members.set(a.m, s);
     }
     const figs = [...members.entries()].sort((a, b) => a[0] - b[0]).map(([m, props]): FigM => {
@@ -288,7 +289,9 @@ const FigNode = memo(function FigNode({ fm, look, slot }: { fm: FigM; look: Look
 
 // Accessoires tenus d'un logement : ceux du dehors (cigarette, arrosoir, tapis) par-dessus la façade cuite, ceux de la pièce
 // (cuillère, livre, tasse) dessous (les rideaux de l'image passent devant).
-const OUTSIDE_HELD: ReadonlySet<HandProp> = new Set(['cigarette', 'watering-can', 'rug']);
+const OUTSIDE_HELD: ReadonlySet<HandProp> = new Set(['cigarette', 'watering-can', 'rug', 'pumpkin', 'witch', 'skeleton', 'crow', 'spider']);
+// Tenus à deux mains (posés entre elles) : le tapis, les décors d'Halloween.
+const TWO_HANDS: ReadonlySet<HandProp> = new Set(['rug', 'pumpkin', 'witch', 'skeleton', 'crow', 'spider']);
 function heldNodes(dm: DwM, look: Look, outside: boolean): ReactElement[] {
   return dm.held.filter((k) => OUTSIDE_HELD.has(k) === outside).map((k) => (
     <g key={k} data-wl-held={k} display="none">
@@ -1246,8 +1249,9 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
                 if (heldBy.get(h) || !pose.props.includes(h.kind)) continue;
                 heldBy.set(h, true);
                 const an = anchorsOf({ sig: fm.sig, yaw: pose.yaw, gait: pose.gait, phase: pose.phase, head: pose.head, arms: pose.arms, lean: pose.lean });
-                const hx = h.kind === 'rug' ? (an.handR[0] + an.handL[0]) / 2 : an.handR[0];
-                const hy = h.kind === 'rug' ? (an.handR[1] + an.handL[1]) / 2 : an.handR[1];
+                const two = TWO_HANDS.has(h.kind);
+                const hx = two ? (an.handR[0] + an.handL[0]) / 2 : an.handR[0];
+                const hy = two ? (an.handR[1] + an.handL[1]) / 2 : an.handR[1];
                 set(h.pos, 'transform', `translate(${n2(x + hx * scale)} ${n2(fy + hy * scale)})`);
                 set(h.g, 'clip-path', pageClip);
                 set(h.g, 'opacity', op);

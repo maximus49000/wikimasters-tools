@@ -1,5 +1,6 @@
 import { facingYaw, phaseIndexOf, YAW_FRONT } from '../figure/gait';
 import { STRIDE, type ArmPose, type Gait } from '../figure/skeleton';
+import { DECOR_SCENE } from './halloween';
 import type { Actor } from './home-state';
 import type { Dwelling, Room } from './households';
 import type { Where } from './schedules';
@@ -13,7 +14,8 @@ import type { Where } from './schedules';
 // Rien n'apparaît sur place : toute scène intérieure commence par une entrée et finit par une sortie en marchant (IN_OUT_S
 // secondes, au plus 30 % d'une scène courte) ; le balcon se gagne par la porte-fenêtre en traversant le plan de la vitre.
 
-export type HandProp = 'cigarette' | 'watering-can' | 'rug' | 'spoon' | 'book' | 'cup';
+// Décors d'Halloween tenus pendant leur pose ou leur retrait (city/halloween.ts) : mêmes noms que `HwKind`.
+export type HandProp = 'cigarette' | 'watering-can' | 'rug' | 'spoon' | 'book' | 'cup' | 'pumpkin' | 'witch' | 'skeleton' | 'crow' | 'spider';
 // Même forme que `PoseIn` (yaw, gait, phase, head, arms, lean) ; dx : décalage horizontal dans la pièce, en largeurs de
 // fenêtre (0 = centré, négatif à gauche ; la marche d'entrée vient d'une fenêtre voisine) ; size : taille relative à
 // l'adulte (0,66 × hauteur d'étage) ; still : pose fixe atteinte (hors de la borne des chorégraphies animées).
@@ -185,6 +187,20 @@ function step(a: Actor, reduced: boolean, balconnet: boolean): Step {
     }
     case 'shake':
       return inOut(0) ?? fixed(v('shake'), { lean: LEAN_SILL, where: 'lean', props: ['rug'], still: reduced });
+    case 'decorLean':
+    case 'decorBalcony': {
+      // Halloween : il arrive avec le décor dans les mains (pose) ou les mains vides (retrait), se penche à l'appui ou à la
+      // rambarde pour le poser ou le reprendre à mi-geste, puis repart (avec lui, au retrait).
+      const balconyScene = a.choreo === 'decorBalcony';
+      const kind = a.decor?.kind;
+      const held = !!kind && (p < DECOR_SCENE[balconyScene ? 'balcony' : 'lean'].gesture) !== a.reverse;
+      const props: HandProp[] = held ? [kind] : [];
+      // Au balcon, il se tient à côté de la place du décor (côté de la porte-fenêtre).
+      const at = balconyScene ? (a.decor ? a.decor.dx - Math.sign(a.decor.dx || 1) * 0.2 : balDx) : 0;
+      const out = balconyScene ? (reduced ? null : balconyInOut(p, s, tIn, tOut, at)) : inOut(0);
+      if (out) return { ...out, props };
+      return fixed(balconyScene ? 'rail' : 'sill', { lean: LEAN_SILL, dx: at, where: balconyScene ? 'balcony' : 'lean', props, still: reduced });
+    }
     case 'dance': {
       const home = -0.4 + slot * 0.3;
       return inOut(home) ?? fixed(v('dance', slot), { dx: reduced ? home : home + Math.sin(s / 2.3 + slot) * 0.08, still: reduced });

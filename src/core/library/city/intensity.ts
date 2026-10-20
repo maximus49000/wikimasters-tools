@@ -37,11 +37,14 @@ export type CityIntensity = {
 // Part des passants qui portent le signe de la fête (0 = pas de signe).
 export const FESTIVE_SHARE: Readonly<Record<FestivityId, number>> = {
   epiphany: 0.25, valentine: 0.3, easter: 0.35, 'may-day': 0.4, bastille: 0.35, armistice: 0.3, 'new-year': 0.5, music: 0.4, 'christmas-eve': 0,
+  // Halloween : les déguisements arrivent avec la nuit du 31 (PR 2).
+  halloween: 0,
 };
 // Affluence pendant la fête : `mult` multiplie les marcheurs, `floor` est un plancher (avant météo).
 export const FESTIVE_CROWD: Readonly<Record<FestivityId, { mult: number; floor: number }>> = {
   epiphany: { mult: 1, floor: 0 }, valentine: { mult: 1.2, floor: 0 }, easter: { mult: 1, floor: 0 }, 'may-day': { mult: 0.8, floor: 0 },
   bastille: { mult: 1.4, floor: 0.3 }, armistice: { mult: 0.7, floor: 0 }, 'new-year': { mult: 1.4, floor: 0.4 }, music: { mult: 1.5, floor: 0.5 }, 'christmas-eve': { mult: 0.6, floor: 0 },
+  halloween: { mult: 1, floor: 0 },
 };
 
 // Part des marcheurs ordinaires qui restent en mouvement pendant la fermeture de la route.

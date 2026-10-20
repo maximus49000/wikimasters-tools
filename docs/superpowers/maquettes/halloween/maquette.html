@@ -1,0 +1,1828 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Maquette — Halloween : décors des habitants et de la mairie</title>
+<style>
+  body { background: #1c1a22; color: #eee; font: 13px/1.4 system-ui, sans-serif; margin: 0; padding: 12px; }
+  h2 { font-weight: 500; margin: 18px 0 6px; color: #d9d2c0; }
+  canvas { display: block; background: #000; max-width: 100%; height: auto; border: 1px solid #333; }
+  p.help { color: #aaa; max-width: 900px; }
+</style>
+<body>
+<p class="help">Galerie des captures (sans paramètre) ou mode animé : <code>?h=15&amp;speed=20&amp;date=2026-10-24</code> (+ <code>zoom=1</code>). Débogage : <code>?T=15.05&amp;date=2026-10-24&amp;view=x0,y0,w,h,scale</code>. Toute la scène est une fonction pure de la date et de l'heure.</p>
+<div id="gallery"></div>
+<script>window.onerror=(m,s,l,c)=>{window.__err=(window.__err||"")+m+" @"+l+":"+c+"\n"};</script>
+<script>
+// ═══════════ 01-cel.js ═══════════
+// ───────────── outils cellulo (copie de paint/cel.ts, comme le chantier 1) ─────────────
+const TAU = Math.PI * 2;
+const hex = (s) => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+const rgba = (c, a = 1) => `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const SUN = hex('#FFF6D0'), COOL = hex('#5A4A9C'), INK = '#2A1A18';
+const shade = (c, t = 0.3) => mix(c, COOL, t);
+const light = (c, t = 0.3) => mix(c, SUN, t);
+function mulberry32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function hashString(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; }
+const pick = (l, r) => l[Math.floor(r() * l.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t, sat = (v) => (v < 0 ? 0 : v > 1 ? 1 : v), ramp = (T, t0, d) => sat((T - t0) / d), smooth = (t) => t * t * (3 - 2 * t);
+const MIN = 1 / 60, SEC = 1 / 3600;
+
+const NIGHT = hex('#1E2A5A'), DUSK = hex('#6A4A7A');
+let ENV = { dark: 0, tint: NIGHT, litFrac: 0, hour: 10, dayness: 1, twilight: 0, T: 10, month: 10 };
+const amb = (c) => mix(c, ENV.tint, ENV.dark);
+const col = (c) => rgba(amb(typeof c === 'string' ? hex(c) : c));
+function fillRect(ctx, c, x, y, w, h) { ctx.fillStyle = typeof c === 'string' && c.startsWith('rgba') ? c : col(c); ctx.fillRect(x, y, w, h); }
+function rawRect(ctx, css, x, y, w, h) { ctx.fillStyle = css; ctx.fillRect(x, y, w, h); }
+function poly(ctx, c, pts, raw = false) { ctx.fillStyle = raw ? c : col(c); ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill(); }
+function disc(ctx, c, x, y, r, raw = false) { ctx.fillStyle = raw ? c : col(c); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+function inkRect(ctx, x, y, w, h, lw = 0.8) { ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h); }
+function inkLine(ctx, pts, lw = 0.7, close = false) { ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); if (close) ctx.closePath(); ctx.stroke(); }
+
+// ───────────── palette (chantier 1 + habitants) ─────────────
+const STONES = ['#EDE2C8', '#E8DCC0', '#F0E6D0', '#E4D6BA', '#EAD5B0', '#F2E8D4'];
+const PLASTERS = ['#F6E2B4', '#EEC79A', '#CFE0B8', '#E0C8A0', '#F4D89C', '#E6BCD0'];
+const ZINCS = ['#8290A2', '#98A4B4', '#7A8AA0'];
+const TILES = ['#C86A40', '#B4523A'];
+const BRICK = '#C2724E', WOOD = ['#2F5D50', '#2E4A6E', '#5A3A2E', '#3A4A3A'];
+const GLASS_DAY = '#7FB4E0', GLASS_NIGHT = '#232D52', ROOM_DAY = '#4A3C44';
+const LIT = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF', cool: '#C8DCFF', stair: '#F4F0D8' };
+const CURTAINS = ['#F4E6D0', '#C85A3A', '#5A7AA8', '#E8C890', '#8A5A8E'];
+const PERSIENNES = ['#C4CCC8', '#B8C0B4', '#CCC4AC'];          // persiennes repliables (haussmann)
+const SHIRTS = ['#C85A3A', '#2E4A6E', '#8A5A8E', '#3F8A3A', '#E8C060', '#5A7AA8', '#B8705A', '#D86C7A', '#F4F0E0'];
+const PANTS = ['#2E3A4A', '#5A3A2E', '#3A4A3A', '#8A7A6A', '#2A2A3A'];
+const SKINS = ['#F2C9A0', '#D9A070', '#8A5A3A', '#F6D8B8', '#C8906A'];
+const SILH = '#1A1422';                                         // silhouette en contre-jour
+const GF = 30, MIN_FLOOR = 10;
+
+// ═══════════ 02-layout.js ═══════════
+// ───────────── mise en page des façades (chantier 1, + foyers) ─────────────
+// force = { kind, stair, tabatiere } : impose un type pour l'immeuble « héros » (mêmes tirages, déterministe).
+function facadeLayout(b, ground, seed, force = {}) {
+  const rng = mulberry32(seed ^ hashString('facade') ^ Math.round(b.x * 8));
+  const kind = force.kind || (b.w >= 56 && b.h >= 120 && rng() < 0.78 ? 'haussmann' : 'faubourg');
+  const top = ground - b.h;
+  const roof = kind === 'haussmann'
+    ? { kind: 'mansard', h: clamp(Math.round(b.h * 0.12), 14, 20), zinc: pick(ZINCS, rng), terrasson: 4 }
+    : rng() < 0.55 ? { kind: 'zinc', h: 11, zinc: pick(ZINCS, rng) } : { kind: 'tile', h: 12, tile: pick(TILES, rng) };
+  const eave = top + roof.h;
+  const nBays = clamp(Math.round((b.w - 6) / (kind === 'haussmann' ? 17 : 15)), 2, 5);
+  const pitch = b.w / nBays;
+  const winW = clamp(Math.round(pitch * 0.42 * 2) / 2, 5, 8);
+  const bayX = (i) => b.x + pitch * (i + 0.5);
+  const entresol = kind === 'haussmann' && b.h >= 150 && rng() < 0.6 ? 11 : 0;
+  const avail = b.h - roof.h - GF - entresol;
+  let n = clamp(Math.round(avail / (kind === 'haussmann' ? 17 : 14.5)), 1, 7);
+  let floors;
+  for (;;) {
+    const weights = Array.from({ length: n }, (_, i) => (kind === 'haussmann' && n >= 3 && i === 0 ? 1.25 : n >= 3 && i === n - 1 ? 0.85 : 1));
+    const sum = weights.reduce((a, v) => a + v, 0);
+    floors = weights.map((wgt) => (avail * wgt) / sum);
+    if (Math.min(...floors) >= MIN_FLOOR || n === 1) break;
+    n--;
+  }
+  const floorsBottom = ground - GF - entresol;
+  let y = floorsBottom;
+  const levels = floors.map((fh, i) => {
+    y -= fh;
+    const level = kind === 'haussmann' && n >= 3 && i === 0 ? 'noble' : i === n - 1 && n >= 3 ? 'top' : 'std';
+    const balcony = level === 'noble' ? 'filant' : level === 'top' && kind === 'haussmann' && n >= 4 ? 'filant' : kind === 'haussmann' && rng() < 0.6 ? 'balconnet' : 'none';
+    return { y, h: fh, level, balcony, idx: i };
+  });
+  if (entresol) levels.unshift({ y: floorsBottom, h: entresol, level: 'entresol', balcony: 'none', idx: -1 });
+  const doorBay = rng() < 0.5 ? 0 : nBays - 1;
+  const stairBay = force.stair ? doorBay : nBays >= 4 && rng() < 0.65 ? doorBay : -1;
+  const shutters = kind === 'faubourg' ? pick(['#8FA88C', '#6A7A9A', '#B8705A', '#7A8A6A'], rng) : null;
+  const persienne = kind === 'haussmann' ? pick(PERSIENNES, rng) : null;
+  const windows = [];
+  for (const lv of levels) {
+    for (let i = 0; i < nBays; i++) {
+      const french = lv.level === 'noble' || lv.balcony === 'filant';
+      if (i === stairBay && lv.level !== 'entresol') {
+        const sw = Math.max(3, winW - 2.5), sh = clamp(lv.h * 0.4, 4, 7);
+        windows.push({ bay: i, level: lv, kind: 'stair', x: bayX(i) - sw / 2, y: lv.y + lv.h * 0.78 - sh / 2, w: sw, h: sh });
+        continue;
+      }
+      const wh = lv.level === 'entresol' ? clamp(lv.h * 0.5, 4, 6) : french ? lv.h * 0.72 : lv.level === 'top' ? lv.h * 0.56 : lv.h * 0.62;
+      const wy = french ? lv.y + lv.h - wh - 0.5 : lv.y + (lv.h - wh) * 0.42;
+      windows.push({ bay: i, level: lv, kind: lv.level === 'entresol' ? 'entresol' : french ? 'french' : 'std', x: bayX(i) - winW / 2, y: wy, w: winW, h: wh });
+    }
+  }
+  // Logements : 2 ou 3 travées voisines ; pièces (cuisine / chambre / salon) ; foyer.
+  const homes = [];
+  const liveBays = Array.from({ length: nBays }, (_, i) => i).filter((i) => i !== stairBay);
+  for (const lv of levels) {
+    if (lv.level === 'entresol') { homes.push({ level: lv, bays: liveBays.slice(), rooms: liveBays.map(() => 'bureau'), tone: 'cream', curtain: null, props: [], hh: null }); continue; }
+    for (const g of splitBays(liveBays, rng)) {
+      const r = rng();
+      const rooms = g.length === 1 ? ['salon'] : g.length === 2 ? ['cuisine', 'salon'] : ['cuisine', 'chambre', 'salon'];
+      homes.push({ level: lv, bays: g, rooms, tone: r < 0.5 ? 'warm' : r < 0.78 ? 'cream' : 'orange',
+        curtain: rng() < 0.75 ? { color: pick(CURTAINS, rng), style: rng() < 0.4 ? 'voile' : 'side' } : null,
+        props: g.map(() => (rng() < 0.45 ? pick(['lamp', 'plant', 'shelf', 'lamp'], rng) : null)),
+        balcony: lv.balcony === 'filant', floorIdx: lv.idx, hh: null, u: rng() });
+    }
+  }
+  const dormers = dormersFor(roof, nBays, stairBay, bayX, winW, top, rng);
+  if (force.tabatiere && roof.kind === 'mansard' && !dormers.some((d) => d.type === 'tabatiere')) dormers.push({ type: 'tabatiere', cx: bayX(1) + 3, y: top + 1 });
+  const chimneys = [b.x + 4 + rng() * 3];
+  if (b.w > 70 || rng() < 0.3) chimneys.push(b.x + b.w - 8 - rng() * 3);
+  const wall = kind === 'haussmann' ? pick(STONES, rng) : pick(PLASTERS, rng);
+  const f = { ...b, kind, top, eave, roof, nBays, pitch, winW, bayX, levels, windows, homes, dormers, chimneys, wall, doorBay, stairBay, shutters, persienne, entresol, ground, seedRng: rng() };
+  for (const hm of homes) if (hm.level.level !== 'entresol') { hm.hh = householdFor(hm, f, rng); hm.climb = (0.35 + hm.floorIdx * 0.22) * MIN; }
+  return f;
+}
+function splitBays(bays, rng) {
+  const n = bays.length;
+  if (n <= 3) return [bays.slice()];
+  if (n === 4) return [bays.slice(0, 2), bays.slice(2)];
+  return rng() < 0.5 ? [bays.slice(0, 2), bays.slice(2)] : [bays.slice(0, 3), bays.slice(3)];
+}
+function dormersFor(roof, nBays, stairBay, bayX, winW, top, rng) {
+  const out = [];
+  if (roof.kind === 'mansard') {
+    const main = rng() < 0.6 ? 'fronton-tri' : 'fronton-cintre';
+    const brisisTop = top + roof.terrasson;
+    for (let i = 0; i < nBays; i++) {
+      if (i === stairBay) { if (rng() < 0.5) out.push({ type: 'oeil', cx: bayX(i), y: brisisTop + (roof.h - roof.terrasson) * 0.5 }); continue; }
+      const r = rng();
+      if (r < 0.5) out.push({ type: main, cx: bayX(i), w: winW + 1, y: brisisTop + 2, h: roof.h - roof.terrasson - 3 });
+      else if (r < 0.7) out.push({ type: 'oeil', cx: bayX(i), y: brisisTop + (roof.h - roof.terrasson) * 0.5 });
+    }
+    if (!out.some((d) => d.type !== 'oeil')) { const i = Math.floor(nBays / 2); out.push({ type: main, cx: bayX(i), w: winW + 1, y: brisisTop + 2, h: roof.h - roof.terrasson - 3 }); }
+    if (rng() < 0.5) { const i = Math.floor(rng() * nBays); out.push({ type: 'tabatiere', cx: bayX(i) + 3, y: top + 1 }); }
+  } else {
+    const mid = clamp(Math.round(0.42 * nBays - 0.5), 0, nBays - 1);
+    const i = clamp(mid + (rng() < 0.5 ? 0 : 1), 0, nBays - 1);
+    if (rng() < 0.7) out.push({ type: 'capucine', cx: bayX(i), w: winW - 1, y: top + 3, h: roof.h - 5 });
+    if (rng() < 0.6) { let j = (i + 1 + Math.floor(rng() * (nBays - 1))) % nBays; out.push({ type: 'tabatiere', cx: bayX(j), y: top + 2 }); }
+  }
+  return out;
+}
+const LIT_KEYS = [[0, 0.22], [1, 0.08], [2, 0.03], [4, 0.01], [6, 0.2], [7, 0.45], [8, 0.5], [10, 0.25], [16, 0.25], [18, 0.5], [20, 0.8], [21, 0.85], [22, 0.65], [23, 0.4], [24, 0.22]];
+function litFraction(hour) { for (let i = 1; i < LIT_KEYS.length; i++) { const [h1, a1] = LIT_KEYS[i], [h0, a0] = LIT_KEYS[i - 1]; if (hour <= h1) return a0 + ((a1 - a0) * (hour - h0)) / (h1 - h0); } return 0.22; }
+
+// ───────────── foyers ─────────────
+// Types : couple, famille, retraite, etudiant, coloc, solo. Chaque membre = { size, shirt, pants, skin }.
+function member(rng, size = 1) { return { size, shirt: pick(SHIRTS, rng), pants: pick(PANTS, rng), skin: pick(SKINS, rng) }; }
+function householdFor(home, f, rng) {
+  const r = rng();
+  let type = r < 0.25 ? 'couple' : r < 0.45 ? 'famille' : r < 0.63 ? 'retraite' : r < 0.75 ? 'etudiant' : r < 0.85 ? 'coloc' : 'solo';
+  if (home.bays.length === 1 && (type === 'famille' || type === 'coloc')) type = 'etudiant';
+  return makeHousehold(type, rng);
+}
+function makeHousehold(type, rng) {
+  const members = [];
+  if (type === 'couple') members.push(member(rng), member(rng));
+  else if (type === 'famille') { members.push(member(rng), member(rng), member(rng, 0.62)); if (rng() < 0.5) members.push(member(rng, 0.7)); }
+  else if (type === 'retraite') { members.push(member(rng, 0.94)); if (rng() < 0.6) members.push(member(rng, 0.94)); }
+  else if (type === 'etudiant') members.push(member(rng, 0.97));
+  else if (type === 'coloc') { members.push(member(rng), member(rng)); if (rng() < 0.6) members.push(member(rng)); }
+  else members.push(member(rng));
+  return { type, members, jitter: rng() * 0.6, jitter2: rng() * 1.2, smoker: rng() < 0.4, sapin: rng() < (type === 'famille' ? 0.7 : 0.3), seed: Math.floor(rng() * 1e9), tone: pick(['warm', 'warm', 'cream', 'orange'], rng), late: rng() < 0.5 };
+}
+
+// ═══════════ 03-temps.js ═══════════
+// ───────────── temps, soleil, ambiance ─────────────
+// Lever / coucher à Paris (heure locale, DST comprise), par mois.
+const SUNS = [[8.7, 17.3], [8.1, 18.2], [7.2, 19.0], [7.1, 20.7], [6.3, 21.4], [5.8, 21.9], [6.1, 21.8], [6.8, 21.1], [7.5, 20.1], [8.2, 19.0], [8.0, 17.3], [8.6, 16.9]];
+function dayness(T, month) { const [sr, ss] = SUNS[month - 1]; const a = sat((T - (sr - 0.7)) / 1.3), b = 1 - sat((T - (ss - 0.5)) / 1.1); return Math.min(a, b); }
+// D = contexte du jour : { date, month, weekday (0 dim..6 sam), weekend, event, couvreur }
+function dayContext(dateStr, event) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const month = d.getMonth() + 1, weekday = d.getDay(), md = dateStr.slice(5);
+  const ev = event || (md === '07-14' ? 'feux' : md === '12-31' ? 'nouvel-an' : md === '06-21' ? 'musique' : null);
+  return { date: dateStr, month, weekday, weekend: weekday === 0 || weekday === 6, event: ev, decembre: month === 12, winter: month <= 3 || month >= 11, couvreur: weekday === 2 || weekday === 4 };
+}
+function setEnvAt(T, D) {
+  const dn = dayness(T, D.month), tw = 4 * dn * (1 - dn);
+  ENV = { dark: 0.64 * (1 - dn), tint: mix(NIGHT, DUSK, tw * 0.9), hour: T, T, litFrac: litFraction(T) * (dn < 0.7 ? 1 : 0), dayness: dn, twilight: tw, month: D.month, D };
+}
+const isNight = () => ENV.dark > 0.2;
+const fmtT = (T) => { const h = Math.floor(T) % 24, m = Math.floor((T - Math.floor(T)) * 60); return `${h}h${String(m).padStart(2, '0')}`; };
+
+// Ciel : fondu nuit / jour / crépuscule, étoiles, lune, soleil, feux d'artifice.
+const SKY = { night: ['#0A1038', '#1A2A66', '#34488C'], day: ['#3F8BE0', '#8EC3F0', '#DCEFF8'], dusk: ['#5E4E9C', '#D86C7A', '#FFD88C'], dawn: ['#3A4A8C', '#C88AA0', '#FFE0A8'] };
+function paintSky(ctx, W, GROUND, T) {
+  const dn = ENV.dayness, tw = ENV.twilight, morning = T < 12;
+  const g = ctx.createLinearGradient(0, 0, 0, GROUND);
+  [0, 0.55, 1].forEach((s, i) => { let c = mix(hex(SKY.night[i]), hex(SKY.day[i]), dn); c = mix(c, hex((morning ? SKY.dawn : SKY.dusk)[i]), tw * 0.85); g.addColorStop(s, rgba(c)); });
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND);
+  if (ENV.dark > 0.45) { const r = mulberry32(9); ctx.fillStyle = `rgba(255,246,208,${(ENV.dark - 0.45) / 0.2})`; for (let i = 0; i < 80; i++) ctx.fillRect(r() * W, r() * 120, 1, 1); }
+  if (ENV.dark > 0.5) { ctx.fillStyle = 'rgba(255,245,200,0.18)'; ctx.beginPath(); ctx.arc(760, 44, 18, 0, TAU); ctx.fill(); ctx.fillStyle = '#FFF4C8'; ctx.beginPath(); ctx.arc(760, 44, 9, 0, TAU); ctx.fill(); ctx.fillStyle = rgba(mix(hex(SKY.night[1]), hex(SKY.day[1]), dn)); ctx.beginPath(); ctx.arc(764, 41, 8, 0, TAU); ctx.fill(); }
+  else if (dn > 0.9) { ctx.fillStyle = 'rgba(255,255,230,0.35)'; ctx.beginPath(); ctx.arc(120, 38, 22, 0, TAU); ctx.fill(); ctx.fillStyle = '#FFFBE0'; ctx.beginPath(); ctx.arc(120, 38, 11, 0, TAU); ctx.fill(); }
+}
+// Feux d'artifice (14 juillet 22 h 25 → 23 h ; Nouvel An 0 h 00 → 0 h 20) : une gerbe toutes les 2,5 s, vie 2,4 s, fonction pure de T.
+function fireworksActive(T, D) { return (D.event === 'feux' && T >= 22 + 25 * MIN && T <= 23) || (D.event === 'nouvel-an' && T >= 0 && T <= 20 * MIN); }
+function paintFireworks(ctx, W, T, D) {
+  if (!fireworksActive(T, D)) return;
+  const t0 = D.event === 'feux' ? 22 + 25 * MIN : 0, s = (T - t0) / SEC;
+  const COLS = ['#FFD86A', '#FF6A6A', '#8AF0FF', '#C8FF8A', '#FFA0E0', '#FFFFFF'];
+  const STEP = 1.6, LIFE = 3.2;
+  for (let k = Math.floor(s / STEP) - 2; k <= Math.floor(s / STEP); k++) {
+    if (k < 0) continue;
+    const r = mulberry32(1000 + k); const cx = 140 + r() * (W - 280), cy = 30 + r() * 80, c = hex(pick(COLS, r)), big = r() < 0.45, rise = 1.1;
+    const age = s - k * STEP; if (age < 0 || age > rise + LIFE) continue;
+    if (age < rise) { // fusée qui monte : traînée de points depuis les toits
+      const q = age / rise, y = lerp(170, cy, smooth(q)); ctx.fillStyle = 'rgba(255,230,170,0.9)'; ctx.beginPath(); ctx.arc(cx, y, 0.9, 0, TAU); ctx.fill(); for (let i = 1; i < 6; i++) { ctx.fillStyle = `rgba(255,220,150,${0.5 - i * 0.08})`; ctx.beginPath(); ctx.arc(cx + Math.sin(i) * 0.4, y + i * 2.2, 0.5, 0, TAU); ctx.fill(); } continue;
+    }
+    const a = (age - rise) / LIFE, R = (big ? 66 : 42) * (1 - (1 - a) * (1 - a) * (1 - a)), g = a * a * 18;
+    ctx.fillStyle = rgba(c, 0.14 * (1 - a)); ctx.fillRect(0, 0, W, 300);
+    const n = big ? 32 : 22;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const an = (i / n) * TAU + k * 0.7, dx = Math.cos(an), dy = Math.sin(an);
+      // trait du centre vers la pointe (rayon), estompé, puis point brillant à la pointe
+      ctx.strokeStyle = rgba(c, 0.35 * (1 - a)); ctx.lineWidth = big ? 1.4 : 1.0; ctx.beginPath(); ctx.moveTo(cx + dx * R * 0.45, cy + dy * R * 0.45 + g * 0.5); ctx.lineTo(cx + dx * R, cy + dy * R + g); ctx.stroke();
+      ctx.fillStyle = rgba(c, 1 - a * a); ctx.beginPath(); ctx.arc(cx + dx * R, cy + dy * R + g, big ? 1.9 : 1.4, 0, TAU); ctx.fill();
+      if (i % 2 === 0) { ctx.fillStyle = `rgba(255,255,255,${0.8 * (1 - a)})`; ctx.beginPath(); ctx.arc(cx + dx * R * 0.7, cy + dy * R * 0.7 + g * 0.7, 0.7, 0, TAU); ctx.fill(); }
+    }
+    if (a < 0.12) { ctx.fillStyle = `rgba(255,255,255,${1 - a / 0.12})`; ctx.beginPath(); ctx.arc(cx, cy, 5, 0, TAU); ctx.fill(); }
+  }
+}
+
+// ═══════════ 04-emplois.js ═══════════
+// ───────────── emplois du temps (par foyer, par jour) ─────────────
+// Un emploi du temps = liste de segments. Tout est une fonction pure de T : les captures sont déterministes.
+//  { k:'lit', room, t0, t1, tone }          pièce allumée
+//  { k:'shut'|'curt'|'win', room, t, to, dur } volets (1 = ouverts) / rideaux (1 = tirés) / fenêtre (1 = ouverte)
+//  { k:'act', t0, t1, room, where:'in'|'lean'|'balcony', choreo, m, ... } un membre joue une chorégraphie
+//  { k:'return'|'depart', t, m }            arrivée à la porte de l'immeuble / sortie par la porte (rue + cage)
+//  { k:'sapin', t0, t1 } { k:'party', t0, t1 }
+function buildSchedule(home, D, forced = {}) {
+  const hh = home.hh, r = mulberry32(hh.seed), S = [];
+  const rooms = home.rooms, has = (n) => rooms.includes(n);
+  const K = has('cuisine') ? 'cuisine' : 'salon', L = 'salon', C = has('chambre') ? 'chambre' : null;
+  const j = forced.jitter ?? hh.jitter, j2 = forced.jitter2 ?? hh.jitter2, we = D.weekend, [sr, ss] = SUNS[D.month - 1];
+  const ms = hh.members.map((_, i) => i), n = ms.length, m2 = n > 1 ? 1 : 0;
+  const lit = (room, t0, t1, tone) => S.push({ k: 'lit', room, t0, t1, tone: tone || hh.tone });
+  const shut = (room, t, to, dur) => S.push({ k: 'shut', room, t, to, dur: dur || 1.2 * MIN });
+  const curt = (room, t, to, dur) => S.push({ k: 'curt', room, t, to, dur: dur || 0.6 * MIN });
+  const win = (room, t, to, dur) => S.push({ k: 'win', room, t, to, dur: dur || 0.25 * MIN });
+  const act = (t0, dur, room, where, choreo, m, x) => S.push(Object.assign({ k: 'act', t0, t1: t0 + dur, room, where, choreo, m: m || 0 }, x || {}));
+  const street = (kind, t, m) => S.push({ k: kind, t, m: m || 0 });
+  // chorégraphies composées
+  const openShutters = (room, t, m, slow) => { const d = slow ? 1.5 : 1; lit(room, t - 0.3 * MIN, t + 18 * MIN); act(t, 3.4 * MIN * d, room, 'in', 'openShutters', m); shut(room, t + 1.0 * MIN * d, 1, 1.3 * MIN * d); win(room, t + 2.35 * MIN * d, 1); };
+  const quickShut = (room, t, m, to) => { act(t, 1.1 * MIN, room, 'in', 'armsUp', m); shut(room, t + 0.3 * MIN, to, 0.7 * MIN); };
+  const closeShutters = (room, t, m) => { act(t, 1.6 * MIN, room, 'in', 'closeShutters', m); win(room, t + 0.35 * MIN, 0); shut(room, t + 0.6 * MIN, 0, 0.9 * MIN); };
+  const drawCurt = (room, t, m) => { act(t, 1.0 * MIN, room, 'in', 'drawCurtains', m); curt(room, t + 0.3 * MIN, 1, 0.5 * MIN); };
+  const openCurt = (room, t, m) => { act(t, 0.8 * MIN, room, 'in', 'drawCurtains', m, { reverse: true }); curt(room, t + 0.2 * MIN, 0, 0.4 * MIN); };
+  const meal = (room, t, dur, who) => who.forEach((m, i) => act(t + i * 0.5 * MIN, dur - i * 0.5 * MIN - (i ? 0.6 * MIN : 0), room, 'in', 'table', m, { seat: i, party: who.length }));
+  const tv = (t0, t1, who) => { lit(L, t0, t1, 'tv'); who.forEach((m, i) => act(t0 + 0.4 * MIN + i * 0.3 * MIN, t1 - t0 - 1.2 * MIN, L, 'in', 'tv', m, { seat: i })); };
+  const smoke = (t, m) => { if (home.balcony) { act(t, 4.6 * MIN, L, 'balcony', 'smoke', m); win(L, t - 0.1 * MIN, 1); win(L, t + 4.6 * MIN, 0); } else { act(t, 3.6 * MIN, K, 'lean', 'smoke', m); win(K, t - 0.1 * MIN, 1); win(K, t + 3.6 * MIN, 0); } };
+  const look = (t, dur, m, room = L) => { act(t, dur, room, home.balcony && room === L ? 'balcony' : 'lean', home.balcony && room === L ? 'leanRail' : 'lean', m); win(room, t - 0.1 * MIN, 1); win(room, t + dur, 0); };
+  const arrive = (t, m) => { street('return', t, m); return t + home.climb; };
+  const leave = (t, m) => { street('depart', t, m); };
+  const nightfall = Math.max(ss + 0.35, 18.1);
+  let shutUser = true, curtUser = true;
+
+  switch (hh.type) {
+    case 'couple': {
+      const wake = (we ? 8.6 : 6.78) + j, out = wake + 52 * MIN;
+      lit(K, wake, out + 3 * MIN); quickShut(K, wake + 0.4 * MIN, 0, 1); act(wake + 1.6 * MIN, 7 * MIN, K, 'in', 'cook', 0);
+      openShutters(L, wake + 8 * MIN, 1); if (C) quickShut(C, wake + 14 * MIN, 1, 1);
+      openCurt(L, wake + 11.6 * MIN, 1);
+      meal(K, wake + 15 * MIN, 22 * MIN, ms);
+      if (!we) { win(L, out - 2 * MIN, 0); leave(out, 0); leave(out + 14 * MIN, 1); }
+      else { look(wake + 45 * MIN, 9 * MIN, 1); meal(K, 12.9 + j, 40 * MIN, ms); win(L, out, 0); leave(14.6 + j, 0); leave(14.6 + j + 0.3 * MIN, 1); }
+      const back = (we ? 18.2 : 18.5) + j2, tA = arrive(back, 0);
+      lit(K, tA, 21.3 + j2); act(tA + 0.15 * MIN, 0.5 * MIN, L, 'in', 'cross', 0); lit(L, tA + 0.3 * MIN, 23.1 + j2 * 0.5);
+      drawCurt(L, tA + 1.0 * MIN, 0);
+      const tB = arrive(back + 35 * MIN + r() * 15 * MIN, 1); act(tB + 0.15 * MIN, 0.5 * MIN, L, 'in', 'cross', 1);
+      act(tB + 1 * MIN, 25 * MIN, K, 'in', 'cook', 1);
+      meal(K, 20.45 + j2 * 0.5, 42 * MIN, ms);
+      tv(21.2 + j2 * 0.5, 23.05 + j2 * 0.5, ms);
+      if (hh.smoker) smoke(21.25 + j2 * 0.5, 0);
+      closeShutters(L, 23.08 + j2 * 0.5, 1); if (C) { lit(C, 23.1 + j2 * 0.5, 23.5 + j2 * 0.5); act(23.15 + j2 * 0.5, 4 * MIN, C, 'in', 'stand', 0); closeShutters(C, 23.3 + j2 * 0.5, 0); }
+      shut(K, 23.15 + j2 * 0.5, 0);
+      break;
+    }
+    case 'famille': {
+      const kids = ms.filter((i) => hh.members[i].size < 0.8), adults = ms.filter((i) => hh.members[i].size >= 0.8);
+      const wake = (we ? 8.3 : 6.58) + j * 0.6, out = wake + 60 * MIN;
+      lit(K, wake, out + 15 * MIN); quickShut(K, wake + 0.4 * MIN, 0, 1); act(wake + 1.6 * MIN, 9 * MIN, K, 'in', 'cook', 0);
+      openShutters(L, wake + 9 * MIN, 1); if (C) { lit(C, wake + 14 * MIN, wake + 40 * MIN); quickShut(C, wake + 20 * MIN, 1, 1); }
+      openCurt(L, wake + 12.8 * MIN, 1);
+      meal(K, wake + 18 * MIN, 28 * MIN, ms);
+      act(wake + 47 * MIN, 4 * MIN, L, 'lean', 'lean', kids[0], {}); // l'enfant regarde la rue avant de partir
+      if (!we) { leave(out, kids[0]); leave(out + 0.25 * MIN, 0); if (kids[1] != null) leave(out + 0.5 * MIN, kids[1]); leave(out + 28 * MIN, 1); win(L, out + 24 * MIN, 0); }
+      else { look(wake + 70 * MIN, 12 * MIN, 1); act(wake + 75 * MIN, 25 * MIN, L, 'lean', 'lean', kids[0]); meal(K, 12.6 + j * 0.5, 45 * MIN, ms); leave(14.8 + j, 0); leave(14.8 + j + 0.2 * MIN, kids[0]); leave(14.8 + j + 0.4 * MIN, 1); win(L, 14.7 + j, 0); }
+      const back1 = (we ? 18.0 : 16.85) + j2 * 0.7, tA = arrive(back1, 0); street('return', back1 + 0.2 * MIN, kids[0]);
+      lit(K, tA, 20.6 + j2 * 0.3); if (C) { lit(C, tA + 4 * MIN, 20.75 + j2 * 0.3); act(tA + 8 * MIN, 55 * MIN, C, 'in', 'table', kids[0], { seat: 0, party: 1, desk: true }); }
+      act(tA + 0.2 * MIN, 0.5 * MIN, L, 'in', 'cross', 0);
+      const back2 = back1 + 1.75 + r() * 0.5, tB = arrive(back2, 1); act(tB + 0.15 * MIN, 0.5 * MIN, L, 'in', 'cross', 1); lit(L, tB + 0.3 * MIN, 23.0 + j2 * 0.3); drawCurt(L, tB + 1.1 * MIN, 1);
+      meal(K, 19.45 + j2 * 0.3, 40 * MIN, ms);
+      if (C) { act(20.55 + j2 * 0.3, 10 * MIN, C, 'in', 'stand', 1); closeShutters(C, 20.62 + j2 * 0.3, 1); }
+      tv(20.25 + j2 * 0.3, 22.55 + j2 * 0.3, adults);
+      closeShutters(L, 22.58 + j2 * 0.3, 0); shut(K, 22.7 + j2 * 0.3, 0);
+      break;
+    }
+    case 'retraite': {
+      const wake = 7.7 + j * 0.5;
+      lit(K, wake, 9.1); openShutters(K, wake + 4 * MIN, 0, true); openShutters(L, wake + 11 * MIN, 0, true); if (C) shut(C, wake + 18 * MIN, 1, 1.8 * MIN);
+      openCurt(L, wake + 16 * MIN, 0);
+      meal(K, wake + 22 * MIN, 32 * MIN, ms);
+      // journée : arrosage, tapis, regarde la rue, lecture au balcon
+      const tw = forced.water ?? 10.72 + j * 0.8;
+      if (home.balcony) { act(tw, 4.2 * MIN, L, 'balcony', 'water', 0); win(L, tw - 0.1 * MIN, 1); win(L, tw + 4.2 * MIN, 0); }
+      else { act(tw, 2.6 * MIN, K, 'lean', 'water', 0); win(K, tw - 0.1 * MIN, 1); win(K, tw + 2.6 * MIN, 0); }
+      const tr = forced.rug ?? 11.25 + j * 0.9; act(tr, 1.5 * MIN, L, 'lean', 'shake', m2); win(L, tr - 0.1 * MIN, 1); win(L, tr + 1.5 * MIN, 0);
+      look(13.95 + j, 7 * MIN, 0); look(16.4 + j * 0.5, 22 * MIN, m2);
+      if (we) look(10.1 + j * 0.5, 15 * MIN, m2);
+      lit(K, 18.0, 19.75); meal(K, 19.0 + j * 0.3, 36 * MIN, ms);
+      closeShutters(K, nightfall + j * 0.2, 0); closeShutters(L, nightfall + 1.6 * MIN + j * 0.2, 0); if (C) shut(C, nightfall + 3.5 * MIN + j * 0.2, 0);
+      tv(19.75 + j * 0.3, 21.55 + j * 0.3, ms);
+      if (C) lit(C, 21.5 + j * 0.3, 21.95 + j * 0.3);
+      break;
+    }
+    case 'etudiant': {
+      shutUser = false;
+      const wake = (we ? 10.5 : 8.45) + j * 0.5;
+      lit(L, wake, wake + 30 * MIN, 'cool'); openCurt(L, wake + 2 * MIN, 0); act(wake + 6 * MIN, 6 * MIN, L, 'lean', 'lean', 0); win(L, wake + 5.9 * MIN, 1); win(L, wake + 12 * MIN, 0.35);
+      if (!we) leave(wake + 32 * MIN, 0); else leave(13.2 + j, 0);
+      const back = forced.lateReturn ? 0.44 : (we ? 2.05 : (hh.late ? 20.4 : 19.6) + j2 * 0.5);
+      const tA = arrive(back, 0); win(L, tA + 0.3 * MIN, 0);
+      lit(L, tA, back < 6 ? back + 1.15 : 25.45, 'cool'); act(tA + 0.2 * MIN, 0.4 * MIN, L, 'in', 'cross', 0);
+      if (back > 6) { act(tA + 2 * MIN, 120 * MIN, L, 'in', 'table', 0, { seat: 0, party: 1, desk: true }); smoke(21.0 + j2 * 0.2, 0); act(23.1 + j2 * 0.2, 90 * MIN, L, 'in', 'table', 0, { seat: 0, party: 1, desk: true }); smoke(23.5 + j2 * 0.2, 0); drawCurt(L, 23.9 + j2 * 0.2, 0); }
+      else { act(tA + 1 * MIN, 25 * MIN, L, 'in', 'table', 0, { seat: 0, party: 1, desk: true }); }
+      break;
+    }
+    case 'coloc': {
+      shutUser = false;
+      const wakes = [7.3, 7.8, 8.5].slice(0, n);
+      wakes.forEach((w, i) => { const t = (we ? w + 2.2 : w) + j * 0.3; lit(i === 0 ? K : L, t, t + 35 * MIN); if (i === 0) openCurt(L, t + 4 * MIN, 0); if (i === 1) look(t + 6 * MIN, 5 * MIN, 1); act(t + 2 * MIN, 8 * MIN, K, 'in', 'cook', i); if (!we) leave(t + 38 * MIN, i); else leave(13.5 + i * 0.4 + j, i); });
+      const backs = [18.15, 19.5, 21.0].slice(0, n);
+      backs.forEach((b, i) => { const tA = arrive(b + j2 * 0.4 + (we ? 0.5 : 0), i); lit(i === 0 ? K : L, tA, we ? 26.3 : 24.1 + i * 0.3); act(tA + 0.2 * MIN, 0.5 * MIN, L, 'in', 'cross', i); });
+      meal(K, 20.5 + j2 * 0.3, 38 * MIN, ms);
+      if (!we) { tv(21.3 + j2 * 0.3, 24.0, ms); if (home.balcony) { act(20.9 + j2 * 0.3, 5 * MIN, L, 'balcony', 'smoke', 0); act(20.95 + j2 * 0.3, 4.6 * MIN, L, 'balcony', 'smoke', 1, { slot: 1 }); win(L, 20.8 + j2 * 0.3, 1); win(L, 21.0 + j2 * 0.3, 0); } else smoke(20.95 + j2 * 0.3, 0); drawCurt(L, 23.5, 1); }
+      else { S.push({ k: 'party', t0: 21.5, t1: 26.3 }); lit(L, 21.5, 26.3, 'orange'); win(L, 21.55, 1); for (let i = 0; i < 5; i++) act(21.6 + i * 0.03, 4.5, L, 'in', 'dance', i % n, { slot: i }); if (home.balcony) for (let k = 0; k < 7; k++) { act(21.9 + k * 0.42, 5 * MIN, L, 'balcony', 'smoke', k % n); act(21.92 + k * 0.42, 4.5 * MIN, L, 'balcony', 'leanRail', (k + 1) % n, { slot: 1 }); } }
+      break;
+    }
+    default: { // solo
+      const wake = (we ? 9.4 : 7.05) + j * 0.7;
+      lit(K, wake, wake + 50 * MIN); openShutters(L, wake + 4 * MIN, 0); quickShut(K, wake + 8 * MIN, 0, 1); openCurt(L, wake + 7.6 * MIN, 0);
+      act(wake + 10 * MIN, 8 * MIN, K, 'in', 'cook', 0); act(wake + 19 * MIN, 12 * MIN, K, 'in', 'table', 0, { seat: 0, party: 1 });
+      if (we) { look(wake + 35 * MIN, 8 * MIN, 0); meal(K, 13.0 + j, 30 * MIN, ms); leave(15.0 + j, 0); } else leave(wake + 48 * MIN, 0);
+      win(L, we ? 14.9 + j : wake + 46 * MIN, 0);
+      const back = (we ? 19.0 : 19.45) + j2 * 0.8, tA = arrive(back, 0);
+      lit(K, tA, 21.0 + j2 * 0.4); act(tA + 0.15 * MIN, 0.5 * MIN, L, 'in', 'cross', 0); lit(L, tA + 0.3 * MIN, 23.4 + j2 * 0.4); drawCurt(L, tA + 1.0 * MIN, 0);
+      act(20.1 + j2 * 0.4, 22 * MIN, K, 'in', 'table', 0, { seat: 0, party: 1 });
+      tv(20.65 + j2 * 0.4, 23.35 + j2 * 0.4, ms); if (hh.smoker) smoke(21.05 + j2 * 0.4, 0);
+      closeShutters(L, 23.38 + j2 * 0.4, 0); shut(K, 23.45 + j2 * 0.4, 0);
+    }
+  }
+  // ─── événements de la rue ───
+  const awake = (t) => hh.type === 'retraite' ? t < 22.3 : hh.type === 'famille' ? t < 23.2 : true;
+  if (D.event === 'feux' || D.event === 'nouvel-an') {
+    const t0 = D.event === 'feux' ? 22 + 25 * MIN : 0, t1 = D.event === 'feux' ? 23 : 20 * MIN;
+    if (awake(22.5) || D.event === 'nouvel-an') {
+      const who = D.event === 'feux' ? ms : ms;
+      if (home.balcony) { who.slice(0, 3).forEach((m, i) => act(t0 - 2 * MIN + i * 0.4 * MIN, t1 - t0 + 2 * MIN - i * 0.6 * MIN, L, 'balcony', 'leanRail', m, { slot: i })); win(L, t0 - 2.2 * MIN, 1); win(L, t1 + 1 * MIN, 0); }
+      else { act(t0 - 1.5 * MIN, t1 - t0 + 1.5 * MIN, L, 'lean', 'lean', 0, { slot: 0 }); if (n > 1) act(t0 - 1.1 * MIN, t1 - t0 + 1.1 * MIN, K, 'lean', 'lean', 1, { slot: 0 }); win(L, t0 - 1.7 * MIN, 1); win(K, t0 - 1.3 * MIN, 1); win(L, t1 + 0.6 * MIN, 0); win(K, t1 + 0.8 * MIN, 0); }
+      S.push({ k: 'dim', t0: t0 - 1 * MIN, t1: t1 + 0.5 * MIN });  // on éteint pour mieux voir
+      if (D.event === 'nouvel-an' && (hh.type === 'coloc' || hh.type === 'couple')) { S.push({ k: 'party', t0: 21.5, t1: 26.5 }); lit(L, 21.5, 26.5, 'orange'); for (let i = 0; i < 4; i++) act(21.6 + i * 0.05, 2.3, L, 'in', 'dance', i % n, { slot: i }); }
+    }
+  }
+  if (D.event === 'demenagement' && (hh.type === 'retraite' || (hh.type === 'etudiant' && we) || r() < 0.25)) { const t = 9.9 + r() * 0.3; look(t, 6 * MIN + r() * 8 * MIN, 0); }
+  if (D.event === 'musique') { win(L, 21.0, 1); look(21.1 + r() * 0.4, 20 * MIN, 0); for (let i = 0; i < n; i++) act(21.6 + r() * 0.4, 30 * MIN, L, 'in', 'dance', i, { slot: i }); }
+  if (D.event === 'sirene') { const t = forced.sirene ?? 15.0; if (r() < 0.45) look(t + 0.1 * MIN, 1.2 * MIN, 0); }
+  if (D.decembre && hh.sapin) S.push({ k: 'sapin', t0: 16.8, t1: 23.6 });
+  // valeur initiale des volets : fermés la nuit pour ceux qui les ferment
+  home.shutUser = shutUser;
+  home.schedule = S.sort((a, b) => (a.t ?? a.t0) - (b.t ?? b.t0));
+  return S;
+}
+
+// ═══════════ 05-etat.js ═══════════
+// ───────────── état d'un foyer à l'instant T ─────────────
+// Piste de valeur (volets, rideaux, fenêtre) : la valeur à 0 h est celle de la fin de la veille (continuité).
+function trackValue(evts, T, init) {
+  if (!evts.length) return init;
+  let v = evts[evts.length - 1].to;
+  for (const e of evts) { if (T < e.t) break; v = lerp(v, e.to, smooth(ramp(T, e.t, e.dur))); }
+  return v;
+}
+const inSeg = (s, T) => (T >= s.t0 && T < s.t1) || (T + 24 >= s.t0 && T + 24 < s.t1);
+const segP = (s, T) => { const t = T >= s.t0 ? T : T + 24; return (t - s.t0) / (s.t1 - s.t0); };
+const ANIMATED = new Set(['openShutters', 'closeShutters', 'armsUp', 'drawCurtains', 'cross', 'water', 'shake', 'smoke', 'dance', 'cook']);
+const PRIO = { event: 5, cross: 4, drawCurtains: 4, openShutters: 3, closeShutters: 3, armsUp: 3, water: 3, shake: 3, smoke: 3, dance: 2, cook: 1 };
+function homeState(home, T) {
+  const S = home.schedule || [], st = { lit: {}, tone: {}, shut: {}, curt: {}, win: {}, actors: [], sapin: false, party: false, dim: false };
+  for (const room of home.rooms) {
+    st.shut[room] = trackValue(S.filter((s) => s.k === 'shut' && s.room === room), T, home.shutUser ? 0 : 1);
+    st.curt[room] = trackValue(S.filter((s) => s.k === 'curt' && s.room === room), T, 0);
+    st.win[room] = trackValue(S.filter((s) => s.k === 'win' && s.room === room), T, 0);
+    st.lit[room] = false;
+  }
+  for (const s of S) {
+    if (s.k === 'lit' && inSeg(s, T)) { st.lit[s.room] = true; st.tone[s.room] = s.tone; }
+    else if (s.k === 'sapin' && inSeg(s, T)) st.sapin = true;
+    else if (s.k === 'party' && inSeg(s, T)) st.party = true;
+    else if (s.k === 'dim' && inSeg(s, T)) st.dim = true;
+    else if (s.k === 'act' && inSeg(s, T)) {
+      const p = segP(s, T), c = choreo(s, p, T, home);
+      if (!c) continue;
+      const room = c.room || s.room;
+      st.actors.push({ room, where: c.where || s.where, m: s.m, member: home.hh.members[s.m] || home.hh.members[0], P: c.P, dx: c.dx, facing: c.facing, props: c.props || [], size: c.size || 1, choreo: s.choreo, animated: ANIMATED.has(s.choreo) && !c.still, prio: (s.slot != null && s.choreo === 'leanRail') || s.choreo === 'lean' ? 2 : PRIO[s.choreo] || 1, seat: s.seat, party: s.party, desk: s.desk, slot: s.slot || 0 });
+    }
+  }
+  if (st.dim) for (const room of home.rooms) if (room !== 'cuisine') st.lit[room] = false;
+  return st;
+}
+// Rue + cage : pour chaque 'return' / 'depart', un marcheur, la porte, la minuterie et la silhouette qui monte / descend.
+// Vitesse de marche ≈ 7,6 px/s (1,3 m/s à 5,9 px/m). La porte s'ouvre 3 s avant le passage, se referme 6 s après.
+const WALK = 7.6 * 3600; // px / heure
+function streetEvents(f, T, W) {
+  const out = { walkers: [], door: 0, stairLit: false, stairFig: null };
+  const dx = f.bayX(f.doorBay);
+  for (const hm of f.homes) {
+    if (!hm.schedule) continue;
+    for (const s of hm.schedule) {
+      if (s.k !== 'return' && s.k !== 'depart') continue;
+      const mem = hm.hh.members[s.m] || hm.hh.members[0];
+      const side = (hm.hh.seed + s.m) % 2 ? 1 : -1;            // d'où il vient / où il va
+      const edge = side > 0 ? W + 12 : -12;
+      const dist = Math.abs(edge - dx), dur = dist / WALK;
+      const tDoor = s.t;
+      if (s.k === 'return') {
+        if (T >= tDoor - dur && T < tDoor) { const p = (T - (tDoor - dur)) / dur; out.walkers.push({ x: lerp(edge, dx, p), facing: -side, mem, ph: (T - tDoor) * WALK / 9, entering: 0 }); }
+        else if (T >= tDoor && T < tDoor + 14 * SEC) out.walkers.push({ x: dx, facing: -side, mem, ph: (T - tDoor) * WALK / 9, entering: (T - tDoor) / (14 * SEC) });
+        out.door = Math.max(out.door, sat(1 - Math.abs(T - (tDoor + 4 * SEC)) / (10 * SEC)) * (T < tDoor + 20 * SEC && T > tDoor - 8 * SEC ? 1 : 0));
+        if (T >= tDoor + 3 * SEC && T < tDoor + 3 * MIN) out.stairLit = true;
+        const tc = tDoor + 10 * SEC, climb = hm.climb - 12 * SEC;
+        if (T >= tc && T < tc + climb && f.stairBay >= 0) out.stairFig = { frac: (T - tc) / climb, floor: hm.floorIdx, mem, up: true };
+      } else {
+        const tOut = s.t; // sort de la porte à tOut ; a quitté le logement à tOut - climb
+        if (T >= tOut && T < tOut + dur) { const p = (T - tOut) / dur; out.walkers.push({ x: lerp(dx, edge, p), facing: side, mem, ph: (T - tOut) * WALK / 9, entering: 0 }); }
+        else if (T >= tOut - 12 * SEC && T < tOut) out.walkers.push({ x: dx, facing: side, mem, ph: (T - tOut) * WALK / 9, entering: (tOut - T) / (12 * SEC) });
+        out.door = Math.max(out.door, sat(1 - Math.abs(T - (tOut - 2 * SEC)) / (10 * SEC)) * (T < tOut + 12 * SEC && T > tOut - 16 * SEC ? 1 : 0));
+        if (T >= tOut - hm.climb && T < tOut + 2.5 * MIN) out.stairLit = true;
+        const tc = tOut - hm.climb + 2 * SEC, climb = hm.climb - 14 * SEC;
+        if (T >= tc && T < tc + climb && f.stairBay >= 0) out.stairFig = { frac: (T - tc) / climb, floor: hm.floorIdx, mem, up: false };
+      }
+    }
+  }
+  return out;
+}
+// Borne d'animation : au plus MAX_ANIM fenêtres animées à la fois (les poses fixes ne comptent pas) ; priorité puis proximité du centre.
+const MAX_ANIM = 8;
+function cullAnimated(facades, states, W) {
+  const all = [];
+  facades.forEach((f, fi) => f.homes.forEach((hm, hi) => { const st = states[fi][hi]; if (!st) return; st.actors.forEach((a) => { if (a.animated) all.push({ a, prio: a.prio, d: Math.abs(f.bayX(hm.bays[0]) - W / 2) }); }); }));
+  all.sort((p, q) => q.prio - p.prio || p.d - q.d);
+  all.forEach((e, i) => { if (i >= MAX_ANIM) e.a.culled = true; });
+  return { animated: all.length, shown: Math.min(all.length, MAX_ANIM) };
+}
+
+// ═══════════ 06-pantins.js ═══════════
+// ───────────── pantins : poses (angles en degrés), cinématique, tracé ─────────────
+// Convention : angle 0 = membre pendant vers le bas ; positif = vers l'avant (sens du regard) ; vue de face (facing 0) :
+// le côté gauche est miroir, les angles positifs écartent les membres du corps.
+const POSE = {
+  stand: { torso: 0, head: 0, aL: [6, 8], aR: [6, 8], lL: [4, 0], lR: [4, 0] },
+  armsUp: { torso: -4, head: -10, aL: [150, -18], aR: [150, -18], lL: [5, 0], lR: [5, 0] },
+  reach: { torso: 5, head: -4, aL: [100, -30], aR: [22, 10], lL: [4, 0], lR: [4, 0] },
+  lean: { torso: 26, head: -16, aL: [58, -80], aR: [58, -80], lL: [2, 0], lR: [2, 0] },
+  leanRail: { torso: 16, head: -8, aL: [32, -42], aR: [32, -42], lL: [4, 0], lR: [4, 0] },
+  smokeUp: { torso: 2, head: 6, aL: [8, 10], aR: [24, -142], lL: [4, 0], lR: [4, 0] },
+  smokeDown: { torso: 2, head: -6, aL: [8, 10], aR: [16, -28], lL: [4, 0], lR: [4, 0] },
+  water: { torso: 30, head: -6, aL: [-14, 16], aR: [74, -14], lL: [10, 0], lR: [-6, 0] },
+  shake: { torso: 20, head: -8, aL: [88, -14], aR: [88, -14], lL: [4, 0], lR: [4, 0] },
+  curtain: { torso: 2, head: 8, aL: [10, 8], aR: [116, -16], lL: [4, 0], lR: [4, 0] },
+  sitTable: { torso: -4, head: 12, aL: [64, -88], aR: [64, -88], lL: [88, -88], lR: [88, -88] },
+  sitTv: { torso: -16, head: 8, aL: [24, -48], aR: [24, -48], lL: [78, -70], lR: [84, -74] },
+  cook: { torso: 8, head: 16, aL: [40, -64], aR: [54, -80], lL: [4, 0], lR: [4, 0] },
+  kneel: { torso: 34, head: 10, aL: [60, -40], aR: [80, -60], lL: [90, -140], lR: [60, -120] },
+};
+const d2r = Math.PI / 180;
+const mixPose = (A, B, t) => ({ torso: lerp(A.torso, B.torso, t), head: lerp(A.head, B.head, t), aL: [lerp(A.aL[0], B.aL[0], t), lerp(A.aL[1], B.aL[1], t)], aR: [lerp(A.aR[0], B.aR[0], t), lerp(A.aR[1], B.aR[1], t)], lL: [lerp(A.lL[0], B.lL[0], t), lerp(A.lL[1], B.lL[1], t)], lR: [lerp(A.lR[0], B.lR[0], t), lerp(A.lR[1], B.lR[1], t)], dy: lerp(A.dy || 0, B.dy || 0, t) });
+function walkPose(ph) { const s = Math.sin(ph * TAU), c = Math.cos(ph * TAU); const sw = s * 26; return { torso: 3, head: 0, aL: [-sw * 0.7, 14], aR: [sw * 0.7, 14], lL: [sw, sw < 0 ? sw * 1.1 : 6], lR: [-sw, -sw < 0 ? -sw * 1.1 : 6], dy: Math.abs(c) * 0.018 }; }
+function dancePose(ph) { const s = Math.sin(ph * TAU); return { torso: s * 6, head: -s * 6, aL: [132 + s * 24, -24], aR: [132 - s * 24, -24], lL: [6 + s * 4, 0], lR: [6 - s * 4, 0], dy: Math.abs(s) * 0.03 }; }
+// Cinématique : hanche au-dessus du pied le plus bas ; renvoie les articulations (repère local, pieds en (0,0), y vers le bas).
+function figurePts(h, P, facing) {
+  const F = facing === 0 ? 0 : facing, sL = facing === 0 ? -1 : F, sR = facing === 0 ? 1 : F;
+  const thigh = 0.25 * h, shin = 0.22 * h, torso = 0.30 * h, headR = 0.082 * h, upper = 0.15 * h, fore = 0.14 * h;
+  const leg = (a, s) => { const k = [Math.sin(a[0] * d2r) * s * thigh, Math.cos(a[0] * d2r) * thigh]; return [k, [k[0] + Math.sin((a[0] + a[1]) * d2r) * s * shin, k[1] + Math.cos((a[0] + a[1]) * d2r) * shin]]; };
+  const [kL, fL] = leg(P.lL, sL), [kR, fR] = leg(P.lR, sR);
+  const hip = [0, -Math.max(fL[1], fR[1]) - (P.dy || 0) * h];
+  const tx = Math.sin(P.torso * d2r) * F * torso, ty = -Math.cos(P.torso * d2r) * torso;
+  const neck = [hip[0] + tx, hip[1] + ty], sh = [hip[0] + tx * 0.9, hip[1] + ty * 0.9];
+  const head = [neck[0] + Math.sin((P.torso + P.head) * d2r) * F * headR * 1.3, neck[1] - Math.cos((P.torso + P.head) * d2r) * headR * 1.3];
+  const arm = (a, s) => { const e = [sh[0] + Math.sin(a[0] * d2r) * s * upper, sh[1] + Math.cos(a[0] * d2r) * upper]; return [e, [e[0] + Math.sin((a[0] + a[1]) * d2r) * s * fore, e[1] + Math.cos((a[0] + a[1]) * d2r) * fore]]; };
+  const [eL, hL] = arm(P.aL, sL), [eR, hR] = arm(P.aR, sR);
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+  return { hip, neck, sh, head, headR, kL: add(hip, kL), fL: add(hip, fL), kR: add(hip, kR), fR: add(hip, fR), eL, hL, eR, hR };
+}
+// Tracé : silhouette (une couleur) ou pantin couleur (passe encre épaisse puis couleurs, membre arrière plus sombre).
+function drawFigure(ctx, fx, fy, h, P, facing, style) {
+  const J = figurePts(h, P, facing);
+  ctx.save(); ctx.translate(fx, fy); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const line = (pts, c, lw) => { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); };
+  const dot = (p, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, TAU); ctx.fill(); };
+  if (style.silhouette) {
+    const c = style.silhouette, lw = 0.1 * h;
+    if (style.alpha != null) ctx.globalAlpha = style.alpha;
+    line([J.hip, J.kL, J.fL], c, lw); line([J.hip, J.kR, J.fR], c, lw); line([J.hip, J.neck], c, lw * 1.9); line([J.sh, J.eL, J.hL], c, lw * 0.9); line([J.sh, J.eR, J.hR], c, lw * 0.9); dot(J.head, J.headR + lw * 0.25, c);
+  } else {
+    const lw = 0.085 * h, ink = lw + 0.07 * h, m = style.mem;
+    const inkC = style.ink || INK, shirt = style.amb ? col(m.shirt) : m.shirt, pants = style.amb ? col(m.pants) : m.pants, skin = style.amb ? col(m.skin) : m.skin;
+    const back = facing !== 0;   // de profil : le membre gauche est derrière
+    const limbs = [['leg', [J.hip, J.kL, J.fL], pants, back], ['arm', [J.sh, J.eL, J.hL], shirt, back], ['leg', [J.hip, J.kR, J.fR], pants, false], ['arm', [J.sh, J.eR, J.hR], shirt, false]];
+    for (const [, pts, , ] of limbs) line(pts, inkC, ink);
+    line([J.hip, J.neck], inkC, lw * 2.2 + 0.07 * h);
+    dot(J.head, J.headR + 0.035 * h, inkC);
+    for (const [, pts, c, isBack] of limbs) line(pts, isBack ? rgba(shade(hex(c), 0.35)) : c, lw);
+    line([J.hip, J.neck], shirt, lw * 2.2); line([J.hip, [J.hip[0] * 0.5 + J.neck[0] * 0.5, J.hip[1] * 0.5 + J.neck[1] * 0.5]], pants, lw * 2.0);
+    dot(J.head, J.headR, skin); dot([J.head[0] - J.headR * 0.1, J.head[1] - J.headR * 0.45], J.headR * 0.72, style.hair || '#3A2A28');
+  }
+  ctx.restore();
+  return J;
+}
+// Chorégraphies : p ∈ [0,1] → { P, dx (en largeurs de fenêtre, 0 = centré), facing, where?, props, still? }.
+// Entrée / sortie : toute scène « in » commence en marchant depuis la pièce voisine et finit en repartant (rien n'apparaît sur place).
+function choreo(seg, p, T, home) {
+  const dur = seg.t1 - seg.t0, tIn = Math.min(0.3, 11 * SEC / dur), tOut = Math.min(0.3, 11 * SEC / dur);
+  const s = T / SEC, name = seg.choreo, slot = seg.slot || 0;
+  const walkIn = (q, from, to) => ({ P: walkPose(s / 0.9), dx: lerp(from, to, q), facing: to > from ? 1 : -1 });
+  const bal = seg.where === 'balcony', lean = seg.where === 'lean';
+  if (name === 'cross') return { P: walkPose(s / 0.9), dx: lerp(-1.6, 1.6, p), facing: 1, cross: true, props: [] };
+  if (name === 'tv') { const side = (seg.seat || 0) % 2 ? -1 : 1; if (p < tIn) return walkIn(p / tIn, -1.4, 0.22 * side); if (p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, 0.22 * side, 1.4); return { P: POSE.sitTv, dx: 0.22 + (seg.seat || 0) * 0.16, facing: -1, props: [{ type: 'tv', dx: -0.34 }], still: true }; }
+  if (name === 'table') { const i = seg.seat || 0, n = seg.party || 2, side = i % 2 ? 1 : -1; const dx = n === 1 ? (seg.desk ? -0.12 : -0.2) : side * (0.24 + Math.floor(i / 2) * 0.1); const fac = n === 1 ? 1 : -side; if (p < tIn) return walkIn(p / tIn, -1.4, dx); if (p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, dx, 1.4); const stir = Math.sin(s / 1.7 + i) * 4; return { P: mixPose(POSE.sitTable, { ...POSE.sitTable, aR: [64 + stir, -88 - stir] }, 0.5), dx, facing: fac, props: i === 0 ? [{ type: seg.desk ? 'desk' : 'table', n }] : [], still: true }; }
+  if (name === 'cook') { if (p < tIn) return walkIn(p / tIn, 1.4, -0.22); if (p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, -0.22, 1.4); const st = Math.sin(s / 0.6) * 10; return { P: { ...POSE.cook, aR: [54, -80 + st] }, dx: -0.22, facing: 1, props: [{ type: 'stove' }], still: false }; }
+  if (name === 'armsUp') { if (p < 0.2) return walkIn(p / 0.2, -1.5, 0); if (p > 0.8) return walkIn((p - 0.8) / 0.2, 0, 1.5); return { P: mixPose(POSE.stand, POSE.armsUp, smooth(sat((p - 0.2) / 0.1)) * smooth(sat((0.8 - p) / 0.1))), dx: 0, facing: 0 }; }
+  if (name === 'stand') { if (p < tIn) return walkIn(p / tIn, -1.4, 0.1); if (p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, 0.1, 1.4); return { P: POSE.stand, dx: 0.1 + Math.sin(s / 7) * 0.1, facing: 0, still: true }; }
+  if (name === 'openShutters') {
+    if (p < 0.12) return walkIn(p / 0.12, -1.5, 0);
+    if (p < 0.26) return { P: mixPose(POSE.stand, POSE.armsUp, smooth((p - 0.12) / 0.14)), dx: 0, facing: 0 };
+    if (p < 0.6) return { P: { ...POSE.armsUp, aL: [150 - (p - 0.26) * 60, -18], aR: [150 - (p - 0.26) * 60, -18] }, dx: 0, facing: 0 };
+    if (p < 0.72) return { P: mixPose(POSE.armsUp, POSE.reach, smooth((p - 0.6) / 0.12)), dx: 0, facing: 0 };
+    if (p < 0.9) return { P: mixPose(POSE.reach, POSE.lean, smooth((p - 0.72) / 0.06)), dx: 0, facing: 0, where: 'lean' };
+    return walkIn((p - 0.9) / 0.1, 0, 1.5);
+  }
+  if (name === 'closeShutters') {
+    if (p < 0.14) return walkIn(p / 0.14, 1.5, 0);
+    if (p < 0.3) return { P: mixPose(POSE.stand, POSE.reach, smooth((p - 0.14) / 0.16)), dx: 0, facing: 0 };
+    if (p < 0.45) return { P: mixPose(POSE.reach, POSE.armsUp, smooth((p - 0.3) / 0.15)), dx: 0, facing: 0 };
+    if (p < 0.82) return { P: { ...POSE.armsUp, aL: [120 + (p - 0.45) * 40, -18], aR: [120 + (p - 0.45) * 40, -18] }, dx: 0, facing: 0 };
+    return walkIn((p - 0.82) / 0.18, 0, -1.5);
+  }
+  if (name === 'drawCurtains') {
+    const rev = seg.reverse ? -1 : 1;
+    if (p < 0.22) return walkIn(p / 0.22, -1.5 * rev, -0.45 * rev);
+    if (p < 0.75) return { P: POSE.curtain, dx: lerp(-0.45, 0.45, (p - 0.22) / 0.53) * rev, facing: 0 };
+    return walkIn((p - 0.75) / 0.25, 0.45 * rev, 1.5 * rev);
+  }
+  if (name === 'lean') { if (p < tIn) return walkIn(p / tIn, -1.5, 0); if (p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, 0, 1.5); return { P: { ...POSE.lean, head: -16 + Math.sin(s / 5) * 8 }, dx: 0, facing: 0, where: 'lean', still: true }; }
+  if (name === 'leanRail') { const out = bal ? balconyInOut(p, tIn, tOut, slot) : null; if (out) return out; return { P: { ...POSE.leanRail, head: -8 + Math.sin(s / 6 + slot) * 10 }, dx: bal ? 0.3 + slot * 0.55 : 0, facing: 0, where: bal ? 'balcony' : 'lean', still: true }; }
+  if (name === 'smoke') {
+    const out = bal ? balconyInOut(p, tIn, tOut, slot) : null; if (out) return out;
+    if (!bal && p < tIn) return walkIn(p / tIn, -1.5, 0); if (!bal && p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, 0, 1.5);
+    const cyc = (s / 11 + slot) % 1, up = cyc < 0.3 ? smooth(sat(cyc / 0.08)) * smooth(sat((0.3 - cyc) / 0.08)) : 0;
+    return { P: mixPose(bal ? POSE.smokeDown : { ...POSE.smokeDown, torso: 18, aL: [50, -75] }, POSE.smokeUp, up), dx: bal ? 0.3 + slot * 0.55 : 0, facing: 0, where: bal ? 'balcony' : 'lean', props: [{ type: 'ember', puff: cyc > 0.3 && cyc < 0.6 ? (cyc - 0.3) / 0.3 : -1 }] };
+  }
+  if (name === 'water') {
+    const out = bal ? balconyInOut(p, tIn, tOut, 0) : null; if (out) return out;
+    if (!bal && p < tIn) return walkIn(p / tIn, -1.5, 0); if (!bal && p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, 0, 1.5);
+    const q = (p - tIn) / (1 - tIn - tOut), pot = Math.floor(q * 3), ph = (q * 3) % 1, pour = ph > 0.25 && ph < 0.8;
+    const dx = bal ? [0.1, 0.5, 0.9][pot] : 0;
+    return { P: mixPose(POSE.stand, POSE.water, smooth(sat(ph / 0.2)) * smooth(sat((1 - ph) / 0.15))), dx, facing: 1, where: bal ? 'balcony' : 'lean', props: [{ type: 'can', pour }] };
+  }
+  if (name === 'shake') { if (p < tIn) return walkIn(p / tIn, -1.5, 0); if (p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, 0, 1.5); const sh = Math.sin(s / 0.35) * 12; return { P: { ...POSE.shake, aL: [88 + sh, -14], aR: [88 + sh, -14], torso: 20 + sh * 0.3 }, dx: 0, facing: 0, where: 'lean', props: [{ type: 'rug', ph: s / 0.35 }] }; }
+  if (name === 'dance') { if (p < tIn) return walkIn(p / tIn, -1.5, -0.4 + slot * 0.3); if (p > 1 - tOut) return walkIn((p - 1 + tOut) / tOut, -0.4 + slot * 0.3, 1.5); return { P: dancePose(s / 1.1 + slot * 0.3), dx: -0.4 + slot * 0.3 + Math.sin(s / 2.3 + slot) * 0.08, facing: 0 }; }
+  return { P: POSE.stand, dx: 0, facing: 0 };
+}
+// Sortie sur le balcon par la porte-fenêtre : on traverse le plan de la vitre (dedans → dehors), et retour en fin de scène.
+function balconyInOut(p, tIn, tOut, slot) {
+  const target = 0.3 + slot * 0.55;
+  if (p < tIn * 0.55) return { P: walkPose(p * 400), dx: lerp(-1.5, 0.05, p / (tIn * 0.55)), facing: 1, where: 'in' };
+  if (p < tIn) return { P: walkPose(p * 400), dx: lerp(0.05, target, (p - tIn * 0.55) / (tIn * 0.45)), facing: 1, where: 'balcony' };
+  if (p > 1 - tOut * 0.45) return { P: walkPose(p * 400), dx: lerp(0.05, -1.5, (p - 1 + tOut * 0.45) / (tOut * 0.45)), facing: -1, where: 'in' };
+  if (p > 1 - tOut) return { P: walkPose(p * 400), dx: lerp(target, 0.05, (p - 1 + tOut) / (tOut * 0.55)), facing: -1, where: 'balcony' };
+  return null;
+}
+
+// ═══════════ 07a-facade.js ═══════════
+// ───────────── peinture d'une façade (chantier 1 + états vivants) ─────────────
+// ctxScene = { T, D, W, states: état par logement (même index que f.homes), street: streetEvents(f) }
+function paintFacade(ctx, f, sc, opts = {}) {
+  const { x, w, top, eave, ground, wall, levels } = f;
+  const h = ground - eave;
+  fillRect(ctx, wall, x, eave, w, h);
+  fillRect(ctx, shade(hex(wall), 0.28), x + w * 0.74, eave, w * 0.26, h);
+  fillRect(ctx, light(hex(wall), 0.45), x, eave, 1.4, h);
+  fillRect(ctx, shade(hex(wall), 0.18), x, ground - 3, w, 3);
+  if (f.kind === 'haussmann') { ctx.strokeStyle = rgba(amb(shade(hex(wall), 0.22)), 0.9); ctx.lineWidth = 0.4; ctx.beginPath(); for (let yy = eave + 6; yy < ground - GF - 2; yy += 4.5) { ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); } ctx.stroke(); }
+  for (const lv of levels) { if (lv.level === 'entresol') continue; const by = lv.y + lv.h; fillRect(ctx, light(hex(wall), 0.5), x, by - 1.2, w, 1.2); fillRect(ctx, shade(hex(wall), 0.38), x, by, w, 0.9); }
+  fillRect(ctx, shade(hex(wall), 0.3), x, ground - GF - 1, w, 1);
+  paintGroundFloor(ctx, f, sc);
+  paintHwDoor(ctx, f, sc);                                        // Halloween : toile ou fantôme sur la porte
+  const leaners = [];
+  for (const win of f.windows) paintWindow(ctx, f, win, sc, leaners);
+  for (const L of leaners) L();                                   // penchés : devant l'appui, après toutes les fenêtres
+  paintHwBalconies(ctx, f, sc, 'back');                           // Halloween : derrière les garde-corps
+  for (const lv of levels) if (lv.balcony === 'filant') paintBalcony(ctx, f, x + 1.5, lv.y + lv.h, w - 3, lv, true, sc);
+  for (const win of f.windows) if (win.level.balcony === 'balconnet' && win.kind === 'std') paintBalcony(ctx, f, win.x - 1.2, win.y + win.h, win.w + 2.4, win.level, false, sc);
+  paintHwBalconies(ctx, f, sc, 'front');                          // Halloween : sur les garde-corps
+  fillRect(ctx, light(hex(wall), 0.5), x - 1.5, eave - 0.8, w + 3, 3);
+  fillRect(ctx, shade(hex(wall), 0.42), x, eave + 2.2, w, 2.6);
+  inkRect(ctx, x - 1.5, eave - 0.8, w + 3, 3, 0.7);
+  paintRoof(ctx, f, sc);
+  inkRect(ctx, x, eave, w, h, 0.9);
+  if (opts.leftTouch) inkLine(ctx, [[x, Math.max(top, opts.leftTouch)], [x, ground]], 1.3);
+  paintRoofLife(ctx, f, sc);
+}
+const homeOf = (f, win) => f.homes.find((hm) => hm.level === win.level && hm.bays.includes(win.bay));
+const stateOf = (f, sc, hm) => (hm ? sc.states[f.homes.indexOf(hm)] : null);
+
+function paintGroundFloor(ctx, f, sc) {
+  const { x, w, ground, wall } = f;
+  const dx = f.bayX(f.doorBay);
+  const dw = Math.min(11, f.winW * 1.6), dh = 21;
+  const shopL = f.doorBay === 0 ? dx + dw / 2 + 2 : x + 2, shopR = f.doorBay === 0 ? x + w - 2 : dx - dw / 2 - 2;
+  const tone = pick(['#C85A3A', '#2F5D50', '#2E4A6E', '#8A5A8E', '#B8702A'], mulberry32(Math.round(x * 3)));
+  const sy = ground - GF + 3;
+  fillRect(ctx, tone, shopL, sy, shopR - shopL, GF - 3);
+  fillRect(ctx, shade(hex(tone), 0.3), shopL + (shopR - shopL) * 0.74, sy, (shopR - shopL) * 0.26, GF - 3);
+  const night = ENV.hour >= 20 || ENV.hour < 7;
+  const vx = shopL + 2, vw = shopR - shopL - 4, vy = sy + 7, vh = GF - 11;
+  if (night) { fillRect(ctx, '#8A8AA0', vx, vy, vw, vh); ctx.strokeStyle = rgba(amb(hex('#5A5A74'))); ctx.lineWidth = 0.4; ctx.beginPath(); for (let yy = vy + 2; yy < vy + vh; yy += 2) { ctx.moveTo(vx, yy); ctx.lineTo(vx + vw, yy); } ctx.stroke(); }
+  else { fillRect(ctx, '#E8F2F6', vx, vy, vw, vh); poly(ctx, 'rgba(255,255,255,0.8)', [[vx, vy + vh * 0.7], [vx + vw * 0.45, vy], [vx + vw * 0.6, vy], [vx, vy + vh]], true); fillRect(ctx, shade(hex('#E8F2F6'), 0.35), vx + vw * 0.7, vy, vw * 0.3, vh); }
+  inkRect(ctx, vx, vy, vw, vh, 0.6);
+  fillRect(ctx, light(hex(tone), 0.5), shopL + 2, sy + 2, vw, 3.5);
+  inkRect(ctx, shopL, sy, shopR - shopL, GF - 3, 0.8);
+  // Porte cochère : bois foncé, cintrée, imposte ; s'ouvre (vantail gauche pivote) quand quelqu'un passe ; hall éclairé par la minuterie.
+  const wood = pick(WOOD, mulberry32(Math.round(x * 5)));
+  const open = sc.street.door, hallLit = isNight() && sc.street.stairLit;
+  fillRect(ctx, light(hex(wall), 0.35), dx - dw / 2 - 1.5, ground - dh - 1.5, dw + 3, dh + 1.5);
+  const arch = () => { ctx.beginPath(); ctx.moveTo(dx - dw / 2, ground); ctx.lineTo(dx - dw / 2, ground - dh + dw / 2); ctx.arc(dx, ground - dh + dw / 2, dw / 2, Math.PI, 0); ctx.lineTo(dx + dw / 2, ground); ctx.closePath(); };
+  ctx.fillStyle = col(wood); arch(); ctx.fill();
+  if (open > 0.02) {
+    // hall visible dans l'ouverture (moitié gauche), vantail rabattu vers l'intérieur
+    ctx.save(); arch(); ctx.clip();
+    ctx.fillStyle = hallLit ? '#E8DCB0' : col('#5A4A48'); ctx.fillRect(dx - dw / 2, ground - dh + dw / 2 - 1, (dw / 2) * open, dh);
+    fillRect(ctx, shade(hex(wood), 0.5), dx - dw / 2 + (dw / 2) * open - 1.2, ground - dh + dw / 2 - 1, 1.2, dh);
+    ctx.restore();
+  }
+  fillRect(ctx, shade(hex(wood), 0.35), dx + 0.4, ground - dh + dw / 2, dw / 2 - 0.4, dh - dw / 2);
+  ctx.fillStyle = hallLit ? LIT.stair : col(isNight() ? '#3A4A6A' : '#B8D4E8'); ctx.beginPath(); ctx.arc(dx, ground - dh + dw / 2, dw / 2 - 1.2, Math.PI, 0); ctx.closePath(); ctx.fill();
+  if (hallLit) rawRect(ctx, 'rgba(255,236,180,0.28)', dx - dw / 2 - 1, ground - 1, dw + 2, 1);
+  ctx.strokeStyle = INK; ctx.lineWidth = 0.7; arch(); ctx.stroke();
+  inkLine(ctx, [[dx, ground - dh + dw / 2], [dx, ground]], 0.5);
+  inkLine(ctx, [[dx - dw / 2, ground - dh + dw / 2], [dx + dw / 2, ground - dh + dw / 2]], 0.5);
+  disc(ctx, '#E8C060', dx - 1.6, ground - dh / 2 + 1, 0.5);
+  f.door = { x: dx, w: dw, h: dh };
+}
+
+// Une fenêtre avec son état : lumière, intérieur (meubles, silhouettes), rideaux, battant ouvert, volets, appui.
+function paintWindow(ctx, f, win, sc, leaners) {
+  const wallC = hex(f.wall);
+  const home = homeOf(f, win), st = stateOf(f, sc, home);
+  const night = isNight();
+  const room = home ? home.rooms[home.bays.indexOf(win.bay)] : null;
+  let lit = false, tone = null;
+  if (win.kind === 'stair') { lit = night && sc.street.stairLit; tone = LIT.stair; }
+  else if (st) { lit = night && st.lit[room]; tone = LIT[st.tone[room] || home.tone] || LIT.warm; }
+  const shut = st ? st.shut[room] : 1, curt = st ? st.curt[room] : 0;
+  let wopen = st ? st.win[room] : 0;
+  const hwS = hwWindowSession(f, win, sc); if (hwS) wopen = Math.max(wopen, hwS.open);   // Halloween : on ouvre pour poser / reprendre
+  const { x, y, w, h } = win;
+  const fl = win.kind === 'french' ? y + h + 0.5 : win.level.y + win.level.h - 0.5;   // plancher de la pièce
+  const figH = win.level.h * 0.66;
+  const actors = st ? st.actors.filter((a) => a.room === room && !a.culled) : [];
+  const glowK = sat(shut) * (1 - 0.55 * curt);
+  if (lit && glowK > 0.1) {
+    const d = clamp(h * 0.7, 4, 9), a = 0.22 * glowK;
+    const g = (k) => { ctx.fillStyle = `rgba(255,214,130,${a})`; ctx.beginPath(); ctx.moveTo(x - 0.5, y + h); ctx.lineTo(x + w + 0.5, y + h); ctx.lineTo(x + w + 1.5 + 1.5 * k, y + h + d * k * 0.8); ctx.quadraticCurveTo(x + w / 2, y + h + d * k + 2 * k, x - 1.5 - 1.5 * k, y + h + d * k * 0.8); ctx.closePath(); ctx.fill(); };
+    g(1); g(0.55);
+    rawRect(ctx, `rgba(255,214,130,${0.16 * glowK})`, x - 1.6, y - 1.2, w + 3.2, h + 1.2);
+  }
+  fillRect(ctx, light(wallC, 0.5), x - 1.2, y - 1.2, w + 2.4, 1.2);
+  fillRect(ctx, shade(wallC, 0.5), x - 0.9, y, 0.9, h);
+  fillRect(ctx, shade(wallC, 0.5), x + w, y, 0.9, h);
+  // ── intérieur ──
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const interiorVisible = lit || wopen > 0.4;
+  if (lit) { ctx.fillStyle = tone; ctx.fillRect(x, y, w, h); if (st && st.tone[room] === 'tv') rawRect(ctx, `rgba(255,255,255,${0.25 + 0.12 * Math.sin(sc.T / SEC * 7)})`, x + 0.6, y + h * 0.35, w - 1.2, h * 0.3); }
+  else { const glass = night ? hex(GLASS_NIGHT) : hex(GLASS_DAY); ctx.fillStyle = night ? rgba(mix(glass, amb(wallC), 0.25)) : col(glass); ctx.fillRect(x, y, w, h); if (wopen > 0.4) { fillRect(ctx, ROOM_DAY, x, y, w * 0.5, h); } }
+  if (home && win.kind !== 'stair') {
+    const prop = home.props[home.bays.indexOf(win.bay)];
+    const pc = lit ? SILH : night ? 'rgba(20,16,30,0.5)' : 'rgba(60,40,50,0.35)';
+    if (prop === 'lamp') { ctx.fillStyle = pc; ctx.beginPath(); ctx.moveTo(x + w * 0.55, y + h * 0.3); ctx.lineTo(x + w * 0.95, y + h * 0.3); ctx.lineTo(x + w * 0.9, y + h * 0.55); ctx.lineTo(x + w * 0.6, y + h * 0.55); ctx.fill(); ctx.fillRect(x + w * 0.73, y + h * 0.55, 0.6, h * 0.45); if (lit) rawRect(ctx, 'rgba(255,255,255,0.55)', x + w * 0.62, y + h * 0.33, w * 0.26, h * 0.1); }
+    else if (prop === 'plant') { ctx.fillStyle = lit ? '#1E3A28' : pc; ctx.beginPath(); ctx.arc(x + w * 0.3, y + h * 0.6, w * 0.2, 0, TAU); ctx.arc(x + w * 0.42, y + h * 0.5, w * 0.16, 0, TAU); ctx.fill(); ctx.fillRect(x + w * 0.18, y + h * 0.72, w * 0.26, h * 0.28); }
+    else if (prop === 'shelf') { ctx.fillStyle = pc; for (let k = 0; k < 3; k++) ctx.fillRect(x + 0.8, y + 1 + k * (h / 3.2), w * 0.5, 0.6); ctx.fillStyle = lit ? 'rgba(26,20,34,0.45)' : pc; ctx.fillRect(x + 0.8, y + 1, w * 0.5, h - 2); }
+    if (st && st.sapin && room === 'salon') paintSapin(ctx, x + w * 0.72, fl, h * 0.78, sc.T, lit);
+    // silhouettes / pantins dans la pièce
+    const alphaIn = lit ? (curt > 0.6 ? 0.28 : 0.95) : wopen > 0.4 ? 0.9 : night ? 0 : 0.3;
+    if (alphaIn > 0) {
+      const wcx = x + w / 2;
+      for (const a of actors) {
+        if (a.where !== 'in') continue;
+        const ax = a.cross ? homeSpanX(f, home, a.dx) : wcx + a.dx * w;
+        if (Math.abs(ax - wcx) > w * 0.9) continue;
+        for (const p of a.props) paintInteriorProp(ctx, p, ax, fl, figH * a.member.size, w, a, lit, night);
+        ctx.globalAlpha = alphaIn;
+        const sty = lit || night ? { silhouette: SILH } : { mem: a.member, amb: true };
+        const J = drawFigure(ctx, ax, fl, figH * a.member.size, a.P, a.facing, sty);
+        paintHandProps(ctx, a, J, ax, fl, lit || night);
+        ctx.globalAlpha = 1;
+      }
+    }
+    // voilage, rideaux (1 = tirés : couvrent la vitre), reflet
+    if (home.curtain && home.curtain.style === 'voile' && curt < 0.5) { rawRect(ctx, lit ? 'rgba(255,248,230,0.45)' : 'rgba(255,248,230,0.3)', x, y, w, h); ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 0.4; ctx.beginPath(); for (let k = 1; k < w; k += 1.6) { ctx.moveTo(x + k, y); ctx.lineTo(x + k - 0.6, y + h); } ctx.stroke(); }
+    if (home.curtain || curt > 0) { const base = home.curtain ? home.curtain.color : CURTAINS[0]; const cw = lerp(clamp(w * 0.22, 1, 1.8), w / 2 + 0.2, curt); const cc = lit ? rgba(mix(hex(base), hex(tone), 0.45)) : rgba(amb(hex(base))); ctx.fillStyle = cc; ctx.fillRect(x, y, cw, h); ctx.fillRect(x + w - cw, y, cw, h); rawRect(ctx, 'rgba(0,0,0,0.18)', x + cw - 0.4, y, 0.4, h); rawRect(ctx, 'rgba(0,0,0,0.18)', x + w - cw, y, 0.4, h); if (curt > 0.2) { ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 0.35; ctx.beginPath(); for (let k = 1; k < cw; k += 1.3) { ctx.moveTo(x + k, y); ctx.lineTo(x + k, y + h); ctx.moveTo(x + w - k, y); ctx.lineTo(x + w - k, y + h); } ctx.stroke(); } }
+  }
+  if (!lit) { ctx.fillStyle = night ? 'rgba(150,170,230,0.22)' : `rgba(255,255,255,${wopen > 0.4 ? 0.3 : 0.72})`; ctx.beginPath(); ctx.moveTo(x, y + h * 0.55); ctx.lineTo(x + w * 0.5, y); ctx.lineTo(x + w * 0.7, y); ctx.lineTo(x, y + h * 0.95); ctx.closePath(); ctx.fill(); fillRect(ctx, shade(hex(night ? GLASS_NIGHT : GLASS_DAY), 0.45), x, y, w, 1); }
+  else { ctx.fillStyle = `rgba(255,255,255,${st && st.tone[room] === 'cream' ? 0.3 : 0.18})`; ctx.fillRect(x, y, w, h * 0.3); }
+  ctx.restore();
+  // menuiserie
+  ctx.strokeStyle = INK; ctx.lineWidth = 0.55; ctx.strokeRect(x, y, w, h);
+  ctx.beginPath(); ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h); if (h >= 8) { ctx.moveTo(x, y + h * 0.33); ctx.lineTo(x + w, y + h * 0.33); } ctx.stroke();
+  // battant gauche ouvert (pivote vers l'extérieur, côté gauche)
+  if (wopen > 0.02 && win.kind !== 'stair') paintSash(ctx, x, y, w, h, wopen, lit, tone, night);
+  // volets : persiennes repliables (haussmann) ou volets battants (faubourg)
+  if (win.kind !== 'stair' && win.kind !== 'entresol') paintShutters(ctx, f, win, shut, lit);
+  // appui
+  if (win.kind !== 'french') {
+    ctx.fillStyle = lit && glowK > 0.3 ? '#FFE8B0' : col(light(wallC, 0.55)); ctx.fillRect(x - 1.2, y + h, w + 2.4, 1);
+    fillRect(ctx, shade(wallC, 0.4), x - 1.2, y + h + 1, w + 2.4, 0.9);
+    const r = mulberry32(Math.round(x * 7 + y * 3));
+    if (win.kind === 'std' && r() < 0.35 && f.kind === 'faubourg') paintFlowerBox(ctx, x - 0.4, y + h + 1, w + 0.8, r, lit && glowK > 0.3, sc);
+  }
+  paintHwSill(ctx, f, win, sc, hwS, leaners, fl, figH);           // Halloween : citrouille sur l'appui, habitant penché qui la pose
+  // penchés à la fenêtre : dessinés après toutes les fenêtres (devant l'appui), coupés sous les hanches
+  for (const a of actors) if (a.where === 'lean' && !a.culled) leaners.push(() => paintLeaner(ctx, f, win, a, fl, figH, lit, night, tone));
+}
+function homeSpanX(f, home, dx) { const x0 = f.bayX(home.bays[0]), x1 = f.bayX(home.bays[home.bays.length - 1]); return lerp(x0 - f.winW, x1 + f.winW, (dx + 1.6) / 3.2); }
+function paintLeaner(ctx, f, win, a, fl, figH, lit, night, tone) {
+  const { x, y, w, h } = win, sill = y + h;
+  const hh = figH * a.member.size * 1.08, ax = x + w / 2 + a.dx * w;
+  ctx.save(); ctx.beginPath(); ctx.rect(x - 2.5, y - 6, w + 5, sill - y + 6.5); ctx.clip();
+  // le buste penché sort du plan : pieds posés plus bas (cachés), hanches à l'appui
+  const sty = night ? (lit ? { silhouette: SILH } : { silhouette: rgba(amb(hex('#3A2E3C'))) }) : { mem: a.member, amb: true };
+  const J = drawFigure(ctx, ax, sill + hh * 0.5, hh, a.P, a.facing, sty);
+  paintHandProps(ctx, a, J, ax, sill + hh * 0.5, night);
+  ctx.restore();
+}
+function paintSash(ctx, x, y, w, h, o, lit, tone, night) {
+  const lw = (w / 2) * o * 0.95, sk = lw * 0.32;
+  const pts = [[x, y], [x - lw, y - sk], [x - lw, y + h - sk], [x, y + h]];
+  poly(ctx, night ? GLASS_NIGHT : GLASS_DAY, pts);
+  if (lit) poly(ctx, rgba(hex(tone), 0.35), pts, true);
+  poly(ctx, night ? 'rgba(150,170,230,0.25)' : 'rgba(255,255,255,0.6)', [[x - lw, y - sk], [x - lw * 0.4, y - sk * 0.4], [x - lw * 0.4, y + h * 0.5], [x - lw, y + h * 0.6 - sk]], true);
+  inkLine(ctx, pts, 0.55, true); inkLine(ctx, [[x - lw / 2, y - sk / 2], [x - lw / 2, y + h - sk / 2]], 0.4);
+}
+function paintShutters(ctx, f, win, s, litBehind) {
+  const { x, y, w, h } = win;
+  if (f.kind === 'faubourg' && f.shutters) {
+    if (!(win.kind === 'std' && win.x - 2.6 > f.x + 1 && win.x + w + 2.6 < f.x + f.w - 1)) return;
+    const sc = hex(f.shutters);
+    const leaf = (lx, lw, c) => { fillRect(ctx, c, lx, y, lw, h); ctx.strokeStyle = INK; ctx.lineWidth = 0.45; ctx.strokeRect(lx, y, lw, h); ctx.fillStyle = litBehind && s < 0.5 ? 'rgba(255,216,106,0.7)' : rgba(amb(shade(sc, 0.5))); for (let k = 1.5; k < h; k += 2) ctx.fillRect(lx + 0.3, y + k, Math.max(0.4, lw - 0.6), 0.4); };
+    const lw = lerp(w / 2, 2, s);
+    leaf(lerp(x, x - 2.6, s), lw, light(sc, 0.2)); leaf(lerp(x + w / 2, x + w + 0.6, s), lw, shade(sc, 0.3));
+  } else if (f.persienne && s < 0.98) {
+    // persiennes métalliques repliables dans l'embrasure : deux vantaux qui se replient vers les côtés ; la lumière filtre par les lames
+    const pc = hex(f.persienne), half = (w / 2) * (1 - s);
+    const leaf = (lx) => { fillRect(ctx, pc, lx, y, half, h); fillRect(ctx, shade(pc, 0.35), lx + half - 0.5, y, 0.5, h); ctx.fillStyle = litBehind ? 'rgba(255,216,106,0.7)' : rgba(amb(shade(pc, 0.55))); for (let k = 1.2; k < h; k += 1.6) ctx.fillRect(lx + 0.3, y + k, Math.max(0.3, half - 0.6), 0.35); inkRect(ctx, lx, y, half, h, 0.4); };
+    leaf(x); leaf(x + w - half);
+  }
+}
+// Jardinière : fleurs selon la saison (géraniums l'été, chrysanthèmes à l'automne, terre nue l'hiver, primevères au printemps).
+function paintFlowerBox(ctx, bx, by, bw, r, lit, sc) {
+  fillRect(ctx, '#8A4A2E', bx, by, bw, 1.6); inkRect(ctx, bx, by, bw, 1.6, 0.4);
+  const m = sc.D.month, pal = m >= 11 || m <= 2 ? ['#6A5A48', '#5A6A48'] : m <= 4 ? ['#F6C62E', '#E8A0C8', '#FFFFFF'] : m <= 9 ? ['#E8456B', '#F6C62E', '#FFFFFF', '#E070C0', '#3F8A3A'] : ['#D88A2E', '#B85A3A', '#E8C060', '#8A5A8E'];
+  const n = m >= 11 || m <= 2 ? 2 : 6;
+  for (let k = 0; k < n; k++) disc(ctx, pick(pal, r), bx + 0.9 + r() * (bw - 1.8), by + 0.4 + r() * 1.0 - (n > 2 ? 0.6 : 0), 0.7);
+  if (lit) rawRect(ctx, 'rgba(255,214,130,0.3)', bx, by - 0.8, bw, 1.2);
+}
+function paintSapin(ctx, cx, fl, H, T, lit) {
+  const c = lit ? '#1E3A2A' : '#2F5A3A';
+  ctx.fillStyle = lit ? c : col(c);
+  for (let k = 0; k < 3; k++) { const yy = fl - H * (0.25 + k * 0.25), ww = H * (0.42 - k * 0.1); ctx.beginPath(); ctx.moveTo(cx - ww / 2, yy); ctx.lineTo(cx, yy - H * 0.3); ctx.lineTo(cx + ww / 2, yy); ctx.closePath(); ctx.fill(); }
+  rawRect(ctx, '#5A3A2E', cx - 0.5, fl - H * 0.25, 1, H * 0.25);
+  const s = T / SEC, cols = ['#FF6A6A', '#FFD86A', '#8AF0FF', '#C8FF8A', '#FFA0E0'];
+  for (let i = 0; i < 7; i++) { const on = ((s * 1.5 + i * 0.7) % 2) < 1.3; if (!on) continue; const yy = fl - H * (0.3 + (i % 4) * 0.17), xx = cx + ((i * 37) % 7 - 3) * (H * 0.06); ctx.fillStyle = cols[i % 5]; ctx.beginPath(); ctx.arc(xx, yy, 0.45, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = '#FFE060'; ctx.beginPath(); ctx.arc(cx, fl - H * 1.03, 0.6, 0, TAU); ctx.fill();
+}
+// Meubles liés aux poses : table (assiettes, bouteille), bureau (écran), télé, plan de cuisson.
+function paintInteriorProp(ctx, p, ax, fl, hh, w, a, lit, night) {
+  const dark = lit ? SILH : night ? 'rgba(20,16,30,0.5)' : 'rgba(70,50,60,0.6)';
+  ctx.fillStyle = dark;
+  if (p.type === 'table') { const ty = fl - hh * 0.46, tw = hh * 0.55; ctx.fillRect(ax - tw / 2, ty, tw, hh * 0.05); ctx.fillRect(ax - tw / 2 + 0.6, ty, 0.5, hh * 0.46); ctx.fillRect(ax + tw / 2 - 1.1, ty, 0.5, hh * 0.46); ctx.fillRect(ax - 0.5, ty - hh * 0.14, 1, hh * 0.14); if (lit) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(ax - tw * 0.36, ty - 0.5, tw * 0.22, 0.5); ctx.fillRect(ax + tw * 0.14, ty - 0.5, tw * 0.22, 0.5); } }
+  else if (p.type === 'desk') { const ty = fl - hh * 0.46, tw = hh * 0.5; ctx.fillRect(ax - tw * 0.1, ty, tw, hh * 0.05); ctx.fillRect(ax + tw * 0.75, ty, 0.5, hh * 0.46); ctx.fillStyle = lit ? '#DDEBFF' : '#9CC4FF'; ctx.fillRect(ax + tw * 0.35, ty - hh * 0.2, tw * 0.3, hh * 0.19); }
+  else if (p.type === 'tv') { const tx = ax + p.dx * w * 2.2, ty = fl - hh * 0.55; ctx.fillRect(tx - 1.6, fl - hh * 0.3, 3.2, hh * 0.3); ctx.fillStyle = lit ? `rgba(255,255,255,${0.75 + 0.2 * Math.sin(ENV.T / SEC * 9)})` : '#9CC4FF'; ctx.fillRect(tx - 1.4, ty, 2.8, hh * 0.22); }
+  else if (p.type === 'stove') { const sx = ax + hh * 0.22; ctx.fillRect(sx, fl - hh * 0.46, hh * 0.3, hh * 0.46); ctx.fillStyle = lit ? 'rgba(255,255,255,0.35)' : dark; ctx.fillRect(sx + 0.3, fl - hh * 0.5, hh * 0.2, hh * 0.05); }
+}
+// Accessoires dans les mains : braise + volute de fumée, arrosoir + filet d'eau, tapis secoué + poussière.
+function paintHandProps(ctx, a, J, ax, fy, dark) {
+  for (const p of a.props) {
+    if (p.type === 'ember') { const hx = ax + J.hR[0], hy = fy + J.hR[1]; ctx.fillStyle = '#FF6A2A'; ctx.beginPath(); ctx.arc(hx, hy - 0.3, 0.45, 0, TAU); ctx.fill(); if (p.puff >= 0) { ctx.fillStyle = `rgba(230,230,245,${0.5 * (1 - p.puff)})`; ctx.beginPath(); ctx.arc(hx + 1.5 + p.puff * 4, fy + J.head[1] - 1 - p.puff * 5, 0.8 + p.puff * 2, 0, TAU); ctx.fill(); } }
+    else if (p.type === 'can') { const hx = ax + J.hR[0], hy = fy + J.hR[1]; ctx.fillStyle = dark ? SILH : '#5A8A5A'; ctx.beginPath(); ctx.moveTo(hx - 1.2, hy); ctx.lineTo(hx + 1.4, hy); ctx.lineTo(hx + 1.1, hy + 2.2); ctx.lineTo(hx - 0.9, hy + 2.2); ctx.closePath(); ctx.fill(); inkLine(ctx, [[hx + 1.2, hy + 0.6], [hx + 3, hy + 2.6]], 0.6); if (p.pour) { ctx.strokeStyle = 'rgba(150,200,255,0.9)'; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(hx + 3, hy + 2.8); ctx.quadraticCurveTo(hx + 3.6, hy + 4, hx + 3.4, hy + 5.5); ctx.stroke(); } }
+    else if (p.type === 'rug') { const lx = ax + J.hL[0], rx = ax + J.hR[0], hy = fy + J.hR[1]; const wv = Math.sin(p.ph) * 0.8; ctx.fillStyle = dark ? SILH : '#B8503A'; ctx.beginPath(); ctx.moveTo(lx, hy); ctx.lineTo(rx, hy); ctx.lineTo(rx + wv, hy + 4.2); ctx.quadraticCurveTo((lx + rx) / 2, hy + 5 + wv, lx - wv, hy + 4.2); ctx.closePath(); ctx.fill(); if (!dark) { ctx.fillStyle = '#E8C060'; ctx.fillRect(lx + 0.6, hy + 1.2, rx - lx - 1.2, 0.5); ctx.fillRect(lx + 0.6, hy + 2.8, rx - lx - 1.2, 0.5); } inkLine(ctx, [[lx, hy], [rx, hy], [rx + wv, hy + 4.2], [lx - wv, hy + 4.2]], 0.4, true); ctx.fillStyle = 'rgba(220,210,190,0.5)'; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc((lx + rx) / 2 + Math.sin(p.ph * 0.7 + k) * 2.5, hy + 5.5 + k * 1.1, 0.5, 0, TAU); ctx.fill(); } }
+  }
+}
+
+// ═══════════ 07b-balcon-toit.js ═══════════
+// ───────────── balcons (avec leurs occupants), toits, cheminées, lucarnes, vie des toits, rue ─────────────
+function paintBalcony(ctx, f, bx, by, bw, lv, filant, sc) {
+  const wallC = hex(f.wall);
+  const rh = filant ? 5.5 : 4;
+  const night = isNight();
+  const litWins = f.windows.filter((w) => w.level === lv && w.x >= bx - 1 && w.x + w.w <= bx + bw + 1).filter((w) => { const hm = homeOf(f, w), st = stateOf(f, sc, hm); return hm && st && night && st.lit[hm.rooms[hm.bays.indexOf(w.bay)]]; });
+  // occupants du balcon : debout sur la dalle, derrière le garde-corps
+  if (filant) for (const hm of f.homes) {
+    if (hm.level !== lv) continue;
+    const st = stateOf(f, sc, hm); if (!st) continue;
+    for (const a of st.actors) {
+      if (a.where !== 'balcony' || a.culled) continue;
+      const win = f.windows.find((w) => w.level === lv && w.bay === hm.bays[hm.rooms.indexOf(a.room)]); if (!win) continue;
+      const ax = win.x + win.w / 2 + a.dx * win.w, hh = lv.h * 0.66 * a.member.size;
+      const litBehind = st.lit[a.room] && night;
+      const sty = night ? { silhouette: litBehind ? SILH : rgba(amb(hex('#3A2E3C'))) } : { mem: a.member, amb: true };
+      const J = drawFigure(ctx, ax, by - 0.4, hh, a.P, a.facing, sty);
+      paintHandProps(ctx, a, J, ax, by - 0.4, night);
+      if (a.choreo === 'water' && a.props[0] && a.props[0].pour) { /* le pot arrosé brille un peu */ rawRect(ctx, 'rgba(150,200,255,0.25)', ax + 3, by - rh - 1.2, 2.4, 1.4); }
+    }
+  }
+  ctx.fillStyle = INK;
+  ctx.fillRect(bx, by - rh, bw, 0.7);
+  for (let k = bx + 0.8; k < bx + bw; k += 1.5) ctx.fillRect(k, by - rh, 0.45, rh);
+  if (filant) { ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.beginPath(); for (let i = 0; i < f.nBays; i++) { const cx = f.bayX(i); if (cx - 3 < bx || cx + 3 > bx + bw) continue; ctx.moveTo(cx - 2.5, by - 1.2); ctx.arc(cx - 1.2, by - rh * 0.55, 1.3, Math.PI * 0.7, Math.PI * 2.3); ctx.moveTo(cx + 2.5, by - 1.2); ctx.arc(cx + 1.2, by - rh * 0.55, 1.3, Math.PI * 0.7, Math.PI * 2.3, true); } ctx.stroke(); }
+  fillRect(ctx, light(wallC, 0.5), bx - 0.8, by - 0.4, bw + 1.6, 1.4);
+  fillRect(ctx, shade(wallC, 0.45), bx - 0.8, by + 1, bw + 1.6, filant ? 2 : 1.4);
+  inkRect(ctx, bx - 0.8, by - 0.4, bw + 1.6, filant ? 3.4 : 2.8, 0.6);
+  for (const w of litWins) { rawRect(ctx, 'rgba(255,214,130,0.3)', w.x - 1.5, by - 0.4, w.w + 3, 1.4); rawRect(ctx, 'rgba(255,214,130,0.22)', w.x - 1, by - rh, w.w + 2, rh); }
+  // pots de fleurs du balcon (saison) : un par travée sur le filant du retraité, sinon un seul
+  if (filant && f.kind === 'haussmann') {
+    const m = sc.D.month, hm = f.homes.find((h) => h.level === lv && h.hh && h.hh.type === 'retraite');
+    const n = hm ? 3 : 1;
+    for (let k = 0; k < n; k++) { const px = bx + 3.5 + k * (bw / 4); fillRect(ctx, '#A04A2E', px - 1.2, by - rh - 0.2, 2.4, 1.4); if (m >= 11 || m <= 2) disc(ctx, '#5A6A48', px, by - rh - 0.6, 1.1); else { disc(ctx, '#3F8A3A', px, by - rh - 0.6, 1.5); disc(ctx, m <= 4 ? '#F6C62E' : m <= 9 ? '#E8456B' : '#D88A2E', px - 0.5, by - rh - 1.2, 0.5); disc(ctx, m <= 4 ? '#FFFFFF' : m <= 9 ? '#FFFFFF' : '#E8C060', px + 0.6, by - rh - 0.9, 0.45); } }
+  }
+}
+function paintRoof(ctx, f, sc) {
+  const { x, w, top, eave, roof } = f;
+  if (roof.kind === 'mansard') {
+    const zc = hex(roof.zinc), bt = top + roof.terrasson;
+    poly(ctx, zc, [[x - 1.5, eave], [x + 2.5, bt], [x + w - 2.5, bt], [x + w + 1.5, eave]]);
+    poly(ctx, shade(zc, 0.3), [[x + w * 0.74, eave], [x + w * 0.74, bt], [x + w - 2.5, bt], [x + w + 1.5, eave]]);
+    poly(ctx, light(zc, 0.35), [[x - 1.5, eave], [x + 2.5, bt], [x + w * 0.4, bt], [x + w * 0.4, eave]]);
+    ctx.strokeStyle = rgba(amb(shade(zc, 0.5)), 0.8); ctx.lineWidth = 0.4; ctx.beginPath();
+    for (let i = 0; i < f.nBays * 2 + 1; i++) { const t = (i + 0.5) / (f.nBays * 2 + 1); ctx.moveTo(x - 1.5 + (w + 3) * t, eave); ctx.lineTo(x + 2.5 + (w - 5) * t, bt); } ctx.stroke();
+    poly(ctx, light(zc, 0.5), [[x + 2.5, bt], [x + 5, top + 0.5], [x + w - 5, top + 0.5], [x + w - 2.5, bt]]);
+    poly(ctx, shade(zc, 0.2), [[x + w * 0.74, bt], [x + w * 0.74, top + 0.5], [x + w - 5, top + 0.5], [x + w - 2.5, bt]]);
+    inkLine(ctx, [[x - 1.5, eave], [x + 2.5, bt], [x + 5, top + 0.5], [x + w - 5, top + 0.5], [x + w - 2.5, bt], [x + w + 1.5, eave]], 0.9);
+    inkLine(ctx, [[x + 2.5, bt], [x + w - 2.5, bt]], 0.6);
+    for (const cx of f.chimneys) paintChimney(ctx, cx, bt, top, 7);
+    for (const d of f.dormers) paintDormer(ctx, f, d);
+    f.roofWalk = { y: top + 0.6, x0: x + 6, x1: x + w - 6, chimneyTop: top - 1 };
+  } else {
+    const rc = roof.kind === 'zinc' ? hex(roof.zinc) : hex(roof.tile);
+    const rx = x + w * 0.42;
+    poly(ctx, rc, [[x - 2, eave], [rx, top + 0.5], [x + w + 2, eave]]);
+    poly(ctx, light(rc, 0.35), [[x - 2, eave], [rx, top + 0.5], [rx, eave]]);
+    poly(ctx, shade(rc, 0.32), [[rx, top + 0.5], [x + w + 2, eave], [rx, eave]]);
+    ctx.strokeStyle = rgba(amb(shade(rc, 0.5)), 0.8); ctx.lineWidth = 0.45; ctx.beginPath();
+    for (let yy = top + 3; yy < eave; yy += roof.kind === 'tile' ? 2.4 : 3.2) { const t = (yy - top) / (eave - top); ctx.moveTo(rx - (rx - x + 2) * t, yy); ctx.lineTo(rx + (x + w + 2 - rx) * t, yy); } ctx.stroke();
+    fillRect(ctx, light(rc, 0.5), rx - 1, top + 0.3, 2, 0.8);
+    inkLine(ctx, [[x - 2, eave], [rx, top + 0.5], [x + w + 2, eave]], 0.9);
+    const ridgeAt = (cx) => top + 0.5 + (eave - top - 0.5) * (cx < rx ? (rx - cx) / (rx - x + 2) : (cx - rx) / (x + w + 2 - rx));
+    for (const cx of f.chimneys) paintChimney(ctx, cx, ridgeAt(cx + 2), top - 2, 6);
+    for (const d of f.dormers) paintDormer(ctx, f, d, ridgeAt);
+    f.roofWalk = null;
+  }
+}
+function paintChimney(ctx, cx, baseY, topY, hMax) {
+  const ch = Math.min(hMax, baseY - topY);
+  const bc = hex(BRICK);
+  fillRect(ctx, bc, cx, baseY - ch, 4, ch); fillRect(ctx, shade(bc, 0.35), cx + 2.6, baseY - ch, 1.4, ch); fillRect(ctx, light(bc, 0.4), cx, baseY - ch, 0.9, ch);
+  fillRect(ctx, '#6E3A2A', cx - 0.6, baseY - ch, 5.2, 1.2);
+  for (let p = 0; p < 3; p++) fillRect(ctx, '#9E6A4A', cx + 0.3 + p * 1.4, baseY - ch - 2.2, 1, 2.3);
+  inkRect(ctx, cx, baseY - ch, 4, ch, 0.6);
+}
+function paintDormer(ctx, f, d, ridgeAt) {
+  const zc = f.roof.kind === 'mansard' ? hex(f.roof.zinc) : f.roof.kind === 'zinc' ? hex(f.roof.zinc) : hex(f.roof.tile);
+  const night = isNight();
+  const r = mulberry32(Math.round(d.cx * 11));
+  const lit = night && r() < ENV.litFrac * 0.9;
+  const glass = (gx, gy, gw, gh) => { if (lit) { ctx.fillStyle = r() < 0.3 ? LIT.cream : LIT.warm; ctx.fillRect(gx, gy, gw, gh); rawRect(ctx, 'rgba(255,255,255,0.25)', gx, gy, gw, gh * 0.3); rawRect(ctx, 'rgba(255,214,130,0.22)', gx - 1, gy + gh, gw + 2, 2.2); } else { fillRect(ctx, night ? GLASS_NIGHT : GLASS_DAY, gx, gy, gw, gh); ctx.fillStyle = night ? 'rgba(150,170,230,0.22)' : 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.moveTo(gx, gy + gh * 0.5); ctx.lineTo(gx + gw * 0.6, gy); ctx.lineTo(gx + gw, gy); ctx.lineTo(gx, gy + gh); ctx.fill(); } ctx.strokeStyle = INK; ctx.lineWidth = 0.5; ctx.strokeRect(gx, gy, gw, gh); ctx.beginPath(); ctx.moveTo(gx + gw / 2, gy); ctx.lineTo(gx + gw / 2, gy + gh); ctx.stroke(); };
+  const stone = light(hex(f.wall), 0.3);
+  if (d.type === 'fronton-tri' || d.type === 'fronton-cintre') {
+    const w = d.w, x = d.cx - w / 2, y = d.y, h = d.h;
+    fillRect(ctx, shade(zc, 0.45), x + w - 0.5, y - 1, 2.2, h + 1);
+    fillRect(ctx, stone, x - 1.2, y, w + 2.4, h);
+    fillRect(ctx, shade(hex(f.wall), 0.3), x + w * 0.74, y, w * 0.26 + 1.2, h);
+    if (d.type === 'fronton-tri') { poly(ctx, light(stone, 0.4), [[x - 2.2, y], [d.cx, y - 3.6], [x + w + 2.2, y]]); inkLine(ctx, [[x - 2.2, y], [d.cx, y - 3.6], [x + w + 2.2, y]], 0.7, true); }
+    else { ctx.fillStyle = col(light(stone, 0.4)); ctx.beginPath(); ctx.moveTo(x - 2, y); ctx.arc(d.cx, y, w / 2 + 2, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.arc(d.cx, y, w / 2 + 2, Math.PI, 0); ctx.closePath(); ctx.stroke(); }
+    glass(x, y + 1, w, h - 2);
+    inkRect(ctx, x - 1.2, y, w + 2.4, h, 0.6);
+  } else if (d.type === 'oeil') {
+    const R = 2.6;
+    disc(ctx, stone, d.cx, d.y, R + 1); disc(ctx, shade(zc, 0.4), d.cx + 0.6, d.y + 0.6, R + 0.6); disc(ctx, stone, d.cx, d.y, R + 0.6);
+    if (lit) { disc(ctx, LIT.warm, d.cx, d.y, R, true); rawRect(ctx, 'rgba(255,214,130,0.2)', d.cx - R - 1, d.y + R, 2 * R + 2, 2); } else { disc(ctx, night ? GLASS_NIGHT : GLASS_DAY, d.cx, d.y, R); ctx.fillStyle = night ? 'rgba(150,170,230,0.25)' : 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(d.cx - 0.6, d.y - 0.6, R * 0.55, 0, TAU); ctx.fill(); }
+    ctx.strokeStyle = INK; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(d.cx, d.y, R, 0, TAU); ctx.moveTo(d.cx - R, d.y); ctx.lineTo(d.cx + R, d.y); ctx.moveTo(d.cx, d.y - R); ctx.lineTo(d.cx, d.y + R); ctx.stroke();
+    ctx.lineWidth = 0.5; ctx.beginPath(); ctx.arc(d.cx, d.y, R + 0.9, 0, TAU); ctx.stroke();
+  } else if (d.type === 'capucine') {
+    const w = d.w, x = d.cx - w / 2, y = Math.max(d.y, (ridgeAt ? ridgeAt(d.cx) : d.y) - 1), h = Math.max(5, Math.min(d.h, f.eave - y - 1));
+    fillRect(ctx, light(hex(f.wall), 0.2), x - 1, y, w + 2, h);
+    fillRect(ctx, shade(hex(f.wall), 0.3), x + w * 0.7, y, w * 0.3 + 1, h);
+    poly(ctx, light(zc, 0.4), [[x - 2.5, y], [x - 0.5, y - 2.8], [x + w + 0.5, y - 2.8], [x + w + 2.5, y]]);
+    poly(ctx, shade(zc, 0.3), [[x + w * 0.7, y], [x + w * 0.7, y - 2.8], [x + w + 0.5, y - 2.8], [x + w + 2.5, y]]);
+    inkLine(ctx, [[x - 2.5, y], [x - 0.5, y - 2.8], [x + w + 0.5, y - 2.8], [x + w + 2.5, y]], 0.7, true);
+    glass(x, y + 1, w, h - 2);
+    inkRect(ctx, x - 1, y, w + 2, h, 0.6);
+  } else if (d.type === 'tabatiere') {
+    const w = 5, h = 2.6, x = d.cx - w / 2, y = d.y;
+    poly(ctx, shade(zc, 0.5), [[x, y], [x + w, y], [x + w + 1.2, y + h], [x + 1.2, y + h]]);
+    poly(ctx, lit ? LIT.warm : night ? hex('#3A4A7A') : hex('#BBD8F0'), [[x + 0.5, y + 0.4], [x + w - 0.5, y + 0.4], [x + w + 0.5, y + h - 0.4], [x + 1.5, y + h - 0.4]], lit);
+    if (!night) poly(ctx, 'rgba(255,255,255,0.75)', [[x + 0.5, y + 0.4], [x + w * 0.5, y + 0.4], [x + 1.5, y + h - 0.4]], true);
+    inkLine(ctx, [[x, y], [x + w, y], [x + w + 1.2, y + h], [x + 1.2, y + h]], 0.5, true);
+  }
+}
+
+// ───────────── vie des toits : chat, pigeons, fumées, couvreur ─────────────
+// Chat (immeuble héros) : sort par la tabatière, longe le terrasson, s'assoit contre la souche, repart. Trois sorties par jour.
+const CAT_TRIPS = [[10.78, 11.7], [16.1, 16.9], [23.05, 23.75]];
+function catState(f, T) {
+  if (!f.roofWalk || !f.cat) return null;
+  const tab = f.dormers.find((d) => d.type === 'tabatiere'); if (!tab) return null;
+  const x0 = tab.cx + 2.5, x1 = f.chimneys[0] + 5.6, y = f.roofWalk.y;
+  for (const [a, b] of CAT_TRIPS) {
+    if (T < a || T > b) continue;
+    const em = 20 * SEC, walk = 50 * SEC;
+    if (T < a + em) return { x: x0, y, mode: 'emerge', p: (T - a) / em, dir: 1 };
+    if (T < a + em + walk) return { x: lerp(x0, x1, (T - a - em) / walk), y, mode: 'walk', ph: (T - a) / SEC, dir: x1 > x0 ? 1 : -1 };
+    if (T < b - em - walk) return { x: x1, y, mode: 'sit', dir: x1 > x0 ? -1 : 1, ph: (T - a) / SEC };
+    if (T < b - em) return { x: lerp(x1, x0, (T - (b - em - walk)) / walk), y, mode: 'walk', ph: (T - a) / SEC, dir: x1 > x0 ? -1 : 1 };
+    return { x: x0, y, mode: 'emerge', p: 1 - (T - (b - em)) / em, dir: -1 };
+  }
+  return null;
+}
+function paintCat(ctx, c, tabY) {
+  const night = isNight();
+  const body = night ? rgba(amb(hex('#4A3E48'))) : col('#8A6A4A'), ink = INK;
+  ctx.save();
+  if (c.mode === 'emerge') { ctx.beginPath(); ctx.rect(c.x - 5, tabY - 8, 10, 8 + 1.2); ctx.clip(); ctx.translate(0, (1 - smooth(sat(c.p))) * 3.2); }
+  const x = c.x, y = c.y, d = c.dir;
+  ctx.lineCap = 'round';
+  if (c.mode === 'sit') {
+    // assis : corps ovale haut, tête, oreilles, queue enroulée
+    ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(x, y - 1.6, 1.6, 2.0, 0, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(x + d * 0.4, y - 3.9, 1.25, 0, TAU); ctx.fill();
+    ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(x, y - 1.6, 1.25, 1.7, 0, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(x + d * 0.4, y - 3.9, 0.95, 0, TAU); ctx.fill();
+    poly(ctx, ink, [[x + d * 0.4 - 1.0, y - 4.4], [x + d * 0.4 - 0.9, y - 5.6], [x + d * 0.4 - 0.1, y - 4.7]], true); poly(ctx, ink, [[x + d * 0.4 + 1.0, y - 4.4], [x + d * 0.4 + 0.9, y - 5.6], [x + d * 0.4 + 0.1, y - 4.7]], true);
+    ctx.strokeStyle = ink; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x - d * 1.2, y - 0.3); ctx.quadraticCurveTo(x - d * 3.4, y - 0.4 + Math.sin(c.ph / 2) * 0.4, x - d * 3.2, y - 1.6); ctx.stroke();
+    if (night) { ctx.fillStyle = '#C8FF8A'; ctx.fillRect(x + d * 0.4 - 0.7, y - 4.1, 0.4, 0.4); ctx.fillRect(x + d * 0.4 + 0.3, y - 4.1, 0.4, 0.4); }
+  } else {
+    // marche : corps allongé, pattes en ciseaux, queue levée
+    const ph = (c.ph || 0) * 4, s = Math.sin(ph) * 0.9;
+    ctx.strokeStyle = ink; ctx.lineWidth = 0.7;
+    [[-1.2, s], [-0.6, -s], [0.9, -s], [1.5, s]].forEach(([ox, sx]) => { ctx.beginPath(); ctx.moveTo(x + ox * d, y - 1.4); ctx.lineTo(x + ox * d + sx * d * 0.6, y); ctx.stroke(); });
+    ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(x, y - 1.6, 2.3, 1.05, 0, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(x + d * 2.4, y - 2.3, 1.1, 0, TAU); ctx.fill();
+    ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(x, y - 1.6, 1.95, 0.75, 0, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(x + d * 2.4, y - 2.3, 0.8, 0, TAU); ctx.fill();
+    poly(ctx, ink, [[x + d * 1.9, y - 2.9], [x + d * 1.8, y - 3.9], [x + d * 2.5, y - 3.1]], true); poly(ctx, ink, [[x + d * 3.1, y - 2.8], [x + d * 3.1, y - 3.8], [x + d * 2.5, y - 3.1]], true);
+    ctx.strokeStyle = ink; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(x - d * 2.2, y - 1.8); ctx.quadraticCurveTo(x - d * 3.4, y - 2.6, x - d * 3.2 + Math.sin(ph / 3) * 0.4, y - 4.2); ctx.stroke();
+  }
+  ctx.restore();
+}
+// Pigeons : vol = { perched: [x..], cycle 14 min : posés 10,5 min, envol 25 s, absents, retour 25 s }.
+function flockState(fl, T) {
+  const P = 14 * MIN, c = ((T - fl.phase) % P + P) % P;
+  const to = 10.5 * MIN, tf = 25 * SEC, back = P - 25 * SEC;
+  if (c < to) return { mode: 'perched' };
+  if (c < to + tf) return { mode: 'takeoff', p: (c - to) / tf };
+  if (c >= back) return { mode: 'land', p: (c - back) / (25 * SEC) };
+  return { mode: 'away' };
+}
+function flockPaint(ctx, fl, T, flying) {
+  const st = flockState(fl, T), s = T / SEC;
+  fl.birds.forEach((b, i) => {
+    const px = fl.x + b.ox, py = fl.y;
+    if (st.mode === 'perched' && !flying) { paintPigeon(ctx, px, py, 0, s + i, false, b.dir); return; }
+    if (st.mode === 'away' || st.mode === 'perched') return;
+    if (!flying) return;
+    const p = st.mode === 'takeoff' ? st.p : 1 - st.p, q = sat(p + i * 0.04), far = st.mode === 'takeoff' ? [px + 110 + i * 10, py - 150] : [px - 120 - i * 10, py - 140];
+    const cx = st.mode === 'takeoff' ? px + 30 : px - 40, cy = py - 60;
+    const x = (1 - q) * (1 - q) * px + 2 * (1 - q) * q * cx + q * q * far[0], y = (1 - q) * (1 - q) * py + 2 * (1 - q) * q * cy + q * q * far[1];
+    paintPigeon(ctx, x, y, 1, s * 9 + i, true, st.mode === 'takeoff' ? 1 : -1);
+  });
+}
+function paintPigeon(ctx, x, y, fly, ph, flying, dir) {
+  const c = col('#8A8FA0');
+  ctx.fillStyle = INK;
+  if (!flying) { ctx.beginPath(); ctx.ellipse(x, y - 1.1, 1.3, 0.95, 0, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(x + dir * 1.1, y - 1.9, 0.6, 0, TAU); ctx.fill(); ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(x, y - 1.1, 1.0, 0.7, 0, 0, TAU); ctx.fill(); ctx.fillStyle = INK; ctx.fillRect(x - dir * 2.0, y - 1.2, 1.0, 0.45); if (Math.sin(ph) > 0.8) { ctx.fillRect(x + dir * 1.5, y - 1.95, 0.5, 0.3); } }
+  else { const f = Math.sin(ph) * 2.2; ctx.strokeStyle = INK; ctx.lineWidth = 0.8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - 2.4, y - f); ctx.quadraticCurveTo(x - 1.2, y - f * 0.3, x, y); ctx.quadraticCurveTo(x + 1.2, y - f * 0.3, x + 2.4, y - f); ctx.stroke(); ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(x, y, 1.1, 0.6, 0, 0, TAU); ctx.fill(); }
+}
+// Fumée de cheminée (hiver, foyer allumé) : bouffées qui montent et dérivent, fonction pure de T.
+function paintSmoke(ctx, cx, topY, T) {
+  const s = T / SEC;
+  for (let i = 0; i < 6; i++) { const age = ((s + i * 2.3) % 14); const a = 0.5 * (1 - age / 14); ctx.fillStyle = isNight() ? `rgba(200,205,225,${a})` : `rgba(235,235,242,${a})`; ctx.beginPath(); ctx.arc(cx + 2 + age * 0.5 + Math.sin(age + i) * 0.6, topY - 2 - age * 0.9, 0.9 + age * 0.22, 0, TAU); ctx.fill(); }
+}
+// Couvreur (mardi / jeudi 9 h – 16 h 30) : échelle sur le brisis, à genoux sur le terrasson, martèle le zinc ; seau d'outils.
+function paintRoofer(ctx, f, T) {
+  if (!f.roofWalk || !f.roofer) return; if (T < 9 || T > 16.5 || (T > 12.3 && T < 13.4)) return;
+  const x = f.x + f.w * 0.62, y = f.roofWalk.y, s = T / SEC;
+  // échelle contre le brisis
+  ctx.strokeStyle = '#8A5A2E'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(x + 10, f.eave + 1); ctx.lineTo(x + 7, y); ctx.moveTo(x + 13, f.eave + 1); ctx.lineTo(x + 10, y); for (let k = 0; k < 5; k++) { const t = k / 4.5; ctx.moveTo(lerp(x + 10, x + 7, t), lerp(f.eave + 1, y, t)); ctx.lineTo(lerp(x + 13, x + 10, t), lerp(f.eave + 1, y, t)); } ctx.stroke();
+  const hit = Math.max(0, Math.sin(s * 5)), P = { ...POSE.kneel, aR: [80 - hit * 50, -60 + hit * 30] };
+  const J = drawFigure(ctx, x, y, 11, P, 1, { mem: { shirt: '#F6C62E', pants: '#2E3A4A', skin: '#D9A070' }, amb: true, hair: '#E8E8E8' });
+  // casque, marteau, seau
+  ctx.fillStyle = '#F6C62E'; ctx.beginPath(); ctx.arc(x + J.head[0], y + J.head[1] - 0.3, 1.1, Math.PI, 0); ctx.fill();
+  inkLine(ctx, [[x + J.hR[0], y + J.hR[1]], [x + J.hR[0] + 1.6, y + J.hR[1] - 1.4 + hit]], 0.7);
+  fillRect(ctx, '#5A5A74', x - 4.5, y - 2.2, 2.6, 2.2); inkRect(ctx, x - 4.5, y - 2.2, 2.6, 2.2, 0.4);
+}
+function paintRoofLife(ctx, f, sc) {
+  const T = sc.T;
+  if (f.roofWalk) {
+    const c = catState(f, T); if (c) { const tab = f.dormers.find((d) => d.type === 'tabatiere'); paintCat(ctx, c, tab ? tab.y + 0.5 : f.top); }
+    paintRoofer(ctx, f, T);
+  }
+  if (sc.D.winter) { const anyLit = sc.states.some((st) => st && Object.values(st.lit).some(Boolean)); const r = mulberry32(Math.round(f.x)); f.chimneys.forEach((cx, i) => { if ((anyLit || T < 9) && r() < 0.7) paintSmoke(ctx, cx, f.roofWalk ? f.top - 1 : f.top - 3, T + i); }); }
+  for (const fl of f.flocks || []) flockPaint(ctx, fl, T, false);
+}
+
+// ═══════════ 08-scenes.js ═══════════
+// ───────────── rue, scène, captures, animation, planche ─────────────
+const W = 900, H = 400, GROUND = 300, SEED = 20261018;
+function streetLots(seed) {
+  const rng = mulberry32(seed ^ hashString('lots'));
+  const out = []; let x = 8;
+  const plan = [[96, 200], [58, 150], [110, 215], [66, 128], [84, 190], [46, 108], [100, 205], [72, 160], [90, 182]];
+  for (const [w, h] of plan) { const jw = w + (rng() - 0.5) * 8, jh = h + (rng() - 0.5) * 16; out.push({ x, w: jw, h: jh }); x += jw + (rng() < 0.5 ? 0 : 6 + rng() * 12); }
+  return out;
+}
+function farRow(seed) {
+  const rng = mulberry32(seed ^ hashString('far')); const out = []; let x = -10;
+  while (x < W + 20) { const w = 36 + rng() * 34, h = 150 + rng() * 90; out.push({ x, w, h, wall: pick(['#D8CCB8', '#D0C4B4', '#CCBFAE', '#DCD0BE'], rng), roof: pick(['#8A94A4', '#B8705A', '#7A8898'], rng) }); x += w - 3; }
+  return out;
+}
+function paintFar(ctx, far) {
+  const haze = isNight() ? 0.35 : 0.3;
+  for (const b of far) {
+    const wc = mix(hex(b.wall), hex('#9AAFD0'), haze), top = GROUND - b.h;
+    fillRect(ctx, wc, b.x, top + 6, b.w, b.h - 6); fillRect(ctx, shade(wc, 0.2), b.x + b.w * 0.72, top + 6, b.w * 0.28, b.h - 6);
+    fillRect(ctx, mix(hex(b.roof), hex('#9AAFD0'), haze), b.x - 1, top, b.w + 2, 6); inkRect(ctx, b.x - 1, top, b.w + 2, 6, 0.5);
+    const r = mulberry32(Math.round(b.x * 13)); const cols = Math.max(1, Math.floor((b.w - 6) / 9));
+    for (let k = 0; k < 8; k++) { const c = Math.floor(r() * cols), row = Math.floor(r() * 4); const wx = b.x + 4 + c * 9, wy = top + 11 + row * 12; const lit = isNight() && r() < ENV.litFrac * 0.8; ctx.fillStyle = lit ? (r() < 0.3 ? LIT.tv : LIT.warm) : col(mix(hex(isNight() ? GLASS_NIGHT : '#6A90C0'), hex('#9AAFD0'), haze)); ctx.fillRect(wx, wy, 3.5, 5); }
+    inkRect(ctx, b.x, top + 6, b.w, b.h - 6, 0.5);
+  }
+}
+function paintStreet(ctx) {
+  const night = isNight();
+  fillRect(ctx, '#E6D4AE', 0, GROUND, W, 22); fillRect(ctx, shade(hex('#E6D4AE'), 0.2), 0, GROUND + 20, W, 2);
+  fillRect(ctx, '#B49E7A', 0, GROUND + 22, W, H - GROUND - 22);
+  inkLine(ctx, [[0, GROUND + 22], [W, GROUND + 22]], 0.8);
+  for (let lx = 110; lx < W; lx += 260) {
+    if (night) { ctx.fillStyle = 'rgba(255,222,150,0.22)'; ctx.beginPath(); ctx.moveTo(lx - 5, GROUND - 34); ctx.lineTo(lx + 5, GROUND - 34); ctx.lineTo(lx + 30, GROUND + 22); ctx.lineTo(lx - 30, GROUND + 22); ctx.closePath(); ctx.fill(); ctx.fillStyle = 'rgba(255,222,150,0.25)'; ctx.beginPath(); ctx.ellipse(lx, GROUND + 20, 32, 5, 0, 0, TAU); ctx.fill(); }
+    fillRect(ctx, '#2E3A3A', lx - 0.9, GROUND - 32, 1.8, 52); fillRect(ctx, '#2E3A3A', lx - 3, GROUND - 38, 6, 6); fillRect(ctx, night ? '#FFF0B0' : '#D8E8F0', lx - 2.2, GROUND - 37, 4.4, 4.4); inkRect(ctx, lx - 3, GROUND - 38, 6, 6, 0.6);
+  }
+}
+// Marcheurs de la rue (pantins couleur, 13 px) ; celui qui entre est coupé par l'arche de la porte et s'enfonce dans le hall.
+function paintWalkers(ctx, f, sc) {
+  const night = isNight();
+  for (const wk of sc.street.walkers) {
+    const h = 13 * wk.mem.size, y = GROUND + 5;
+    if (wk.entering > 0) {
+      const d = f.door; ctx.save(); ctx.beginPath(); ctx.moveTo(d.x - d.w / 2, GROUND + 6); ctx.lineTo(d.x - d.w / 2, GROUND - d.h + d.w / 2); ctx.arc(d.x, GROUND - d.h + d.w / 2, d.w / 2, Math.PI, 0); ctx.lineTo(d.x + d.w / 2, GROUND + 6); ctx.closePath(); ctx.clip();
+      const k = 1 - wk.entering * 0.2; ctx.globalAlpha = 1 - wk.entering * 0.6;
+      drawFigure(ctx, d.x - d.w * 0.2, lerp(y, GROUND - 1, wk.entering), h * k, walkPose(wk.ph), wk.facing, { mem: wk.mem, amb: true });
+      ctx.restore(); continue;
+    }
+    drawFigure(ctx, wk.x, y, h, walkPose(wk.ph), wk.facing, { mem: wk.mem, amb: true });
+  }
+}
+// Silhouette dans la cage : monte (ou descend) palier après palier, visible dans chaque petite fenêtre de la cage.
+function paintStairFigure(ctx, f, sc) {
+  const sf = sc.street.stairFig; if (!sf || !isNight() || !sc.street.stairLit) return;
+  const wins = f.windows.filter((w) => w.kind === 'stair');
+  const lv = f.levels.find((l) => l.idx === sf.floor); if (!lv) return;
+  const y0 = GROUND - GF - f.entresol, y1 = lv.y + lv.h, frac = sf.up ? sf.frac : 1 - sf.frac;
+  const fy = lerp(y0, y1, frac) + 1.2, h = lv.h * 0.5;
+  const flights = Math.max(1, sf.floor + 1), ph = frac * flights * 2, dir = Math.floor(ph) % 2 ? -1 : 1;
+  const cx = f.bayX(f.stairBay) + (ph % 1 - 0.5) * 4 * dir;
+  for (const w of wins) { if (fy - h > w.y + w.h || fy < w.y) continue; ctx.save(); ctx.beginPath(); ctx.rect(w.x, w.y, w.w, w.h); ctx.clip(); drawFigure(ctx, cx, fy, h, { ...walkPose(sc.T / SEC / 0.9), torso: 12 }, dir, { silhouette: SILH }); ctx.restore(); }
+}
+function paintTruck(ctx, x, sc) {
+  const T = sc.T; if (T < 9.0 || T > 12.3) return;
+  const y = GROUND + 22;
+  fillRect(ctx, '#F2F0E8', x, y - 20, 44, 18); fillRect(ctx, '#2E4A6E', x, y - 9, 44, 3); fillRect(ctx, '#E8E4D8', x + 44, y - 13, 12, 11); fillRect(ctx, '#BBD8F0', x + 46, y - 12, 8, 5);
+  inkRect(ctx, x, y - 20, 44, 18, 0.8); inkRect(ctx, x + 44, y - 13, 12, 11, 0.8); disc(ctx, '#2A2A2A', x + 8, y - 1, 3); disc(ctx, '#2A2A2A', x + 48, y - 1, 3);
+  ctx.fillStyle = INK; ctx.font = 'bold 3px sans-serif'; ctx.fillText('DÉMÉNAGEMENT', x + 4, y - 14);
+  // rampe + un déménageur qui fait la navette carton → porte (cycle 50 s)
+  inkLine(ctx, [[x, y - 3], [x - 10, y]], 1);
+  const s = T / SEC, cyc = (s % 50) / 50, toDoor = cyc < 0.5, p = toDoor ? cyc / 0.5 : (cyc - 0.5) / 0.5;
+  const mx = toDoor ? lerp(x - 10, sc.doorX + 2, p) : lerp(sc.doorX + 2, x - 10, p);
+  const P = toDoor ? { ...walkPose(s / 0.9), aL: [70, -20], aR: [70, -20], torso: -4 } : walkPose(s / 0.9);
+  const J = drawFigure(ctx, mx, GROUND + 5, 13, P, toDoor ? (sc.doorX > x ? 1 : -1) : (sc.doorX > x ? -1 : 1), { mem: { shirt: '#2E4A6E', pants: '#2E3A4A', skin: '#D9A070' }, amb: true });
+  if (toDoor) { fillRect(ctx, '#C8A070', mx + J.hR[0] - 2.2, GROUND + 5 + J.hR[1] - 3.2, 4.4, 3.4); inkRect(ctx, mx + J.hR[0] - 2.2, GROUND + 5 + J.hR[1] - 3.2, 4.4, 3.4, 0.5); }
+}
+
+// ───────────── construction de la rue pour un jour donné ─────────────
+const STREETS = new Map();
+function buildStreet(D) {
+  const key = D.date + '|' + D.event;
+  if (STREETS.has(key)) return STREETS.get(key);
+  const lots = streetLots(SEED), far = farRow(SEED);
+  const facades = lots.map((b, i) => facadeLayout(b, GROUND, SEED, i === 4 ? { kind: 'haussmann', stair: true, tabatiere: true } : {}));
+  const hero = facades[4];
+  // immeuble héros : foyers imposés par étage pour que chaque capture montre ce qu'elle doit
+  const rng = mulberry32(77);
+  const byLevel = (lvl) => hero.homes.filter((h) => h.hh && h.level.level === lvl);
+  const nobles = byLevel('noble'), tops = byLevel('top'), stds = hero.homes.filter((h) => h.hh && h.level.level === 'std');
+  const forced = new Map();
+  if (nobles[0]) { nobles[0].hh = makeHousehold('retraite', rng); forced.set(nobles[0], { water: 10.95, rug: 11.0 }); }
+  if (stds[0]) { stds[0].hh = makeHousehold('couple', rng); stds[0].hh.smoker = true; forced.set(stds[0], { jitter: 0.117, jitter2: 0.45 }); }
+  if (stds[1]) { stds[1].hh = makeHousehold('famille', rng); forced.set(stds[1], { jitter: 0.1, jitter2: 0.3 }); }
+  if (stds[2]) stds[2].hh = makeHousehold('solo', rng);
+  if (tops[0]) { tops[0].hh = makeHousehold('etudiant', rng); tops[0].hh.late = false; forced.set(tops[0], { jitter2: 0.02 }); }
+  // ailleurs : un étudiant qui rentre à 0 h 26, un retraité qui secoue son tapis à 11 h, une coloc au balcon
+  let lateDone = false, rugDone = false, colocDone = false;
+  for (const f of facades) { if (f === hero) continue; for (const hm of f.homes) { if (!hm.hh) continue;
+    if (!lateDone && hm.hh.type === 'etudiant') { forced.set(hm, { lateReturn: true }); lateDone = true; }
+    else if (!rugDone && hm.hh.type === 'retraite') { forced.set(hm, { rug: 11.0, water: 10.9 }); rugDone = true; }
+    else if (!colocDone && hm.balcony && hm.level.level === 'noble') { hm.hh = makeHousehold('coloc', rng); forced.set(hm, { jitter2: 0.1 }); colocDone = true; } } }
+  for (const f of facades) for (const hm of f.homes) if (hm.hh) buildSchedule(hm, D, forced.get(hm) || {});
+  hero.cat = true;
+  hero.flocks = [{ x: hero.x + 8, y: hero.eave - 0.8, phase: 11.005 - 5 * MIN, birds: [{ ox: 0, dir: 1 }, { ox: 4, dir: -1 }, { ox: 9, dir: 1 }] }];
+  const right = facades[5]; right.flocks = [{ x: right.x + 6, y: right.eave - 0.8, phase: 11.005 - 10.5 * MIN - 10 * SEC, birds: [{ ox: 0, dir: 1 }, { ox: 3.5, dir: 1 }, { ox: 8, dir: -1 }, { ox: 12, dir: 1 }] }];
+  facades[6].roofer = D.couvreur;
+  const out = { lots, far, facades, hero };
+  hwPlan(out);
+  STREETS.set(key, out);
+  return out;
+}
+// Rend la rue à l'instant T. view = { x0, y0, w, h, scale }.
+function renderScene(ctx, T, D, view) {
+  const street = buildStreet(D);
+  setEnvAt(T, D);
+  ctx.save(); ctx.scale(view.scale, view.scale); ctx.translate(-view.x0, -view.y0);
+  paintSky(ctx, W, GROUND, T); paintFireworks(ctx, W, T, D);
+  paintFar(ctx, street.far);
+  const states = street.facades.map((f) => f.homes.map((hm) => (hm.hh ? homeState(hm, T) : null)));
+  const cull = cullAnimated(street.facades, states, W);
+  let prev = null;
+  const scs = street.facades.map((f, i) => ({ T, D, W, states: states[i], street: hwStreetEvents(f, T, D, streetEvents(f, T, W)), doorX: f.bayX(f.doorBay) }));
+  street.facades.forEach((f, i) => { paintFacade(ctx, f, scs[i], { leftTouch: prev && prev.x + prev.w >= f.x - 0.5 ? Math.max(prev.top, f.top) + 10 : null }); paintStairFigure(ctx, f, scs[i]); prev = f; });
+  for (const f of street.facades) for (const fl of f.flocks || []) flockPaint(ctx, fl, T, true);
+  paintStreet(ctx);
+  if (D.event === 'demenagement') paintTruck(ctx, street.hero.x + street.hero.w + 14, scs[4]);
+  paintHwLamps(ctx, T, D);
+  street.facades.forEach((f, i) => paintWalkers(ctx, f, scs[i]));
+  street.facades.forEach((f, i) => paintHwStreet(ctx, f, scs[i]));
+  ctx.restore();
+  return { cull, street };
+}
+const heroView = (D, scale = 4) => { const h = buildStreet(D).hero; return { x0: Math.round(h.x + h.w / 2 - 150), y0: 40, w: 300, h: 260, scale }; };
+const fullView = (scale = 2) => ({ x0: 0, y0: 0, w: W, h: H, scale });
+
+// ───────────── planche des poses : silhouette de nuit dans sa fenêtre / pantin de jour ─────────────
+function renderPlanche() {
+  const CW = 150, CH = 92, LB = 13, cells = [
+    ['Ouvrir les volets', () => ({ P: { ...POSE.armsUp, aL: [128, -18], aR: [128, -18] }, facing: 0 })],
+    ['Ouvrir la fenêtre', () => ({ P: POSE.reach, facing: 0 })],
+    ['Penché à la fenêtre', () => ({ P: POSE.lean, facing: 0, lean: true })],
+    ['Arroser (balcon)', () => ({ P: POSE.water, facing: 1, props: [{ type: 'can', pour: true }] })],
+    ['Secouer le tapis', () => ({ P: POSE.shake, facing: 0, lean: true, props: [{ type: 'rug', ph: 1.2 }] })],
+    ['Fumer au balcon', () => ({ P: POSE.smokeUp, facing: 0, props: [{ type: 'ember', puff: 0.3 }] })],
+    ['Tirer les rideaux', () => ({ P: POSE.curtain, facing: 0, curt: 0.5 })],
+    ['Dîner à table', () => ({ P: POSE.sitTable, facing: 1, dx: -0.24, props: [{ type: 'table', n: 2 }], second: { P: POSE.sitTable, facing: -1, dx: 0.24 } })],
+    ['Télé', () => ({ P: POSE.sitTv, facing: -1, dx: 0.22, props: [{ type: 'tv', dx: -0.34 }], tv: true })],
+    ['Cuisiner', () => ({ P: POSE.cook, facing: 1, dx: -0.22, props: [{ type: 'stove' }] })],
+    ['Danser (fête)', () => ({ P: dancePose(0.2), facing: 0, dx: -0.3, second: { P: dancePose(0.7), facing: 0, dx: 0.3 }, tone: 'orange' })],
+    ['Enfant à la fenêtre', () => ({ P: POSE.lean, facing: 0, lean: true, size: 0.62 })],
+    ['Regarder la rue (balcon)', () => ({ P: POSE.leanRail, facing: 0 })],
+    ['Monter l’escalier', () => ({ P: { ...walkPose(0.3), torso: 12 }, facing: 1, stair: true })],
+    ['Chat : marche / assis', () => ({ cat: true })],
+    ['Pigeons : posé / envol', () => ({ pigeon: true })],
+  ];
+  const cols = 4, rows = Math.ceil(cells.length / cols), S = 3;
+  const ctx = canvasFor('planche-poses', CW * cols * S, (CH + LB) * rows * S, 'planche-poses (×3) — nuit en contre-jour / jour en couleur');
+  ctx.scale(S, S);
+  const D = dayContext('2026-10-13');
+  cells.forEach(([label, fn], i) => {
+    const ox = (i % cols) * CW, oy = Math.floor(i / cols) * (CH + LB);
+    ctx.fillStyle = '#F2EDE2'; ctx.fillRect(ox, oy, CW, LB); ctx.fillStyle = INK; ctx.font = 'bold 6px sans-serif'; ctx.fillText(label, ox + 3, oy + 8.5);
+    const spec = fn();
+    [[22, 0.62, 'nuit'], [10, 1, 'jour']].forEach(([T, dark, lab], k) => {
+      ctx.save(); ctx.translate(ox + k * (CW / 2), oy + LB); ctx.beginPath(); ctx.rect(0, 0, CW / 2, CH); ctx.clip();
+      setEnvAt(T, D); paintSky(ctx, CW / 2, CH, T);
+      const night = k === 0, wallC = hex(STONES[0]);
+      fillRect(ctx, STONES[0], 0, 0, CW / 2, CH);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, CH - 7, 18, 7); ctx.fillStyle = '#fff'; ctx.font = '4px sans-serif'; ctx.fillText(lab, 2, CH - 2);
+      ctx.translate(CW / 4, CH * 0.5); ctx.scale(3.2, 3.2);
+      if (spec.cat) { fillRect(ctx, ZINCS[0], -14, 0, 28, 6); inkLine(ctx, [[-14, 0], [14, 0]], 0.5); paintChimney(ctx, 6, 0, -8, 7); paintCat(ctx, { x: -6, y: 0, mode: 'walk', ph: 1.3, dir: 1 }, 0); paintCat(ctx, { x: 4, y: 0, mode: 'sit', dir: -1, ph: 0 }, 0); ctx.restore(); return; }
+      if (spec.pigeon) { fillRect(ctx, light(wallC, 0.5), -14, 0, 28, 2); inkLine(ctx, [[-14, 0], [14, 0]], 0.5); paintPigeon(ctx, -8, 0, 0, 1, false, 1); paintPigeon(ctx, -4, 0, 0, 2.5, false, -1); paintPigeon(ctx, 4, -6, 1, 1.2, true, 1); paintPigeon(ctx, 9, -10, 1, 2.6, true, 1); ctx.restore(); return; }
+      // fenêtre 8 × 12 (×3,2) avec plancher à +0,5
+      const w = 8, h = 12, x = -w / 2, y = -h + 0.5, fl = 0.5, figH = 11.5 * (spec.size || 1);
+      const tone = LIT[spec.tone || (spec.tv ? 'tv' : 'warm')];
+      fillRect(ctx, light(wallC, 0.5), x - 1.2, y - 1.2, w + 2.4, 1.2);
+      ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+      if (spec.stair) { ctx.fillStyle = night ? LIT.stair : col(GLASS_DAY); ctx.fillRect(x, y, w, h); }
+      else if (night) { ctx.fillStyle = tone; ctx.fillRect(x, y, w, h); }
+      else { fillRect(ctx, spec.lean ? GLASS_DAY : ROOM_DAY, x, y, w, h); if (!spec.lean) fillRect(ctx, GLASS_DAY, x + w / 2, y, w / 2, h); }
+      const draw = (sp) => { const ax = (sp.dx || 0) * w; for (const p of sp.props || []) if (p.type !== 'ember' && p.type !== 'can' && p.type !== 'rug') paintInteriorProp(ctx, p, ax, fl, figH, w, sp, night, night); const J = drawFigure(ctx, ax, fl, figH, sp.P, sp.facing, night ? { silhouette: SILH } : { mem: { shirt: '#C85A3A', pants: '#2E3A4A', skin: '#F2C9A0' }, amb: true }); paintHandProps(ctx, { props: sp.props || [] }, J, ax, fl, night); };
+      if (!spec.lean) { draw(spec); if (spec.second) draw(spec.second); }
+      if (spec.curt != null) { const cw = lerp(1.6, w / 2, spec.curt); ctx.fillStyle = night ? rgba(mix(hex(CURTAINS[1]), hex(tone), 0.45)) : col(CURTAINS[1]); ctx.fillRect(x, y, cw, h); ctx.fillRect(x + w - cw, y, cw, h); }
+      if (!night && !spec.lean) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.moveTo(x, y + h * 0.55); ctx.lineTo(x + w * 0.5, y); ctx.lineTo(x + w * 0.7, y); ctx.lineTo(x, y + h * 0.95); ctx.fill(); }
+      ctx.restore();
+      ctx.strokeStyle = INK; ctx.lineWidth = 0.55; ctx.strokeRect(x, y, w, h); inkLine(ctx, [[0, y], [0, y + h]], 0.5);
+      if (!spec.lean && !spec.stair) paintSash(ctx, x, y, w, h, 0.8, night, tone, night);
+      ctx.fillStyle = col(light(wallC, 0.55)); ctx.fillRect(x - 1.2, y + h, w + 2.4, 1); fillRect(ctx, shade(wallC, 0.4), x - 1.2, y + h + 1, w + 2.4, 0.9);
+      if (spec.lean) { ctx.save(); ctx.beginPath(); ctx.rect(x - 3, y - 6, w + 6, h + 6.5); ctx.clip(); const hh = figH * 1.08; const J = drawFigure(ctx, 0, y + h + hh * 0.5, hh, spec.P, 0, night ? { silhouette: SILH } : { mem: { shirt: '#5A7AA8', pants: '#2E3A4A', skin: '#F2C9A0' }, amb: true }); paintHandProps(ctx, { props: spec.props || [] }, J, 0, y + h + hh * 0.5, night); ctx.restore(); }
+      ctx.restore();
+    });
+  });
+}
+// ───────────── mode animé : ?h=7&speed=60&date=2026-10-13&event=&zoom=1&hud=1 ─────────────
+function runAnimated(q) {
+  let T = parseFloat(q.get('h')); const speed = parseFloat(q.get('speed') || '60'); // minutes de scène par seconde réelle
+  const D = dayContext(q.get('date') || '2026-10-24', q.get('event') || undefined);
+  const zoom = q.get('zoom') === '1', view = zoom ? heroView(D, 4) : fullView(2);
+  const ctx = canvasFor('anim', view.w * view.scale, view.h * view.scale, `${D.date}${D.event ? ' · ' + D.event : ''} — espace : pause · ← → : ±10 min · + − : vitesse`);
+  let paused = false, last = performance.now(), spd = speed;
+  addEventListener('keydown', (e) => { if (e.key === ' ') paused = !paused; else if (e.key === 'ArrowLeft') T -= 10 * MIN; else if (e.key === 'ArrowRight') T += 10 * MIN; else if (e.key === '+') spd *= 1.5; else if (e.key === '-') spd /= 1.5; });
+  const frame = (now) => { const dt = (now - last) / 1000; last = now; if (!paused) T = (T + dt * spd * MIN) % 24; const r = renderScene(ctx, T, D, view); if (q.get('hud') !== '0') { ctx.save(); ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, 230, 16); ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.fillText(`${fmtT(T)} · ×${spd.toFixed(0)} · animées ${r.cull.shown}/${r.cull.animated} (max ${MAX_ANIM})`, 4, 12); ctx.restore(); } requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
+}
+
+// ═══════════ 09-halloween.js ═══════════
+// ───────────── Halloween (maquette de la PR 1) : décors posés par les habitants et par la mairie ─────────────
+// Tout est une fonction pure de l'heure absolue A (heures depuis le 1er octobre 2026 à 0 h). Le plan (qui décore quoi,
+// où, avec quel style, quand il pose et quand il retire) est tiré une fois de la graine de la rue et de l'année de
+// l'édition ; chaque élément est ensuite absent, en pose, posé, en dépose ou retiré selon A. Aucun état caché.
+const HW_YEAR = 2026;
+const HW_DAY0 = Date.UTC(2026, 9, 1);
+const hwDay = (dateStr) => Math.round((Date.parse(dateStr + 'T00:00:00Z') - HW_DAY0) / 86400000);
+const hwAbs = (sc) => hwDay(sc.D.date) * 24 + sc.T;
+const OCT = (d) => d - 1, NOV = (d) => 30 + d;
+const hwWeekday = (day) => (4 + day) % 7; // le 1er octobre 2026 est un jeudi
+
+// Jour de pose (24 → 31 octobre) et de retrait (1er → 8 novembre), pondérés : le week-end et la veille comptent plus.
+const HW_INSTALL_DAYS = [[OCT(24), 3], [OCT(25), 3], [OCT(26), 1], [OCT(27), 1], [OCT(28), 1.2], [OCT(29), 1], [OCT(30), 1.4], [OCT(31), 1.6]];
+const HW_REMOVE_DAYS = [[NOV(1), 2], [NOV(2), 1], [NOV(3), 1], [NOV(4), 1.2], [NOV(5), 1], [NOV(6), 1], [NOV(7), 2.2], [NOV(8), 1.2]];
+function hwDrawDay(list, r) { const tot = list.reduce((s, [, w]) => s + w, 0); let a = r() * tot; for (const [d, w] of list) { a -= w; if (a < 0) return d; } return list[list.length - 1][0]; }
+// Heure : en journée le week-end, le 1er novembre (férié) et le 31 (avant la soirée) ; après le travail en semaine.
+function hwDrawHour(day, r) { const wd = hwWeekday(day); if (day === OCT(31)) return 10 + r() * 5; return wd === 0 || wd === 6 || day === NOV(1) ? 10 + r() * 7 : 18 + r() * 2.2; }
+
+// Part des logements qui mettent une citrouille (≈ une fenêtre sur huit au total) et un décor de balcon, par type de foyer.
+const HW_PUMPKIN = { famille: 0.4, couple: 0.2, coloc: 0.25, etudiant: 0.14, retraite: 0.1, solo: 0.14 };
+const HW_BALCONY = { famille: 0.5, couple: 0.3, coloc: 0.45, etudiant: 0.2, retraite: 0.15, solo: 0.2 };
+// Style dominant de la façade → poids des décors de balcon et de porte (un style et un ou deux accents, pas un mélange).
+const HW_STYLES = {
+  citrouilles: { pumpkin: 1.4, balcony: { 'rail-pumpkin': 4, crow: 2, witch: 1, skeleton: 1, spider: 1 }, door: { ghost: 2, web: 1 }, cauldron: 0.3, doorP: 0.5 },
+  sorcellerie: { pumpkin: 0.85, balcony: { witch: 4, crow: 3, spider: 1, skeleton: 1 }, door: { ghost: 1, web: 1 }, cauldron: 0.7, doorP: 0.6 },
+  macabre: { pumpkin: 0.85, balcony: { skeleton: 4, spider: 3, crow: 1, witch: 1 }, door: { web: 3, ghost: 1 }, cauldron: 0.2, doorP: 0.75 },
+};
+const hwPickW = (weights, r) => { const e = Object.entries(weights), tot = e.reduce((s, [, w]) => s + w, 0); let a = r() * tot; for (const [k, w] of e) { a -= w; if (a < 0) return k; } return e[e.length - 1][0]; };
+// Durées des gestes (heures) et fraction du geste où l'objet est posé (montage) ou repris (démontage).
+const HW_DUR = { lean: 1.2 * MIN, walk: 2.2 * MIN, door: 4 * MIN, cauldron: 1.3 * MIN };
+const HW_GESTURE = { lean: 0.5, walk: 0.55, door: 0.6, cauldron: 0.5 };
+
+const winOf = (f, hm, bay) => f.windows.find((w) => w.level === hm.level && w.bay === bay);
+
+function hwPlan(street) {
+  const items = [];
+  const hero = street.hero;
+  street.facades.forEach((f, fi) => {
+    const r = mulberry32(SEED ^ hashString(`halloween${HW_YEAR}:${fi}`));
+    const style = f === hero ? 'citrouilles' : pick(Object.keys(HW_STYLES), r);
+    const S = HW_STYLES[style];
+    f.hwStyle = style; f.hwItems = [];
+    const homes = f.homes.filter((h) => h.hh);
+    for (const hm of homes) {
+      const rh = mulberry32(SEED ^ hashString(`hw${HW_YEAR}:${fi}:${f.homes.indexOf(hm)}`));
+      const day = hwDrawDay(HW_INSTALL_DAYS, rh), rday = hwDrawDay(HW_REMOVE_DAYS, rh);
+      hm.hwAt = day * 24 + hwDrawHour(day, rh); hm.hwRat = rday * 24 + hwDrawHour(rday, rh);
+      const mem = hm.hh.members.find((m) => m.size >= 0.9) || hm.hh.members[0];
+      const pumpR = rh(), balcR = rh(), v = rh(), off = rh(), kindR = mulberry32(Math.floor(rh() * 1e9)), xr = rh();
+      let at = hm.hwAt, rat = hm.hwRat;
+      const add = (it) => { it.dur = HW_DUR[it.gesture]; it.inst = at; it.rem = rat; at += it.dur + 1.5 * MIN; rat += it.dur + 1.5 * MIN; it.f = f; it.home = hm; it.mem = mem; f.hwItems.push(it); items.push(it); };
+      const wins = hm.bays.map((b) => winOf(f, hm, b)).filter(Boolean);
+      // Citrouille : sur l'appui d'une fenêtre ordinaire (ou sur la rambarde de son balconnet), posée penché à la fenêtre ;
+      // sans fenêtre ordinaire (porte-fenêtre sur balcon filant), sur la rambarde du balcon, posée depuis le balcon.
+      if (pumpR < HW_PUMPKIN[hm.hh.type] * S.pumpkin && wins.length) {
+        const std = wins.filter((w) => w.kind === 'std');
+        if (std.length) { const win = std[Math.floor(v * std.length)]; add({ type: 'pumpkin', gesture: 'lean', win, place: win.level.balcony === 'balconnet' ? 'balconnet' : 'sill', x: win.x + win.w * 0.72, v, off }); }
+        else if (hm.balcony) { const win = wins[Math.floor(v * wins.length)]; add({ type: 'rail-pumpkin', gesture: 'walk', win, x: win.x + win.w * (0.2 + 0.6 * xr), v, off }); }
+      }
+      // Décor de balcon (balcon filant seulement) : sorti de la porte-fenêtre du salon, posé à la main sur la dalle ou la rambarde.
+      if (hm.balcony && balcR < HW_BALCONY[hm.hh.type] && wins.length) {
+        const type = hwPickW(S.balcony, kindR);
+        const exit = winOf(f, hm, hm.bays[hm.rooms.indexOf('salon')]) || wins[0];
+        const target = wins[Math.floor(kindR() * wins.length)];
+        add({ type, gesture: 'walk', win: exit, x: target.x + target.w * (type === 'witch' ? 0.15 : 0.55 + 0.3 * kindR()), v: kindR(), off });
+      }
+    }
+    // Entrée d'immeuble : un foyer (de préférence une famille) descend avec un escabeau ; chaudron posé à côté de la porte.
+    const rd = mulberry32(SEED ^ hashString(`hw${HW_YEAR}:${fi}:door`));
+    if (homes.length && rd() < S.doorP) {
+      const fam = homes.filter((h) => h.hh.type === 'famille');
+      const hm = fam.length ? fam[Math.floor(rd() * fam.length)] : homes[Math.floor(rd() * homes.length)];
+      const kind = hwPickW(S.door, rd), mem = hm.hh.members.find((m) => m.size >= 0.9) || hm.hh.members[0];
+      const last = f.hwItems.filter((i) => i.home === hm);
+      const at = last.length ? last[last.length - 1].inst + last[last.length - 1].dur + 3 * MIN : hm.hwAt;
+      const rat = last.length ? last[last.length - 1].rem + last[last.length - 1].dur + 3 * MIN : hm.hwRat;
+      const door = { type: kind, gesture: 'door', inst: at, rem: rat, dur: HW_DUR.door, f, home: hm, mem, v: rd(), side: rd() < 0.5 ? -1 : 1 };
+      f.hwItems.push(door); items.push(door);
+      if (rd() < S.cauldron) { const c = { type: 'cauldron', gesture: 'cauldron', inst: at + HW_DUR.door + 0.5 * MIN, rem: rat + HW_DUR.door + 0.5 * MIN, dur: HW_DUR.cauldron, f, home: hm, mem, v: rd(), side: -door.side }; f.hwItems.push(c); items.push(c); }
+    }
+  });
+  hwForceHero(street);
+  street.hwItems = items;
+  street.hwLamps = hwLampSet();
+}
+// Immeuble héros : horaires imposés pour que chaque capture montre ce qu'elle doit (comme la maquette vie-etages).
+function hwForceHero(street) {
+  const f = street.hero, at = (d, h) => d * 24 + h;
+  const fam = f.homes.find((h) => h.hh && h.hh.type === 'famille') || f.homes.find((h) => h.hh);
+  let door = f.hwItems.find((i) => i.gesture === 'door');
+  if (!door) { door = { type: 'web', gesture: 'door', dur: HW_DUR.door, f, v: 0.2, side: 1 }; f.hwItems.push(door); }
+  door.type = 'web'; door.home = fam; door.mem = fam.hh.members[0];
+  if (!f.hwItems.some((i) => i.type === 'cauldron')) f.hwItems.push({ type: 'cauldron', gesture: 'cauldron', dur: HW_DUR.cauldron, f, home: fam, mem: fam.hh.members[0], v: 0.5, side: -door.side });
+  // une sorcière au balcon filant du premier logement qui en a un (capture du 27 au soir)
+  const bh = f.homes.find((h) => h.hh && h.balcony);
+  if (bh && !f.hwItems.some((i) => i.type === 'witch')) {
+    const wins = bh.bays.map((b) => winOf(f, bh, b)).filter(Boolean), exit = winOf(f, bh, bh.bays[bh.rooms.indexOf('salon')]) || wins[0];
+    f.hwItems.unshift({ type: 'witch', gesture: 'walk', dur: HW_DUR.walk, f, home: bh, mem: bh.hh.members[0], win: exit, x: wins[0].x + wins[0].w * 0.15, v: 0.4, off: 0.5 });
+  }
+  const set = (it, inst, rem) => { if (it) { it.inst = inst; it.rem = rem; } };
+  set(door, at(OCT(24), 15), at(NOV(3), 10 + 58.5 * MIN));
+  set(f.hwItems.find((i) => i.type === 'cauldron'), at(OCT(24), 15 + 4.5 * MIN), at(NOV(3), 10 + 53 * MIN));
+  const pumps = f.hwItems.filter((i) => i.type === 'pumpkin');
+  pumps.forEach((p, k) => set(p, k === 0 ? at(OCT(24), 15 + 12 * MIN) : at(OCT(27), 18 + (40 + 7 * k) * MIN), k === 0 ? at(NOV(3), 10 + 46 * MIN) : at(NOV(1), 15 + k * 0.4)));
+  const balc = f.hwItems.filter((i) => i.gesture === 'walk');
+  balc.forEach((b, k) => set(b, k === 0 ? at(OCT(27), 18 + 59 * MIN) : at(OCT(25), 11 + k), at(NOV(5), 18 + k * 0.3)));
+}
+
+function hwPhase(it, A) {
+  if (A < it.inst) return null;
+  if (A < it.inst + it.dur) return { k: 'in', p: (A - it.inst) / it.dur };
+  if (A < it.rem) return { k: 'on' };
+  if (A < it.rem + it.dur) return { k: 'out', p: (A - it.rem) / it.dur };
+  return null;
+}
+const hwShown = (it, ph) => !!ph && (ph.k === 'on' || (ph.k === 'in' ? ph.p >= HW_GESTURE[it.gesture] : ph.p < HW_GESTURE[it.gesture]));
+// Objet dans les mains pendant le geste : à la pose, avant le geste ; à la dépose, après.
+const hwHeld = (it, ph) => !!ph && ph.k !== 'on' && (ph.k === 'in' ? ph.p < HW_GESTURE[it.gesture] : ph.p >= HW_GESTURE[it.gesture]);
+// Lumières de fête : la nuit, du soir de la pose jusqu'à la nuit du 31 au 1er novembre (extinction entre 0 h 20 et 1 h 30,
+// plus tard que les pièces) ; après, ce qui reste n'est plus allumé.
+function hwLit(it, A) {
+  if (!isNight()) return false;
+  const day = Math.floor(A / 24), T = A - day * 24, offH = 0.33 + it.off * 1.17;
+  return T >= 12 ? day <= OCT(31) : T < offH && day - 1 <= OCT(31);
+}
+// Ouverture de la fenêtre pendant un geste (penché à la fenêtre, sortie sur le balcon).
+function hwWindowSession(f, win, sc) {
+  if (!f.hwItems) return null;
+  const A = hwAbs(sc);
+  for (const it of f.hwItems) {
+    if (it.win !== win || (it.gesture !== 'lean' && it.gesture !== 'walk')) continue;
+    const ph = hwPhase(it, A); if (!ph || ph.k === 'on') continue;
+    return { it, ph, open: smooth(sat(ph.p / 0.12)) * smooth(sat((1 - ph.p) / 0.12)) };
+  }
+  return null;
+}
+
+// ───────────── dessins ─────────────
+// Citrouille sculptée : teinte, aplatissement et visage tirés de `v` (jamais deux pareilles côte à côte). Pied en (cx, by).
+function paintPumpkin(ctx, cx, by, r, v, lit) {
+  const rr = mulberry32(Math.floor(v * 1e9) + 7);
+  const hue = hex(pick(['#E8772E', '#F08A2A', '#D86A22', '#F2A03A', '#E06A30'], rr)), squash = 0.72 + rr() * 0.22, face = Math.floor(rr() * 4), lean = (rr() - 0.5) * 0.5;
+  const ry = r * squash, cy = by - ry;
+  if (lit) { ctx.fillStyle = 'rgba(255,170,60,0.22)'; ctx.beginPath(); ctx.arc(cx, cy, r * 2.6, 0, TAU); ctx.fill(); ctx.fillStyle = 'rgba(255,190,90,0.25)'; ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, TAU); ctx.fill(); }
+  const body = (c, dx, rx) => { ctx.fillStyle = lit ? rgba(mix(c, hex('#FF9A3A'), 0.25)) : col(c); ctx.beginPath(); ctx.ellipse(cx + dx * r, cy, rx * r, ry, 0, 0, TAU); ctx.fill(); };
+  body(shade(hue, 0.3), 0.42, 0.62); body(light(hue, 0.08), -0.42, 0.62); body(hue, 0, 0.6);
+  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(0.25, r * 0.12); ctx.beginPath(); ctx.ellipse(cx, cy, r * 1.04, ry, 0, 0, TAU); ctx.stroke();
+  ctx.lineWidth = Math.max(0.15, r * 0.06); ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.5, ry * 0.98, 0, 0, TAU); ctx.stroke();
+  ctx.fillStyle = col('#5A6A2E'); ctx.beginPath(); ctx.moveTo(cx - r * 0.12, cy - ry * 0.95); ctx.lineTo(cx + lean * r, cy - ry - r * 0.42); ctx.lineTo(cx + lean * r + r * 0.22, cy - ry - r * 0.36); ctx.lineTo(cx + r * 0.14, cy - ry * 0.95); ctx.fill();
+  if (face === 3 && !lit) return; // citrouille non sculptée (de jour) ; la nuit, une bougie derrière une seule fente
+  const fc = lit ? '#FFE27A' : '#3A1A10', ex = r * 0.38, ey = cy - ry * 0.22, es = r * 0.22;
+  ctx.fillStyle = fc;
+  const tri = (x, y, s, up = true) => { ctx.beginPath(); ctx.moveTo(x - s, y + (up ? s * 0.6 : -s * 0.6)); ctx.lineTo(x + s, y + (up ? s * 0.6 : -s * 0.6)); ctx.lineTo(x, y + (up ? -s * 0.8 : s * 0.8)); ctx.closePath(); ctx.fill(); };
+  if (face === 0) { tri(cx - ex, ey, es); tri(cx + ex, ey, es); tri(cx, cy + ry * 0.05, es * 0.6); ctx.beginPath(); ctx.moveTo(cx - r * 0.6, cy + ry * 0.3); for (let k = 0; k <= 6; k++) ctx.lineTo(cx - r * 0.6 + k * r * 0.2, cy + ry * (0.3 + (k % 2 ? 0.22 : 0))); ctx.lineTo(cx + r * 0.5, cy + ry * 0.58); ctx.quadraticCurveTo(cx, cy + ry * 0.75, cx - r * 0.5, cy + ry * 0.58); ctx.closePath(); ctx.fill(); }
+  else if (face === 1) { ctx.beginPath(); ctx.arc(cx - ex, ey, es * 0.85, 0, TAU); ctx.arc(cx + ex, ey, es * 0.85, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.moveTo(cx - r * 0.62, cy + ry * 0.2); ctx.quadraticCurveTo(cx, cy + ry * 0.95, cx + r * 0.62, cy + ry * 0.2); ctx.quadraticCurveTo(cx, cy + ry * 0.5, cx - r * 0.62, cy + ry * 0.2); ctx.fill(); ctx.fillStyle = lit ? rgba(mix(hue, hex('#FF9A3A'), 0.25)) : col(hue); ctx.fillRect(cx - r * 0.18, cy + ry * 0.36, r * 0.14, ry * 0.18); ctx.fillRect(cx + r * 0.08, cy + ry * 0.38, r * 0.14, ry * 0.16); }
+  else if (face === 2) { tri(cx - ex, ey, es, false); tri(cx + ex, ey, es, false); ctx.fillRect(cx - r * 0.55, cy + ry * 0.28, r * 1.1, ry * 0.3); ctx.fillStyle = lit ? rgba(mix(hue, hex('#FF9A3A'), 0.25)) : col(hue); for (let k = 0; k < 4; k++) ctx.fillRect(cx - r * 0.45 + k * r * 0.28, cy + ry * (k % 2 ? 0.44 : 0.28), r * 0.12, ry * 0.14); }
+  else { ctx.fillRect(cx - r * 0.5, cy - ry * 0.05, r * 1.0, ry * 0.12); }
+}
+// Fantôme en drap pendu à l'imposte : bas ondulé, deux yeux ; un peu phosphorescent la nuit.
+function paintGhost(ctx, cx, top, w, h, T, glow) {
+  const sway = Math.sin(T / SEC / 1.7) * 0.25;
+  if (glow) { ctx.fillStyle = 'rgba(200,230,255,0.18)'; ctx.beginPath(); ctx.ellipse(cx, top + h * 0.5, w * 0.9, h * 0.75, 0, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = glow ? '#E8F0FF' : col('#F4F2EC');
+  ctx.beginPath(); ctx.moveTo(cx - w / 2, top + h * 0.45); ctx.quadraticCurveTo(cx - w / 2, top, cx, top); ctx.quadraticCurveTo(cx + w / 2, top, cx + w / 2, top + h * 0.45);
+  ctx.lineTo(cx + w / 2 + sway, top + h); for (let k = 3; k >= 0; k--) ctx.quadraticCurveTo(cx - w / 2 + (k + 0.5) * (w / 4) + sway, top + h - h * 0.16, cx - w / 2 + k * (w / 4) + sway, top + h); ctx.closePath(); ctx.fill();
+  fillRect(ctx, shade(hex('#F4F2EC'), 0.25), cx + w * 0.2, top + h * 0.3, w * 0.28, h * 0.6);
+  ctx.strokeStyle = INK; ctx.lineWidth = 0.4; ctx.stroke();
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(cx - w * 0.17, top + h * 0.34, w * 0.07, h * 0.08, 0, 0, TAU); ctx.ellipse(cx + w * 0.17, top + h * 0.34, w * 0.07, h * 0.08, 0, 0, TAU); ctx.fill();
+}
+// Toile d'araignée dans l'angle de l'encadrement : rayons depuis le coin, trois fils en arc, une petite araignée.
+function paintWeb(ctx, x, y, s, dir, glow) {
+  ctx.strokeStyle = glow ? 'rgba(230,236,255,0.85)' : 'rgba(250,250,250,0.9)'; ctx.lineWidth = 0.28;
+  const rays = 5, ang = (k) => (dir > 0 ? 0 : Math.PI / 2) + (k / (rays - 1)) * (Math.PI / 2) * (dir > 0 ? 1 : 1);
+  ctx.beginPath(); for (let k = 0; k < rays; k++) { const a = ang(k); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * s * (dir > 0 ? 1 : -1) * (dir > 0 ? 1 : -1), y + Math.sin(a) * s); } ctx.stroke();
+  for (const q of [0.35, 0.62, 0.9]) { ctx.beginPath(); for (let k = 0; k < rays; k++) { const a = ang(k), px = x + Math.cos(a) * s * q, py = y + Math.sin(a) * s * q; if (k === 0) ctx.moveTo(px, py); else { const a0 = ang(k - 1), mx = x + Math.cos((a + a0) / 2) * s * q * 0.82, my = y + Math.sin((a + a0) / 2) * s * q * 0.82; ctx.quadraticCurveTo(mx, my, px, py); } } ctx.stroke(); }
+  const sx = x + Math.cos(ang(2)) * s * 0.62, sy = y + Math.sin(ang(2)) * s * 0.62;
+  ctx.strokeStyle = INK; ctx.lineWidth = 0.22; ctx.beginPath(); for (let k = 0; k < 4; k++) { ctx.moveTo(sx - 1.1, sy - 0.6 + k * 0.4); ctx.lineTo(sx + 1.1, sy + 0.6 - k * 0.4); } ctx.stroke();
+  disc(ctx, '#1A1418', sx, sy, 0.55, true);
+}
+// Chaudron sur trois pieds au bord du pas de porte ; la nuit, lueur verte et bulles.
+function paintCauldron(ctx, cx, by, r, T, glow) {
+  ctx.fillStyle = col('#2A2430');
+  ctx.fillRect(cx - r * 0.8, by - r * 0.35, r * 0.25, r * 0.35); ctx.fillRect(cx + r * 0.55, by - r * 0.35, r * 0.25, r * 0.35);
+  ctx.beginPath(); ctx.ellipse(cx, by - r * 0.95, r, r * 0.78, 0, 0, Math.PI); ctx.lineTo(cx - r, by - r * 0.95); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, by - r * 0.95, r, r * 0.8, 0, 0, Math.PI); ctx.strokeStyle = INK; ctx.lineWidth = 0.4; ctx.stroke();
+  fillRect(ctx, '#3E3846', cx - r * 1.1, by - r * 1.1, r * 2.2, r * 0.3); inkRect(ctx, cx - r * 1.1, by - r * 1.1, r * 2.2, r * 0.3, 0.3);
+  rawRect(ctx, glow ? '#8AF070' : rgba(amb(hex('#6AB050'))), cx - r * 0.95, by - r * 1.12, r * 1.9, r * 0.12);
+  if (glow) {
+    ctx.fillStyle = 'rgba(140,240,110,0.25)'; ctx.beginPath(); ctx.ellipse(cx, by - r * 1.3, r * 1.6, r * 0.9, 0, 0, TAU); ctx.fill();
+    const s = T / SEC; for (let k = 0; k < 3; k++) { const q = ((s * 0.5 + k / 3) % 1); ctx.fillStyle = `rgba(180,255,150,${0.8 * (1 - q)})`; ctx.beginPath(); ctx.arc(cx + (k - 1) * r * 0.5, by - r * 1.2 - q * r * 1.4, r * 0.16, 0, TAU); ctx.fill(); }
+  }
+}
+// Sorcière : silhouette découpée debout sur la dalle (chapeau pointu, cape), balai posé contre le mur.
+function paintWitch(ctx, cx, fy, h, dir) {
+  const c = rgba(amb(hex('#2A1E30')));
+  ctx.fillStyle = c;
+  ctx.beginPath(); ctx.moveTo(cx - h * 0.2, fy); ctx.lineTo(cx - h * 0.1, fy - h * 0.62); ctx.lineTo(cx + h * 0.1, fy - h * 0.62); ctx.lineTo(cx + h * 0.22, fy); ctx.closePath(); ctx.fill();
+  disc(ctx, c, cx, fy - h * 0.7, h * 0.09, true);
+  ctx.beginPath(); ctx.moveTo(cx + dir * h * 0.08, fy - h * 0.71); ctx.lineTo(cx + dir * h * 0.2, fy - h * 0.66); ctx.lineTo(cx + dir * h * 0.07, fy - h * 0.66); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(cx - h * 0.2, fy - h * 0.76); ctx.lineTo(cx + h * 0.2, fy - h * 0.76); ctx.lineTo(cx + h * 0.03, fy - h * 1.08); ctx.lineTo(cx - h * 0.02, fy - h * 0.86); ctx.closePath(); ctx.fill();
+  fillRect(ctx, '#8A5A8E', cx - h * 0.1, fy - h * 0.8, h * 0.2, h * 0.035);
+  // balai contre le mur
+  ctx.strokeStyle = col('#7A5A3A'); ctx.lineWidth = Math.max(0.4, h * 0.04); ctx.beginPath(); ctx.moveTo(cx - dir * h * 0.42, fy - h * 0.95); ctx.lineTo(cx - dir * h * 0.3, fy - h * 0.15); ctx.stroke();
+  ctx.fillStyle = col('#C8A050'); ctx.beginPath(); ctx.moveTo(cx - dir * h * 0.33, fy - h * 0.25); ctx.lineTo(cx - dir * h * 0.4, fy); ctx.lineTo(cx - dir * h * 0.18, fy); ctx.lineTo(cx - dir * h * 0.27, fy - h * 0.25); ctx.fill();
+}
+// Squelette assis sur la rambarde, jambes pendantes devant le garde-corps ; la tête se tourne doucement.
+function paintSkeleton(ctx, cx, ry, h, T) {
+  const bone = col('#F2EEE2'), turn = Math.sin(T / SEC / 3.1) * 0.12;
+  ctx.strokeStyle = bone; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.35, h * 0.05);
+  const seg = (pts) => { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); };
+  seg([[cx, ry], [cx, ry - h * 0.45]]);
+  for (let k = 0; k < 3; k++) seg([[cx - h * 0.12, ry - h * (0.18 + k * 0.08)], [cx + h * 0.12, ry - h * (0.18 + k * 0.08)]]);
+  seg([[cx - h * 0.04, ry], [cx - h * 0.1, ry + h * 0.22], [cx - h * 0.08, ry + h * 0.45]]); seg([[cx + h * 0.06, ry], [cx + h * 0.12, ry + h * 0.22], [cx + h * 0.16, ry + h * 0.44]]);
+  seg([[cx - h * 0.12, ry - h * 0.4], [cx - h * 0.22, ry - h * 0.18], [cx - h * 0.18, ry - h * 0.02]]); seg([[cx + h * 0.12, ry - h * 0.4], [cx + h * 0.26, ry - h * 0.5], [cx + h * 0.32, ry - h * 0.66]]);
+  const hx = cx + turn * h, hy = ry - h * 0.58;
+  disc(ctx, '#F2EEE2', hx, hy, h * 0.12); ctx.strokeStyle = INK; ctx.lineWidth = 0.25; ctx.beginPath(); ctx.arc(hx, hy, h * 0.12, 0, TAU); ctx.stroke();
+  disc(ctx, INK, hx - h * 0.045, hy - h * 0.01, h * 0.035, true); disc(ctx, INK, hx + h * 0.045, hy - h * 0.01, h * 0.035, true);
+  ctx.lineCap = 'butt';
+}
+// Corbeau perché sur la rambarde : il tourne la tête de temps en temps.
+function paintCrow(ctx, cx, ry, s, T, v) {
+  const look = Math.sin(T / SEC / 2.3 + v * 9) > 0.4 ? -1 : 1, c = rgba(amb(hex('#1E1A24')));
+  ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(cx, ry - s * 0.5, s * 0.75, s * 0.48, -0.2 * look, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(cx - look * s * 0.5, ry - s * 0.4); ctx.lineTo(cx - look * s * 1.25, ry - s * 0.1); ctx.lineTo(cx - look * s * 0.55, ry - s * 0.7); ctx.fill();
+  disc(ctx, c, cx + look * s * 0.55, ry - s * 0.95, s * 0.32, true);
+  ctx.fillStyle = col('#C89A3A'); ctx.beginPath(); ctx.moveTo(cx + look * s * 0.82, ry - s * 1.0); ctx.lineTo(cx + look * s * 1.2, ry - s * 0.9); ctx.lineTo(cx + look * s * 0.8, ry - s * 0.86); ctx.fill();
+  disc(ctx, '#FFD86A', cx + look * s * 0.62, ry - s * 1.02, s * 0.08, true);
+  rawRect(ctx, col('#C89A3A'), cx - s * 0.1, ry - s * 0.1, s * 0.08, s * 0.12); rawRect(ctx, col('#C89A3A'), cx + s * 0.12, ry - s * 0.1, s * 0.08, s * 0.12);
+}
+// Araignée géante pendue sous la dalle du balcon au bout de son fil (balancement lent) ; yeux rouges la nuit.
+function paintSpider(ctx, cx, top, len, s, T, glow) {
+  const sw = Math.sin(T / SEC / 2.6) * s * 0.6, x = cx + sw, y = top + len;
+  ctx.strokeStyle = 'rgba(240,240,240,0.8)'; ctx.lineWidth = 0.22; ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(x, y - s * 0.6); ctx.stroke();
+  ctx.strokeStyle = rgba(amb(hex('#1A1418'))); ctx.lineWidth = Math.max(0.3, s * 0.18);
+  for (const sd of [-1, 1]) for (let k = 0; k < 4; k++) { const a = -0.9 + k * 0.55; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + sd * s * 1.1, y + Math.sin(a) * s * 1.4 - s * 0.6, x + sd * s * 1.7, y + Math.sin(a) * s * 1.2 + s * 0.4); ctx.stroke(); }
+  disc(ctx, '#1A1418', x, y + s * 0.15, s * 0.7); disc(ctx, '#1A1418', x, y - s * 0.55, s * 0.42);
+  fillRect(ctx, '#C83A3A', x - s * 0.18, y + s * 0.05, s * 0.36, s * 0.14);
+  if (glow) { disc(ctx, '#FF3A3A', x - s * 0.15, y - s * 0.58, s * 0.1, true); disc(ctx, '#FF3A3A', x + s * 0.15, y - s * 0.58, s * 0.1, true); }
+}
+// Escabeau : replié (porté sous le bras, horizontal) ou déplié (en A, hauteur h).
+function paintStepladder(ctx, x, by, h, open) {
+  const spread = h * 0.32 * open;
+  const rails = (c, lw) => { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x - spread, by); ctx.lineTo(x, by - h); ctx.lineTo(x + spread * 0.7, by); for (let k = 1; k <= 3; k++) { const q = k / 4; ctx.moveTo(x - spread * (1 - q), by - h * q); ctx.lineTo(x + spread * 0.7 * (1 - q), by - h * q); } ctx.stroke(); };
+  rails(INK, 1.0); rails(col('#C8D2DA'), 0.5);
+}
+function paintCarriedLadder(ctx, hx, hy, dir) {
+  const seg = (c, lw) => { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(hx - dir * 3.5, hy - 0.4); ctx.lineTo(hx + dir * 3.5, hy + 0.2); ctx.moveTo(hx - dir * 3.5, hy + 0.6); ctx.lineTo(hx + dir * 3.5, hy + 1.2); ctx.stroke(); };
+  seg(INK, 1.0); seg(col('#C8D2DA'), 0.5);
+}
+// Petit objet tenu à la main pendant le geste (repère de la main).
+function paintHeldDecor(ctx, it, hx, hy, T, lit) {
+  if (it.type === 'pumpkin' || it.type === 'rail-pumpkin') paintPumpkin(ctx, hx, hy + 1.6, 1.6, it.v, false);
+  else if (it.type === 'ghost') paintGhost(ctx, hx, hy - 1, 3.4, 4, T, false);
+  else if (it.type === 'web') { ctx.fillStyle = col('#F4F2EC'); ctx.beginPath(); ctx.arc(hx, hy + 0.6, 0.9, 0, TAU); ctx.fill(); }
+  else if (it.type === 'cauldron') paintCauldron(ctx, hx, hy + 2.8, 1.8, T, false);
+  else if (it.type === 'witch') paintWitch(ctx, hx + 1, hy + 2.5, 5, 1);
+  else if (it.type === 'skeleton') paintSkeleton(ctx, hx, hy + 1, 4, T);
+  else if (it.type === 'crow') paintCrow(ctx, hx, hy + 0.8, 1.4, T, it.v);
+  else if (it.type === 'spider') paintSpider(ctx, hx, hy - 0.5, 1.5, 1.1, T, false);
+}
+
+// ───────────── fenêtres : citrouille sur l'appui, habitant penché qui la pose ─────────────
+function paintHwSill(ctx, f, win, sc, hwS, leaners, fl, figH) {
+  if (!f.hwItems) return;
+  const A = hwAbs(sc);
+  for (const it of f.hwItems) {
+    if (it.win !== win || it.type !== 'pumpkin') continue;
+    const ph = hwPhase(it, A);
+    // posée sur l'appui (fenêtre ordinaire) : dessinée ici ; sur la rambarde d'un balconnet : passe « front » des balcons
+    if (it.place === 'sill' && hwShown(it, ph)) paintPumpkin(ctx, it.x, win.y + win.h + 0.2, Math.min(2.1, win.w * 0.3), it.v, hwLit(it, A));
+    if (hwS && hwS.it === it && hwS.ph.p > 0.1 && hwS.ph.p < 0.9) leaners.push(() => paintHwLeaner(ctx, f, win, it, hwS.ph, fl, figH, sc.T));
+  }
+}
+function paintHwLeaner(ctx, f, win, it, ph, fl, figH, T) {
+  const { x, y, w, h } = win, sill = y + h, night = isNight();
+  const hh = figH * it.mem.size * 1.08, ax = x + w * 0.42;
+  // il se penche (montée 0,1 → 0,2), tend les bras vers l'appui, puis se redresse (0,8 → 0,9)
+  const k = smooth(sat((ph.p - 0.1) / 0.1)) * smooth(sat((0.9 - ph.p) / 0.1));
+  const reach = smooth(sat(1 - Math.abs(ph.p - 0.5) / 0.22));
+  const P = mixPose(POSE.stand, { ...POSE.lean, aL: [72 + 18 * reach, -60 + 30 * reach], aR: [72 + 18 * reach, -60 + 30 * reach] }, k);
+  ctx.save(); ctx.beginPath(); ctx.rect(x - 2.5, y - 6, w + 5, sill - y + 6.5); ctx.clip();
+  const sty = night ? { silhouette: rgba(amb(hex('#3A2E3C'))) } : { mem: it.mem, amb: true };
+  const J = drawFigure(ctx, ax, sill + hh * 0.5, hh, P, 0, sty);
+  ctx.restore();
+  if (hwHeld(it, ph)) { const hx = ax + (J.hL[0] + J.hR[0]) / 2, hy = sill + hh * 0.5 + (J.hL[1] + J.hR[1]) / 2; paintPumpkin(ctx, lerp(hx, it.x, reach * 0.6), Math.min(sill + 0.2, hy + 1.6), Math.min(2.1, w * 0.3), it.v, false); }
+}
+
+// ───────────── balcons : décors posés à la main depuis la porte-fenêtre ─────────────
+function hwBalconyGeom(it) {
+  const win = it.win, lv = win.level;
+  if (it.place === 'balconnet') return { by: win.y + win.h, rh: 4, h: lv.h * 0.66 };
+  return { by: lv.y + lv.h, rh: 5.5, h: lv.h * 0.66 };
+}
+function paintHwBalconies(ctx, f, sc, pass) {
+  if (!f.hwItems) return;
+  const A = hwAbs(sc), T = sc.T, night = isNight();
+  for (const it of f.hwItems) {
+    if (it.gesture !== 'walk' && !(it.type === 'pumpkin' && it.place === 'balconnet')) continue;
+    const ph = hwPhase(it, A), shown = hwShown(it, ph), g = hwBalconyGeom(it), rail = g.by - g.rh;
+    if (pass === 'back') {
+      if (shown && it.type === 'witch') paintWitch(ctx, it.x, g.by - 0.4, g.h * 0.92, 1);
+      if (it.gesture === 'walk' && ph && ph.k !== 'on') paintHwBalconyWalker(ctx, it, ph, g, T, night);
+    } else {
+      const lit = hwLit(it, A);
+      if (!shown) continue;
+      if (it.type === 'rail-pumpkin' || it.type === 'pumpkin') paintPumpkin(ctx, it.x, rail + 0.2, 1.9, it.v, lit);
+      else if (it.type === 'skeleton') paintSkeleton(ctx, it.x, rail + 0.3, g.h * 0.62, T);
+      else if (it.type === 'crow') paintCrow(ctx, it.x, rail + 0.2, 1.5, T, it.v);
+      else if (it.type === 'spider') paintSpider(ctx, it.x, g.by + 2.4, ph.k === 'on' ? 7 : 7 * sat((ph.p - 0.3) / 0.25), 1.2, T, lit);
+    }
+  }
+}
+// L'habitant sort par la porte-fenêtre ouverte, va jusqu'à l'emplacement, pose (ou reprend) l'objet, revient et rentre.
+function paintHwBalconyWalker(ctx, it, ph, g, T, night) {
+  const p = ph.p, wx = it.win.x + it.win.w / 2, hh = g.h * it.mem.size;
+  if (p < 0.1 || p > 0.92) return;
+  const out = sat((p - 0.1) / 0.18), back = sat((p - 0.72) / 0.18), at = out * (1 - back);
+  const x = lerp(wx, it.x + (it.type === 'witch' ? 2.5 : -1.5), at), walking = (p < 0.28 || p > 0.72);
+  const bend = smooth(sat(1 - Math.abs(p - 0.5) / 0.15));
+  const dir = it.x >= wx ? (p > 0.72 ? -1 : 1) : (p > 0.72 ? 1 : -1);
+  let P = walking ? walkPose(T / SEC / 0.9) : mixPose(POSE.stand, it.type === 'spider' ? POSE.leanRail : { ...POSE.reach, torso: 22, aR: [84, -10], aL: [70, -10] }, bend);
+  const sty = night ? { silhouette: rgba(amb(hex('#3A2E3C'))) } : { mem: it.mem, amb: true };
+  ctx.globalAlpha = sat((p - 0.1) / 0.04) * sat((0.92 - p) / 0.04);
+  const J = drawFigure(ctx, x, g.by - 0.4, hh, P, dir, sty);
+  ctx.globalAlpha = 1;
+  if (hwHeld(it, ph)) paintHeldDecor(ctx, it, x + J.hR[0], g.by - 0.4 + J.hR[1], T, false);
+}
+
+// ───────────── porte : toile ou fantôme, chaudron ; l'habitant descend avec son escabeau ─────────────
+function paintHwDoor(ctx, f, sc) {
+  if (!f.hwItems || !f.door) return;
+  const A = hwAbs(sc), d = f.door, night = isNight();
+  for (const it of f.hwItems) {
+    if (it.gesture !== 'door') continue;
+    const ph = hwPhase(it, A); if (!hwShown(it, ph)) continue;
+    const top = GROUND - d.h;
+    if (it.type === 'ghost') { ctx.strokeStyle = INK; ctx.lineWidth = 0.2; ctx.beginPath(); ctx.moveTo(d.x, top - 1); ctx.lineTo(d.x, top + 0.6); ctx.stroke(); paintGhost(ctx, d.x, top + 0.4, d.w * 0.62, 7.5, sc.T, night); }
+    else { paintWeb(ctx, d.x + it.side * (d.w / 2 + 1), top - 1, 7, -it.side, night); if (it.v < 0.4) paintWeb(ctx, d.x - it.side * (d.w / 2 + 1), top - 1, 4.5, it.side, night); }
+  }
+}
+const HW_FOOT = GROUND + 5, HW_STEP = 6;
+function paintHwStreet(ctx, f, sc) {
+  if (!f.hwItems || !f.door) return;
+  const A = hwAbs(sc), d = f.door, T = sc.T, night = isNight();
+  for (const it of f.hwItems) {
+    if (it.gesture !== 'door' && it.gesture !== 'cauldron') continue;
+    const ph = hwPhase(it, A), cx = d.x + it.side * (d.w / 2 + 4);
+    if (it.type === 'cauldron' && hwShown(it, ph)) paintCauldron(ctx, cx, GROUND + 3.5, 2.6, T, hwLit({ off: 0.6 }, A));
+    if (!ph || ph.k === 'on') continue;
+    paintHwDoorWalker(ctx, it, ph, d, T, night);
+  }
+}
+// Sortie par la porte (fondu dans l'encadrement), marche jusqu'au pied de l'escabeau, dépliage, montée, fixation, descente,
+// repliage, retour, entrée. Le chaudron : un aller-retour à la main, sans escabeau.
+function paintHwDoorWalker(ctx, it, ph, d, T, night) {
+  const p = ph.p, h = 13 * it.mem.size, sty = { mem: it.mem, amb: true };
+  const spot = d.x + it.side * (d.w / 2 + (it.gesture === 'door' ? 2.5 : 4)), dir = it.side;
+  const fade = (a) => { ctx.globalAlpha = a; };
+  const walk = (x0, x1, q, face, carry) => { const x = lerp(x0, x1, smooth(q)); const J = drawFigure(ctx, x, HW_FOOT, h, carry ? { ...walkPose(T / SEC / 0.9), aR: [70, -30] } : walkPose(T / SEC / 0.9), face, sty); return { x, J }; };
+  if (it.gesture === 'cauldron') {
+    const ex = sat(p / 0.12), back = sat((p - 0.88) / 0.12);
+    let r;
+    if (p < 0.12) { fade(ex); r = walk(d.x, d.x, 0, dir, true); }
+    else if (p < 0.4) r = walk(d.x, spot - dir * 2, (p - 0.12) / 0.28, dir, hwHeld(it, ph));
+    else if (p < 0.6) { const P = mixPose(POSE.stand, POSE.kneel, smooth(sat(1 - Math.abs(p - 0.5) / 0.1))); r = { x: spot - dir * 2, J: drawFigure(ctx, spot - dir * 2, HW_FOOT, h, P, dir, sty) }; }
+    else if (p < 0.88) r = walk(spot - dir * 2, d.x, (p - 0.6) / 0.28, -dir, hwHeld(it, ph));
+    else { fade(1 - back); r = walk(d.x, d.x, 0, -dir, false); }
+    fade(1);
+    if (hwHeld(it, ph) && r) paintHeldDecor(ctx, it, r.x + r.J.hR[0], HW_FOOT + r.J.hR[1], T, false);
+    return;
+  }
+  const ladderOpen = p < 0.16 ? 0 : p < 0.24 ? (p - 0.16) / 0.08 : p < 0.68 ? 1 : p < 0.76 ? 1 - (p - 0.68) / 0.08 : 0;
+  const ladderX = spot, onLadder = p >= 0.24 && p < 0.68;
+  if (ladderOpen > 0) paintStepladder(ctx, ladderX, GROUND + 3.5, HW_STEP + 1, ladderOpen);
+  let r = null;
+  if (p < 0.08) { fade(sat(p / 0.08)); r = walk(d.x, d.x, 0, dir, true); }
+  else if (p < 0.16) r = walk(d.x, ladderX - dir * 2.5, (p - 0.08) / 0.08, dir, true);
+  else if (!onLadder && p < 0.24) r = { x: ladderX - dir * 2.5, J: drawFigure(ctx, ladderX - dir * 2.5, HW_FOOT, h, POSE.reach, dir, sty) };
+  else if (onLadder) {
+    const up = p < 0.32 ? (p - 0.24) / 0.08 : p < 0.6 ? 1 : 1 - (p - 0.6) / 0.08;
+    const fy = HW_FOOT - 1.5 - up * HW_STEP, work = p >= 0.32 && p < 0.6;
+    const P = work ? { ...POSE.armsUp, aL: [150 + Math.sin(T / SEC * 3) * 8, -18], aR: [140, -10], torso: 4 } : { ...walkPose(up * 2), torso: 6 };
+    r = { x: ladderX, J: drawFigure(ctx, ladderX - dir * 0.6, fy, h, P, -dir, sty), fy };
+  } else if (p < 0.76) r = { x: ladderX - dir * 2.5, J: drawFigure(ctx, ladderX - dir * 2.5, HW_FOOT, h, POSE.reach, dir, sty) };
+  else if (p < 0.88) r = walk(ladderX - dir * 2.5, d.x, (p - 0.76) / 0.12, -dir, true);
+  else { fade(1 - sat((p - 0.88) / 0.12)); r = walk(d.x, d.x, 0, -dir, true); }
+  fade(1);
+  if (!r) return;
+  const fy = r.fy ?? HW_FOOT;
+  if (ladderOpen === 0) paintCarriedLadder(ctx, r.x + r.J.hR[0] * 0.6, fy + r.J.hR[1] - 1.5, dir);
+  if (hwHeld(it, ph)) paintHeldDecor(ctx, it, r.x + r.J.hL[0], fy + r.J.hL[1], T, false);
+}
+// Porte ouverte et hall éclairé pendant les allers et retours à la porte.
+function hwStreetEvents(f, T, D, ev) {
+  if (!f.hwItems) return ev;
+  const A = hwDay(D.date) * 24 + T;
+  for (const it of f.hwItems) {
+    if (it.gesture !== 'door' && it.gesture !== 'cauldron') continue;
+    const ph = hwPhase(it, A); if (!ph || ph.k === 'on') continue;
+    const q = it.gesture === 'door' ? 0.08 : 0.12;
+    const o = ph.p < q + 0.04 ? sat(1 - Math.abs(ph.p - q / 2) / (q * 0.9)) : ph.p > 1 - q - 0.04 ? sat(1 - Math.abs(ph.p - (1 - q / 2)) / (q * 0.9)) : 0;
+    ev.door = Math.max(ev.door, o);
+    if (isNight()) ev.stairLit = true;
+  }
+  return ev;
+}
+
+// ───────────── lampadaires : décor de la mairie, posé au camion-nacelle ─────────────
+// Même mécanique que les drapeaux (install.ts) : un élément par lampadaire, traité un par un dans l'ordre de `u` ; pose le
+// samedi 24 octobre de 9 h à 17 h, retrait le mardi 3 novembre de 9 h à 17 h. Étapes : arrive, deploy, rise, fix, lower,
+// stow, leave (poids 3, 2, 2, 6, 2, 2, 3) ; l'élément apparaît à la fin de `fix` et disparaît à la fin de `unfix`.
+const HW_LAMP_XS = [110, 370, 630, 890];
+const HW_LIFT_STEPS = ['arrive', 'deploy', 'rise', 'fix', 'lower', 'stow', 'leave'], HW_LIFT_W = [3, 2, 2, 6, 2, 2, 3];
+function hwLampSet() {
+  const r = mulberry32(SEED ^ hashString('hw-lamps' + HW_YEAR));
+  const items = HW_LAMP_XS.map((x, i) => ({ x, kind: r() < 0.55 ? 'lantern' : 'bats', u: r(), removeU: r(), v: r(), i }));
+  const n = items.length, slot = (key, it, day) => { const k = [...items].sort((a, b) => a[key] - b[key]).indexOf(it); return { from: day * 24 + 9 + (k * 8) / n, to: day * 24 + 9 + ((k + 1) * 8) / n }; };
+  for (const it of items) { it.ins = slot('u', it, OCT(24)); it.out = slot('removeU', it, NOV(3)); }
+  return items;
+}
+function hwLiftStep(slot, A) {
+  const tot = HW_LIFT_W.reduce((s, x) => s + x, 0); let at = slot.from;
+  for (let i = 0; i < HW_LIFT_STEPS.length; i++) { const to = at + ((slot.to - slot.from) * HW_LIFT_W[i]) / tot; if (A < to) return { i, step: HW_LIFT_STEPS[i], p: (A - at) / (to - at) }; at = to; }
+  return null;
+}
+function hwLampState(it, A) {
+  if (A < it.ins.from) return { shown: false };
+  if (A < it.ins.to) { const s = hwLiftStep(it.ins, A); return { shown: s.i > 3, crew: s, removing: false }; }
+  if (A < it.out.from) return { shown: true };
+  if (A < it.out.to) { const s = hwLiftStep(it.out, A); return { shown: s.i <= 3, crew: s, removing: true }; }
+  return { shown: false };
+}
+function paintHwLamps(ctx, T, D) {
+  const street = buildStreet(D); if (!street.hwLamps) return;
+  const A = hwDay(D.date) * 24 + T, night = isNight();
+  for (const it of street.hwLamps) {
+    const st = hwLampState(it, A);
+    if (st.shown) paintLampDecor(ctx, it, T, night);
+    if (st.crew) paintLiftTruck(ctx, it, st, T, night);
+  }
+}
+function paintLampDecor(ctx, it, T, lit) {
+  const lx = it.x;
+  if (it.kind === 'lantern') {
+    inkLine(ctx, [[lx, GROUND - 27], [lx - 5.5, GROUND - 27], [lx - 5.5, GROUND - 25.5]], 0.5);
+    paintPumpkin(ctx, lx - 5.5, GROUND - 21.3, 2.2, it.v, lit);
+  } else {
+    // guirlande de chauves-souris en papier : deux festons depuis la lanterne
+    ctx.strokeStyle = col('#8A5A8E'); ctx.lineWidth = 0.35;
+    const fest = (x0, y0, x1, y1, sag) => { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo((x0 + x1) / 2, (y0 + y1) / 2 + sag, x1, y1); ctx.stroke(); };
+    fest(lx - 1, GROUND - 31, lx - 1, GROUND - 16, 0); fest(lx + 0.8, GROUND - 31, lx + 9, GROUND - 24, 4); fest(lx - 0.8, GROUND - 31, lx - 9, GROUND - 24, 4);
+    const bat = (x, y, s, ph) => { const fl = Math.sin(T / SEC * 2 + ph) * 0.3; ctx.fillStyle = rgba(amb(hex('#22182A'))); ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x - s * 0.6, y - s * (0.6 + fl), x - s * 1.4, y - s * 0.2); ctx.quadraticCurveTo(x - s * 0.9, y + s * 0.1, x - s * 0.7, y + s * 0.4); ctx.quadraticCurveTo(x - s * 0.3, y + s * 0.1, x, y + s * 0.4); ctx.quadraticCurveTo(x + s * 0.3, y + s * 0.1, x + s * 0.7, y + s * 0.4); ctx.quadraticCurveTo(x + s * 0.9, y + s * 0.1, x + s * 1.4, y - s * 0.2); ctx.quadraticCurveTo(x + s * 0.6, y - s * (0.6 + fl), x, y); ctx.fill(); if (lit) { disc(ctx, '#FFB040', x - s * 0.15, y + s * 0.05, 0.18, true); disc(ctx, '#FFB040', x + s * 0.15, y + s * 0.05, 0.18, true); } };
+    [[-5, -25.6], [-8, -23.2], [5, -25.6], [8, -23.2], [0, -20], [0, -17.5]].forEach(([dx, dy], k) => bat(lx + dx, GROUND + dy, 1.5, k));
+  }
+}
+// Camion-nacelle garé contre le trottoir sous le lampadaire (cabine vers la droite, sens de la file du premier plan).
+function paintLiftTruck(ctx, it, st, T, night) {
+  const { step, p } = st.crew, park = it.x - 33, wy = GROUND + 36;
+  let tx = park;
+  if (step === 'arrive') tx = lerp(-60, park, smooth(Math.min(1, p * 1.25)));
+  else if (step === 'leave') tx = lerp(park, W + 60, smooth(sat((p - 0.2) * 1.25)));
+  // flèche : repliée sur le plateau → nacelle au niveau de la lanterne
+  const up = step === 'rise' ? smooth(p) : step === 'fix' ? 1 : step === 'lower' ? 1 - smooth(p) : 0;
+  const pivot = [tx - 6, wy - 13], rest = [tx - 20, wy - 13], target = [it.x - 9, GROUND - 26];
+  const bucket = [lerp(rest[0], target[0], up), lerp(rest[1], target[1], up)];
+  const L = 32, dx = bucket[0] - pivot[0], dy = bucket[1] - pivot[1], dd = Math.min(2 * L - 0.1, Math.hypot(dx, dy)), a = Math.atan2(dy, dx), b = Math.acos(dd / (2 * L));
+  const elbow = [pivot[0] + Math.cos(a + b) * L, pivot[1] + Math.sin(a + b) * L];
+  const folded = up < 0.02;
+  // stabilisateurs sortis (deploy → stow)
+  const legs = step === 'deploy' ? smooth(p) : step === 'stow' ? 1 - smooth(p) : step === 'rise' || step === 'fix' || step === 'lower' ? 1 : 0;
+  if (legs > 0) for (const lx of [tx - 18, tx + 6]) { fillRect(ctx, '#3A3A40', lx - 0.5, wy - 6, 1, 4 + legs * 3); fillRect(ctx, '#3A3A40', lx - 1.8, wy - 2 + legs * 3, 3.6, 0.8); }
+  // carrosserie
+  fillRect(ctx, '#F2F0E8', tx - 24, wy - 11, 34, 7); fillRect(ctx, '#E8B830', tx - 24, wy - 6, 34, 1.4); inkRect(ctx, tx - 24, wy - 11, 34, 7, 0.6);
+  fillRect(ctx, '#F2F0E8', tx + 10, wy - 17, 12, 13); fillRect(ctx, '#BBD8F0', tx + 13, wy - 15.5, 8, 5); inkRect(ctx, tx + 10, wy - 17, 12, 13, 0.6);
+  ctx.fillStyle = INK; ctx.font = 'bold 2.4px sans-serif'; ctx.fillText('VILLE', tx - 20, wy - 7.4);
+  if (night || step !== 'fix') { disc(ctx, '#FFB040', tx + 16, wy - 18, 0.9, true); if (night) { ctx.fillStyle = 'rgba(255,176,64,0.3)'; ctx.beginPath(); ctx.arc(tx + 16, wy - 18, 2.6, 0, TAU); ctx.fill(); } }
+  disc(ctx, '#2A2A2A', tx - 15, wy - 2.5, 3); disc(ctx, '#2A2A2A', tx + 15, wy - 2.5, 3); disc(ctx, '#8A8A90', tx - 15, wy - 2.5, 1.1); disc(ctx, '#8A8A90', tx + 15, wy - 2.5, 1.1);
+  // caisse de décors sur le plateau
+  fillRect(ctx, '#B8885A', tx - 2, wy - 15, 9, 4); inkRect(ctx, tx - 2, wy - 15, 9, 4, 0.4);
+  ctx.strokeStyle = '#E8B830'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(pivot[0], pivot[1]); if (folded) ctx.lineTo(rest[0], rest[1]); else { ctx.lineTo(elbow[0], elbow[1]); ctx.lineTo(bucket[0], bucket[1]); } ctx.stroke();
+  ctx.strokeStyle = INK; ctx.lineWidth = 0.35; ctx.stroke(); ctx.lineCap = 'butt';
+  disc(ctx, '#5A5A60', pivot[0], pivot[1], 1.4); if (!folded) disc(ctx, '#5A5A60', elbow[0], elbow[1], 1.1);
+  // ouvrier : en cabine pendant les trajets, dans la nacelle de « deploy » à « stow » (il y monte depuis la cabine)
+  const inBucket = (step === 'deploy' && p > 0.5) || step === 'rise' || step === 'fix' || step === 'lower' || (step === 'stow' && p < 0.5);
+  const mem = { size: 1, shirt: '#E8772E', pants: '#2E3A4A', skin: '#D9A070' };
+  if (inBucket) {
+    const working = step === 'fix', P = working ? { ...POSE.armsUp, aL: [146, -10], aR: [128 + Math.sin(T / SEC * 3) * 10, -20], torso: 4 } : POSE.stand;
+    const J = drawFigure(ctx, bucket[0], bucket[1], 12, P, 1, { mem, amb: true });
+    // l'objet : pris dans la caisse au déploiement, tenu jusqu'à la fin de la fixation (à la dépose, l'inverse)
+    const holding = st.removing ? step === 'lower' || (step === 'stow' && p < 0.5) || (working && p > 0.85) : step === 'rise' || (step === 'deploy' && p > 0.5) || (working && p < 0.7);
+    if (holding) { if (it.kind === 'lantern') paintPumpkin(ctx, bucket[0] + J.hR[0] + 1, bucket[1] + J.hR[1] + 2, 1.8, it.v, false); else { ctx.fillStyle = col('#22182A'); ctx.fillRect(bucket[0] + J.hR[0], bucket[1] + J.hR[1], 2.6, 1.6); } }
+  } else if (step === 'deploy' || step === 'stow') {
+    const q = step === 'deploy' ? p / 0.5 : (1 - p) / 0.5, x = lerp(tx + 12, tx - 18, sat(q));
+    ctx.globalAlpha = sat(q * 4); drawFigure(ctx, x, wy - 1, 12, walkPose(T / SEC / 0.9), -1, { mem, amb: true }); ctx.globalAlpha = 1;
+  }
+  // nacelle (devant l'ouvrier, garde-corps)
+  fillRect(ctx, '#F4F4F0', bucket[0] - 4, bucket[1] - 4.5, 8, 5); fillRect(ctx, '#E8B830', bucket[0] - 4, bucket[1] - 4.5, 8, 1); inkRect(ctx, bucket[0] - 4, bucket[1] - 4.5, 8, 5, 0.45);
+}
+
+// ───────────── planche des décors (×4, jour / nuit) ─────────────
+function renderHwPlanche() {
+  const CW = 120, CH = 70, LB = 11, S = 4;
+  const cells = [
+    ['Citrouille (4 visages)', (ctx, T, lit) => { [0.11, 0.37, 0.58, 0.83].forEach((v, k) => paintPumpkin(ctx, -15 + k * 10, 8, 3.4, v, lit)); }],
+    ['Toile d’araignée (porte)', (ctx, T, lit) => { fillRect(ctx, '#5A3A2E', -8, -14, 16, 22); paintWeb(ctx, -8, -14, 11, 1, lit); paintWeb(ctx, 8, -14, 7, -1, lit); }],
+    ['Fantôme (porte)', (ctx, T, lit) => { fillRect(ctx, '#2F5D50', -9, -14, 18, 22); paintGhost(ctx, 0, -12, 11, 13, T, lit); }],
+    ['Chaudron (pas de porte)', (ctx, T, lit) => paintCauldron(ctx, 0, 8, 6, T, lit)],
+    ['Sorcière + balai (balcon)', (ctx, T, lit) => paintWitch(ctx, 2, 8, 20, 1)],
+    ['Squelette assis (rambarde)', (ctx, T, lit) => { fillRect(ctx, INK, -14, -1, 28, 1); paintSkeleton(ctx, 0, -1, 15, T); }],
+    ['Corbeau perché (rambarde)', (ctx, T, lit) => { fillRect(ctx, INK, -14, 2, 28, 1); paintCrow(ctx, -5, 2, 4, T, 0.2); paintCrow(ctx, 7, 2, 4, T + 0.0006, 0.7); }],
+    ['Araignée géante (sous la dalle)', (ctx, T, lit) => { fillRect(ctx, '#D8CCB8', -14, -16, 28, 2); paintSpider(ctx, 0, -14, 14, 3, T, lit); }],
+    ['Lanterne citrouille (lampadaire)', (ctx, T, lit) => { ctx.save(); ctx.translate(-110 + 4, -GROUND + 12); paintLampDecor(ctx, { x: 110, kind: 'lantern', v: 0.37 }, T, lit); ctx.restore(); }],
+    ['Chauves-souris (lampadaire)', (ctx, T, lit) => { ctx.save(); ctx.translate(-110, -GROUND + 12); paintLampDecor(ctx, { x: 110, kind: 'bats', v: 0 }, T, lit); ctx.restore(); }],
+    ['Escabeau porté / déplié', (ctx, T, lit) => { paintCarriedLadder(ctx, -8, -2, 1); paintStepladder(ctx, 8, 8, 9, 1); }],
+    ['Citrouille sur l’appui', (ctx, T, lit) => { fillRect(ctx, GLASS_DAY, -6, -16, 12, 16); inkRect(ctx, -6, -16, 12, 16, 0.5); fillRect(ctx, '#F2E8D4', -8, 0, 16, 1.6); paintPumpkin(ctx, 3, 0.2, 3, 0.58, lit); }],
+  ];
+  const cols = 4, rows = Math.ceil(cells.length / cols);
+  const ctx = canvasFor('planche-decors', CW * cols * S, (CH + LB) * rows * S, 'planche-decors (×4) — nuit (allumé) / jour');
+  ctx.scale(S, S);
+  const D = dayContext('2026-10-28');
+  cells.forEach(([label, fn], i) => {
+    const ox = (i % cols) * CW, oy = Math.floor(i / cols) * (CH + LB);
+    ctx.fillStyle = '#F2EDE2'; ctx.fillRect(ox, oy, CW, LB); ctx.fillStyle = INK; ctx.font = 'bold 5.5px sans-serif'; ctx.fillText(label, ox + 3, oy + 7.5);
+    [[22, true, 'nuit'], [11, false, 'jour']].forEach(([T, lit, lab], k) => {
+      ctx.save(); ctx.translate(ox + k * (CW / 2), oy + LB); ctx.beginPath(); ctx.rect(0, 0, CW / 2, CH); ctx.clip();
+      setEnvAt(T, D); fillRect(ctx, STONES[2], 0, 0, CW / 2, CH);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(0, CH - 7, 16, 7); ctx.fillStyle = '#fff'; ctx.font = '4px sans-serif'; ctx.fillText(lab, 2, CH - 2);
+      ctx.translate(CW / 4, CH * 0.62); ctx.scale(1.25, 1.25);
+      fn(ctx, T + 0.0004, lit);
+      ctx.restore();
+    });
+  });
+}
+
+// ═══════════ 99-main.js ═══════════
+// ───────────── captures Halloween, mode animé, débogage ─────────────
+function canvasFor(id, w, h, label) {
+  const g = document.getElementById('gallery');
+  const h2 = document.createElement('h2'); h2.textContent = label || id; g.appendChild(h2);
+  const c = document.createElement('canvas'); c.id = id; c.width = w; c.height = h; g.appendChild(c);
+  return c.getContext('2d');
+}
+// Vue rapprochée sur le lampadaire en cours de travail à l'heure T (camion-nacelle).
+const lampView = (D, T, scale = 4) => { const s = buildStreet(D), A = hwDay(D.date) * 24 + T; const it = s.hwLamps.find((l) => hwLampState(l, A).crew) || s.hwLamps[1]; return { x0: Math.round(it.x - 170), y0: 150, w: 300, h: 260, scale }; };
+// Immeuble héros, trottoir compris (la vue de vie-etages s'arrête au pied des façades).
+const hwHeroView = (D, scale = 4) => { const h = buildStreet(D).hero; return { x0: Math.round(h.x + h.w / 2 - 150), y0: 66, w: 300, h: 280, scale }; };
+const CAPTURES = [
+  { id: 'mairie-24oct-10h', T: 10, date: '2026-10-24', zoom: 'lamp', note: 'samedi 24 oct. 10 h — la mairie pose les décors de lampadaire au camion-nacelle' },
+  { id: 'habitants-24oct-15h05', T: 15 + 5.5 * MIN, date: '2026-10-24', note: 'samedi 24 oct. 15 h 05 — premiers habitants : toile sur la porte (escabeau), citrouilles' },
+  { id: 'soir-27oct-19h', T: 19 + 0.6 * MIN, date: '2026-10-27', note: 'mardi 27 oct. 19 h — après le travail : sorcière posée au balcon, citrouilles allumées' },
+  { id: 'nuit-31oct-21h', T: 21 + 0.5 * MIN, date: '2026-10-31', note: 'samedi 31 oct. 21 h — tout est posé, citrouilles et lanternes allumées' },
+  { id: 'nuit-1nov-0h50', T: 50 * MIN, date: '2026-11-01', note: 'dimanche 1er nov. 0 h 50 — pièces éteintes, des citrouilles encore allumées' },
+  { id: 'soir-2nov-21h', T: 21, date: '2026-11-02', note: 'lundi 2 nov. 21 h — la fête est passée : ce qui reste n’est plus allumé' },
+  { id: 'retrait-3nov-11h', T: 11 + 0.2 * MIN, date: '2026-11-03', zoom: 'hero', note: 'mardi 3 nov. 11 h — retrait étalé : la mairie décroche, un habitant reprend sa toile' },
+  { id: 'apres-9nov-12h', T: 12, date: '2026-11-09', note: 'lundi 9 nov. midi — plus rien' },
+];
+// Séquence de la porte (immeuble héros) : sortie avec l'escabeau, dépliage, montée, toile, descente, retour.
+const DOOR_SEQ = [0.04, 0.12, 0.2, 0.28, 0.45, 0.64, 0.72, 0.82, 0.94].map((q) => 15 + q * 4 * MIN);
+const LAMP_SEQ = [9.15, 9.5, 9.8, 10.2, 10.85, 11.1, 11.5];
+function renderCaptures() {
+  const ids = [];
+  for (const cap of CAPTURES) {
+    const D = dayContext(cap.date);
+    renderScene(canvasFor(cap.id, W * 2, H * 2, `${cap.id} — ${cap.note}`), cap.T, D, fullView(2)); ids.push(cap.id);
+    const view = cap.zoom === 'lamp' ? lampView(D, cap.T) : hwHeroView(D, 4);
+    renderScene(canvasFor(cap.id + '-zoom', view.w * 4, view.h * 4, cap.id + '-zoom (×4)'), cap.T, D, view); ids.push(cap.id + '-zoom');
+  }
+  const D = dayContext('2026-10-24');
+  DOOR_SEQ.forEach((T, i) => { const id = `porte-seq-${i + 1}`; renderScene(canvasFor(id, 1200, 1120, `${id} — ${fmtT(T)} (+${Math.round(((T - 15) * 3600))} s)`), T, D, hwHeroView(D, 4)); ids.push(id); });
+  LAMP_SEQ.forEach((T, i) => { const id = `nacelle-seq-${i + 1}`; renderScene(canvasFor(id, 1200, 1040, `${id} — ${fmtT(T)}`), T, D, lampView(D, T)); ids.push(id); });
+  renderHwPlanche(); ids.push('planche-decors');
+  window.__ids = ids; window.__done = true;
+}
+const Q = new URLSearchParams(location.search);
+if (Q.has('T')) { // débogage : ?T=18.98&date=2026-10-24&view=x0,y0,w,h,scale
+  const D = dayContext(Q.get('date') || '2026-10-24');
+  const v = (Q.get('view') || '0,0,900,400,2').split(',').map(Number); const view = { x0: v[0], y0: v[1], w: v[2], h: v[3], scale: v[4] };
+  renderScene(canvasFor('dbg', view.w * view.scale, view.h * view.scale, 'dbg ' + fmtT(+Q.get('T'))), +Q.get('T'), D, view); window.__ids = ['dbg']; window.__done = true;
+} else if (Q.has('h')) runAnimated(Q); else renderCaptures();
+
+</script>
+</body>
+</html>

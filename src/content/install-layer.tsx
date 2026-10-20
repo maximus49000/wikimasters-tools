@@ -5,11 +5,11 @@ import { FLAG_CYCLE_S, FLAG_FRAMES } from '../core/library/paint/props/install';
 import { cityPaintPlan, type CityPaintPlan } from '../core/library/paint/city-plan';
 import { doorsFor, type Door } from '../core/library/city/doors';
 import {
-  LIFT_FETCH, absMinute, beerStandsFor, crewAt, crewStepWindow, decorSetsFor, footWindow, inVehicle, itemEquipment, itemPhase, itemShown,
+  LAMP_KINDS, LIFT_FETCH, absMinute, beerStandsFor, crewAt, crewStepWindow, decorSetsFor, footWindow, inVehicle, itemEquipment, itemPhase, itemShown,
   setWindow, type DecorItem, type DecorSet, type Transport,
 } from '../core/library/city/install';
 import { TRANSPORT_SPEED, vanAt, vanCrewAt, vanVisit, type VanVisit, type VehicleKind } from '../core/library/city/van';
-import { lampsFor, type Lamp } from '../core/library/city/lamps';
+import { lampLit, lampsFor, type Lamp } from '../core/library/city/lamps';
 import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import { pathAt, pathDir, pathLength } from '../core/library/city/walk-path';
@@ -30,7 +30,7 @@ import { GhibliFigure, setShown3DFitter } from './figure/ghibli-figure';
 import { paintProp, propKey, type PropRegistry, type PropSpec } from './prop/prop-host';
 import {
   BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
-  LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
+  DoorGhost, DoorWeb, HeldDoorDecor, LampBats, LampPumpkin, LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
 } from './install-sprites';
 import { ConcertCrowd, ConcertLight } from './concert-light';
 import { CarriedCounter, HeldRoll, StandAwning, StandCounter } from './music-sprites';
@@ -85,6 +85,10 @@ const orderOf = (set: DecorSet, removing: boolean): DecorItem[] => {
 };
 
 const hasCrewOnFoot = (set: DecorSet): boolean => set.items.some((i) => itemEquipment(set, i) !== 'lift');
+// Halloween : l'habitant qui décore son entrée sort de l'immeuble (aucun véhicule).
+const byDoor = (set: DecorSet): boolean => set.transport === 'door';
+// Équipe à pied venue en véhicule (camionnette, vélo porteur, camion plateau).
+const hasVehicle = (set: DecorSet): boolean => hasCrewOnFoot(set) && !byDoor(set);
 const hasLadder = (set: DecorSet): boolean => set.items.some((i) => itemEquipment(set, i) === 'ladder');
 // Jeux posés sur la chaussée de la rue privatisée : leurs décors et leurs équipes sont dessinés dans la partie `street`.
 const STREET_SETS: ReadonlySet<string> = new Set(['beer-stands-music', 'barriers-music']);
@@ -103,11 +107,11 @@ const SPEC: Readonly<Record<VehicleKind, Spec>> = {
   truck: { grow: 1.1, half: FLATBED.half, door: FLATBED.door, cab: FLATBED.cab, ladder: FLATBED.ladder },
 };
 // Véhicule de l'équipe à pied d'un jeu (les drapeaux de lampadaires n'en ont pas : ils voyagent sur le camion élévateur).
-const kindOf = (set: DecorSet): VehicleKind => (set.transport === 'lift' ? 'van' : set.transport);
+const kindOf = (set: DecorSet): VehicleKind => (set.transport === 'lift' || set.transport === 'door' ? 'van' : set.transport);
 const vehK = (kind: VehicleKind, u: number): number => u * STREET_SCALE.vehicle * SPEC[kind].grow;
 const vehHalf = (kind: VehicleKind, u: number): number => SPEC[kind].half * vehK(kind, u);
 // `data-carried` d'un objet encore (à moitié) dans son véhicule, et des éléments qui y sont entreposés.
-const TAG: Readonly<Record<Transport, string>> = { van: 'van', 'cargo-bike': 'bike', truck: 'truck', lift: 'lift' };
+const TAG: Readonly<Record<Transport, string>> = { van: 'van', 'cargo-bike': 'bike', truck: 'truck', lift: 'lift', door: 'door' };
 // Demi-longueur du camion élévateur (unités du sprite). Écart minimal entre le centre d'un véhicule garé et le point de travail
 // d'un camion élévateur : les deux carrosseries plus 8 px si la rue le permet, et jamais moins de 60 px.
 const LIFT_HALF = 32;
@@ -236,7 +240,8 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
   const lamps = useMemo(() => lampsFor(width, seed), [width, seed]);
   const standSide = useMemo(() => new Map(beerStandsFor(width, height, seed).map((s) => [s.id, s.side] as const)), [width, height, seed]);
   const outfits = useMemo(
-    () => new Map(sets.map((s) => [s.id, [0, 1].map((i) => outfitFor('worker', mulberry32(seed ^ hashString(`${s.id}-crew-${i}`))))] as const)),
+    // Halloween : un habitant de l'immeuble en tenue ordinaire, pas un ouvrier.
+    () => new Map(sets.map((s) => [s.id, [0, 1].map((i) => outfitFor(byDoor(s) ? 'ordinary' : 'worker', mulberry32(seed ^ hashString(`${s.id}-crew-${i}`))))] as const)),
     [sets, seed],
   );
   // Un trio par scène, chacun avec ses tenues (la première scène garde celles d'avant : `stage-band-i`).
@@ -261,12 +266,12 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
   const standXs = [...standSide.keys()].length > 0 ? beerStandsFor(width, height, seed).map((st) => st.x) : [];
   // Scènes du jour (jamais de véhicule garé dessus).
   const stageXsOfDay = sets.flatMap((s) => s.items.filter((i) => i.kind === 'stage-floor').map((i) => i.x));
-  for (const s of sets.filter(hasCrewOnFoot)) {
+  for (const s of sets.filter(hasVehicle)) {
     const taken = [...parks].map(([id, x]) => ({ x, half: vehHalf(kindOf(sets.find((o) => o.id === id)!), u) }));
     parks.set(s.id, vanX(s, width, seed, lamps, metrics, works, taken, s.fest === 'music' ? standXs : [], s.fest === 'music' ? stageXsOfDay : []));
   }
   // Rangées des véhicules de la Fête de la musique (une par jeu, dans l'ordre des jeux).
-  const rows = new Map(sets.filter((s) => s.fest === 'music' && hasCrewOnFoot(s)).map((s, i) => [s.id, i % VAN_ROWS] as const));
+  const rows = new Map(sets.filter((s) => s.fest === 'music' && hasVehicle(s)).map((s, i) => [s.id, i % VAN_ROWS] as const));
   const visit = (set: DecorSet, removing: boolean): VanVisit | null => (parks.has(set.id) ? visitOf(set, removing, parks.get(set.id)!, width, metrics) : null);
   const geomOf = (set: DecorSet, removing: boolean): VanGeom | null => {
     const v = visit(set, removing);
@@ -286,7 +291,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const van = geomOf(set, c.removing);
       return [{
         set, item, step: c.step, progress: c.progress, removing: c.removing, width, seed, metrics, sky, rainy, outfits: outfits.get(set.id)!, doors, lamps,
-        abs, stepFrom: w.from, stepTo: w.to, home: homeOf(van, item, onStreet(set)), van, street: onStreet(set), standSide, ghibli, lights,
+        abs, stepFrom: w.from, stepTo: w.to, home: byDoor(set) ? { x: item.x, y: metrics.doorY } : homeOf(van, item, onStreet(set)), van, street: onStreet(set), standSide, ghibli, lights,
       }];
     });
   // Élément que des porteurs soulèvent (dépose à la main) : dessiné dans leurs mains, plus à sa place.
@@ -299,7 +304,9 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       const shown = still ? ph.phase === 'present' : itemShown(set, item, ph);
       if (!shown || lifted.has(`${set.id}/${item.id}`)) continue;
       // Projecteurs allumés (et faisceaux) : posés, il fait nuit, et la fête n'est pas finie (la dépose commence après minuit).
-      const lit = item.kind === 'stage-spots' && ph.phase === 'present' && dark && abs < absMinute(set.day + 1, 0);
+      // Lanterne citrouille (yeux des chauves-souris) : allumée avec son lampadaire.
+      const lamp = item.kind === 'lamp-pumpkin' || item.kind === 'lamp-bats' ? lamps.find((l) => l.id === item.id) : undefined;
+      const lit = (item.kind === 'stage-spots' && ph.phase === 'present' && dark && abs < absMinute(set.day + 1, 0)) || (!!lamp && lampLit(lamp, minutes, sky.daylight));
       const d = decorNode(set, item, ph.phase, doors.get(item.id), metrics, sky, still, lamps, lit, standSide, ghibli);
       if (d) drawn.push(d);
     }
@@ -311,7 +318,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
     // dessiné devant lui.
     const inp = crews.find((c) => c.set === set);
     let boarding: Drawn | null = null;
-    if (hasCrewOnFoot(set)) {
+    if (hasVehicle(set)) {
       const crew = crewAt(set, abs, set.day);
       const kind = kindOf(set);
       const k = vehK(kind, u);
@@ -409,6 +416,16 @@ function decorNode(
   switch (item.kind) {
     case 'lamp-flag':
       return { part: 'front', node: <g key={key} {...attrs} transform={lampTransform(item.x, m)}><LampFlag sky={sky} still={still} ghibli={ghibli ? { phase: flagPhase(item.x) } : undefined} /></g> };
+    case 'lamp-pumpkin':
+    case 'lamp-bats':
+      return {
+        part: 'front',
+        node: <g key={key} {...attrs} transform={lampTransform(item.x, m)}>{item.kind === 'lamp-pumpkin' ? <LampPumpkin sky={sky} lit={lit} /> : <LampBats sky={sky} lit={lit} />}</g>,
+      };
+    case 'door-web':
+    case 'door-ghost':
+      if (!door) return null;
+      return { part: 'back', node: <g key={key} {...attrs} transform={entranceTransform(door, m)}>{item.kind === 'door-web' ? <DoorWeb sky={sky} variant={door.variant} seed={door.hallU} /> : <DoorGhost sky={sky} />}</g> };
     case 'door-flag':
       if (!door) return null;
       return { part: 'back', node: <g key={key} {...attrs} transform={entranceTransform(door, m)}><DoorFlag sky={sky} ghibli={ghibli ? { phase: flagPhase(door.x), still } : undefined} /></g> };
@@ -636,11 +653,20 @@ function crewNodes(inp: CrewInput): Drawn[] {
   };
   if (eq === 'lift') return [{ part: 'front', node: <g key={`${inp.set.id}-crew`} {...attrs}>{liftCrew(inp)}</g> }];
   const c = eq === 'ladder' ? ladderCrew(inp) : handCrew(inp);
-  const node = <g key={`${inp.set.id}-crew`} {...attrs}>{footNodes(c, inp)}</g>;
+  // Halloween : l'habitant sort de l'immeuble et y rentre par la porte (fondu à l'encadrement, au début et à la fin du trajet).
+  const fade = byDoor(inp.set) ? (inp.step === 'arrive' ? Math.min(1, inp.progress / DOOR_FADE) : inp.step === 'leave' ? Math.min(1, (1 - inp.progress) / DOOR_FADE) : 1) : 1;
+  const node = (
+    <g key={`${inp.set.id}-crew`} {...attrs} {...(byDoor(inp.set) ? { 'data-door-resident': '', opacity: fade.toFixed(2) } : {})}>
+      {footNodes(c, inp)}
+    </g>
+  );
   return [inp.street ? { part: 'street', depth: streetDepth(inp.item), node } : { part: 'crew', node }];
 }
 
-const footNodes = (c: FootCrew, inp: Pick<CrewInput, 'outfits' | 'sky' | 'rainy' | 'metrics' | 'ghibli'>): ReactNode => {
+// Part du premier (dernier) trajet de l'habitant passée dans l'encadrement de la porte.
+const DOOR_FADE = 0.35;
+
+const footNodes = (c: FootCrew, inp: Pick<CrewInput, 'outfits' | 'sky' | 'rainy' | 'metrics' | 'ghibli' | 'set'>): ReactNode => {
   const k = inp.metrics.unit * STREET_SCALE.person;
   return (
     <>
@@ -780,7 +806,7 @@ function useWorkerMove(w: Worker, k: number, ghibli: boolean): WorkerMove | null
   return ghibli ? { look, since: step.since, dist: step.dist, k, ...(step.turnFrom !== undefined ? { turnFrom: step.turnFrom } : {}) } : null;
 }
 
-function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp: Pick<CrewInput, 'sky' | 'rainy' | 'ghibli'>; k: number; id?: string }): ReactElement {
+function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp: Pick<CrewInput, 'sky' | 'rainy' | 'ghibli'> & Partial<Pick<CrewInput, 'set'>>; k: number; id?: string }): ReactElement {
   const move = useWorkerMove(w, k, inp.ghibli);
   return (
     <g
@@ -792,7 +818,7 @@ function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp:
     >
       {move ? (
         <g transform={`scale(${k.toFixed(3)})`}>
-          <GhibliFigure outfit={outfit} sky={inp.sky} rainy={inp.rainy} umbrella={false} work="vest" initial={workerPose(move, move.since)} held={w.held ? [{ anchor: 'handR', node: w.held }] : undefined} kind="adult" />
+          <GhibliFigure outfit={outfit} sky={inp.sky} rainy={inp.rainy} umbrella={false} work={inp.set && byDoor(inp.set) ? undefined : 'vest'} initial={workerPose(move, move.since)} held={w.held ? [{ anchor: 'handR', node: w.held }] : undefined} kind="adult" />
         </g>
       ) : (
         <>
@@ -822,6 +848,21 @@ const heldFlag = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): React
     <g transform="translate(0 -9)"><FlagArt sky={inp.sky} w={6} h={4} /></g>
   </g>
 );
+// Décor d'entrée d'Halloween tenu à la main (toile roulée en pelote, fantôme plié).
+const heldDoorDecor = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (
+  <g data-held-decor={inp.item.kind} {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.7)}>
+    <HeldDoorDecor kind={inp.item.kind === 'door-ghost' ? 'ghost' : 'web'} sky={inp.sky} />
+  </g>
+);
+// Décor de lampadaire tenu par l'ouvrier de la nacelle : drapeau, lanterne citrouille ou guirlande de chauves-souris.
+const heldLamp = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
+  if (inp.item.kind === 'lamp-flag') return heldFlag(inp, dir, up, by);
+  return (
+    <g data-held-decor={inp.item.kind} {...loadAttrs(inp, by)} transform={heldTransform(inp, dir, up, 0.7)}>
+      {inp.item.kind === 'lamp-pumpkin' ? <LampPumpkin sky={inp.sky} lit={false} held /> : <LampBats sky={inp.sky} held />}
+    </g>
+  );
+};
 // Toile de l'auvent roulée, tenue à la main (au bout du bras levé en haut de l'échelle). Ghibli : image cuite dans le sens
 // `dir`, posée sans miroir (comme heldPiece).
 const heldRoll = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => {
@@ -852,10 +893,14 @@ const heldPiece = (inp: CrewInput, dir: 1 | -1, up: boolean, by = 'hands'): Reac
 // l'auvent d'un stand ; l'un monte, l'autre la tient en bas. Au retour, ils l'y rangent. Le drapeau (sorti de la caisse du vélo)
 // ou la toile de l'auvent (sortie du plateau) voyage à la main. Vélo porteur : un seul ouvrier, l'échelle portée en son milieu.
 const LADDER_TILT = 12;
+// Échelle de l'habitant qui décore son entrée (unités).
+const DOOR_LADDER = 16;
 function ladderCrew(inp: CrewInput): FootCrew {
   const m = inp.metrics;
   const u = m.unit;
-  const h = 30 * u;
+  // Halloween : la petite échelle de l'habitant (le décor s'accroche en haut de la porte, à portée de bras levés).
+  const home = byDoor(inp.set);
+  const h = (home ? DOOR_LADDER : 30) * u;
   const rad = (LADDER_TILT * Math.PI) / 180;
   const awning = inp.item.kind === 'stand-awning';
   const toward = sgn(inp.item.x - inp.home.x);
@@ -877,11 +922,12 @@ function ladderCrew(inp: CrewInput): FootCrew {
   }
   const along = (y: number): number => lx + lean * (foot - y) * Math.tan(rad);
   const bx = lx - lean * 8 * u;
-  const top = foot - 14 * u;
+  const top = foot - (home ? 6 : 14) * u;
   const p = inp.progress;
-  const solo = inp.set.transport === 'cargo-bike';
+  const solo = inp.set.transport === 'cargo-bike' || home;
   const tag = TAG[inp.set.transport];
-  const object = (on: boolean, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode => (on ? (awning ? heldRoll(inp, dir, up, by) : heldFlag(inp, dir, up, by)) : null);
+  const object = (on: boolean, dir: 1 | -1, up: boolean, by = 'hands'): ReactNode =>
+    (on ? (awning ? heldRoll(inp, dir, up, by) : home ? heldDoorDecor(inp, dir, up, by) : heldFlag(inp, dir, up, by)) : null);
   let a: Worker;
   let b: Worker | null;
   let ladder: ReactElement;
@@ -1058,6 +1104,8 @@ function bucketTarget(item: DecorItem, m: CityMetrics): Pt {
   const u = m.unit;
   switch (item.kind) {
     case 'lamp-flag':
+    case 'lamp-pumpkin':
+    case 'lamp-bats':
       return { x: item.x - 11 * u, y: m.curb - 37 * u };
     case 'stage-frame':
       return { x: item.x - 36 * u, y: stageBase(m) - 44 * u };
@@ -1069,7 +1117,7 @@ function bucketTarget(item: DecorItem, m: CityMetrics): Pt {
 // Place du camion (centre, px du monde). Lampadaire : toujours du côté du drapeau, assez loin pour que la nacelle repliée
 // (au-dessus de la cabine) reste de ce côté du mât, quel que soit le sens du camion : elle ne traverse jamais le mât.
 function liftPark(item: DecorItem, dir: 1 | -1, m: CityMetrics): number {
-  if (item.kind === 'lamp-flag') return item.x - 33 * m.unit;
+  if (LAMP_KINDS.has(item.kind)) return item.x - 33 * m.unit;
   return bucketTarget(item, m).x + dir * 22 * m.unit;
 }
 
@@ -1128,7 +1176,7 @@ function liftCrew(inp: CrewInput): ReactElement {
   const holds = inp.removing ? inp.step === 'lower' : inp.step === 'rise' || inp.step === 'fix';
   const faceItem = sgn(inp.item.x - (g.here + bucket.x), g.dir);
   // Tenu à la main : le drapeau pour un lampadaire, une pièce de treillis ou un projecteur pour la scène.
-  const held = !holds ? null : inp.item.kind === 'lamp-flag' ? heldFlag(inp, faceItem, true) : heldPiece(inp, faceItem, atTop);
+  const held = !holds ? null : LAMP_KINDS.has(inp.item.kind) ? heldLamp(inp, faceItem, true) : heldPiece(inp, faceItem, atTop);
   // Ghibli : pantin debout dans la nacelle, tourné vers l'élément, bras levés quand il pose ou retire, sinon le long du corps ;
   // la pièce (drapeau, treillis, projecteur) à la main droite. Immobile (`dist` 0), mais posé par la boucle comme les autres :
   // un sprite pas encore peint au rendu (bras qui changent) y est posé dès qu'il l'est.
@@ -1160,7 +1208,7 @@ function liftCrew(inp: CrewInput): ReactElement {
   // Au sol (stabilisateurs, manœuvre) : près du lampadaire, de l'autre côté du mât ; sinon derrière le camion. Il descend de la
   // cabine au déploiement (il en sort, caché par elle, et marche jusqu'à sa place) et y remonte au repli. L'ouvrier de la
   // nacelle attend au pied de la cabine, sous la nacelle repliée, pendant le déploiement et le repli : il y monte et en descend.
-  const lamp = inp.item.kind === 'lamp-flag';
+  const lamp = LAMP_KINDS.has(inp.item.kind);
   const gy = m.curb - 1 * u;
   const cab = g.here + g.dir * 20 * kv;
   const spot = lamp ? inp.item.x + 7 * u : g.here - g.dir * 30 * u;
@@ -1180,7 +1228,7 @@ function liftCrew(inp: CrewInput): ReactElement {
   let waiting: Worker | null = g.inside || g.inBucket ? null : { x: W0, y: gy, dir: g.dir, pose: 'stand' };
   if (waiting && fetching) {
     const p = inp.progress;
-    const piece = (dir: 1 | -1, by: string): ReactNode => (lamp ? heldFlag(inp, dir, false, by) : heldPiece(inp, dir, false, by));
+    const piece = (dir: 1 | -1, by: string): ReactNode => (lamp ? heldLamp(inp, dir, false, by) : heldPiece(inp, dir, false, by));
     // Va (mains vides à la pose, chargé à la dépose), prend ou range, revient (chargé à la pose, mains vides à la dépose).
     // Il sort de la cabine (au début de l'étape) et y rentre (à la fin) sous la nacelle : il attend là un instant.
     const go = 0.1;
