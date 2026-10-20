@@ -243,5 +243,13 @@ describe('buildLightMap avec des animaux', () => {
       };
       expect(sum(crescent)).toBeLessThan(sum(full) * 0.3);
     });
+    it('lueur de la lune : une nuit de pleine lune est moins noire, voilée par les nuages', () => {
+      const plain = buildLightMap({ ...night, sunX: null });
+      const glow = buildLightMap({ ...night, sunX: null, moonGlow: 1 });
+      const cloudy = buildLightMap({ ...night, sunX: null, moonGlow: 1, cloud: 1 });
+      const cloudyPlain = buildLightMap({ ...night, sunX: null, cloud: 1 });
+      expect(at(glow, 190, 120)[3]!).toBeLessThan(at(plain, 190, 120)[3]! - 8);
+      expect(at(cloudyPlain, 190, 120)[3]! - at(cloudy, 190, 120)[3]!).toBeLessThan(at(plain, 190, 120)[3]! - at(glow, 190, 120)[3]!);
+    });
   });
 });

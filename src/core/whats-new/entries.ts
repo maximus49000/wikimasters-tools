@@ -2537,7 +2537,7 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'ciel-reel-2026-10b',
+    id: 'ciel-reel-2026-10c',
     theme: 'collection',
     glyph: '🌗',
     title: 'Soleil, lune et nuages réels',
@@ -2570,7 +2570,7 @@ export const ENTRIES: Entry[] = [
         text: 'Le jour, le rayon de soleil des fenêtres et les ombres des meubles et des animaux pâlissent quand un nuage passe devant le soleil. La nuit, la lune pose un rayon argenté, avec ses ombres, qui s’efface de la même façon derrière les nuages.',
         details: [
           { label: 'Comment ça marche', text: 'La part de l’astre cachée par les nuages est relue quatre fois par seconde ; un ciel couvert le cache entièrement. Le clair de lune vient de la direction et de la hauteur réelles de la lune.' },
-          { label: 'À savoir', text: 'Le clair de lune est fort à la pleine lune, à peine visible sur un mince croissant, absent quand la lune est couchée. Il s’allume avec le bouton Lumière, comme le soleil.' },
+          { label: 'À savoir', text: 'Plus la lune est pleine (et haute), plus elle éclaire : rayon, lueur de toute la pièce, halo dans le ciel, ciel de nuit plus clair et moins d’étoiles. Une demi-lune éclaire bien moins que la moitié d’une pleine lune, un mince croissant presque pas, et rien quand la lune est couchée. Le clair de lune s’allume avec le bouton Lumière, comme le soleil.' },
         ],
         scene: { page: '/collection', closeWindows: true },
       },

@@ -16,8 +16,8 @@ export const sunPlace = (sky: Sky, width: number, height: number): Place | null 
 export const moonPlace = (sky: Sky, width: number, height: number): Place | null =>
   sky.moonFrac === null ? null : sky.moonAt ? { x: width * sky.moonAt.x, y: height * sky.moonAt.y } : celestialPlace(sky.moonFrac, width, height);
 
-// Clair de lune qui entre par les fenêtres : la nuit seulement (soleil couché), lune levée. Force selon la phase (pleine
-// lune : 0,5 ; croissant : presque rien) ; élévation réelle quand le ciel la donne, sinon tirée de sa fraction de course.
+// Clair de lune qui entre par les fenêtres : la nuit seulement (soleil couché), lune levée. Force selon l'éclat de la lune
+// (pleine lune haute : 0,55 ; quartier ≈ 0,2 ; croissant : presque rien) ; élévation réelle quand le ciel la donne, sinon tirée de sa fraction de course.
 export type MoonBeam = { x: number; elev: number; strength: number };
 const MOON_NIGHT = 0.3;
 const MOON_MIN_ELEV = 0.02;
@@ -27,6 +27,7 @@ export function moonBeam(sky: Sky, width: number, height: number): MoonBeam | nu
   if (!place) return null;
   const elev = sky.moonAlt ?? sunElevation(sky.moonFrac);
   if (elev <= MOON_MIN_ELEV) return null;
-  const lit = sky.moonPhase?.lit ?? 0.85;
-  return { x: place.x, elev: Math.min(ELEV_MAX, Math.max(ELEV_MIN, elev)), strength: 0.5 * lit * (1 - sky.daylight / MOON_NIGHT) };
+  // Éclat réel (phase et hauteur) ; sans lui (aperçus), une lune gibbeuse.
+  const light = sky.moonLight ?? 0.8;
+  return { x: place.x, elev: Math.min(ELEV_MAX, Math.max(ELEV_MIN, elev)), strength: 0.55 * light * (1 - sky.daylight / MOON_NIGHT) };
 }

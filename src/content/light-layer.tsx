@@ -70,7 +70,7 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
       const pk = petKey(pets);
       // La nuit, le rayon est celui de la lune (même calcul, teinte argentée, force selon la phase).
       const moon = moonBeam(s, width, wallH);
-      const key = [r(s.sunFrac ?? -1, 0.005), r(s.sunAt?.x ?? -1, 0.002), moon ? `${r(moon.x, 2)},${r(moon.elev, 0.005)},${r(moon.strength, 0.01)}` : '', r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01), signature, pk].join('|');
+      const key = [r(s.sunFrac ?? -1, 0.005), r(s.sunAt?.x ?? -1, 0.002), r((s.moonLight ?? 0) * (1 - s.daylight), 0.01), moon ? `${r(moon.x, 2)},${r(moon.elev, 0.005)},${r(moon.strength, 0.01)}` : '', r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01), signature, pk].join('|');
       if (key === lastKey && image.hasAttribute('href')) return;
       lastKey = key;
       lastPetKey = pk;
@@ -84,6 +84,7 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
         sunX: moon ? moon.x : sunPlace(s, width, wallH)?.x ?? null,
         sunFrac: s.sunFrac, daylight: s.daylight, twilight: s.twilight, cloud: w.cloud, precip: w.precip, hidden, boxes, lamps, pets,
         ...(moon ? { moon: moon.strength, elev: moon.elev } : {}),
+        ...(s.moonLight ? { moonGlow: s.moonLight * (1 - s.daylight) } : {}),
       };
       const url = toUrl(buildLightMap(input));
       if (url !== null && image.getAttribute('href') !== url) image.setAttribute('href', url);

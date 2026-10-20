@@ -74,6 +74,8 @@ function Celestial({ width, height, sky, painted, shown, still }: SceneBodyProps
   const moon = moonPlace(sky, width, height);
   const phase = sky.moonPhase ?? DEFAULT_PHASE;
   const limbDeg = (phase.limb * 180) / Math.PI;
+  // Éclat de la lune ; sans ciel réel (aperçus), celui de la phase par défaut.
+  const light = sky.moonLight ?? phase.lit ** 1.5;
   return (
     <g data-celestial style={{ opacity: 'var(--wmt-celestial, calc(1 - var(--wmt-overcast, 0)))' }}>
       {sun && (
@@ -84,13 +86,15 @@ function Celestial({ width, height, sky, painted, shown, still }: SceneBodyProps
       )}
       {moon && (
         <g data-moon="" data-classic-moon="" data-moon-lit={phase.lit.toFixed(2)} transform={`translate(${moon.x} ${moon.y})`} opacity={moonOpacity(sky.daylight)} style={fadeStyle(!shown, still)}>
+          {/* Halo : plus grand et plus vif quand la lune est pleine et haute. */}
+          <circle r={Number((24 + 22 * light).toFixed(1))} fill="#DCE4FF" opacity={Number((0.16 * light * (1 - sky.daylight)).toFixed(2))} />
           {/* Lumière cendrée : la part sombre se devine la nuit, surtout sur un croissant. */}
           <circle r={18} fill="#B8C0DC" opacity={Number((0.2 * (1 - phase.lit) * (1 - sky.daylight)).toFixed(2))} />
           <path d={moonLitPath(18, phase.lit)} transform={`rotate(${limbDeg.toFixed(1)})`} fill="#E8ECFF" />
         </g>
       )}
       {painted && sun && <GhibliSun x={sun.x} y={sun.y} twilight={sky.twilight} painted={painted} shown={shown} still={still} />}
-      {painted && moon && <GhibliMoon x={moon.x} y={moon.y} phase={phase} daylight={sky.daylight} painted={painted} shown={shown} still={still} />}
+      {painted && moon && <GhibliMoon x={moon.x} y={moon.y} phase={phase} light={light} daylight={sky.daylight} painted={painted} shown={shown} still={still} />}
     </g>
   );
 }

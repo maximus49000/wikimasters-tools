@@ -23,6 +23,8 @@ export type Sky = {
   moonPhase?: MoonPhase;
   // Hauteur réelle de la lune (radians), pour le clair de lune qui entre par les fenêtres.
   moonAlt?: number;
+  // Éclat de la lune (0 à 1) : pleine et haute = 1, quartier ≈ 0,35, croissant ≈ 0, couchée = 0 (indépendant du jour).
+  moonLight?: number;
 };
 
 const RAD = Math.PI / 180;

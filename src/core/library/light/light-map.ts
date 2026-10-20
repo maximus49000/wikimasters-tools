@@ -1,4 +1,5 @@
 import { mixHex } from '../sky';
+import { smooth } from '../weather/weather-types';
 import { beamGain } from './attenuation';
 import { lampNeed, skyLevel, skylightAt } from './ambient';
 import { ROOM_DEPTH_FACTOR, beamPatch, type Glass, type Point } from './beam';
@@ -26,6 +27,8 @@ export type LightInput = {
   moon?: number;
   // Élévation de l'astre (radians) ; absente : tirée de `sunFrac`.
   elev?: number;
+  // Lueur de la lune dans toute la pièce, la nuit (éclat de la lune × nuit, 0 à 1) : une nuit de pleine lune est moins noire.
+  moonGlow?: number;
 };
 export type LightMap = { w: number; h: number; rgba: Uint8ClampedArray };
 
@@ -37,6 +40,8 @@ const hex = (h: string): [number, number, number] => {
 const WARM = hex('#FFE9A8');
 const LAMP_WARM = hex('#FFD38A');
 const MOONLIGHT = hex('#C8D6FF');
+// Lueur maximale d'une pleine lune haute dans un ciel dégagé, ajoutée à la luminosité du ciel (0,06 la nuit).
+const MOON_GLOW = 0.2;
 const MIN_ELEV = 0.02; // même seuil que beamPatch
 
 // Point dans un quadrilatère convexe : les quatre produits vectoriels ont le même signe.
@@ -140,7 +145,7 @@ export function buildLightMap(input: LightInput): LightMap {
   const h = Math.ceil(height / LIGHT_SCALE);
   const rgba = new Uint8ClampedArray(w * h * 4);
   const field = skyField(windows, width, height, w, h);
-  const sky = skyLevel(input.daylight, input.cloud);
+  const sky = skyLevel(input.daylight, input.cloud) + MOON_GLOW * clamp01(input.moonGlow ?? 0) * (1 - 0.8 * smooth(input.cloud));
   const need = lampNeed(input.daylight, input.cloud, input.precip);
   const shadeGain = 0.6 * (0.45 + 0.55 * need);
   const dark = hex(mixHex(mixHex('#1B2236', '#0A1030', 1 - input.daylight), '#3A2418', input.twilight * 0.7));
