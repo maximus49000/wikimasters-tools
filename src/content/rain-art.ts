@@ -176,6 +176,44 @@ function groundAlphaAt(field: LightField, daylight: number, x: number, y: number
   return a * lerp(0.75 + 0.5 * Math.min(1, field.lightFast ? field.lightFast(x, y) : field.lightAt(x, y)), 1, daylight);
 }
 
+// ───────────── traits regroupés : un `stroke` par (alpha au 1/64, classe d'épaisseur) ─────────────
+// Les traits pleins (couche lointaine, halos de la couche proche, liserés) ne diffèrent que par leur alpha et leur épaisseur :
+// arrondis au 1/64 et à 3 classes (écart invisible sur des traits de 0,5 à 2 px), ils sont tracés par groupes. Tableaux gardés
+// d'une image à l'autre (aucune allocation une fois chauds).
+const A_STEPS = 64, W_BINS = 3;
+const widthBin = (u: number): number => clamp(Math.floor(((u - 0.8) / 0.5) * W_BINS), 0, W_BINS - 1);
+const binWidth = (wb: number): number => 0.8 + ((wb + 0.5) * 0.5) / W_BINS;
+class StrokeBatch {
+  private readonly bins: number[][] = Array.from({ length: (A_STEPS + 1) * W_BINS }, () => []);
+  private used: number[] = [];
+  push(a: number, wb: number, x0: number, y0: number, x1: number, y1: number): void {
+    const q = Math.round(clamp(a, 0, 1) * A_STEPS);
+    if (q <= 0) return;
+    const k = q * W_BINS + wb, b = this.bins[k]!;
+    if (b.length === 0) this.used.push(k);
+    b.push(x0, y0, x1, y1);
+  }
+  /** Trace puis vide chaque groupe (style donné, épaisseur selon la classe). */
+  flush(ctx: CanvasRenderingContext2D, style: string, widthOf: (wb: number) => number, mode: 'line' | 'ring' | 'dot' = 'line'): void {
+    if (this.used.length === 0) return;
+    ctx.strokeStyle = style; ctx.fillStyle = style;
+    for (const k of this.used) {
+      const b = this.bins[k]!, q = Math.floor(k / W_BINS), wb = k % W_BINS;
+      ctx.globalAlpha = q / A_STEPS; ctx.lineWidth = widthOf(wb);
+      ctx.beginPath();
+      if (mode === 'line') for (let i = 0; i < b.length; i += 4) { ctx.moveTo(b[i]!, b[i + 1]!); ctx.lineTo(b[i + 2]!, b[i + 3]!); }
+      else if (mode === 'ring') for (let i = 0; i < b.length; i += 4) { ctx.moveTo(b[i]! + b[i + 2]!, b[i + 1]!); ctx.ellipse(b[i]!, b[i + 1]!, b[i + 2]!, b[i + 3]!, 0, 0, TAU); }
+      else for (let i = 0; i < b.length; i += 4) { ctx.moveTo(b[i]! + b[i + 2]!, b[i + 1]!); ctx.arc(b[i]!, b[i + 1]!, b[i + 2]!, 0, TAU); }
+      if (mode === 'dot') ctx.fill(); else ctx.stroke();
+      b.length = 0;
+    }
+    this.used.length = 0;
+  }
+}
+const EDGES = new StrokeBatch(), HALOS = new StrokeBatch(), MAINS = new StrokeBatch();
+const RINGS = new StrokeBatch(), DOTS = new StrokeBatch();
+const LATE: number[] = []; // traits en dégradé (couches moyenne et proche), tracés un par un après les groupes
+
 // ───────────── caches par contexte : dégradés des traits (par longueur et pas de nuit) et halos (par lampadaire) ─────────────
 type Caches = { grads: Map<number, CanvasGradient>; halos: WeakMap<RainLight, { R: number; g: CanvasGradient }> };
 const CACHES = new WeakMap<CanvasRenderingContext2D, Caches>();
@@ -243,31 +281,33 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
   const edge = lowP * clamp01((daylight - 0.5) / 0.3);
   for (let li = 0; li < 3; li++) {
     const L = LAYERS[li]!;
+    const wRef = L.w * blurK; // épaisseur nominale de la couche (les gouttes vont de 0,8 à 1,3 fois)
     for (const d of sim.drops) {
       if (d.layer !== li) continue;
       const len = d.len * (1 + lean * 0.3), dx = (dirx + d.tilt) * len * nrm, dy = len * nrm;
       const a = Math.min(1, alphaAt(field, daylight, d.x, d.y, d.a) * soft * dayBoost);
       if (a < 0.015) continue;
-      if (edge > 0) { // liseré : un peu plus large, sombre, sous le trait
-        ctx.strokeStyle = EDGE_STR; ctx.globalAlpha = a * 0.5 * edge; ctx.lineWidth = d.w + 0.7;
-        ctx.beginPath(); ctx.moveTo(d.x - dx, d.y - dy); ctx.lineTo(d.x, d.y); ctx.stroke();
-      }
-      if (L.blur > 0) { // halo flou de la couche proche : même trait, plus large et pâle
-        ctx.strokeStyle = baseStr; ctx.globalAlpha = a * 0.22; ctx.lineWidth = d.w + L.blur * blurK;
-        ctx.beginPath(); ctx.moveTo(d.x - dx, d.y - dy); ctx.lineTo(d.x, d.y); ctx.stroke();
-      }
-      ctx.lineWidth = d.w; ctx.globalAlpha = a;
-      if (li > 0) { // queue transparente → tête opaque (cassure à 70 %)
-        ctx.strokeStyle = strokeGradient(ctx, caches, Math.max(1, Math.round(dy / 2)), nb);
-        ctx.translate(d.x, d.y);
-        ctx.beginPath(); ctx.moveTo(-dx, -dy); ctx.lineTo(0, 0); ctx.stroke();
-        ctx.translate(-d.x, -d.y);
-      } else {
-        ctx.strokeStyle = baseStr;
-        ctx.beginPath(); ctx.moveTo(d.x - dx, d.y - dy); ctx.lineTo(d.x, d.y); ctx.stroke();
-      }
-      if (d.big && li === 2) { ctx.fillStyle = baseStr; ctx.globalAlpha = a * 0.9; ctx.beginPath(); ctx.ellipse(d.x, d.y, d.w * 0.9, d.w * 1.4, 0, 0, TAU); ctx.fill(); }
+      const wb = widthBin(d.w / wRef);
+      if (edge > 0) EDGES.push(a * 0.5 * edge, wb, d.x - dx, d.y - dy, d.x, d.y); // liseré : un peu plus large, sombre, sous le trait
+      if (L.blur > 0) HALOS.push(a * 0.22, wb, d.x - dx, d.y - dy, d.x, d.y); // halo flou de la couche proche : même trait, large et pâle
+      if (li === 0) { MAINS.push(a, wb, d.x - dx, d.y - dy, d.x, d.y); continue; }
+      LATE.push(d.x, d.y, dx, dy, a, d.w, d.big && li === 2 ? 1 : 0);
     }
+    // traits pleins regroupés par (alpha au 1/64, épaisseur en 3 classes) : un seul `stroke` par groupe au lieu d'un par goutte
+    EDGES.flush(ctx, EDGE_STR, (wb) => binWidth(wb) * wRef + 0.7);
+    HALOS.flush(ctx, baseStr, (wb) => binWidth(wb) * wRef + L.blur * blurK);
+    MAINS.flush(ctx, baseStr, (wb) => binWidth(wb) * wRef);
+    // couches moyenne et proche : queue transparente → tête opaque (cassure à 70 %), un dégradé par goutte
+    for (let q = 0; q < LATE.length; q += 7) {
+      const x = LATE[q]!, y = LATE[q + 1]!, dx = LATE[q + 2]!, dy = LATE[q + 3]!, a = LATE[q + 4]!, w = LATE[q + 5]!;
+      ctx.lineWidth = w; ctx.globalAlpha = a;
+      ctx.strokeStyle = strokeGradient(ctx, caches, Math.max(1, Math.round(dy / 2)), nb);
+      ctx.translate(x, y);
+      ctx.beginPath(); ctx.moveTo(-dx, -dy); ctx.lineTo(0, 0); ctx.stroke();
+      ctx.translate(-x, -y);
+      if (LATE[q + 6]) { ctx.fillStyle = baseStr; ctx.globalAlpha = a * 0.9; ctx.beginPath(); ctx.ellipse(x, y, w * 0.9, w * 1.4, 0, 0, TAU); ctx.fill(); }
+    }
+    LATE.length = 0;
   }
   // gouttes qui tombent des bords : goutte allongée par la vitesse (alpha 0,5 : de l'eau, pas des flocons)
   ctx.fillStyle = baseStr;
@@ -333,30 +373,25 @@ export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, worl
       }
     }
   }
-  // éclaboussures : couronne (anneau qui s'ouvre) + gouttelettes
+  // éclaboussures : couronne (anneau qui s'ouvre) + gouttelettes ; regroupées par alpha (une couronne/des points par groupe)
   for (const s of sim.splashes) {
     const u = s.age / 0.3;
     const a = Math.min(1, groundAlphaAt(field, daylight, s.x, s.y, 0.85) * (1 - u));
     if (a <= 0) continue;
-    ctx.strokeStyle = baseStr; ctx.globalAlpha = a * 0.8; ctx.lineWidth = 0.8;
-    ctx.beginPath(); ctx.ellipse(s.x, s.y, (1 + u * 7) * s.k, (0.4 + u * 2) * s.k, 0, 0, TAU); ctx.stroke();
-    ctx.fillStyle = baseStr; ctx.globalAlpha = a;
-    ctx.beginPath();
-    for (const p of s.parts) { ctx.moveTo(p.x + 0.9 * s.k, p.y); ctx.arc(p.x, p.y, 0.9 * s.k, 0, TAU); }
-    ctx.fill();
+    RINGS.push(a * 0.8, 0, s.x, s.y, (1 + u * 7) * s.k, (0.4 + u * 2) * s.k);
+    for (const p of s.parts) DOTS.push(a, 0, p.x, p.y, 0.9 * s.k, 0);
   }
+  RINGS.flush(ctx, baseStr, () => 0.8, 'ring');
+  DOTS.flush(ctx, baseStr, () => 1, 'dot');
   // anneaux dans les flaques
   const K = worldScale(world);
-  if (sim.ripples.length) {
-    ctx.strokeStyle = tone('ripple', nb); ctx.lineWidth = 0.9;
-    for (const rp of sim.ripples) {
-      const u = rp.age / rp.life;
-      const a = Math.min(1, groundAlphaAt(field, daylight, rp.x, rp.y, 0.75) * (1 - u) * P);
-      if (a <= 0.01) continue;
-      ctx.globalAlpha = a;
-      ctx.beginPath(); ctx.ellipse(rp.x, rp.y, rp.R * u + K, (rp.R * u + K) * 0.26, 0, 0, TAU); ctx.stroke();
-    }
+  for (const rp of sim.ripples) {
+    const u = rp.age / rp.life;
+    const a = Math.min(1, groundAlphaAt(field, daylight, rp.x, rp.y, 0.75) * (1 - u) * P);
+    if (a <= 0.01) continue;
+    RINGS.push(a, 0, rp.x, rp.y, rp.R * u + K, (rp.R * u + K) * 0.26);
   }
+  RINGS.flush(ctx, tone('ripple', nb), () => 0.9, 'ring');
   // ruissellement du caniveau : lame d'eau le long de la bordure, filets clairs qui courent vers la grille, bouillon à la grille
   const gutter = world.gutter;
   const gutterIn = clamp01((P - 0.08) / 0.05); // la lame monte en fondu dès P = 0,08
