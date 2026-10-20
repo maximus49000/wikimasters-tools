@@ -22,8 +22,10 @@ import type { Sky } from '../core/library/sky';
 import type { Weather } from '../core/library/weather/weather-types';
 import {
   createRainSim, prefillRain, stepRain, RAIN_BUDGET_PHONE, RAIN_BUDGET_WIDE,
-  type RainDripKind, type RainEnv, type RainSim, type RainWorld,
+  type RainCar, type RainDripKind, type RainEnv, type RainLedge, type RainSim, type RainWorld,
 } from '../core/library/weather/rain-drops';
+import { cityPaintPlan } from '../core/library/paint/city-plan';
+import type { RainTraffic } from './rain-traffic';
 import { createGlassSim, glassActive, prefillGlass, stepGlass, GLASS_BUDGET_PHONE, GLASS_BUDGET_WIDE, type GlassSim, type Pane } from '../core/library/weather/glass-rain';
 import { createFogMask, drawGlass, drawRainAir, drawRainGround, makeLightField, type FogMask, type LightField, type RainLight } from './rain-art';
 
@@ -46,6 +48,7 @@ export function weatherPuddles(scene: SceneId, width: number, height: number, se
 }
 
 const MAX_DRIPS = 40; // points des bords qui gouttent (notes §Android)
+const MAX_PIPES = 10; // pieds des descentes de gouttière
 // Tailles de la maquette (scène 1000 × 460 aux grands immeubles : vitrines de 55 px, trottoir de 46 px) ramenées au monde de
 // l'app (≈ 1080 × 340, petites façades : vitrines ≈ 25 px, trottoir 20 px) : ≈ 0,5. Sans elle, les gouttes des bords lisaient
 // comme des flocons et les traits proches barraient passants et façades. Les vitesses gardent la même durée de traversée.
@@ -81,9 +84,12 @@ export function rainWorldFor(scene: SceneId, width: number, height: number, seed
     const outline = roofOutline(l);
     for (const [x, y] of [outline[0]!, outline[outline.length - 1]!]) if (inside(x, y + 0.5)) drips.push({ x, y: y + 0.5, kind: 'toit' });
   }
-  // bandeau des boutiques (au-dessus de la vitrine) : on y voit l'eau perler et tomber sur le trottoir
+  // bandeau des boutiques (au-dessus de la vitrine) : on y voit l'eau perler et tomber sur le trottoir ; son dessus est un
+  // rebord où les gouttes s'écrasent
+  const ledges: RainLedge[] = [];
   for (const slot of shopSlotsFor(width, height, seed)) {
     const sign = shopFrame(slot, m.ground).sign;
+    if (near(sign.x + sign.w / 2, sign.w)) ledges.push({ x0: sign.x, x1: sign.x + sign.w, y: sign.y });
     for (const u of [0.22 + rng() * 0.15, 0.62 + rng() * 0.15]) {
       const x = sign.x + sign.w * u;
       if (inside(x, sign.y + sign.h)) drips.push({ x, y: sign.y + sign.h, kind: 'auvent' });
@@ -94,8 +100,15 @@ export function rainWorldFor(scene: SceneId, width: number, height: number, seed
     const j = Math.floor(rng() * (i + 1));
     [drips[i], drips[j]] = [drips[j]!, drips[i]!];
   }
-  const kept = drips.slice(0, MAX_DRIPS).filter((d) => near(d.x, 20)).sort((a, b) => a.x - b.x);
-  return { ...base, drips: kept, gutter: { y: m.curb, grateX: Math.round(width * (0.25 + 0.5 * rng())) } };
+  // descentes de gouttière peintes sur les façades du premier plan (facade-painter : à 1,6 px du bord droit) : l'eau sort au pied
+  const pipes: { x: number; y: number; kind: RainDripKind }[] = [];
+  for (const b of cityPaintPlan(width, height, seed).buildings) {
+    if (b.far || !b.look.pipe) continue;
+    const x = b.x + b.w - 1.05;
+    if (x > 0 && x < width && near(x, 20)) pipes.push({ x, y: m.ground - 1.5, kind: 'gouttiere' });
+  }
+  const kept = [...drips.slice(0, MAX_DRIPS), ...pipes.slice(0, MAX_PIPES)].filter((d) => near(d.x, 20)).sort((a, b) => a.x - b.x);
+  return { ...base, drips: kept, ledges, gutter: { y: m.curb, grateX: Math.round(width * (0.25 + 0.5 * rng())) } };
 }
 
 /** Lumières de la scène pour la pluie : lampadaires allumés (lanterne) et vitrines des commerces ouverts (`shops`, la nuit) ;
@@ -230,7 +243,7 @@ function createLoop(frame: (dt: number) => boolean, idle: () => void, minMs = 0)
 }
 
 // ───────────── pluie dehors : une simulation, deux canvas (sol + air) ─────────────
-export type RainHubConfig = { world: RainWorld; seed: number; soft: boolean; clock: Clock; sky: Sky; lights: readonly RainLight[] };
+export type RainHubConfig = { world: RainWorld; seed: number; soft: boolean; clock: Clock; sky: Sky; lights: readonly RainLight[]; traffic?: RainTraffic | null };
 export type RainHub = {
   attach(role: 'ground' | 'air', cv: HTMLCanvasElement, box: Box): void;
   detach(role: 'ground' | 'air'): void;
@@ -251,6 +264,9 @@ export function createRainHub(): RainHub {
   let lastWet = -1;
   const env: RainEnv = { precip: 0, wind: 0, daylight: 1, t: 0 };
   const groundEnv: RainEnv & { wet: number } = { precip: 0, wind: 0, daylight: 1, t: 0, wet: 0 };
+  const cars: RainCar[] = [];
+  // véhicules de la scène, relus à chaque pas (vue rue comme derrière la vitre)
+  const readCars = (): readonly RainCar[] => (cfg?.traffic ? cfg.traffic.read(Date.now(), cars) : ((cars.length = 0), cars));
 
   const read = (): Weather => cfg!.clock.read(Date.now());
   const fillEnv = (w: Weather): void => {
@@ -259,7 +275,7 @@ export function createRainHub(): RainHub {
     env.daylight = cfg!.sky.daylight;
     env.t = t;
   };
-  const busy = (s: RainSim): boolean => s.drops.length > 0 || s.splashes.length > 0 || s.ripples.length > 0 || s.drips.length > 0;
+  const busy = (s: RainSim): boolean => s.drops.length > 0 || s.splashes.length > 0 || s.ripples.length > 0 || s.drips.length > 0 || s.sprays.length > 0;
 
   const paint = (w: Weather): void => {
     if (!sim || !field || !cfg) return;
@@ -270,7 +286,7 @@ export function createRainHub(): RainHub {
       if (c) {
         Object.assign(groundEnv, env);
         groundEnv.wet = wet;
-        drawRainGround(c, sim, cfg.world, groundEnv, field);
+        drawRainGround(c, sim, cfg.world, groundEnv, field, cars);
       }
     }
     if (surfaces.air) {
@@ -288,7 +304,8 @@ export function createRainHub(): RainHub {
     t += dt;
     const w = read();
     fillEnv(w);
-    stepRain(sim, env, dt);
+    env.wet = wetOf(w);
+    stepRain(sim, env, dt, readCars());
     if (++frames % RESIZE_EVERY === 0) for (const s of [surfaces.ground, surfaces.air]) if (s) s.dirty = true;
     paint(w);
     return env.precip > 0 || busy(sim);
@@ -387,6 +404,8 @@ export type RainCanvasProps = {
   hub?: RainHub;
   /** Vue pièce : rectangle réellement vu (englobant des vitres) ; le canvas ne couvre que lui. */
   clip?: Box;
+  /** Véhicules de la scène (gerbes des roues, gouttes sur les toits, reflets des feux) ; absent = aucun. */
+  traffic?: RainTraffic | null;
 };
 
 // Haut du canvas « sol » : un peu au-dessus du sol (gouttelettes des éclaboussures qui rebondissent).
@@ -415,8 +434,8 @@ function RainLayerCanvas(p: RainCanvasProps & { role: 'ground' | 'air' }): React
     return () => hub.detach(p.role);
   }, [hub, p.role, box]);
   useLayoutEffect(() => {
-    hub.configure({ world: p.world, seed: p.seed, soft: p.soft ?? false, clock: p.clock, sky: p.sky, lights: p.lights });
-  }, [hub, p.world, p.seed, p.soft, p.clock, p.sky, p.lights, box]);
+    hub.configure({ world: p.world, seed: p.seed, soft: p.soft ?? false, clock: p.clock, sky: p.sky, lights: p.lights, traffic: p.traffic ?? null });
+  }, [hub, p.world, p.seed, p.soft, p.clock, p.sky, p.lights, p.traffic, box]);
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const on = (): void => hub.resized();

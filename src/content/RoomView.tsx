@@ -34,6 +34,7 @@ import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { reducedMotion } from './ghibli-sky';
 import { WindowArt, glassRect } from './window-art';
 import { RainGlassCanvas, rainLightsFor } from './rain-canvas';
+import { createRainTraffic, RainTrafficContext } from './rain-traffic';
 import type { RainLight } from './rain-art';
 import { useStreetShops } from './use-street-shops';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
@@ -206,6 +207,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   useEffect(() => () => figures.dispose(), [figures]);
   // Sprites peints des voitures Ghibli : même cycle de vie.
   const cars = useMemo(() => new CarRegistry(`${worldId}-car`), [worldId]);
+  const rainTraffic = useMemo(() => createRainTraffic(), [worldId]); // eslint-disable-line react-hooks/exhaustive-deps
   const shops = useMemo(() => new ShopRegistry(`${worldId}-shop`), [worldId]);
   // Accessoires de rue Ghibli (G5) : une instance partagée par le décor fixe et les acteurs.
   const propSprites = useMemo(() => new PropRegistry(`${worldId}-prop`), [worldId]);
@@ -794,15 +796,17 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
         <FigureContext.Provider value={figures}>
           <ShopContext.Provider value={shops}>
           <CarContext.Provider value={cars}>
+          <RainTrafficContext.Provider value={rainTraffic}>
           <PropContext.Provider value={propSprites}>
             <SceneActors scene={room.scene} width={width} height={wallH} sky={view.sky} minutes={view.minutes} seed={hashString(room.id)} gloom={gloom} rainy={rainy} city={city} forcedNight={forcedNight} weather={weatherClock} />
           </PropContext.Provider>
+          </RainTrafficContext.Provider>
           </CarContext.Provider>
           </ShopContext.Provider>
         </FigureContext.Provider>
       </g>
     ),
-    [worldId, figures, cars, propSprites, room.scene, room.id, width, wallH, view.sky, view.minutes, gloom, rainy, city, forcedNight, weatherClock],
+    [worldId, figures, cars, rainTraffic, propSprites, room.scene, room.id, width, wallH, view.sky, view.minutes, gloom, rainy, city, forcedNight, weatherClock],
   );
   // La fenêtre soulevée n'a plus de vue à sa place (sa copie porte la sienne) : seul son cadre estompé reste sur le mur.
   const shownGlasses = glasses.filter((_, i) => windows[i]!.id !== drag?.id);
@@ -856,7 +860,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
           </g>
           {/* Météo : deux groupes (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. Sans météo, les acteurs seuls. */}
           {weatherOn && view.weather ? (
-            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} gloom={gloom} between={actors} rainLights={rainLights} rainSoft={!outside} rainClip={outside ? null : rainClip} />
+            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} gloom={gloom} between={actors} rainLights={rainLights} rainSoft={!outside} rainClip={outside ? null : rainClip} rainTraffic={rainTraffic} />
           ) : (
             actors
           )}

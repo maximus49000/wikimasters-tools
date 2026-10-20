@@ -17,6 +17,7 @@ import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
 import { celestialPlace } from './scene-panorama';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
+import type { RainTraffic } from './rain-traffic';
 
 // Scènes qui ont une météo : l'espace et la Terre vue de l'orbite n'en ont pas.
 export const WEATHER_SCENES: readonly SceneId[] = ['city', 'countryside', 'mountain', 'sea'];
@@ -41,6 +42,8 @@ type Props = {
   rainSoft?: boolean;
   /** Vue pièce : rectangle réellement vu (englobant des vitres, objet STABLE) ; la pluie n'est animée et dessinée que là. */
   rainClip?: { x: number; y: number; w: number; h: number } | null;
+  /** Véhicules de la scène, publiés par la circulation (gerbes des roues, gouttes sur les toits, reflets des feux). */
+  rainTraffic?: RainTraffic | null;
 };
 const NO_LIGHTS: readonly RainLight[] = [];
 
@@ -234,7 +237,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       set(nodes.fog, w.fog * 0.8);
       set(nodes.snowFar, snow * 0.8);
       set(nodes.snowNear, snow);
-      set(nodes.puddles, w.wet);
+      // flaques déjà lisibles sous la bruine (sol à 0,35) : réponse relevée aux faibles valeurs, pleine dès 0,6
+      set(nodes.puddles, Math.min(1, w.wet * 1.7));
       set(nodes.snowCover, w.snowCover);
       set(nodes.rainbow, rainbowOf(w, daylight));
       // Motifs : seulement s'ils se voient (et figés si moins de mouvement).
@@ -320,7 +324,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   return placeRef;
 }
 
-function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, between, gloom = false, rainLights = NO_LIGHTS, rainSoft = false, rainClip = null }: Props): ReactElement {
+function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, between, gloom = false, rainLights = NO_LIGHTS, rainSoft = false, rainClip = null, rainTraffic = null }: Props): ReactElement {
   // Préfixe des motifs/dégradés, propre à chaque pièce (deux pièces affichées ne partagent pas leurs motifs).
   const uid = `wx${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const floorFrac = CLOUD_FLOOR[scene] ?? 0.45;
@@ -381,7 +385,10 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   // Pluie naturelle : une simulation partagée par le canvas du sol (sous les acteurs) et celui de l'air (au-dessus).
   const rainHub = useRainHub();
   const rainWorld = useMemo(() => rainWorldFor(scene, width, height, seed, rainClip ?? undefined), [scene, width, height, seed, rainClip]);
-  const rainProps = { width, height, scene, seed, clock, sky, lights: rainLights, world: rainWorld, soft: rainSoft, hub: rainHub, clip: rainClip ?? undefined };
+  const rainProps = { width, height, scene, seed, clock, sky, lights: rainLights, world: rainWorld, soft: rainSoft, hub: rainHub, clip: rainClip ?? undefined, traffic: rainTraffic };
+  // Flaques : eau grise et bleutée le jour, sombre la nuit (elles ne renvoient plus qu'un peu de ciel ; les reflets des
+  // lumières sont dans le canvas du sol).
+  const puddleFill = mixHex('#9FB4C8', '#36435A', clamp01((0.7 - sky.daylight) / 0.5));
   const arcFoot = height * (ARC_FOOT[scene] ?? 0.78);
   const arc = width * 0.28;
   // Filets : éventail vers le bas depuis le soleil (posé au milieu la nuit, éteint de toute façon).
@@ -404,7 +411,7 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
       {/* Sol : flaques et neige, sous les passants et les voitures. */}
       <g data-weather-ground="" data-window-weather-ground="" data-scene={scene} id={groundId} ref={groundRoot}>
         <g data-wx="puddles" opacity={0}>
-          {puddles.map((p, i) => <ellipse key={i} cx={p.x} cy={p.y} rx={p.rx} ry={p.rx * 0.18} fill="#9FB4C8" opacity={0.6} />)}
+          {puddles.map((p, i) => <ellipse key={i} cx={p.x} cy={p.y} rx={p.rx} ry={p.rx * 0.18} fill={puddleFill} opacity={0.6} />)}
         </g>
         {/* Sol mouillé de la pluie (éclaboussures, anneaux, caniveau, reflets) : sous les passants et les voitures. */}
         <RainGroundCanvas {...rainProps} />
