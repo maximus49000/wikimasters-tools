@@ -129,6 +129,7 @@ function alphaAt(field: LightField, daylight: number, x: number, y: number, a: n
 const worldScale = (w: RainWorld): number => (w.scale !== undefined && w.scale > 0 ? w.scale : 1);
 const worldSpeed = (w: RainWorld): number => (w.speed !== undefined && w.speed > 0 ? w.speed : 1);
 const DRIP_A = 0.5; // gouttes et perles des bords
+const EDGE_STR = 'rgba(84,102,128,1)'; // liseré gris-bleu de la bruine de jour
 
 // Marques au sol (éclaboussures, anneaux) : plancher de nuit plus haut que la pluie qui tombe (0,75 au lieu de 0,3) — une fois
 // ramenées à l'échelle du monde, elles disparaissaient la nuit hors des cônes ; le sol mouillé renvoie la lumière diffuse.
@@ -197,13 +198,22 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
   // gouttes, par couche (loin → proche)
   const soft = sim.soft ? 0.85 : 1;
   const K = worldScale(world), blurK = Math.sqrt(K); // tailles à l'échelle du monde (épaisseurs en √)
+  // Bruine de jour : traits clairs presque invisibles sur les façades claires. Plancher d'alpha (× 1,9 à P ≤ 0,25, rien dès
+  // P = 0,5) et liseré gris-bleu fin sous le trait clair (même fondu, seulement de jour) : la pluie se lit sans s'épaissir.
+  const lowP = clamp01((0.5 - P) / 0.25);
+  const dayBoost = 1 + 0.9 * lowP * daylight;
+  const edge = lowP * clamp01((daylight - 0.5) / 0.3);
   for (let li = 0; li < 3; li++) {
     const L = LAYERS[li]!;
     for (const d of sim.drops) {
       if (d.layer !== li) continue;
       const len = d.len * (1 + lean * 0.3), dx = (dirx + d.tilt) * len * nrm, dy = len * nrm;
-      const a = alphaAt(field, daylight, d.x, d.y, d.a) * soft;
+      const a = Math.min(1, alphaAt(field, daylight, d.x, d.y, d.a) * soft * dayBoost);
       if (a < 0.015) continue;
+      if (edge > 0) { // liseré : un peu plus large, sombre, sous le trait
+        ctx.strokeStyle = EDGE_STR; ctx.globalAlpha = a * 0.5 * edge; ctx.lineWidth = d.w + 0.7;
+        ctx.beginPath(); ctx.moveTo(d.x - dx, d.y - dy); ctx.lineTo(d.x, d.y); ctx.stroke();
+      }
       if (L.blur > 0) { // halo flou de la couche proche : même trait, plus large et pâle
         ctx.strokeStyle = baseStr; ctx.globalAlpha = a * 0.22; ctx.lineWidth = d.w + L.blur * blurK;
         ctx.beginPath(); ctx.moveTo(d.x - dx, d.y - dy); ctx.lineTo(d.x, d.y); ctx.stroke();

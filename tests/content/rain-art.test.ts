@@ -72,6 +72,25 @@ describe('drawRainAir', () => {
     expect(strokes(ctx)).toBe(sim.drops.length + near);
   });
 
+  it('bruine de jour : liseré gris-bleu sous chaque trait et alpha relevé ; rien de tel la nuit', () => {
+    const world: RainWorld = { ...WORLD, drips: [], gutter: null };
+    const sim = createRainSim(world, 7, { soft: false, budget: RAIN_BUDGET_WIDE });
+    const e = env(0.25, 1);
+    prefillRain(sim, e);
+    const field = makeLightField([], SKY_DAY, 460);
+    const ctx = fakeCtx();
+    const alphas: number[] = [];
+    const stroke = ctx.stroke;
+    ctx.stroke = () => { alphas.push(ctx.globalAlpha); stroke(); };
+    drawRainAir(asCtx(ctx), sim, world, e, field);
+    const near = sim.drops.filter((d) => d.layer === 2).length;
+    expect(strokes(ctx)).toBe(2 * sim.drops.length + near); // liseré + trait (+ halo des proches)
+    expect(Math.max(...alphas)).toBeGreaterThanOrEqual(Math.min(1, 1.5 * Math.max(...sim.drops.map((d) => d.a)))); // alpha relevé (× 1,9)
+    const night = fakeCtx();
+    drawRainAir(asCtx(night), sim, world, env(0.25, 0), makeLightField([], SKY_NIGHT, 460));
+    expect(strokes(night)).toBe(sim.drops.length + near);
+  });
+
   it('la nuit, une goutte hors des lumières reste visible (30 %) et aucune n\'est sautée', () => {
     const world: RainWorld = { ...WORLD, drips: [], gutter: null };
     const sim = createRainSim(world, 7, { soft: false, budget: RAIN_BUDGET_WIDE });
