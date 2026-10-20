@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Maquette — pluie naturelle (vitre et rue, cellulo Ghibli)</title>
+<style>
+  body { background: #1c1a22; color: #eee; font: 13px/1.4 system-ui, sans-serif; margin: 0; padding: 12px; }
+  h2 { font-weight: 500; margin: 18px 0 6px; color: #d9d2c0; }
+  canvas { display: block; background: #000; max-width: 100%; height: auto; border: 1px solid #333; }
+  #bar { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 0 0 10px; }
+  #bar label { display: inline-flex; gap: 6px; align-items: center; color: #cfc8b8; }
+  #bar input[type=range] { width: 120px; }
+  #bar button { background: #2c2a33; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+  #hud { color: #8a8; font-family: ui-monospace, monospace; font-size: 12px; }
+  p.help { color: #aaa; max-width: 960px; }
+  .gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 10px; }
+  .gal img { width: 100%; border: 1px solid #333; display: block; } .gal figcaption { color: #bbb; margin: 4px 0 0; }
+</style>
+<body>
+<div id="bar">
+  <label>Vue <select id="view"><option value="rue">rue plein écran (dehors)</option><option value="piece">pièce (derrière la vitre)</option></select></label>
+  <label>Intensité (precip) <input id="precip" type="range" min="0" max="1" step="0.01"></label>
+  <label>Vent <input id="wind" type="range" min="0" max="1" step="0.01"></label>
+  <label>Jour ↔ nuit <input id="daylight" type="range" min="0" max="1" step="0.01"></label>
+  <label><input id="storm" type="checkbox"> orage</label>
+  <button id="pause">❚❚</button>
+  <button data-preset="piece-jour-bruine">piece-jour-bruine</button> <button data-preset="piece-nuit-averse">piece-nuit-averse</button> <button data-preset="rue-nuit-averse">rue-nuit-averse</button> <button data-preset="rue-jour-bruine">rue-jour-bruine</button> <button data-preset="rue-nuit-orage">rue-nuit-orage</button>
+  <span id="hud"></span>
+</div>
+<canvas id="scene"></canvas>
+<p class="help">Intensité = le <code>precip</code> 0-1 de la météo réelle du lieu (dans l'app, pas de réglage à part : densité des gouttes, gouttes sur la vitre, éclaboussures, anneaux, ruissellement en découlent tous). Capture déterministe : <code>?preset=rue-nuit-averse&amp;t=20&amp;scale=2</code> (+ <code>flash=1</code> pour figer un éclair).</p>
+<h2>Galerie (captures ×2)</h2>
+<div class="gal"><figure><img src="piece-jour-bruine.png" alt="piece-jour-bruine"><figcaption>piece-jour-bruine</figcaption></figure><figure><img src="piece-nuit-averse.png" alt="piece-nuit-averse"><figcaption>piece-nuit-averse</figcaption></figure><figure><img src="rue-nuit-averse.png" alt="rue-nuit-averse"><figcaption>rue-nuit-averse</figcaption></figure><figure><img src="rue-jour-bruine.png" alt="rue-jour-bruine"><figcaption>rue-jour-bruine</figcaption></figure><figure><img src="rue-nuit-orage.png" alt="rue-nuit-orage"><figcaption>rue-nuit-orage</figcaption></figure></div>
+<script>window.onerror=(m,s,l,c)=>{window.__err=(window.__err||"")+m+" @"+l+":"+c+"\n"};</script>
+<script>
+// ═══════════ 01-cel.js ═══════════
+// ───────────── outils cellulo (copie de paint/cel.ts, comme les chantiers précédents) ─────────────
+const TAU = Math.PI * 2;
+const hex = (s) => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+const rgba = (c, a = 1) => `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const SUN = hex('#FFF6D0'), COOL = hex('#5A4A9C'), INK = '#2A1A18', INKC = hex('#2A1A18'), WHITE = [255, 255, 255];
+const NIGHT = hex('#1E2A5A');
+const lum = (c) => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
+function mulberry32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t, sat = (v) => (v < 0 ? 0 : v > 1 ? 1 : v), smooth = (t) => t * t * (3 - 2 * t);
+const smoothstep = (a, b, v) => smooth(sat((v - a) / (b - a)));
+
+// Environnement de la scène : dark = 1 - daylight ; amb() applique la teinte de nuit comme dans les chantiers Ghibli.
+let ENV = { daylight: 1, dark: 0, precip: 0.5, wind: 0.3, storm: false };
+const amb = (c) => mix(c, NIGHT, ENV.dark * 0.78);
+const col = (c, a = 1) => rgba(amb(typeof c === 'string' ? hex(c) : c), a);
+function fillRect(ctx, c, x, y, w, h) { ctx.fillStyle = col(c); ctx.fillRect(x, y, w, h); }
+function rawRect(ctx, css, x, y, w, h) { ctx.fillStyle = css; ctx.fillRect(x, y, w, h); }
+function poly(ctx, c, pts, raw = false) { ctx.fillStyle = raw ? c : col(c); ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill(); }
+function disc(ctx, c, x, y, r, raw = false) { ctx.fillStyle = raw ? c : col(c); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+function ellipse(ctx, css, x, y, rx, ry) { ctx.fillStyle = css; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU); ctx.fill(); }
+function inkRect(ctx, x, y, w, h, lw = 0.8) { ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h); }
+function inkLine(ctx, pts, lw = 0.7, close = false) { ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); if (close) ctx.closePath(); ctx.stroke(); }
+function radial(ctx, x, y, r, c, a0, a1 = 0) { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgba(c, a0)); g.addColorStop(1, rgba(c, a1)); return g; }
+
+// Palette (chantier 1 + habitants)
+const STONES = ['#EDE2C8', '#E8DCC0', '#F0E6D0', '#E4D6BA', '#EAD5B0', '#F2E8D4'];
+const PLASTERS = ['#F6E2B4', '#EEC79A', '#CFE0B8', '#E0C8A0', '#F4D89C', '#E6BCD0'];
+const ZINCS = ['#8290A2', '#98A4B4', '#7A8AA0'];
+const GLASS_DAY = '#7FB4E0', GLASS_NIGHT = '#232D52';
+const LIT = { warm: '#FFD86A', cream: '#FFF0C0', orange: '#FFB048', tv: '#9CC4FF', cool: '#C8DCFF', neon: '#FFB7C5' };
+// Pluie : gouttes et eau (toujours « raw », jamais teintées par amb : c'est de la lumière)
+const RAIN = hex('#E6EDF7'), RAIN_NIGHT = hex('#C9D6EA'), WATER_DAY = hex('#9FB4C8'), WATER_NIGHT = hex('#1C2440');
+const SCENE_W = 1000, SCENE_H = 460;
+// Vent : rafales = somme de sinus lentes (déterministe) → facteur 0,45..1,55 appliqué à l'inclinaison et à la dérive.
+const gust = (t) => 1 + 0.32 * Math.sin(t * 0.61) * Math.sin(t * 0.23 + 1.3) + 0.22 * Math.sin(t * 1.7 + 0.4) * Math.max(0, Math.sin(t * 0.13));
+
+// ═══════════ 02-rue.js ═══════════
+// ───────────── décor de rue (cellulo, simplifié : ce n'est pas l'objet de la maquette) ─────────────
+// Géométrie partagée avec la pluie : sol, lampadaires, vitrines, bords qui gouttent, flaques.
+const GROUND = { sidewalkY: 300, curbY: 346, roadY: 352, bottom: SCENE_H };
+const LAMPS = [{ x: 170, y: 212 }, { x: 500, y: 212 }, { x: 830, y: 212 }];
+const CORNICE_Y = 244;                                                  // balcon filant / corniche
+const AWNING = { x0: 382, x1: 522, yTop: 246, yEdge: 262 };            // auvent du café
+const BUILDINGS = (() => {
+  const r = mulberry32(77);
+  const out = []; let x = -30; let i = 0;
+  while (x < SCENE_W + 40) {
+    const w = 110 + Math.floor(r() * 70);
+    const top = 70 + Math.floor(r() * 70);
+    const fill = i % 3 === 1 ? PLASTERS[Math.floor(r() * PLASTERS.length)] : STONES[Math.floor(r() * STONES.length)];
+    const cols = Math.max(3, Math.floor((w - 24) / 24));
+    const rows = Math.floor((CORNICE_Y - top - 26) / 30);
+    const wins = [];
+    for (let c = 0; c < cols; c++) for (let f = 0; f < rows; f++) {
+      const lit = r() < 0.24 ? [LIT.warm, LIT.cream, LIT.orange, LIT.tv, LIT.cool][Math.floor(r() * 5)] : null;
+      wins.push({ x: x + 14 + c * ((w - 28) / cols), y: top + 26 + f * 30, lit, curtain: r() < 0.3 });
+    }
+    const shop = { x0: x + 10, x1: x + w - 34, lit: [LIT.cream, LIT.cool, LIT.neon, LIT.warm][i % 4], tone: ['#2F5D50', '#2E4A6E', '#5A3A2E', '#8A5A8E'][i % 4] };
+    out.push({ x, w, top, fill, zinc: ZINCS[i % 3], wins, shop });
+    x += w; i++;
+  }
+  return out;
+})();
+const SHOPS = BUILDINGS.map((b) => b.shop);
+// Points qui gouttent : bord de l'auvent (tous les 16 px), coins de corniche, descente de gouttière.
+const DRIP_POINTS = (() => {
+  const pts = [];
+  for (let x = AWNING.x0 + 9; x < AWNING.x1; x += 16) pts.push({ x, y: AWNING.yEdge + 1, kind: 'auvent' });
+  for (const b of BUILDINGS) { if (b.x > 0 && b.x < SCENE_W) { pts.push({ x: b.x + 3, y: CORNICE_Y + 2, kind: 'corniche' }); pts.push({ x: b.x + b.w * 0.5, y: b.top + 1, kind: 'toit' }); } }
+  pts.push({ x: 690, y: CORNICE_Y + 2, kind: 'gouttiere' });
+  return pts;
+})();
+const PUDDLES = [
+  { x: 120, y: 330, rx: 34 }, { x: 640, y: 338, rx: 48 }, { x: 940, y: 326, rx: 26 },
+  { x: 260, y: 395, rx: 70 }, { x: 540, y: 430, rx: 90 }, { x: 820, y: 385, rx: 55 }, { x: 60, y: 440, rx: 60 },
+];
+// Sources de lumière pour les reflets au sol et pour éclairer les gouttes la nuit.
+function lightSources() {
+  const s = [];
+  for (const l of LAMPS) s.push({ x: l.x, y: l.y, w: 10, c: hex(LIT.warm), k: 1 });
+  for (const sh of SHOPS) if (sh.x1 > 0 && sh.x0 < SCENE_W) s.push({ x: (sh.x0 + sh.x1) / 2, y: 296, w: (sh.x1 - sh.x0) / 2, c: hex(sh.lit), k: 0.7 });
+  return s;
+}
+const LIGHTS = lightSources();
+// Éclairement d'un point par les lampadaires et vitrines (0..~1,5) : sert à moduler l'alpha des gouttes la nuit.
+function lightAt(x, y) {
+  let f = 0;
+  for (const l of LAMPS) {
+    const dy = y - l.y;
+    if (dy > -8) { const hw = 12 + dy * 0.6; const d = Math.abs(x - l.x); if (d < hw) f += (1 - d / hw) * clamp(1 - dy / 300, 0.25, 1); }
+    const r = Math.hypot(x - l.x, y - l.y); if (r < 80) f += (1 - r / 80) * 0.9;
+  }
+  if (y > 236 && y < 330) for (const sh of SHOPS) if (x > sh.x0 - 14 && x < sh.x1 + 14) f += y < 300 ? 0.6 : 0.35 * (1 - (y - 300) / 30);
+  return f;
+}
+
+function paintSky(ctx) {
+  const d = ENV.daylight, rain = ENV.precip;
+  const top = mix(mix(hex('#141A33'), hex('#8FA3B8'), d), hex('#5E6878'), d * rain * 0.6);
+  const bot = mix(mix(hex('#232D52'), hex('#C9D3DA'), d), hex('#8A94A0'), d * rain * 0.5);
+  const g = ctx.createLinearGradient(0, 0, 0, 300); g.addColorStop(0, rgba(top)); g.addColorStop(1, rgba(bot));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, SCENE_W, SCENE_H);
+  // nuages plats (bande claire en haut, aplat dessous) ; de nuit à peine visibles
+  const cc = mix(mix(hex('#1A2240'), hex('#AAB4C0'), d), mix(hex('#262E4A'), hex('#6A7280'), d), rain * 0.7);
+  for (const [cx, cy, w] of [[120, 40, 190], [420, 22, 260], [760, 50, 220], [980, 30, 170]]) {
+    ctx.fillStyle = rgba(cc, 0.35 + 0.65 * d); ctx.beginPath();
+    ctx.ellipse(cx, cy, w / 2, 20, 0, 0, TAU); ctx.ellipse(cx - w * 0.22, cy + 6, w * 0.3, 16, 0, 0, TAU); ctx.ellipse(cx + w * 0.25, cy + 4, w * 0.28, 15, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = rgba(mix(cc, WHITE, 0.14), 0.35 + 0.65 * d); ctx.beginPath(); ctx.ellipse(cx - w * 0.05, cy - 8, w * 0.32, 8, 0, 0, TAU); ctx.fill();
+  }
+  // lointain
+  const far = mix(hex('#1E2642'), hex('#8894A8'), d);
+  const r = mulberry32(5);
+  for (let x = -20; x < SCENE_W; x += 64 + r() * 40) {
+    const h = 120 + r() * 120, w = 60 + r() * 50; ctx.fillStyle = rgba(far); ctx.fillRect(x, 300 - h, w, h);
+    if (d < 0.5) for (let k = 0; k < 6; k++) if (r() < 0.5) { ctx.fillStyle = rgba(hex(LIT.cream), 0.5 * (1 - d * 2)); ctx.fillRect(x + 8 + r() * (w - 16), 300 - h + 10 + r() * (h - 40), 4, 5); }
+  }
+}
+
+function paintFacades(ctx) {
+  const d = ENV.daylight;
+  const glassDay = mix(hex(GLASS_DAY), hex('#8A98A8'), 0.55 * ENV.precip);
+  for (const b of BUILDINGS) {
+    fillRect(ctx, b.fill, b.x, b.top, b.w, GROUND.sidewalkY - b.top);
+    // toit zinc
+    fillRect(ctx, b.zinc, b.x, b.top - 14, b.w, 16); inkRect(ctx, b.x, b.top - 14, b.w, 16);
+    // fenêtres
+    for (const w of b.wins) {
+      if (w.lit && d < 0.6) { ctx.fillStyle = rgba(hex(w.lit), 0.95 * (1 - d / 0.6)); ctx.fillRect(w.x, w.y, 14, 22); ctx.fillStyle = col(w.curtain ? mix(hex(w.lit), hex('#F4E6D0'), 0.5) : GLASS_NIGHT, w.curtain ? 0.6 : 0.2); ctx.fillRect(w.x, w.y, 14, 22); }
+      else { ctx.fillStyle = col(mix(glassDay, hex(GLASS_NIGHT), ENV.dark)); ctx.fillRect(w.x, w.y, 14, 22); }
+      inkRect(ctx, w.x, w.y, 14, 22, 0.8); inkLine(ctx, [[w.x + 7, w.y], [w.x + 7, w.y + 22]], 0.6);
+      fillRect(ctx, '#B8B0A0', w.x - 2, w.y + 22, 18, 2);
+    }
+    // corniche + balcon filant
+    fillRect(ctx, '#D8CCB0', b.x, CORNICE_Y - 4, b.w, 5); inkLine(ctx, [[b.x, CORNICE_Y + 1], [b.x + b.w, CORNICE_Y + 1]], 0.8);
+    ctx.strokeStyle = INK; ctx.lineWidth = 0.6; ctx.beginPath(); for (let x = b.x + 4; x < b.x + b.w; x += 5) { ctx.moveTo(x, CORNICE_Y - 4); ctx.lineTo(x, CORNICE_Y - 12); } ctx.moveTo(b.x, CORNICE_Y - 12); ctx.lineTo(b.x + b.w, CORNICE_Y - 12); ctx.stroke();
+    // rez-de-chaussée : vitrine + porte
+    const sh = b.shop;
+    fillRect(ctx, sh.tone, b.x, CORNICE_Y + 2, b.w, GROUND.sidewalkY - CORNICE_Y - 2);
+    const litA = d < 0.7 ? 1 - d / 0.7 : 0;
+    ctx.fillStyle = rgba(mix(amb(hex('#3A4458')), hex(sh.lit), litA)); ctx.fillRect(sh.x0, 254, sh.x1 - sh.x0, 42);
+    if (litA > 0) { ctx.fillStyle = rgba(mix(hex(sh.lit), WHITE, 0.3), 0.5 * litA); ctx.fillRect(sh.x0 + 6, 258, (sh.x1 - sh.x0) * 0.4, 10); ctx.fillStyle = rgba(INKC, 0.35 * litA); ctx.fillRect(sh.x0 + 8, 282, (sh.x1 - sh.x0) - 16, 10); }
+    inkRect(ctx, sh.x0, 254, sh.x1 - sh.x0, 42, 1);
+    fillRect(ctx, '#2E3A4A', sh.x1 + 6, 262, 16, 34); inkRect(ctx, sh.x1 + 6, 262, 16, 34, 0.8);
+    inkLine(ctx, [[b.x, b.top], [b.x, GROUND.sidewalkY]], 0.8);
+  }
+  // auvent rayé
+  const A = AWNING; const stripes = 8; const sw = (A.x1 - A.x0) / stripes;
+  for (let i = 0; i < stripes; i++) poly(ctx, i % 2 ? '#F4F0E0' : '#C85A3A', [[A.x0 + i * sw, A.yTop], [A.x0 + (i + 1) * sw, A.yTop], [A.x0 + (i + 1) * sw - 6, A.yEdge], [A.x0 + i * sw - 6, A.yEdge]]);
+  ctx.strokeStyle = INK; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(A.x0 - 6, A.yEdge); for (let x = A.x0 - 6; x < A.x1 - 6; x += 10) ctx.arc(x + 5, A.yEdge, 5, Math.PI, 0, true); ctx.stroke();
+  inkLine(ctx, [[A.x0, A.yTop], [A.x1, A.yTop]], 0.9);
+  // gouttière (descente)
+  fillRect(ctx, '#8290A2', 688, 90, 4, CORNICE_Y - 90); inkRect(ctx, 688, 90, 4, CORNICE_Y - 90, 0.6);
+}
+
+function paintGround(ctx, wet) {
+  const d = ENV.daylight;
+  const dark = wet * 0.45;
+  const side = mix(amb(hex('#B4B0AA')), amb(hex('#3C3E4A')), dark), road = mix(amb(hex('#78767E')), amb(hex('#2E3040')), dark);
+  rawRect(ctx, rgba(side), 0, GROUND.sidewalkY, SCENE_W, GROUND.curbY - GROUND.sidewalkY);
+  rawRect(ctx, rgba(road), 0, GROUND.roadY, SCENE_W, SCENE_H - GROUND.roadY);
+  // dalles
+  ctx.strokeStyle = rgba(INKC, 0.35); ctx.lineWidth = 0.6; ctx.beginPath(); for (let x = 0; x < SCENE_W; x += 40) { ctx.moveTo(x, GROUND.sidewalkY); ctx.lineTo(x - 10, GROUND.curbY); } ctx.stroke();
+  // bordure + caniveau
+  rawRect(ctx, rgba(mix(side, WHITE, 0.12)), 0, GROUND.curbY - 4, SCENE_W, 4); inkLine(ctx, [[0, GROUND.curbY], [SCENE_W, GROUND.curbY]], 1);
+  rawRect(ctx, rgba(mix(road, INKC, 0.25)), 0, GROUND.curbY, SCENE_W, GROUND.roadY - GROUND.curbY);
+  // grille d'égout
+  fillRect(ctx, '#3A3A44', 700, GROUND.curbY, 26, 7); ctx.strokeStyle = INK; ctx.lineWidth = 0.7; ctx.beginPath(); for (let x = 703; x < 726; x += 4) { ctx.moveTo(x, GROUND.curbY + 1); ctx.lineTo(x, GROUND.curbY + 6); } ctx.stroke();
+  // marquage
+  rawRect(ctx, rgba(mix(hex('#E8E4D8'), road, 0.45 + dark * 0.3)), 0, 428, SCENE_W, 3);
+  if (wet <= 0) return;
+  // reflets des lumières sur le sol mouillé : traînée verticale sous chaque source, rompue par des rides (rangées inégales), courte et discrète
+  const nightK = 1 - d;
+  const rr = mulberry32(11);
+  for (const L of LIGHTS) {
+    const lamp = L.w <= 10;
+    const strength = wet * L.k * (lamp ? 0.14 + 0.5 * nightK : 0.05 + 0.16 * nightK);
+    if (strength < 0.02) continue;
+    const y0 = Math.max(L.y + 2, GROUND.sidewalkY), len = lamp ? 150 : 70;
+    const ww0 = lamp ? 5 : L.w * 0.55;
+    for (let y = y0; y < Math.min(SCENE_H, y0 + len); y += 2 + rr() * 3) {
+      const u = (y - y0) / len; if (rr() < 0.3) continue;
+      const ww = ww0 * (0.55 + 0.6 * rr()) * (1 + u * 0.6); ctx.fillStyle = rgba(L.c, strength * (1 - u) * (1 - u) * (0.5 + rr()));
+      ctx.fillRect(L.x - ww + (rr() - 0.5) * 3, y, ww * 2, 1.6);
+    }
+  }
+  // flaques : reflet du ciel (jour) / noir bleuté avec les lumières dedans (nuit)
+  for (const p of PUDDLES) {
+    const sky = mix(WATER_NIGHT, mix(hex('#9FB4C8'), hex('#B6C0C8'), 0.5), d);
+    ctx.save(); ctx.beginPath(); ctx.ellipse(p.x, p.y, p.rx, p.rx * 0.18, 0, 0, TAU); ctx.clip();
+    ctx.fillStyle = rgba(sky, 0.85 * wet); ctx.fillRect(p.x - p.rx, p.y - p.rx, p.rx * 2, p.rx * 2);
+    for (const L of LIGHTS) if (Math.abs(L.x - p.x) < p.rx + L.w) { const lamp = L.w <= 10; const a = wet * (lamp ? 0.35 + 0.5 * nightK : 0.1 + 0.2 * nightK) * L.k; const ww = lamp ? 4 : L.w * 0.5; for (let y = p.y - 14; y < p.y + 14; y += 3) ctx.fillRect(L.x - ww * (0.6 + 0.5 * Math.abs(Math.sin(y * 1.3))), y, ww * 2 * (0.6 + 0.5 * Math.abs(Math.sin(y * 1.3))), 1.6), ctx.fillStyle = rgba(L.c, a); }
+    ctx.restore();
+    ctx.strokeStyle = rgba(INKC, 0.5 * wet); ctx.lineWidth = 0.7; ctx.beginPath(); ctx.ellipse(p.x, p.y, p.rx, p.rx * 0.18, 0, 0, TAU); ctx.stroke();
+  }
+}
+
+function paintLamps(ctx) {
+  const night = 1 - ENV.daylight;
+  for (const l of LAMPS) {
+    if (night > 0.05) {
+      const a = night * 0.12; ctx.fillStyle = rgba(hex(LIT.warm), a);
+      ctx.beginPath(); ctx.moveTo(l.x - 10, l.y); ctx.lineTo(l.x + 10, l.y); ctx.lineTo(l.x + 75, GROUND.curbY + 8); ctx.lineTo(l.x - 75, GROUND.curbY + 8); ctx.closePath(); ctx.fill();
+      ellipse(ctx, rgba(hex(LIT.warm), night * 0.3), l.x, GROUND.curbY - 2, 70, 11);
+    }
+    fillRect(ctx, '#2A3040', l.x - 2, l.y, 4, GROUND.curbY - 2 - l.y); inkRect(ctx, l.x - 2, l.y, 4, GROUND.curbY - 2 - l.y, 0.7);
+    fillRect(ctx, '#2A3040', l.x - 7, l.y - 14, 14, 16); inkRect(ctx, l.x - 7, l.y - 14, 14, 16, 0.9);
+    if (night > 0.05) { ctx.fillStyle = rgba(hex(LIT.cream), 0.95 * night); ctx.fillRect(l.x - 5, l.y - 12, 10, 12); }
+  }
+}
+
+// Décor complet sans pluie (peint dans un calque mis en cache : ne change qu'avec jour/nuit et « mouillé »).
+function paintStreet(ctx, wet) { paintSky(ctx); paintFacades(ctx); paintGround(ctx, wet); paintLamps(ctx); }
+
+// ═══════════ 03-pluie-rue.js ═══════════
+// ───────────── pluie vue de dehors : gouttes à 3 profondeurs, éclaboussures, anneaux, gouttes des bords, caniveau, halos ─────────────
+// Tout est piloté par precip (0-1) et wind (0-1) : aucune densité réglée à part.
+const LAYERS = [
+  // part : part de la population ; v : vitesse px/s ; len : longueur (exposition) ; w : épaisseur ; a : alpha ; blur : halo flou (proche)
+  { name: 'loin', part: 0.42, v: [170, 260], len: [5, 9], w: 0.6, a: 0.22, blur: 0, sway: 0.2, splash: 0 },
+  { name: 'moyen', part: 0.36, v: [300, 420], len: [9, 16], w: 0.9, a: 0.36, blur: 0, sway: 0.5, splash: 0.25 },
+  { name: 'proche', part: 0.22, v: [520, 720], len: [16, 34], w: 1.6, a: 0.46, blur: 2.6, sway: 1.1, splash: 1 },
+];
+const dropCount = (precip) => Math.round(Math.pow(precip, 1.25) * 900);          // bruine 0,15 → ~85 ; averse 1 → 900
+
+class RainOutside {
+  constructor(seed = 1, soft = false) {
+    this.r = mulberry32(seed); this.soft = soft;                                 // soft : vue derrière la vitre (moins de proche, plus doux)
+    this.t = 0; this.drops = []; this.splashes = []; this.ripples = []; this.drips = []; this.flash = 0; this.bolt = null; this.nextBolt = 2 + this.r() * 3;
+    this.dripTimers = DRIP_POINTS.map(() => ({ phase: this.r(), period: 1 }));
+  }
+  spawn(layerIdx, fromTop) {
+    const L = LAYERS[layerIdx]; const r = this.r;
+    const ground = GROUND.sidewalkY + Math.pow(r(), 0.8) * (SCENE_H - GROUND.sidewalkY);     // où elle touche le sol
+    return { L: layerIdx, x: r() * (SCENE_W + 200) - 100, y: fromTop ? -r() * 60 - 10 : r() * ground, v: lerp(L.v[0], L.v[1], r()), len: lerp(L.len[0], L.len[1], r()) * (0.6 + r() * 0.9), a: L.a * (0.55 + r() * 0.7), w: L.w * (0.8 + r() * 0.5), ph: r() * TAU, ground, big: r() < 0.06, tilt: (r() - 0.5) * 0.12 };
+  }
+  step(dt) {
+    this.t += dt; const t = this.t; const P = ENV.precip, W = ENV.wind;
+    // population visée (derrière la vitre : 70 %, et la couche proche réduite de moitié)
+    const target = Math.round(dropCount(P) * (this.soft ? 0.7 : 1));
+    while (this.drops.length < target) { const u = this.r(); const li = u < LAYERS[0].part ? 0 : u < LAYERS[0].part + LAYERS[1].part ? 1 : 2; this.drops.push(this.spawn(this.soft && li === 2 && this.r() < 0.5 ? 1 : li, this.drops.length > 40)); }
+    if (this.drops.length > target) this.drops.length = target;
+    const g = gust(t); const lean = W * g;                                                   // dérive horizontale = fraction de la vitesse
+    for (const d of this.drops) {
+      const L = LAYERS[d.L];
+      const vx = d.v * (0.08 + lean * 0.55) + Math.sin(t * 3.1 + d.ph) * L.sway * 18;           // dérive + léger balancement (proche)
+      d.y += d.v * dt; d.x += vx * dt;
+      if (d.x > SCENE_W + 60) d.x -= SCENE_W + 160; if (d.x < -100) d.x += SCENE_W + 160;
+      if (d.y >= d.ground) {
+        if (L.splash > 0 && this.r() < L.splash * (this.soft ? 0.4 : 1) && this.splashes.length < 160) this.addSplash(d.x, d.ground, d.big ? 1.6 : 1);
+        const n = this.spawn(d.L, true); Object.assign(d, n);
+      }
+    }
+    // éclaboussures (gerbe de 3-5 gouttelettes + couronne) : vie 0,28 s
+    for (const s of this.splashes) { s.age += dt; for (const p of s.parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt; } }
+    this.splashes = this.splashes.filter((s) => s.age < 0.3);
+    // anneaux dans les flaques : taux ∝ precip × surface
+    for (const p of PUDDLES) if (this.r() < P * P * dt * p.rx * 0.11 && this.ripples.length < 90) { const u = (this.r() * 2 - 1); this.ripples.push({ x: p.x + u * p.rx * 0.85, y: p.y + (this.r() * 2 - 1) * p.rx * 0.12, age: 0, life: 0.7 + this.r() * 0.5, R: 5 + this.r() * 7 }); }
+    for (const rp of this.ripples) rp.age += dt; this.ripples = this.ripples.filter((rp) => rp.age < rp.life);
+    // gouttes des bords (auvent, corniche, toit, gouttière) : période 3 s (bruine) → 0,45 s (averse) ; la gouttière coule en filet au-delà de 0,55
+    DRIP_POINTS.forEach((pt, i) => {
+      const tm = this.dripTimers[i]; const period = lerp(3.2, 0.45, P) * (pt.kind === 'gouttiere' ? 0.6 : pt.kind === 'toit' ? 1.6 : 1) * (0.7 + 0.6 * ((i * 0.37) % 1));
+      tm.phase += dt / period;
+      if (tm.phase >= 1) { tm.phase -= 1; this.drips.push({ x: pt.x, y: pt.y, vy: 20, r: 1.3 + this.r() * 0.9, ground: pt.kind === 'auvent' ? GROUND.sidewalkY + 8 + this.r() * 30 : GROUND.sidewalkY + this.r() * 40 }); }
+    });
+    for (const d of this.drips) { d.vy += 900 * dt; d.y += d.vy * dt; d.x += W * g * 14 * dt; if (d.y >= d.ground) { d.dead = true; if (this.splashes.length < 160) this.addSplash(d.x, d.ground, 1.3); } }
+    this.drips = this.drips.filter((d) => !d.dead);
+    // orage : éclair toutes les 4-9 s (flash 0,35 s, 2 pointes)
+    if (ENV.storm) { this.nextBolt -= dt; if (this.nextBolt <= 0) { this.nextBolt = 4 + this.r() * 5; this.flash = 1; this.bolt = this.makeBolt(); } }
+    if (this.flash > 0) { this.flash -= dt / 0.35; if (this.flash < 0.55 && this.flash > 0.5) this.flash = 0.9; if (this.flash <= 0) { this.flash = 0; this.bolt = null; } }
+  }
+  addSplash(x, y, k) {
+    const parts = []; const n = 3 + Math.floor(this.r() * 3);
+    for (let i = 0; i < n; i++) { const a = -Math.PI / 2 + (this.r() - 0.5) * 1.6; const v = (60 + this.r() * 90) * k; parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v }); }
+    this.splashes.push({ x, y, age: 0, k, parts });
+  }
+  makeBolt() {
+    const pts = []; let x = 120 + this.r() * 760, y = 0; pts.push([x, y]);
+    while (y < 150 + this.r() * 60) { y += 10 + this.r() * 16; x += (this.r() - 0.5) * 26; pts.push([x, y]); }
+    // une ramification à mi-hauteur
+    const k = Math.floor(pts.length * 0.4); const br = [pts[k]]; let bx = pts[k][0], by = pts[k][1]; const dir = this.r() < 0.5 ? -1 : 1;
+    for (let i = 0; i < 4; i++) { by += 8 + this.r() * 10; bx += dir * (6 + this.r() * 10); br.push([bx, by]); }
+    pts.branch = br; return pts;
+  }
+  // couleur/alpha d'une goutte selon la lumière locale (nuit : visible seulement dans les cônes et près des vitrines)
+  alphaAt(x, y, a) { const d = ENV.daylight; if (d > 0.95) return a; const f = lightAt(x, y); return a * lerp(0.3 + 0.9 * Math.min(1.2, f), 1, d); }
+  paint(ctx) {
+    const t = this.t, P = ENV.precip, night = 1 - ENV.daylight;
+    const lean = ENV.wind * gust(t);
+    const dirx = 0.08 + lean * 0.55; const nrm = 1 / Math.hypot(dirx, 1);        // direction du trait = direction de la vitesse
+    const base = mix(RAIN, RAIN_NIGHT, night);
+    ctx.lineCap = 'round';
+    // éclair : le flash est posé sous la pluie pour que les gouttes ressortent dessus
+    if (this.flash > 0) { ctx.fillStyle = rgba(hex('#E8F0FF'), 0.3 * this.flash); ctx.fillRect(0, 0, SCENE_W, SCENE_H); }
+    // halos de pluie autour des lampadaires (nuit) : volume éclairé, plus large et plus dense avec l'averse
+    if (night > 0.05 && P > 0.02) for (const l of LAMPS) { const R = 40 + 56 * P; ctx.fillStyle = radial(ctx, l.x, l.y - 4, R, hex(LIT.warm), night * (0.14 + 0.26 * P)); ctx.fillRect(l.x - R, l.y - 4 - R, R * 2, R * 2); }
+    // gouttes, par couche (loin → proche)
+    for (let li = 0; li < 3; li++) {
+      const L = LAYERS[li];
+      for (const d of this.drops) {
+        if (d.L !== li) continue;
+        const len = d.len * (1 + lean * 0.3), dx = (dirx + d.tilt) * len * nrm, dy = len * nrm;
+        const a = this.alphaAt(d.x, d.y, d.a) * (this.soft ? 0.85 : 1);
+        if (a < 0.015) continue;
+        if (L.blur > 0) { ctx.strokeStyle = rgba(base, a * 0.22); ctx.lineWidth = d.w + L.blur; ctx.beginPath(); ctx.moveTo(d.x - dx, d.y - dy); ctx.lineTo(d.x, d.y); ctx.stroke(); }
+        // trait qui s'estompe vers la queue (tête de goutte en bas) : couches proche et moyenne
+        if (li > 0) { const g = ctx.createLinearGradient(d.x - dx, d.y - dy, d.x, d.y); g.addColorStop(0, rgba(base, 0)); g.addColorStop(0.7, rgba(base, a)); g.addColorStop(1, rgba(base, a)); ctx.strokeStyle = g; } else ctx.strokeStyle = rgba(base, a);
+        ctx.lineWidth = d.w; ctx.beginPath(); ctx.moveTo(d.x - dx, d.y - dy); ctx.lineTo(d.x, d.y); ctx.stroke();
+        if (d.big && li === 2) { ctx.fillStyle = rgba(base, a * 0.9); ctx.beginPath(); ctx.ellipse(d.x, d.y, d.w * 0.9, d.w * 1.4, 0, 0, TAU); ctx.fill(); }
+      }
+    }
+    // gouttes qui tombent des bords : perle qui pend puis goutte allongée
+    for (const d of this.drips) { const a = this.alphaAt(d.x, d.y, 0.8); ctx.fillStyle = rgba(base, a); ctx.beginPath(); ctx.ellipse(d.x, d.y, d.r * 0.8, d.r * (1 + d.vy / 250), 0, 0, TAU); ctx.fill(); }
+    DRIP_POINTS.forEach((pt, i) => {
+      const tm = this.dripTimers[i]; const r = 0.6 + tm.phase * 1.6; const a = this.alphaAt(pt.x, pt.y, 0.75);
+      ctx.fillStyle = rgba(base, a); ctx.beginPath(); ctx.ellipse(pt.x, pt.y + r * 0.6, r * 0.8, r, 0, 0, TAU); ctx.fill();
+      if (pt.kind === 'gouttiere' && P > 0.55) { ctx.strokeStyle = rgba(base, a * 0.6 * (P - 0.55) / 0.45); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(pt.x, pt.y); for (let y = pt.y; y < GROUND.sidewalkY; y += 6) ctx.lineTo(pt.x + Math.sin(y * 0.4 + t * 9) * 1.2, y + 6); ctx.stroke(); }
+    });
+    // éclaboussures : couronne (anneau qui s'ouvre) + gouttelettes
+    for (const s of this.splashes) {
+      const u = s.age / 0.3; const a = this.alphaAt(s.x, s.y, 0.7) * (1 - u);
+      ctx.strokeStyle = rgba(base, a * 0.8); ctx.lineWidth = 0.8; ctx.beginPath(); ctx.ellipse(s.x, s.y, (1 + u * 7) * s.k, (0.4 + u * 2) * s.k, 0, 0, TAU); ctx.stroke();
+      ctx.fillStyle = rgba(base, a); for (const p of s.parts) { ctx.beginPath(); ctx.arc(p.x, p.y, 0.9 * s.k, 0, TAU); ctx.fill(); }
+    }
+    // anneaux dans les flaques
+    for (const rp of this.ripples) { const u = rp.age / rp.life; const a = this.alphaAt(rp.x, rp.y, 0.55) * (1 - u) * ENV.precip; ctx.strokeStyle = rgba(mix(base, WHITE, 0.3), a); ctx.lineWidth = 0.9; ctx.beginPath(); ctx.ellipse(rp.x, rp.y, rp.R * u + 1, (rp.R * u + 1) * 0.26, 0, 0, TAU); ctx.stroke(); }
+    // ruissellement du caniveau : lame d'eau le long de la bordure, largeur ∝ precip, filets clairs qui courent vers la grille
+    if (P > 0.08) {
+      const h = 1.5 + 6 * P; const water = mix(WATER_DAY, WATER_NIGHT, night);
+      ctx.fillStyle = rgba(water, 0.55 + 0.3 * P); ctx.fillRect(0, GROUND.curbY, SCENE_W, h);
+      ctx.strokeStyle = rgba(mix(base, WHITE, 0.2), this.alphaAt(500, GROUND.curbY, 0.55)); ctx.lineWidth = 0.9; ctx.beginPath();
+      const speed = 60 + 120 * P;
+      for (let k = 0; k < 40 * P + 6; k++) { const x0 = ((k * 97.3 + t * speed * (0.8 + (k % 3) * 0.2)) % (SCENE_W + 40)) - 20; const y = GROUND.curbY + 1 + ((k * 0.61) % 1) * (h - 1); ctx.moveTo(x0, y); ctx.lineTo(x0 + 6 + 8 * P, y + Math.sin(k) * 0.6); }
+      ctx.stroke();
+      // bouillon à la grille
+      ctx.fillStyle = rgba(mix(base, WHITE, 0.4), 0.35 * P); for (let k = 0; k < 6; k++) { const ph = (t * 3 + k * 1.1) % 1; ctx.beginPath(); ctx.arc(702 + k * 4 + Math.sin(k) * 2, GROUND.curbY + 2 + ph * 3, 1 + ph, 0, TAU); ctx.fill(); }
+    }
+    // brume de pluie : voile clair qui s'épaissit avec l'averse (jour) ; de nuit, voile bleuté léger
+    ctx.fillStyle = rgba(mix(hex('#DCE4EC'), hex('#2A3450'), night), P * (0.1 + 0.06 * night)); ctx.fillRect(0, 0, SCENE_W, SCENE_H);
+    // éclair
+    if (this.flash > 0) {
+      if (this.bolt) { const path = () => { ctx.beginPath(); this.bolt.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); this.bolt.branch.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); }; path(); ctx.strokeStyle = rgba(hex('#B8D0FF'), 0.35 * this.flash); ctx.lineWidth = 7; ctx.stroke(); ctx.strokeStyle = rgba(hex('#F4F8FF'), 0.9 * this.flash); ctx.lineWidth = 2.2; ctx.stroke(); }
+    }
+  }
+}
+
+// ═══════════ 04-vitre.js ═══════════
+// ───────────── pluie sur la vitre (vue pièce) : gouttes posées, gouttes qui dévalent, traces, buée ─────────────
+// La vitre couvre un rectangle (pane) ; derrière, le rendu de rue (offscreen) sert à « éclairer » les gouttes la nuit.
+class GlassRain {
+  constructor(pane, seed = 3) {
+    this.p = pane; this.r = mulberry32(seed); this.t = 0;
+    this.statics = []; this.runners = []; this.trails = []; this.spawnAcc = 0;
+    // masque de buée : 1 = buée présente ; les coulures l'effacent, elle revient lentement (½ résolution)
+    this.mask = document.createElement('canvas'); this.mask.width = Math.ceil(pane.w / 2); this.mask.height = Math.ceil(pane.h / 2);
+    const m = this.mask.getContext('2d'); m.fillStyle = '#fff'; m.fillRect(0, 0, this.mask.width, this.mask.height);
+    this.fogCv = document.createElement('canvas'); this.fogCv.width = pane.w; this.fogCv.height = pane.h;
+    this.sampleCv = document.createElement('canvas'); this.sampleCv.width = Math.ceil(SCENE_W / 8); this.sampleCv.height = Math.ceil(SCENE_H / 8); this.sample = null; this.sampleAge = 1;
+    // traces anciennes figées en bas (marques de pluie séchée) : lignes fines verticales, plus nombreuses en bas
+    this.oldMarks = []; for (let i = 0; i < 26; i++) this.oldMarks.push({ x: this.r() * pane.w, y0: pane.h * (0.45 + this.r() * 0.4), y1: pane.h, a: 0.05 + this.r() * 0.07 });
+  }
+  newStatic(r) { const p = this.p; return { x: this.r() * p.w, y: this.r() * p.h, r: r ?? 0.9 + Math.pow(this.r(), 1.8) * 2.6, ph: this.r() * TAU }; }
+  // échantillon de couleur de la scène derrière la vitre (basse résolution, rafraîchi 4×/s)
+  refreshSample(street) { const c = this.sampleCv.getContext('2d'); c.drawImage(street, 0, 0, this.sampleCv.width, this.sampleCv.height); this.sample = c.getImageData(0, 0, this.sampleCv.width, this.sampleCv.height).data; }
+  colorAt(x, y) {                                                   // x,y en coordonnées de scène
+    if (!this.sample) return hex('#8FA3B8');
+    const sx = clamp(Math.floor(x / 8), 0, this.sampleCv.width - 1), sy = clamp(Math.floor(y / 8), 0, this.sampleCv.height - 1);
+    const i = (sy * this.sampleCv.width + sx) * 4; return [this.sample[i], this.sample[i + 1], this.sample[i + 2]];
+  }
+  step(dt, street) {
+    this.t += dt; const P = ENV.precip, W = ENV.wind, p = this.p;
+    this.sampleAge += dt; if (this.sampleAge > 0.25 && street) { this.sampleAge = 0; this.refreshSample(street); }
+    // gouttes posées : 90 + 220·precip (elles apparaissent une à une, pas toutes d'un coup)
+    const target = Math.round(90 + 220 * P);
+    if (this.statics.length < target && this.r() < dt * 40) this.statics.push(this.newStatic());
+    if (this.statics.length > target + 40) this.statics.splice(0, 1);
+    // elles grossissent très lentement (0,05 px/s) jusqu'à 3,2 px ; au-delà, elles se décrochent et deviennent une coulure
+    for (const s of this.statics) { s.r += dt * 0.08 * P; }
+    const detach = this.statics.filter((s) => s.r > 4);
+    for (const s of detach) { this.statics.splice(this.statics.indexOf(s), 1); this.runners.push(this.newRunner(s.x, s.y, s.r)); }
+    // coulures : taux de naissance 0,08/s (bruine) → 0,55/s (averse)
+    this.spawnAcc += dt * lerp(0.08, 0.55, P * P);
+    while (this.spawnAcc >= 1) { this.spawnAcc -= 1; this.runners.push(this.newRunner(this.r() * p.w, this.r() * p.h * 0.35, 1.6 + this.r() * 1.4)); }
+    const lean = W * gust(this.t) * 0.35;                                                     // le vent penche les traînées
+    for (const R of this.runners) {
+      // marche-arrêt : une goutte dévale par à-coups (0,1-0,6 s d'arrêt, puis accélération ∝ taille)
+      R.wait -= dt;
+      if (R.wait > 0) { R.vy = Math.max(0, R.vy - 400 * dt); }
+      else { R.vy = Math.min(R.vy + (30 + R.r * 55) * dt * 4, 25 + R.r * R.r * 9); if (this.r() < dt * (1.6 - Math.min(1.2, R.r * 0.25))) R.wait = 0.1 + this.r() * 0.5; }
+      // dérive : un peu de vent + marche aléatoire (chaque coulure zigzague à sa façon)
+      R.vxw = (R.vxw || 0) * (1 - 1.5 * dt) + (this.r() - 0.5) * 220 * dt;
+      const vx = (R.vy * lean * 0.35 + R.vxw * Math.min(1, R.vy / 20)) * (R.vy > 2 ? 1 : 0);
+      R.x += vx * dt; R.y += R.vy * dt;
+      if (R.vy > 2) { // trace : point tous les 2 px, absorbe les gouttes posées sur le passage (la coulure grossit), sème des perles derrière elle
+        if (!R.last || Math.hypot(R.x - R.last[0], R.y - R.last[1]) > 2) { R.trail.push({ x: R.x, y: R.y, r: R.r, age: 0 }); R.last = [R.x, R.y]; if (R.trail.length > 200) R.trail.shift(); }
+        for (let i = this.statics.length - 1; i >= 0; i--) { const s = this.statics[i]; if (Math.abs(s.x - R.x) < R.r + s.r && Math.abs(s.y - R.y) < R.r + s.r) { R.r = Math.min(5.2, Math.sqrt(R.r * R.r + s.r * s.r * 0.7)); this.statics.splice(i, 1); } }
+        R.bead -= R.vy * dt; if (R.bead <= 0) { R.bead = 10 + Math.pow(this.r(), 0.5) * 50; if (this.statics.length < target + 60) this.statics.push({ x: R.x + (this.r() - 0.5) * R.r * 1.5, y: R.y - R.r, r: 0.6 + this.r() * 1.1, ph: 0 }); R.r = Math.max(1.2, R.r - 0.12); }
+        // fusion de deux coulures qui se touchent
+        for (const O of this.runners) if (O !== R && !O.dead && O.y > R.y - 2 && Math.abs(O.x - R.x) < R.r + O.r && Math.abs(O.y - R.y) < R.r + O.r + 4) { R.r = Math.min(5.5, Math.sqrt(R.r * R.r + O.r * O.r)); O.dead = true; R.vy = Math.max(R.vy, O.vy); }
+      }
+      if (R.y > p.h + 4) R.dead = true;
+    }
+    for (const R of this.runners) if (R.dead && R.trail.length) this.trails.push(R.trail);
+    this.runners = this.runners.filter((R) => !R.dead);
+    // traces : vieillissent 12 s
+    for (const R of this.runners) for (const q of R.trail) q.age += dt;
+    for (const tr of this.trails) for (const q of tr) q.age += dt;
+    this.trails = this.trails.filter((tr) => tr[tr.length - 1].age < 8);
+    // buée : repousse lentement (1 % / s), effacée par les coulures (2 r de large)
+    const m = this.mask.getContext('2d'); m.globalCompositeOperation = 'source-over'; m.fillStyle = `rgba(255,255,255,${Math.min(1, dt * 0.03)})`; m.fillRect(0, 0, this.mask.width, this.mask.height);
+    m.globalCompositeOperation = 'destination-out'; m.lineCap = 'round'; m.strokeStyle = '#000';
+    for (const R of this.runners) { if (R.trail.length < 2) continue; m.lineWidth = R.r * 0.5; m.beginPath(); const q0 = R.trail[Math.max(0, R.trail.length - 3)]; m.moveTo(q0.x / 2, q0.y / 2); for (let i = Math.max(0, R.trail.length - 2); i < R.trail.length; i++) m.lineTo(R.trail[i].x / 2, R.trail[i].y / 2); m.stroke(); }
+    m.globalCompositeOperation = 'source-over';
+  }
+  newRunner(x, y, r) { return { x, y, r, vy: 0, wait: 0.2 + this.r() * 0.5, ph: this.r() * TAU, trail: [], bead: 8 + this.r() * 10, last: null }; }
+  // ── dessin ──
+  // goutte cellulo : corps clair teinté par ce qu'il y a derrière (inversé : la lumière du bas paraît en haut), ombre encrée au bord bas-droit,
+  // reflet blanc en haut-gauche ; la nuit, une goutte devant une lumière rayonne.
+  drawDrop(ctx, x, y, r, night, stretch = 1) {
+    const sx = this.p.x + x, sy = this.p.y + y;
+    const below = this.colorAt(sx, sy + r * 6), above = this.colorAt(sx, sy - r * 6), here = this.colorAt(sx, sy);
+    const lit = lum(below) > lum(above) ? below : above;
+    const body = mix(mix(here, lit, 0.5), WHITE, night ? 0.18 : 0.3);
+    const L = lum(lit);
+    if (night && L > 0.4 && r > 0.9) { ctx.fillStyle = radial(ctx, x, y, r * 3.2, lit, 0.7 * (L - 0.25), 0); ctx.fillRect(x - r * 3.2, y - r * 3.2, r * 6.4, r * 6.4); }
+    ctx.fillStyle = rgba(body, night ? 0.68 : 0.6); ctx.beginPath(); ctx.ellipse(x, y, r, r * 1.15 * stretch, 0, 0, TAU); ctx.fill();
+    // haut légèrement assombri (réfraction : le sol sombre paraît en haut), bas lumineux (ciel / lumière inversés)
+    if (!night) { ctx.fillStyle = rgba(INKC, 0.14); ctx.beginPath(); ctx.ellipse(x, y - r * 0.35 * stretch, r * 0.7, r * 0.45 * stretch, 0, 0, TAU); ctx.fill(); }
+    ctx.fillStyle = rgba(mix(lit, WHITE, 0.4), night ? 0.35 + 0.5 * L : 0.4); ctx.beginPath(); ctx.ellipse(x, y + r * 0.38 * stretch, r * 0.62, r * 0.5 * stretch, 0, 0, TAU); ctx.fill();
+    // bord encré (ombre nette) bas-droit
+    if (r > 0.8) { ctx.strokeStyle = rgba(INKC, 0.5); ctx.lineWidth = Math.min(1, r * 0.3); ctx.beginPath(); ctx.ellipse(x, y, r * 0.9, r * 1.05 * stretch, 0, -0.3, 1.9); ctx.stroke(); }
+    // reflet
+    ctx.fillStyle = rgba(WHITE, 0.85); ctx.beginPath(); ctx.ellipse(x - r * 0.38, y - r * 0.45 * stretch, r * 0.26, r * 0.18, -0.6, 0, TAU); ctx.fill();
+  }
+  paint(ctx, street) {
+    const p = this.p, P = ENV.precip, night = ENV.daylight < 0.5;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.beginPath(); ctx.rect(0, 0, p.w, p.h); ctx.clip();
+    // buée : voile clair/froid, plus dense en bas (0 à 55 % de la hauteur → max en bas), masqué par les coulures
+    const f = this.fogCv.getContext('2d'); f.clearRect(0, 0, p.w, p.h);
+    const fogC = night ? hex('#C4CEE0') : hex('#EEF2F6'); const fogA = (0.1 + 0.14 * P) * (night ? 0.7 : 1);
+    const g = f.createLinearGradient(0, p.h * 0.45, 0, p.h); g.addColorStop(0, rgba(fogC, 0)); g.addColorStop(0.7, rgba(fogC, fogA * 0.6)); g.addColorStop(1, rgba(fogC, fogA));
+    f.globalCompositeOperation = 'source-over'; f.fillStyle = g; f.fillRect(0, 0, p.w, p.h);
+    // vieilles marques (traces séchées) : fines rayures dans la buée
+    f.strokeStyle = 'rgba(255,255,255,0.08)'; f.lineWidth = 1.2; f.beginPath(); for (const o of this.oldMarks) { f.moveTo(o.x, o.y0); f.lineTo(o.x + 2, o.y1); } f.stroke();
+    f.globalCompositeOperation = 'destination-in'; f.drawImage(this.mask, 0, 0, p.w, p.h);
+    ctx.drawImage(this.fogCv, 0, 0);
+    // traces des coulures : filet clair (eau) + bord encré léger, s'estompent en 12 s ; perles le long
+    const drawTrail = (tr, alive) => {
+      if (tr.length < 2) return;
+      for (let i = 1; i < tr.length; i++) {
+        const q = tr[i], a = Math.max(0, 1 - q.age / 8);
+        if (a <= 0) continue;
+        ctx.strokeStyle = rgba(night ? hex('#C8D4EC') : WHITE, (night ? 0.26 : 0.3) * a); ctx.lineWidth = Math.max(0.6, q.r * 0.7 * (0.4 + 0.6 * a));
+        ctx.beginPath(); ctx.moveTo(tr[i - 1].x, tr[i - 1].y); ctx.lineTo(q.x, q.y); ctx.stroke();
+        ctx.strokeStyle = rgba(INKC, 0.14 * a); ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(tr[i - 1].x + q.r * 0.5, tr[i - 1].y); ctx.lineTo(q.x + q.r * 0.5, q.y); ctx.stroke();
+      }
+    };
+    for (const tr of this.trails) drawTrail(tr, false);
+    for (const R of this.runners) drawTrail(R.trail, true);
+    // gouttes posées
+    for (const s of this.statics) this.drawDrop(ctx, s.x, s.y, s.r, night);
+    // coulures : goutte étirée vers le haut quand elle court (queue), ronde quand elle attend
+    for (const R of this.runners) {
+      const run = Math.min(1, R.vy / 40);
+      if (run > 0.1) { const tail = R.r * (1.5 + 2.5 * run); ctx.fillStyle = rgba(mix(this.colorAt(p.x + R.x, p.y + R.y), WHITE, 0.3), 0.45); ctx.beginPath(); ctx.moveTo(R.x - R.r * 0.6, R.y); ctx.lineTo(R.x, R.y - tail); ctx.lineTo(R.x + R.r * 0.6, R.y); ctx.closePath(); ctx.fill(); }
+      this.drawDrop(ctx, R.x, R.y, R.r, night, 1 + 0.25 * run);
+    }
+    ctx.restore();
+  }
+}
+
+// ═══════════ 05-app.js ═══════════
+// ───────────── composition des deux vues, réglages, galerie, captures ─────────────
+const PANE = { x: 170, y: 40, w: 660, h: 362 };                 // vitre de la pièce (coordonnées de scène)
+const PRESETS = {
+  'piece-jour-bruine': { view: 'piece', precip: 0.2, wind: 0.25, daylight: 1, storm: 0 },
+  'piece-nuit-averse': { view: 'piece', precip: 0.85, wind: 0.45, daylight: 0, storm: 0 },
+  'rue-nuit-averse': { view: 'rue', precip: 0.85, wind: 0.4, daylight: 0, storm: 0 },
+  'rue-jour-bruine': { view: 'rue', precip: 0.18, wind: 0.2, daylight: 1, storm: 0 },
+  'rue-nuit-orage': { view: 'rue', precip: 1, wind: 0.85, daylight: 0, storm: 1 },
+};
+
+class Scene {
+  constructor(opts) {
+    Object.assign(this, { view: 'rue', precip: 0.6, wind: 0.3, daylight: 1, storm: false, seed: 1 }, opts);
+    this.decor = document.createElement('canvas'); this.decor.width = SCENE_W; this.decor.height = SCENE_H; this.decorKey = '';
+    this.street = document.createElement('canvas'); this.street.width = SCENE_W; this.street.height = SCENE_H;
+    this.rainOut = new RainOutside(this.seed, false); this.rainSoft = new RainOutside(this.seed + 7, true); this.glass = new GlassRain(PANE, this.seed + 11);
+    this.wet = 0;
+  }
+  applyEnv() { ENV = { daylight: this.daylight, dark: 1 - this.daylight, precip: this.precip, wind: this.wind, storm: !!this.storm }; }
+  step(dt) {
+    this.applyEnv();
+    // sol mouillé : monte vite sous la pluie, sèche lentement (comme WET_ON/OFF dans l'app)
+    this.wet = this.precip > 0.08 ? Math.min(1, this.wet + dt * 0.5) : Math.max(0, this.wet - dt * 0.05);
+    (this.view === 'rue' ? this.rainOut : this.rainSoft).step(dt);
+    if (this.view === 'piece') { this.renderStreet(); this.glass.step(dt, this.street); }
+  }
+  renderStreet() {
+    const key = `${this.daylight.toFixed(2)}|${this.wet.toFixed(2)}|${this.precip.toFixed(2)}`;
+    if (key !== this.decorKey) { this.decorKey = key; paintStreet(this.decor.getContext('2d'), this.wet); }
+    const c = this.street.getContext('2d'); c.clearRect(0, 0, SCENE_W, SCENE_H); c.drawImage(this.decor, 0, 0);
+    (this.view === 'rue' ? this.rainOut : this.rainSoft).paint(c);
+  }
+  paint(ctx) {
+    this.applyEnv(); this.renderStreet();
+    if (this.view === 'rue') { ctx.drawImage(this.street, 0, 0); return; }
+    // ── vue pièce : mur, vitre (scène adoucie derrière), gouttes sur le verre, châssis, rideaux, appui ──
+    const night = 1 - this.daylight;
+    const wall = mix(hex('#D8C4A4'), hex('#4A3C44'), night * 0.8);
+    rawRect(ctx, rgba(wall), 0, 0, SCENE_W, SCENE_H);
+    // lumière de la fenêtre sur le mur (jour) / lampe intérieure chaude (nuit)
+    ctx.fillStyle = radial(ctx, 500, 220, 520, night > 0.5 ? hex(LIT.warm) : WHITE, night > 0.5 ? 0.1 : 0.18, 0); ctx.fillRect(0, 0, SCENE_W, SCENE_H);
+    // scène derrière la vitre, adoucie : léger flou + voile de verre
+    ctx.save(); ctx.beginPath(); ctx.rect(PANE.x, PANE.y, PANE.w, PANE.h); ctx.clip();
+    ctx.filter = 'blur(0.7px)'; ctx.drawImage(this.street, 0, 0); ctx.filter = 'none';
+    ctx.fillStyle = rgba(night > 0.5 ? hex('#1A2238') : hex('#C8D8E8'), 0.14 + 0.08 * this.precip); ctx.fillRect(PANE.x, PANE.y, PANE.w, PANE.h);
+    // reflet de la pièce dans la vitre, la nuit (lueur chaude discrète en bas à gauche)
+    if (night > 0.5) { ctx.fillStyle = radial(ctx, PANE.x + 120, PANE.y + PANE.h - 40, 260, hex(LIT.warm), 0.07, 0); ctx.fillRect(PANE.x, PANE.y, PANE.w, PANE.h); }
+    ctx.restore();
+    this.glass.paint(ctx, this.street);
+    // châssis : 4 carreaux, bois peint, ombre nette
+    const frameC = mix(hex('#F0EAE0'), hex('#5A5260'), night * 0.7);
+    const bar = (x, y, w, h) => { rawRect(ctx, rgba(frameC), x, y, w, h); rawRect(ctx, rgba(mix(frameC, INKC, 0.35)), x + w - 3, y, 3, h); rawRect(ctx, rgba(mix(frameC, INKC, 0.35)), x, y + h - 3, w, 3); inkRect(ctx, x, y, w, h, 1.1); };
+    bar(PANE.x + PANE.w / 2 - 6, PANE.y, 12, PANE.h); bar(PANE.x, PANE.y + PANE.h * 0.5 - 5, PANE.w, 10);
+    bar(PANE.x - 18, PANE.y - 18, PANE.w + 36, 18); bar(PANE.x - 18, PANE.y, 18, PANE.h); bar(PANE.x + PANE.w, PANE.y, 18, PANE.h);
+    // appui
+    rawRect(ctx, rgba(mix(frameC, WHITE, 0.2)), PANE.x - 30, PANE.y + PANE.h, PANE.w + 60, 16); rawRect(ctx, rgba(mix(frameC, INKC, 0.4)), PANE.x - 30, PANE.y + PANE.h + 16, PANE.w + 60, 5); inkRect(ctx, PANE.x - 30, PANE.y + PANE.h, PANE.w + 60, 16, 1.1);
+    // rideaux (plis en bandes, aplat + ombre)
+    const cur = mix(hex('#8A5A8E'), hex('#2A2030'), night * 0.7);
+    for (const [x0, dir] of [[PANE.x - 70, 1], [PANE.x + PANE.w + 70, -1]]) {
+      for (let i = 0; i < 5; i++) { const x = x0 + dir * i * 13; rawRect(ctx, rgba(i % 2 ? cur : mix(cur, INKC, 0.3)), Math.min(x, x + dir * 13), 0, 13, PANE.y + PANE.h + 40); }
+      inkRect(ctx, Math.min(x0, x0 + dir * 65), 0, 65, PANE.y + PANE.h + 40, 1);
+    }
+    disc(ctx, '#3F8A3A', PANE.x + 60, PANE.y + PANE.h - 14, 16); disc(ctx, '#5AA04A', PANE.x + 50, PANE.y + PANE.h - 22, 10); fillRect(ctx, '#C86A40', PANE.x + 50, PANE.y + PANE.h - 8, 20, 10); inkRect(ctx, PANE.x + 50, PANE.y + PANE.h - 8, 20, 10, 0.9);
+  }
+}
+
+// ── page ──
+const Q = new URLSearchParams(location.search);
+const canvas = document.getElementById('scene'); const DPR = Number(Q.get('scale') || Math.min(2, window.devicePixelRatio || 1));
+// zoom=x,y,w,h : loupe de débogage (la zone est étirée à la taille de la scène)
+const ZOOM = Q.has('zoom') ? Q.get('zoom').split(',').map(Number) : null; const ZK = ZOOM ? SCENE_W / ZOOM[2] : 1;
+canvas.width = SCENE_W * DPR; canvas.height = (ZOOM ? ZOOM[3] * ZK : SCENE_H) * DPR; canvas.style.width = SCENE_W + 'px'; canvas.style.height = (ZOOM ? ZOOM[3] * ZK : SCENE_H) + 'px';
+const cx = canvas.getContext('2d');
+const presetName = Q.get('preset'); const base = PRESETS[presetName] || {};
+const scene = new Scene({ ...base, ...(Q.has('view') ? { view: Q.get('view') } : {}), ...(Q.has('precip') ? { precip: Number(Q.get('precip')) } : {}), ...(Q.has('wind') ? { wind: Number(Q.get('wind')) } : {}), ...(Q.has('daylight') ? { daylight: Number(Q.get('daylight')) } : {}), ...(Q.has('storm') ? { storm: Q.get('storm') === '1' } : {}) });
+const ui = { view: document.getElementById('view'), precip: document.getElementById('precip'), wind: document.getElementById('wind'), daylight: document.getElementById('daylight'), storm: document.getElementById('storm'), pause: document.getElementById('pause'), hud: document.getElementById('hud') };
+const syncUi = () => { ui.view.value = scene.view; ui.precip.value = scene.precip; ui.wind.value = scene.wind; ui.daylight.value = scene.daylight; ui.storm.checked = !!scene.storm; };
+syncUi();
+for (const k of ['view', 'precip', 'wind', 'daylight']) ui[k].oninput = () => { scene[k] = k === 'view' ? ui[k].value : Number(ui[k].value); };
+ui.storm.onchange = () => { scene.storm = ui.storm.checked; };
+let paused = false; ui.pause.onclick = () => { paused = !paused; ui.pause.textContent = paused ? '▶' : '❚❚'; };
+document.querySelectorAll('[data-preset]').forEach((b) => (b.onclick = () => { Object.assign(scene, PRESETS[b.dataset.preset]); syncUi(); }));
+function draw() { cx.setTransform(DPR * ZK, 0, 0, DPR * ZK, ZOOM ? -ZOOM[0] * DPR * ZK : 0, ZOOM ? -ZOOM[1] * DPR * ZK : 0); scene.paint(cx); }
+
+if (Q.has('t')) {
+  // mode capture : simulation déterministe à 60 Hz jusqu'à t, puis une image
+  const T = Number(Q.get('t')); for (let s = 0; s < T * 60; s++) scene.step(1 / 60);
+  if (Q.get('flash') === '1') { scene.rainOut.flash = 0.95; scene.rainOut.bolt = scene.rainOut.makeBolt(); }
+  draw(); window.__ready = true;
+} else {
+  let last = performance.now(); let frames = 0, acc = 0;
+  const loop = (now) => {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (!paused) { const t0 = performance.now(); scene.step(dt); draw(); acc += performance.now() - t0; frames++; }
+    if (frames >= 30) { const n = scene.view === 'rue' ? scene.rainOut : scene.rainSoft; ui.hud.textContent = `${(acc / frames).toFixed(1)} ms/img · ${n.drops.length} gouttes · ${n.splashes.length} éclab. · ${n.ripples.length} anneaux · vitre : ${scene.glass.statics.length} posées, ${scene.glass.runners.length} coulures`; frames = 0; acc = 0; }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
+</script>
+</body>
+</html>

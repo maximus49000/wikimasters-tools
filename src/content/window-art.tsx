@@ -1,6 +1,5 @@
-import { useMemo, type CSSProperties, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { CELL_H, WALL_ROWS, type PxRect } from '../core/library/room-grid';
-import { mulberry32 } from '../core/library/scene-world';
 import type { Palette } from '../core/library/styles';
 
 const GLASS_INSET = 7;
@@ -16,38 +15,14 @@ export const glassRect = (rect: PxRect): PxRect => {
 // Sans `view`, seul le cadre est dessiné : le décor est rendu UNE fois pour toutes les fenêtres, derrière (voir RoomView).
 // `view` (copie soulevée pendant un glissé) : la vitre et le décor sont recopiés par `<use>` des vrais groupes, découpés par `clipId`.
 // `weatherHref` / `weatherGroundHref` : groupes de la météo (ciel par-dessus les acteurs, sol en dessous), absents sans météo.
-// `drops` : il pleut assez pour des gouttes sur la vitre (sinon ni gouttes ni animation).
-type Props = { rect: PxRect; palette: Palette; steampunk: boolean; view?: boolean; worldHref?: string; actorsHref?: string; weatherHref?: string; weatherGroundHref?: string; drops?: boolean; clipId?: string };
-
-// Opacité des gouttes sur la vitre : suit `--wmt-precip` (posée sur le <svg> de la pièce par la boucle de météo), nulle en pluie fine.
-const DROPS_STYLE = { opacity: 'clamp(0, calc((var(--wmt-precip, 0) - 0.12) * 3), 1)' } as unknown as CSSProperties;
-
-// Quelques gouttes qui glissent sur la vitre.
-export function GlassDrops({ glass }: { glass: PxRect }): ReactElement {
-  const drops = useMemo(
-    () =>
-      Array.from({ length: Math.max(3, Math.round(glass.w / 55)) }, (_, i) => {
-        const rng = mulberry32(i * 7919 + Math.round(glass.x));
-        return { x: glass.x + 6 + rng() * (glass.w - 12), y: glass.y + rng() * glass.h * 0.5, len: 8 + rng() * 14, dur: 5 + rng() * 6, begin: rng() * 4 };
-      }),
-    [glass.x, glass.y, glass.w, glass.h],
-  );
-  const still = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  return (
-    <g data-glass-drops="" style={DROPS_STYLE}>
-      {drops.map((d, i) => (
-        <ellipse key={i} data-glass-drop="" cx={d.x} cy={d.y} rx={1.6} ry={2.6} fill="#FFFFFF" opacity={0.55}>
-          {!still && <animate attributeName="cy" values={`${d.y};${d.y + d.len * 3}`} dur={`${d.dur}s`} begin={`${d.begin}s`} repeatCount="indefinite" />}
-        </ellipse>
-      ))}
-    </g>
-  );
-}
+// La copie soulevée n'emporte ni pluie ni gouttes de vitre (canvas de rain-canvas.tsx, non recopiés par `<use>`) : elles
+// reprennent quand la fenêtre est posée.
+type Props = { rect: PxRect; palette: Palette; steampunk: boolean; view?: boolean; worldHref?: string; actorsHref?: string; weatherHref?: string; weatherGroundHref?: string; clipId?: string };
 
 // Une fenêtre : le cadre seul (barreaux, bords, appui, rivets). Le décor (fixe, puis acteurs animés) est le MÊME pour
 // toutes les fenêtres, rendu une seule fois derrière les cadres : ce qu'on voit à gauche et à droite se raccorde, et un
 // passant traverse l'une puis l'autre. Seule la copie soulevée (`view`) le recopie par `<use>`.
-export function WindowArt({ rect, palette, steampunk, view = false, worldHref, actorsHref, weatherHref, weatherGroundHref, drops = false, clipId }: Props): ReactElement {
+export function WindowArt({ rect, palette, steampunk, view = false, worldHref, actorsHref, weatherHref, weatherGroundHref, clipId }: Props): ReactElement {
   const glass = glassRect(rect);
   const frame = steampunk ? '#B5833A' : palette.skirt;
   const edge = steampunk ? '#6E4A1E' : palette.edge;
@@ -79,7 +54,6 @@ export function WindowArt({ rect, palette, steampunk, view = false, worldHref, a
             {weatherGroundHref && <use data-window-weather-ground="" href={weatherGroundHref} />}
             {actorsHref && <use data-window-actors="" href={actorsHref} />}
             {weatherHref && <use data-window-weather="" href={weatherHref} />}
-            {weatherHref && drops && <GlassDrops glass={glass} />}
           </g>
         </>
       )}
