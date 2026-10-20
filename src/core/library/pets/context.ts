@@ -11,6 +11,9 @@ export type PetContext = {
   storm: { id: number; since: number } | null; // id change à chaque nouvel orage
   rainEndedAt: number | null; // fin de la dernière pluie (ms)
   sunCells: readonly Cell[]; // cases du sol atteintes par le soleil (projection du verre, sans ombre de meuble)
+  // Passage dans la rue dans l'axe d'une fenêtre (groupe déguisé, promeneur de chien : vague 1c) ; `window` : centre x (px)
+  // de la vitre ; `id` change à chaque passage retenu.
+  outside?: { id: string; since: number; window: number } | null;
 };
 
 export const NO_CONTEXT: PetContext = { night: false, moon: false, weather: 'clear', storm: null, rainEndedAt: null, sunCells: [] };
@@ -76,7 +79,7 @@ export function createContextTracker() {
   let raining = false;
   let rainEndedAt: number | null = null;
   return {
-    update(now: number, i: { night: boolean; moon: boolean; weather: Weather | null; sunCells: readonly Cell[] }): PetContext {
+    update(now: number, i: { night: boolean; moon: boolean; weather: Weather | null; sunCells: readonly Cell[]; outside?: PetContext['outside'] }): PetContext {
       const kind = weatherKindOf(i.weather);
       const lightning = i.weather?.lightning ?? 0;
       if (!inStorm && kind === 'storm') {
@@ -90,7 +93,7 @@ export function createContextTracker() {
       if (raining && !wet) rainEndedAt = now;
       else if (!raining && wet) rainEndedAt = null;
       raining = wet;
-      return { night: i.night, moon: i.moon, weather: kind, storm: inStorm ? { id: stormId, since: stormSince } : null, rainEndedAt, sunCells: i.sunCells };
+      return { night: i.night, moon: i.moon, weather: kind, storm: inStorm ? { id: stormId, since: stormSince } : null, rainEndedAt, sunCells: i.sunCells, outside: i.outside ?? null };
     },
   };
 }

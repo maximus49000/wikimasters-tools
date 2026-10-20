@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useContext, useId, useMemo, useRef, type ReactElement } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useId, useMemo, useRef, type ReactElement } from 'react';
 import { activeFestivities, addDays, isoDate, publicHolidays } from '../core/library/city/calendar';
 import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
@@ -24,7 +24,10 @@ import type { StaffShift } from '../core/library/city/shops/staff';
 import type { Vehicle } from '../core/library/city/vehicles';
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
 import type { ArmPose } from '../core/library/figure/skeleton';
-import { loopX } from '../core/library/scene-world';
+import { WORLD_MARGIN, loopX } from '../core/library/scene-world';
+import { publishStreetPasses } from './street-passes';
+import type { StreetPass } from '../core/library/pets/outside';
+import { pieceAt } from '../core/library/city/halloween-night';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { useArtStyle } from './art-setting';
@@ -979,6 +982,34 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, guises, sceneShops, traffic, litLamps, hallDark, stairs, dodgeZones, life, nightPlan]);
   useWallClockLoop(place, [place]);
+
+  // Passages de la rue pour les animaux de la pièce (vague 1c) : groupes et passants déguisés, promeneur de chien.
+  const passState = useRef({ nightPlan, peds, guises, events: events.active, frame, width, still });
+  passState.current = { nightPlan, peds, guises, events: events.active, frame, width, still };
+  useEffect(
+    () =>
+      publishStreetPasses(seed, (t) => {
+        const st = passState.current;
+        if (st.still) return [];
+        const out: StreetPass[] = [];
+        if (st.nightPlan) {
+          const s = sceneSecondsAt(t);
+          for (const g of st.nightPlan.groups) {
+            const p = pieceAt(g, s);
+            if (p) out.push({ id: g.id, kind: 'costumed', x: p.x0 + ((p.x1 - p.x0) * (s - p.t0)) / Math.max(1e-6, p.t1 - p.t0) });
+          }
+        }
+        for (const p of st.peds) {
+          if (!st.guises.get(p.id) || !shownPeds.current.get(p.id)) continue;
+          const turn = Math.floor((p.phase + p.speed * t) / (st.width + 2 * WORLD_MARGIN));
+          out.push({ id: `${p.id}#${turn}`, kind: 'costumed', x: loopX(p.phase, p.dir * p.speed, st.width, t) });
+        }
+        for (const e of st.events) if (e.id === 'dog-walker') out.push({ id: e.key, kind: 'dog-walker', x: placeEvent(e, t, st.frame).x });
+        return out;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seed],
+  );
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
   const t0 = still ? frozen.current : Date.now() / 1000;

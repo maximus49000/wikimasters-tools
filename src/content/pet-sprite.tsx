@@ -108,6 +108,20 @@ function body(pose: Pose, c: Colors, still: boolean): ReactElement {
           {!still && <animateTransform attributeName="transform" type="rotate" values="-10 10 -34;20 10 -34;-10 10 -34" dur="0.35s" repeatCount="indefinite" />}
         </rect>,
       );
+    case 'startle':
+      // Sursaut (vague 1c) : bond sur place, dos rond, poils hérissés, queue dressée, oreilles en arrière, gueule ouverte.
+      return (
+        <g data-cat-startle="">
+          {!still && <animateTransform attributeName="transform" type="translate" values="0 0;0 -9;0 -2;0 0" keyTimes="0;0.25;0.6;1" dur="1.4s" repeatCount="1" fill="freeze" />}
+          <path d="M-16 -14 C-24 -24 -20 -40 -14 -42" fill="none" stroke={c.body} strokeWidth="5" strokeLinecap="round" />
+          <rect x="-13" y="-12" width="4.4" height="12" rx="2.2" fill={c.dark} />
+          <rect x="8" y="-12" width="4.4" height="12" rx="2.2" fill={c.dark} />
+          <path d="M-15 -10 Q-2 -40 15 -10 Z" fill={c.body} />
+          <path d="M-12 -24 l-2 -4 M-6 -30 l-1 -5 M0 -32 l0 -5 M6 -30 l1 -5 M12 -24 l2 -4" stroke={c.dark} strokeWidth="1.3" strokeLinecap="round" />
+          {c.stripes && <path d="M-6 -24v5 M0 -26v6 M6 -24v5" stroke={c.dark} strokeWidth="1.4" />}
+          <Head x={17} y={-20} c={c} tilt={-10} mouth />
+        </g>
+      );
     case 'play':
       return (
         <g>

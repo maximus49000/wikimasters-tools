@@ -1,6 +1,9 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import type { Placed, Room } from '../core/library/library-types';
 import { createContextTracker, isNight, sunCellsOf, type PetContext } from '../core/library/pets/context';
+import { createOutsideWatch } from '../core/library/pets/outside';
+import { hashString } from '../core/library/scene-world';
+import { streetPassesAt } from './street-passes';
 import { CELL_H, CELL_W, HEIGHT, WALL_ROWS, pxRect } from '../core/library/room-grid';
 import { celestialPlace } from './scene-panorama';
 import { WEATHER_SCENES } from './scene-weather';
@@ -9,6 +12,7 @@ import type { SceneView } from './RoomView';
 
 export type PetContextInput = { room: Room | null; sceneView: SceneView | undefined; lightOn: boolean };
 type Tracker = ReturnType<typeof createContextTracker>;
+type Watch = ReturnType<typeof createOutsideWatch>;
 // Cases de soleil mémorisées une seconde ; la clé (pièce, disposition, lumière) invalide le cache dès qu'elle change.
 export type SunCache = { at: number; room: string | null; layout: unknown; lightOn: boolean; cells: PetContext['sunCells'] };
 
@@ -33,7 +37,9 @@ function computeSun(room: Room, sceneView: SceneView, hasSky: boolean, lightOn: 
 }
 
 // Contexte des animaux à l'instant `now` (appelé à chaque image : tout est léger sauf le soleil, mis en cache).
-export function buildPetContext(tracker: Tracker, now: number, { room, sceneView, lightOn }: PetContextInput, cache?: SunCache): PetContext {
+// `watch` : passages de la rue dans l'axe des fenêtres (Ville seulement : la ville est dessinée dans le repère de la pièce,
+// avec la graine `hashString(room.id)`).
+export function buildPetContext(tracker: Tracker, now: number, { room, sceneView, lightOn }: PetContextInput, cache?: SunCache, watch?: Watch): PetContext {
   if (!room || !sceneView) return tracker.update(now, { night: false, moon: false, weather: null, sunCells: NONE });
   // Ciel visible : une fenêtre dans une scène terrestre (ni espace ni orbite).
   const hasSky = WEATHER_SCENES.includes(room.scene) && room.layout.some(isWindow);
@@ -54,13 +60,19 @@ export function buildPetContext(tracker: Tracker, now: number, { room, sceneView
     }
     sunCells = cache.cells;
   }
-  return tracker.update(now, { night, moon, weather, sunCells });
+  let outside: PetContext['outside'] = null;
+  if (watch && room.scene === 'city') {
+    const glasses = room.layout.filter(isWindow).map((w) => glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h })));
+    if (glasses.length > 0) outside = watch.update(now, streetPassesAt(hashString(room.id), now / 1000), glasses);
+  }
+  return tracker.update(now, { night, moon, weather, sunCells, outside });
 }
 
 // Fonction d'identité stable qui relit la dernière entrée (pièce, vue de la scène, lumière) à chaque appel.
 export function usePetContext(input: PetContextInput): () => PetContext {
   // Un suivi par pièce : l'horloge météo est commune, mais le ciel visible dépend de la pièce.
   const trackers = useMemo(() => new Map<string, Tracker>(), []);
+  const watches = useMemo(() => new Map<string, Watch>(), []);
   const cache = useRef<SunCache>(newSunCache());
   const latest = useRef(input);
   useLayoutEffect(() => {
@@ -70,6 +82,8 @@ export function usePetContext(input: PetContextInput): () => PetContext {
     const id = latest.current.room?.id ?? '';
     let tracker = trackers.get(id);
     if (!tracker) trackers.set(id, (tracker = createContextTracker()));
-    return buildPetContext(tracker, Date.now(), latest.current, cache.current);
-  }, [trackers]);
+    let watch = watches.get(id);
+    if (!watch) watches.set(id, (watch = createOutsideWatch()));
+    return buildPetContext(tracker, Date.now(), latest.current, cache.current, watch);
+  }, [trackers, watches]);
 }

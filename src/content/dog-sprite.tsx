@@ -173,6 +173,32 @@ export function dogBody(pose: Pose, c: DogColors, still: boolean): ReactElement 
           ))}
         </g>,
       );
+    case 'bark':
+      // Dressé contre le mur sous la fenêtre (vague 1c) : pattes avant levées, museau vers la vitre, gueule qui s'ouvre à chaque
+      // aboiement, deux traits « ouaf » qui partent devant lui.
+      return (
+        <g data-dog-bark="">
+          <Wag c={c} still={still} fast />
+          <rect x="-8" y="-12" width="4.6" height="12" rx="2.3" fill={c.dark} />
+          <rect x="-2" y="-12" width="4.6" height="12" rx="2.3" fill={c.dark} />
+          <ellipse cx="-1" cy="-22" rx="9" ry="15" fill={c.body} transform="rotate(18 -1 -22)" />
+          <ellipse cx="3" cy="-22" rx="4.5" ry="10" fill={c.belly} transform="rotate(18 3 -22)" />
+          {spots(c)}
+          <rect x="6" y="-40" width="4.6" height="13" rx="2.3" fill={c.dark} transform="rotate(-50 8 -34)" />
+          <rect x="1" y="-38" width="4.6" height="13" rx="2.3" fill={c.dark} transform="rotate(-40 3 -32)" />
+          <g>
+            {!still && <animateTransform attributeName="transform" type="rotate" values="0 6 -40;-10 6 -40;0 6 -40" dur="0.5s" repeatCount="indefinite" />}
+            <DogHead x={9} y={-44} c={c} tilt={-28} mouth />
+          </g>
+          <g data-dog-woof="" fill="none" stroke={c.dark} strokeWidth="1.3" strokeLinecap="round">
+            {[0, 1].map((i) => (
+              <path key={i} d={`M${26 + i * 5} ${-54 - i * 2} l5 -3 M${27 + i * 5} ${-50 - i * 2} l6 0`} opacity={still ? 0.8 : 0}>
+                {!still && <animate attributeName="opacity" values="0;1;0" dur="0.5s" begin={`${i * 0.12}s`} repeatCount="indefinite" />}
+              </path>
+            ))}
+          </g>
+        </g>
+      );
     case 'shake':
       // Chien debout dont le corps tremble (rotation rapide), figé en mouvement réduit.
       return (
