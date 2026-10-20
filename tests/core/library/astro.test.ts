@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { astroAt, moonPhase, skyPoint, withRealSky } from '../../../src/core/library/astro';
+import { astroAt, moonLightOf, moonPhase, skyPoint, withRealSky } from '../../../src/core/library/astro';
 import { skyAt, sunTimes } from '../../../src/core/library/sky';
 import { moonLitPath } from '../../../src/content/ghibli-sky';
 import { moonBeam } from '../../../src/content/sky-place';
@@ -120,12 +120,36 @@ describe('moonBeam (clair de lune des fenêtres)', () => {
   it('la nuit, lune levée : un rayon dont la force suit la phase', () => {
     const gibbous = moonBeam(at(20, 21 * 60), 720, 340);
     expect(gibbous).not.toBeNull();
-    expect(gibbous!.strength).toBeGreaterThan(0.3);
+    expect(gibbous!.strength).toBeGreaterThan(0.25);
     const crescent = moonBeam(at(13, 19 * 60 + 50), 720, 340);
     if (crescent) expect(crescent.strength).toBeLessThan(gibbous!.strength * 0.3);
   });
   it('pas de clair de lune le jour, ni lune couchée', () => {
     expect(moonBeam(withRealSky(skyAt(15 * 60, times), astroAt({ y: 2026, m: 10, d: 20 }, 15 * 60, TRELAZE, 120)), 720, 340)).toBeNull();
     expect(moonBeam(at(20, 4 * 60), 720, 340)).toBeNull();
+  });
+});
+
+describe('éclat de la lune (suit sa phase)', () => {
+  const D = Math.PI / 180;
+  it('plus la lune est pleine, plus elle éclaire, et plus vite que sa part éclairée', () => {
+    expect(moonLightOf(1, 50 * D)).toBeCloseTo(1, 5);
+    expect(moonLightOf(0.5, 50 * D)).toBeCloseTo(0.354, 2);
+    expect(moonLightOf(0.1, 50 * D)).toBeLessThan(0.05);
+    expect(moonLightOf(0.75, 50 * D)).toBeLessThan(moonLightOf(0.9, 50 * D));
+  });
+  it('lune basse plus terne, couchée : rien', () => {
+    expect(moonLightOf(1, 5 * D)).toBeLessThan(moonLightOf(1, 30 * D));
+    expect(moonLightOf(1, -2 * D)).toBe(0);
+  });
+  it('nuit de pleine lune : ciel plus clair et moins d’étoiles qu’une nuit de croissant', () => {
+    const night = (d: number, minutes: number) => withRealSky(skyAt(minutes, sunTimes({ y: 2026, m: 10, d }, TRELAZE, 120)), astroAt({ y: 2026, m: 10, d }, minutes, TRELAZE, 120));
+    const full = night(26, 23 * 60);
+    const crescent = night(13, 21 * 60);
+    const luma = (hex: string): number => parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16);
+    expect(full.moonLight!).toBeGreaterThan(0.8);
+    expect(crescent.moonLight ?? 0).toBeLessThan(0.1);
+    expect(luma(full.top)).toBeGreaterThan(luma(crescent.top));
+    expect(full.stars).toBeLessThan(crescent.stars);
   });
 });

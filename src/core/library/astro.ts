@@ -1,4 +1,4 @@
-import type { Position, Sky, Ymd } from './sky';
+import { mixHex, type Position, type Sky, type Ymd } from './sky';
 
 // Positions réelles du soleil et de la lune (formules basse précision d'astronomie de position, ≈ 1° près : bien assez
 // pour un décor), calculées sur l'appareil. Angles en radians ; azimut compté depuis le nord, vers l'est.
@@ -106,12 +106,28 @@ export function astroAt(ymd: Ymd, minutes: number, pos: Position, tzOffsetMin: n
   return { sun, moon, sunAt: skyPoint(sun, pos.lat), moonAt: skyPoint(moon, pos.lat), phase: moonPhase(sun, moon) };
 }
 
+// Éclat de la lune : la luminosité croît plus vite que la part éclairée (une demi-lune éclaire bien moins que la moitié d'une
+// pleine lune) ; une lune basse est voilée par l'épaisseur d'air. 0 sous l'horizon.
+const MOON_FULL_ALT = 25 * RAD;
+export function moonLightOf(lit: number, alt: number): number {
+  if (alt <= 0) return 0;
+  return clamp(lit, 0, 1) ** 1.5 * Math.sqrt(Math.min(1, Math.sin(alt) / Math.sin(MOON_FULL_ALT)));
+}
+// Ciel de nuit sous la pleine lune : bleu plus clair, moins d'étoiles.
+const MOONLIT = { top: '#1E2E5E', bottom: '#33406E' };
+
 // Ciel de `skyAt` complété par le ciel réel. Le soleil garde sa plage de visibilité (lever − 15 min à coucher + 15 min) ;
 // la lune est là quand elle est levée, de jour comme de nuit, sauf autour de la nouvelle lune (invisible).
 export function withRealSky(sky: Sky, astro: Astro): Sky {
   const moonUp = astro.moon.alt > -1 * RAD && astro.phase.lit > 0.03;
+  const moonLight = moonUp ? moonLightOf(astro.phase.lit, astro.moon.alt) : 0;
+  const night = moonLight * (1 - clamp(sky.daylight, 0, 1));
   return {
     ...sky,
+    top: mixHex(sky.top, MOONLIT.top, 0.35 * night),
+    bottom: mixHex(sky.bottom, MOONLIT.bottom, 0.35 * night),
+    stars: sky.stars * (1 - 0.5 * night),
+    moonLight,
     sunAt: astro.sunAt,
     moonAt: astro.moonAt,
     moonPhase: astro.phase,

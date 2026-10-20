@@ -91,7 +91,8 @@ const MOON_R = 17;
 
 // Lune peinte à sa phase : le disque peint entier, très atténué, donne la lumière cendrée (surtout visible sur un croissant) ; la partie éclairée est découpée
 // dans le même disque, tournée vers le soleil. De jour, elle pâlit.
-export function GhibliMoon({ x, y, phase, daylight, painted, shown, still }: { x: number; y: number; phase: MoonPhase; daylight: number; painted: PaintedSky; shown: boolean; still: boolean }): ReactElement {
+// `light` : éclat de la lune (phase et hauteur) : le halo grandit et s'avive avec lui.
+export function GhibliMoon({ x, y, phase, light, daylight, painted, shown, still }: { x: number; y: number; phase: MoonPhase; light: number; daylight: number; painted: PaintedSky; shown: boolean; still: boolean }): ReactElement {
   const raw = uid(useId());
   const halo = `moonhalo${raw}`;
   const clip = `moonlit${raw}`;
@@ -115,7 +116,7 @@ export function GhibliMoon({ x, y, phase, daylight, painted, shown, still }: { x
         </clipPath>
       </defs>
       <g opacity={moonOpacity(daylight)}>
-        <circle r={40} fill={`url(#${halo})`} opacity={Number(((0.25 + 0.75 * phase.lit) * night).toFixed(2))} />
+        <circle r={Number((28 + 30 * light).toFixed(1))} fill={`url(#${halo})`} opacity={Number(((0.15 + 0.85 * light) * night).toFixed(2))} />
         <image href={painted.moon} x={-half} y={-half} width={MOON_SIZE} height={MOON_SIZE} clipPath={`url(#${disc})`} opacity={Number((0.16 * (1 - phase.lit) * night).toFixed(2))} />
         <image href={painted.moon} x={-half} y={-half} width={MOON_SIZE} height={MOON_SIZE} clipPath={`url(#${clip})`} />
       </g>
