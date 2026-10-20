@@ -38,6 +38,11 @@ export function skylinePoints(plan: Plan): [number, number][] {
     add(l.x - 2 * l.s);
     add(l.x + l.w + 2 * l.s);
   }
+  // Fond vivant : bords des boîtes de ce qui dépasse la crête (arbres, maisons de crête, chapelles, toits garnis).
+  for (const [x0, x1] of plan.hill.tops ?? []) {
+    add(x0);
+    add(x1);
+  }
   const xs = [...cuts].sort((a, c) => a - c);
   const pts: [number, number][] = [];
   for (let i = 0; i + 1 < xs.length; i++) {

@@ -130,11 +130,15 @@ describe('peintre de tranche', () => {
     expect(a).toEqual(mine(1));
   });
 
-  it('clé : stable, dépend de la graine, inchangée pour la 1re tranche quand la pièce grandit', () => {
+  it('clé : stable, dépend de la graine, inchangée pour la 1re tranche quand la pièce grandit sans changer son fond', () => {
     const p1 = cityPaintPlan(720, 340, 1);
     expect(tileKey(p1, 0)).toBe(tileKey(cityPaintPlan(720, 340, 1), 0));
     expect(tileKey(p1, 0)).not.toBe(tileKey(cityPaintPlan(720, 340, 2), 0));
-    expect(tileKey(cityPaintPlan(1080, 340, 1), 0)).toBe(tileKey(p1, 0));
+    // L'échappée de la 1re bande ne bouge pas de 1 440 à 2 160 px : la 1re tranche garde sa clé.
+    const a = cityPaintPlan(1440, 340, 1);
+    const b = cityPaintPlan(2160, 340, 1);
+    expect(b.fond.escapes[0]!.x).toBe(a.fond.escapes[0]!.x);
+    expect(tileKey(b, 0)).toBe(tileKey(a, 0));
   });
 
   it('n’utilise jamais Math.random', () => {
@@ -205,8 +209,8 @@ describe('peintre de tranche', () => {
     expect(found).toBeGreaterThan(0);
   });
 
-  it('PAINT_VERSION vaut 10', () => {
-    expect(PAINT_VERSION).toBe(10);
+  it('PAINT_VERSION vaut 11', () => {
+    expect(PAINT_VERSION).toBe(11);
   });
 
   it('tranches : aucun volet ni rideau peint (le calque de la vie aux fenêtres les dessine)', () => {

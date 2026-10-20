@@ -6,6 +6,7 @@ import { shopSlotsFor } from '../city/shops/slots';
 import { hashString, mulberry32 } from '../scene-world';
 import { cellRng } from './brush';
 import { hexRgb, type Rgb } from './color';
+import { escapeColumns, farLifeOf, fondPlan, inCol, itemBox, houseBouquet, type Col, type FarLife, type Fond, type FondHouse } from './fond-plan';
 
 // Plan de la ville peinte (vague Ghibli, décor cellulo) : tout ce que le peintre doit savoir, dérivé des MÊMES données que
 // la ville classique (façades, entrées, locaux, mesures de la rue), plus le fond (colline de maisons empilées, repères ;
@@ -38,7 +39,8 @@ export type Look = {
 // fenêtres d'étage de la mise en page (lucarnes exclues : peintes par le toit), rideau d'après le logement. Mur du fond :
 // `top` corrigé (farTops), `wins` = grille complète sous l'égout et au-dessus de la ruelle, `lit` = celles que le calque des
 // fenêtres allume la nuit (vide au premier plan).
-export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; lit: FarWindow[]; look: Look; podiumTop: number | null; layout: FacadeLayout | null; homes: Home[] };
+// `life` (mur du fond, chantier « fond vivant ») : volets, linge et toit, tirés à part (fond-plan.ts, farLifeOf).
+export type PaintBuilding = { id: number; x: number; w: number; top: number; far: boolean; wins: Win[]; lit: FarWindow[]; look: Look; podiumTop: number | null; layout: FacadeLayout | null; homes: Home[]; life?: FarLife };
 // Socle commun des jumeaux (pierre claire), peint après les tours ; ses fenêtres sont celles de `podiumLayout` (`layout` :
 // la mise en page de son étage, fenêtres et logements, pour les peindre comme celles des façades ; null hors du monde).
 export type PaintPodium = { id: number; x: number; w: number; top: number; stone: Rgb; wins: Win[]; layout: PodiumLayout | null };
@@ -49,7 +51,11 @@ export type HillHouse = { row: 0 | 1 | 2; x: number; w: number; h: number; base:
 export type Landmark = { kind: 'tower' | 'dome'; x: number; s: number; base: number; top: number; w: number };
 // Mouette figée du décor : toujours vide depuis G5 (volées animées du calque gulls-layer.tsx), plus dessinée.
 export type Gull = { x: number; y: number; s: number };
-export type Hill = { houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; phase: [number, number] };
+// `tops` : boîtes [x0, x1, haut] de ce que le fond vivant peint au-dessus de la crête (arbres, maisons de crête, chapelles,
+// châteaux d'eau, moulins, toits du mur du fond garnis) : `hillTopY` (découpe du ciel) les compte. `houses` : maisons peintes
+// (celles de l'échappée écartées), avec ce que la vie lira (fond-plan.ts, FondHouse).
+export type TopBox = [number, number, number];
+export type Hill = { houses: HillHouse[]; landmarks: Landmark[]; gulls: Gull[]; phase: [number, number]; tops: TopBox[] };
 export type FurnitureKind = 'bench' | 'mailbox' | 'bike' | 'poster' | 'pigeon';
 export type Furniture = { kind: FurnitureKind; x: number; w: number; tone: number };
 export type CityPaintPlan = {
@@ -69,6 +75,8 @@ export type CityPaintPlan = {
   furniture: Furniture[];
   // Entrées d'immeuble (G4a) : celles de doorsFor, peintes en pierre dans les tranches (centre, base, échelle de la maquette).
   doors: PlanDoor[];
+  // Fond vivant (PR 2a) : échappées, verdure, rang de crête, chapelles, châteaux d'eau, comblement (fond-plan.ts).
+  fond: Fond;
 };
 export type PlanDoor = { x: number; variant: 0 | 1 | 2; cx: number; base: number; s: number };
 // Échelle de l'entrée peinte : cadre de pierre de 15 unités ≈ largeur de l'entrée (12 px) plus ses débords permis.
@@ -175,7 +183,26 @@ export function hillTopY(plan: Pick<CityPaintPlan, 'height' | 'hill'>, x: number
   const eps = 1e-6;
   for (const h of plan.hill.houses) if (x >= h.x - 1.5 * h.s - eps && x <= h.x + h.w + 1.5 * h.s + eps) top = Math.min(top, h.top);
   for (const l of plan.hill.landmarks) if (x >= l.x - 2 * l.s - eps && x <= l.x + l.w + 2 * l.s + eps) top = Math.min(top, l.top);
+  for (const [x0, x1, y] of topsNear(plan.hill, x)) if (x >= x0 - eps && x <= x1 + eps) top = Math.min(top, y);
   return top;
+}
+
+// Boîtes du fond vivant rangées par px (la découpe du ciel interroge hillTopY des milliers de fois).
+const TOP_BUCKETS = new WeakMap<Hill, Map<number, TopBox[]>>();
+const NO_TOPS: TopBox[] = [];
+function topsNear(hill: Hill, x: number): readonly TopBox[] {
+  if (!hill.tops || hill.tops.length === 0) return NO_TOPS;
+  let m = TOP_BUCKETS.get(hill);
+  if (!m) {
+    m = new Map();
+    for (const t of hill.tops) for (let k = Math.floor(t[0]) - 1; k <= Math.ceil(t[1]) + 1; k++) {
+      let l = m.get(k);
+      if (!l) m.set(k, (l = []));
+      l.push(t);
+    }
+    TOP_BUCKETS.set(hill, m);
+  }
+  return m.get(Math.floor(x)) ?? NO_TOPS;
 }
 
 // Repères du fond (tour-horloge, dômes) seuls : le calque de la ville évite d'y faire éclater le spectacle de feux d'artifice.
@@ -225,7 +252,7 @@ function hillPlan(width: number, height: number, seed: number): Hill {
     }
   }
   // G5 : plus de mouettes figées dans le décor ; elles volent en volées dans leur calque animé (city/gulls.ts, gulls-layer.tsx).
-  return { houses, landmarks, gulls: [], phase };
+  return { houses, landmarks, gulls: [], phase, tops: [] };
 }
 
 // ── Mobilier peint à hauteur du mur ───────────────────────────────────────────────────────────────────────────────────
@@ -319,20 +346,23 @@ const minOver = (a: Float32Array, x0: number, x1: number): number => {
   return m;
 };
 
-function farTops(buildings: PaintBuilding[], podiums: readonly PaintPodium[], width: number, height: number, ground: number, seed: number): void {
-  const near = nearSilhouette(buildings, podiums, width, ground);
+// Échappée (fond vivant) : les immeubles du fond qui la touchent sont abaissés au minimum permis, à peine au-dessus de la
+// silhouette du premier plan (la colline se voit partout où la rue est basse), jamais sous le plafond 0,20 H.
+function farTops(buildings: PaintBuilding[], width: number, height: number, ground: number, seed: number, near: Float32Array, escapes: readonly Col[]): void {
   const ruelleY = ground - GROUND_FLOOR;
   for (const b of buildings) {
     if (!b.far) continue;
     const rng = mulberry32(seed ^ hashString('fond-mur') ^ Math.round(b.x * 8));
     const nearMin = minOver(near, b.x, b.x + b.w);
-    const top = Math.max(Math.min(b.top, nearMin - FAR_FLOOR), height * (FAR_CAP + FAR_CAP_SPREAD * rng()));
+    let top = Math.max(Math.min(b.top, nearMin - FAR_FLOOR), height * (FAR_CAP + FAR_CAP_SPREAD * rng()));
+    if (inCol(escapes, b.x, b.x + b.w)) top = Math.max(height * FAR_CAP, Math.min(nearMin - 2, b.top));
     b.top = Math.round(top * 2) / 2;
     const eave = b.top + b.look.roofH;
     const floors = Math.max(0, Math.floor((ruelleY - eave - 2) / FAR_FLOOR));
     const cols = Math.max(1, Math.floor((b.w - 6) / FAR_BAY));
     b.wins = [];
     for (let f = 0; f < floors; f++) for (let c = 0; c < cols; c++) b.wins.push({ x: b.x + 4 + c * FAR_BAY, y: eave + 3 + f * FAR_FLOOR, w: FAR_WINDOW.w, h: FAR_WINDOW.h, dormer: false, curtain: false });
+    b.life = farLifeOf(seed, b, floors, cols);
     // Fenêtres allumables : au plus FAR_WINDOWS_MAX, tirées sans remise parmi celles que ni le premier plan ni le voisin du
     // fond peint par-dessus (chevauchement de 4 px) ne cachent : la lueur SVG se verrait sur leur mur.
     const next = Math.min(...buildings.filter((o) => o.far && o.x > b.x && o.x < b.x + b.w).map((o) => o.x));
@@ -345,7 +375,20 @@ function farTops(buildings: PaintBuilding[], podiums: readonly PaintPodium[], wi
   }
 }
 
+// Plans récents (le décor, la météo, les mouettes, le père Noël et la pluie demandent le même plan) : le fond vivant coûte
+// quelques dizaines de ms à calculer. Le plan est en lecture seule pour ses lecteurs.
+const PLANS = new Map<string, CityPaintPlan>();
 export function cityPaintPlan(width: number, height: number, seed: number): CityPaintPlan {
+  const key = `${width}|${height}|${seed}`;
+  const hit = PLANS.get(key);
+  if (hit) return hit;
+  const plan = buildPlan(width, height, seed);
+  PLANS.set(key, plan);
+  if (PLANS.size > 6) PLANS.delete(PLANS.keys().next().value as string);
+  return plan;
+}
+
+function buildPlan(width: number, height: number, seed: number): CityPaintPlan {
   const m = cityMetrics(height);
   const facades = cityFacades(width, height, seed);
   // Mises en page des tours ; les deux tours d'un socle n'ont ni le même mur ni le même toit.
@@ -407,8 +450,29 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     }
   }
   const furniture = furnitureFor(width, m.unit, seed, blocked, trees, buildings);
-  // Mur du fond corrigé après les arbres et le mobilier (placés sur les hauteurs tirées, comme avant la correction).
-  farTops(buildings, podiums, width, height, m.ground, seed);
+  // Mur du fond corrigé après les arbres et le mobilier (placés sur les hauteurs tirées, comme avant la correction) ; les
+  // échappées du fond vivant sont choisies sur le tirage brut.
+  const near = nearSilhouette(buildings, podiums, width, m.ground);
+  const escapeCols = escapeColumns(buildings.filter((b) => b.far), near, width);
+  farTops(buildings, width, height, m.ground, seed, near, escapeCols);
+  const hill = hillPlan(width, height, seed);
+  const far = buildings.filter((b) => b.far);
+  const { fond, houses } = fondPlan({
+    seed,
+    width,
+    height,
+    ground: m.ground,
+    ruelleY: m.ground - GROUND_FLOOR,
+    rows: HILL_ROWS,
+    crest: (x) => hillCrestY({ height, hill }, x),
+    nearTop: near,
+    far,
+    cols: escapeCols,
+    houses: hill.houses,
+    landmarks: hill.landmarks,
+  });
+  hill.houses = houses;
+  hill.tops = fondTops(fond, houses, far, (x) => hillCrestY({ height, hill }, x));
   return {
     width,
     height,
@@ -422,8 +486,49 @@ export function cityPaintPlan(width: number, height: number, seed: number): City
     podiums,
     trees,
     blocked,
-    hill: hillPlan(width, height, seed),
+    hill,
     furniture,
     doors: doorsFor(width, height, seed).map((d) => ({ x: d.x, variant: d.variant, cx: d.x + DOOR_WIDTH / 2, base: m.doorY, s: entranceScale(m.unit) })),
+    fond,
   };
+}
+
+// Ce que le fond vivant peint au-dessus de la crête (boîtes conservatrices) : arbres et éléments de crête, maisons de crête et
+// de l'échappée (cheminée comprise), bouquets des maisons, chapelles, châteaux d'eau, moulins (ailes comprises), et les
+// toits garnis du mur du fond (antenne, garde-corps de terrasse, souches).
+function fondTops(fond: Fond, houses: readonly FondHouse[], far: readonly PaintBuilding[], crest: (x: number) => number): TopBox[] {
+  const out: TopBox[] = [];
+  const add = (x0: number, x1: number, y: number): void => {
+    if (y < Math.max(crest(x0), crest(x1), crest((x0 + x1) / 2)) + 1) out.push([x0, x1, y]);
+  };
+  const house = (h: FondHouse): void => {
+    add(h.x - 1.5 * h.s - 0.5, h.x + h.w + 1.5 * h.s + 0.5, Math.min(h.top, h.chimneyTop ? h.chimneyTop.y - 0.5 : h.top) - 0.5);
+    const m = houseBouquet(h);
+    if (m) add(m.box.x0, m.box.x1, m.box.y0);
+  };
+  for (const h of houses) house(h);
+  for (const h of fond.crestHouses) house(h);
+  for (const e of fond.escapes) {
+    for (const h of e.houses) house(h);
+    for (const v of e.verdure) {
+      const b = v.b ?? itemBox(v);
+      add(b[0], b[2], b[1]);
+    }
+    if (e.mill) add(e.mill.x - 12 * e.mill.s, e.mill.x + 12 * e.mill.s, e.mill.y - 16.8 * e.mill.s - 9 * e.mill.s - 1);
+    add(e.funi.x1 - 11, e.funi.x1 + 11, e.funi.y1 - 8 - 10);
+  }
+  for (const list of [...fond.rowVerdure, fond.crestVerdure]) for (const v of list) {
+    const b = v.b ?? itemBox(v);
+    add(b[0], b[2], b[1]);
+  }
+  for (const c of fond.chapels) add(c.x - 10 * c.s - 0.5, c.x + 13 * c.s + 0.5, c.y - 29 * c.s - 0.5);
+  for (const r of fond.reservoirs) add(r.x - 5 * r.s - 0.5, r.x + 5 * r.s + 0.5, r.y - 18.8 * r.s - 0.5);
+  for (const b of far) {
+    const roof = b.life?.roof;
+    if (!roof) continue;
+    if (roof.antenna !== null) out.push([roof.antenna - 1.8, roof.antenna + 1.8, b.top - 4.5]);
+    if (roof.terrace) out.push([roof.terrace.x - 1.5, roof.terrace.x + roof.terrace.w + 1.5, b.top - 2.8]);
+    if (b.look.chimney !== null) out.push([b.x + b.w * b.look.chimney - 0.5, b.x + b.w * b.look.chimney + 4, b.top - 1]);
+  }
+  return out;
 }

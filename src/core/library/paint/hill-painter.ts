@@ -1,6 +1,8 @@
 import { SHADOW_K, TAU, disc, fillRect, ink, light, poly, shade } from './cel';
 import { FAR_FLOOR, FAR_HAZE, hillCrestY, type CityPaintPlan, type HillHouse, type Landmark, type PaintBuilding } from './city-plan';
 import { hexRgb, mixRgb, rgba, type Rgb } from './color';
+import { CLOTH } from './fond-plan';
+import { DEFAULT_MOMENT, foliageOf, fondRng, laundryK, shutterK, slotHours, type FondMoment } from './fond-time';
 import type { PaintCtx } from './paint-ctx';
 import { GROUND_FLOOR } from '../city/metrics';
 
@@ -15,7 +17,6 @@ const SPIRE = hexRgb('#4E6A78');
 const DOME_C = hexRgb('#5A8A80');
 const BRICK = hexRgb('#C2724E');
 const GLASS_FAR = hexRgb('#5A7AA8');
-const TREE_TONES = ['#2E6E34', '#56A844', '#A6DC60'].map(hexRgb);
 const haze = (c: Rgb, t: number): Rgb => mixRgb(c, HAZE, t);
 
 export function paintHillGround(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number): void {
@@ -110,26 +111,7 @@ export function paintHillHouse(ctx: PaintCtx, h: HillHouse): void {
   ctx.strokeStyle = ink(0.8 - hz);
   ctx.lineWidth = 0.6;
   ctx.strokeRect(x, top + rh, w, h.h - rh + 2);
-  // Bouquet d'arbres après la maison.
-  if (h.trees) {
-    const { x: tx, r: tr } = h.trees;
-    const ty = base - 6 * s;
-    ctx.strokeStyle = ink(0.85 - hz);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(tx, ty, tr, 0, TAU);
-    ctx.moveTo(tx + tr * 0.8 + tr * 0.8, ty + tr * 0.3);
-    ctx.arc(tx + tr * 0.8, ty + tr * 0.3, tr * 0.8, 0, TAU);
-    ctx.stroke();
-    for (let t = 0; t < 3; t++) {
-      ctx.fillStyle = rgba(haze(TREE_TONES[t]!, hz), 1);
-      ctx.beginPath();
-      ctx.arc(tx - t * tr * 0.25, ty - t * tr * 0.28, tr * (1 - t * 0.3), 0, TAU);
-      ctx.moveTo(tx + tr * 0.8 - t * tr * 0.25 + tr * 0.8 * (1 - t * 0.3), ty + tr * 0.3 - t * tr * 0.28);
-      ctx.arc(tx + tr * 0.8 - t * tr * 0.25, ty + tr * 0.3 - t * tr * 0.28, tr * 0.8 * (1 - t * 0.3), 0, TAU);
-      ctx.fill();
-    }
-  }
+  // Le bouquet de la maison est peint par le fond vivant (fond-painter.ts : modèle à squelette fixe, saison), plus en boules.
 }
 
 export function paintLandmark(ctx: PaintCtx, l: Landmark, hz: number): void {
@@ -190,7 +172,11 @@ export function paintLandmark(ctx: PaintCtx, l: Landmark, hz: number): void {
 // plan (farTops, city-plan.ts) : étages à bandeau, fenêtres sous l'égout (le calque SVG allume `lit` aux mêmes places),
 // volets ouverts quand l'immeuble en a, ombre portée seulement d'un voisin mitoyen et sur un étage, et sous le haut du
 // rez-de-chaussée une ruelle ou une cour en retrait (ton d'ombre, porches, pavés) : vue dans les fentes du premier plan.
-export function paintFarWall(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding, left: PaintBuilding | null): void {
+// Fond vivant (PR 2a) : volets fermés ou ouverts selon l'heure (tranche de 10 min), linge tendu les jours secs, toit garni
+// (terrasse végétalisée ou potager, verrière d'atelier, antenne râteau, souches de cheminée).
+export function paintFarWall(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuilding, left: PaintBuilding | null, D: FondMoment = DEFAULT_MOMENT): void {
+  const T = slotHours(D.minutes);
+  const life = b.life;
   const hz = FAR_HAZE;
   const { x, w, top } = b;
   const eave = top + b.look.roofH;
@@ -219,12 +205,40 @@ export function paintFarWall(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildin
   // Fenêtres : linteau clair, vitre, volets ouverts de part et d'autre.
   const glass = haze(GLASS_FAR, 0.3);
   const sh = b.look.shutters ? haze(b.look.shutters, hz) : null;
-  for (const v of b.wins) {
+  b.wins.forEach((v, i) => {
     fillRect(ctx, light(wall, 0.5), v.x - 0.6, v.y - 0.7, v.w + 1.2, 0.7);
     fillRect(ctx, glass, v.x, v.y, v.w, v.h);
-    if (sh) {
+    if (!sh) return;
+    const wl = life?.wins[i];
+    const k = wl ? shutterK(T, D, wl) : 0;
+    if (k <= 0) {
       fillRect(ctx, sh, v.x - 0.8, v.y, 0.7, v.h);
       fillRect(ctx, shade(sh, 0.3), v.x + v.w + 0.1, v.y, 0.7, v.h);
+    } else {
+      // Battants qui se rabattent sur la vitre ; fermés, un trait au milieu.
+      const half = (v.w / 2) * k;
+      fillRect(ctx, sh, v.x - 1 + (1 - k), v.y, 0.9 + half, v.h);
+      fillRect(ctx, shade(sh, 0.3), v.x + v.w - half, v.y, half + 0.9 - (1 - k) * 0.9, v.h);
+      if (k >= 1) fillRect(ctx, ink(0.5), v.x + v.w / 2 - 0.2, v.y, 0.4, v.h);
+    }
+  });
+  // Linge tendu entre deux fenêtres d'un étage (jours secs), pièces pendues une à une.
+  if (life && life.laundryFloor !== null) {
+    const lk = laundryK(T, D, String(Math.round(x * 8)), true, plan.seed);
+    const at = (c: number): (typeof b.wins)[number] | undefined => b.wins[life.laundryFloor! * life.nCols + c];
+    const a = at(life.laundryCol);
+    const c2 = at(life.laundryCol + 1);
+    if (lk > 0 && a && c2) {
+      const ly = a.y + 2.2;
+      ctx.strokeStyle = ink(0.7);
+      ctx.lineWidth = 0.4;
+      ctx.beginPath();
+      ctx.moveTo(a.x + a.w, ly);
+      ctx.lineTo(c2.x, ly + 0.4);
+      ctx.stroke();
+      const n = Math.round(lk * 3);
+      const r = fondRng(plan.seed, `linge-pieces-${Math.round(x * 8)}`);
+      for (let i = 0; i < n; i++) fillRect(ctx, haze(CLOTH[Math.floor(r() * CLOTH.length)]!, hz), a.x + a.w + 0.8 + i * 1.6, ly + 0.2, 1.2, 1.6 + r() * 0.8);
     }
   }
   ctx.restore();
@@ -278,8 +292,90 @@ export function paintFarWall(ctx: PaintCtx, plan: CityPaintPlan, b: PaintBuildin
     const cx = x + w * b.look.chimney;
     fillRect(ctx, haze(BRICK, hz), cx, top + 1, 3, b.look.roofH * 0.6);
     fillRect(ctx, ink(0.7), cx - 0.4, top + 1, 3.8, 0.8);
+    // Souches (1 à 3 pots) sur le couronnement.
+    for (let k = 0; k < (life?.roof.pots ?? 0); k++) fillRect(ctx, haze(shade(BRICK, 0.3), hz), cx + 0.3 + k * 0.9, top - 0.6, 0.6, 1.8);
   }
+  if (life) paintFarRoofExtras(ctx, b, life.roof, top, hz, D);
   ctx.strokeStyle = ink(0.8 - hz);
   ctx.lineWidth = 0.6;
   ctx.strokeRect(x, eave, w, h);
+}
+
+// Toit garni du mur du fond : antenne râteau, verrière d'atelier, toit-terrasse végétalisé ou potager (verdure selon le mois :
+// vert de mai à octobre, brun ensuite, bâché gris en plein hiver), garde-corps, neige.
+function paintFarRoofExtras(ctx: PaintCtx, b: PaintBuilding, roof: NonNullable<PaintBuilding['life']>['roof'], top: number, hz: number, D: FondMoment): void {
+  const roofH = b.look.roofH;
+  if (roof.antenna !== null) {
+    const ax = roof.antenna;
+    ctx.strokeStyle = ink(0.75);
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(ax, top + 1);
+    ctx.lineTo(ax, top - 4);
+    for (let k = 0; k < 3; k++) {
+      ctx.moveTo(ax - 1.4 + k * 0.2, top - 1.5 - k);
+      ctx.lineTo(ax + 1.4 - k * 0.2, top - 1.5 - k);
+    }
+    ctx.stroke();
+  }
+  if (roof.verriere) {
+    const vr = roof.verriere;
+    const vy = top + 1.2;
+    const vh = roofH - 2;
+    fillRect(ctx, haze(hexRgb('#A8D0F0'), hz), vr.x, vy, vr.w, vh);
+    fillRect(ctx, 'rgba(255,255,255,0.45)', vr.x + 0.4, vy + 0.3, vr.w * 0.4, vh * 0.4);
+    ctx.strokeStyle = ink(0.7);
+    ctx.lineWidth = 0.4;
+    ctx.strokeRect(vr.x, vy, vr.w, vh);
+    ctx.beginPath();
+    for (let k = 1; k < 3; k++) {
+      ctx.moveTo(vr.x + (vr.w * k) / 3, vy);
+      ctx.lineTo(vr.x + (vr.w * k) / 3, vy + vh);
+    }
+    ctx.stroke();
+  }
+  if (roof.terrace) {
+    const tr = roof.terrace;
+    const ty = top + 1;
+    const doy = D.doy;
+    const green = doy >= 125 && doy < 300;
+    const tarp = doy >= 335 || doy < 50;
+    fillRect(ctx, haze(hexRgb('#8A6A48'), hz), tr.x, ty - 1.6, tr.w, 1.6);
+    if (tr.potager) {
+      for (let k = 0; k < 3; k++) {
+        const rx = tr.x + 1 + k * (tr.w / 3);
+        const rw = tr.w / 3 - 1.5;
+        fillRect(ctx, haze(tarp && !D.meteo.snow ? hexRgb('#9AA0A8') : hexRgb('#A8865E'), hz), rx, ty - 2.2, rw, 0.7);
+        if (green) for (let px = rx + 0.6; px < rx + rw; px += 1.6) disc(ctx, haze(hexRgb(k === 1 ? '#56A844' : '#2E6E34'), hz), px, ty - 2.5, 0.6);
+      }
+    } else {
+      for (let px = tr.x + 1.2; px < tr.x + tr.w - 1; px += 2.4) {
+        const f2 = foliageOf(D, `tt-${Math.round(b.x * 8)}-${Math.round(px)}`, 'bouquet');
+        if (f2.d > 0.1) {
+          disc(ctx, haze(f2.tones[0]!, hz), px, ty - 2.4, 1.1 * (0.6 + 0.4 * f2.d));
+          disc(ctx, haze(f2.tones[1]!, hz), px - 0.3, ty - 2.7, 0.65 * (0.6 + 0.4 * f2.d));
+        } else {
+          ctx.strokeStyle = ink(0.6);
+          ctx.lineWidth = 0.4;
+          ctx.beginPath();
+          ctx.moveTo(px, ty - 1.6);
+          ctx.lineTo(px - 0.5, ty - 3);
+          ctx.moveTo(px, ty - 1.6);
+          ctx.lineTo(px + 0.6, ty - 2.8);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.strokeStyle = ink(0.7);
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(tr.x - 1, ty - 3.4);
+    ctx.lineTo(tr.x + tr.w + 1, ty - 3.4);
+    for (let px = tr.x - 1; px <= tr.x + tr.w + 1; px += 2) {
+      ctx.moveTo(px, ty - 3.4);
+      ctx.lineTo(px, ty);
+    }
+    ctx.stroke();
+    if (D.meteo.snow) fillRect(ctx, '#F0F4F8', tr.x, ty - 2.4, tr.w, 0.9);
+  }
 }

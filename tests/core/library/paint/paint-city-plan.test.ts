@@ -163,9 +163,9 @@ describe('plan de la ville peinte', () => {
     expect(pairs).toBeGreaterThan(20);
   });
 
-  it('PAINT_VERSION vaut 10 (cache des tranches invalidé)', () => {
+  it('PAINT_VERSION vaut 11 (cache des tranches invalidé)', () => {
     const plan = cityPaintPlan(720, 340, 1);
-    expect(tileKey(plan, 0).startsWith('10|')).toBe(true);
+    expect(tileKey(plan, 0).startsWith('11|')).toBe(true);
   });
 });
 
@@ -216,7 +216,9 @@ describe('mur du fond corrigé', () => {
         let nearMin = Infinity;
         for (let x = Math.max(0, Math.floor(b.x)); x <= Math.min(w, Math.ceil(b.x + b.w)); x++) nearMin = Math.min(nearMin, near[x]!);
         expect(b.top).toBeGreaterThanOrEqual(340 * 0.2 - 0.25);
-        expect(b.top).toBeLessThanOrEqual(Math.max(nearMin - FAR_FLOOR, 340 * 0.28) + 0.25);
+        // Échappée du fond vivant : abaissé au minimum permis, à peine au-dessus du premier plan.
+        const escape = plan.fond.escapes.some((e) => b.x + b.w > e.x + 1 && b.x < e.x1 - 1);
+        expect(b.top).toBeLessThanOrEqual(Math.max(nearMin - (escape ? 2 : FAR_FLOOR), 340 * (escape ? 0.2 : 0.28)) + 0.25);
       }
     });
   }
