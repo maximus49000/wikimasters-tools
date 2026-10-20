@@ -106,7 +106,12 @@ Branche de travail : `ccr-f0374a79-8v8eca`. Pour reprendre, relire ce plan, la s
     ailes du moulin ;
   - [x] tests (déterminisme, nœuds constants sur 24 h, entrées/sorties, horaires, fumées, budget de 40 nœuds, mouvement réduit) ;
   - [x] banc : mode `vie=1` de `.superpowers/harness-fond` (vie.tsx : tranches étalonnées + FondLife + GhibliWindows) ;
-  - [ ] captures `maquettes/fond-ville/pr2b-*.png`, mesure de perf (CPU ×4), suite complète.
+  - [x] captures `maquettes/fond-ville/pr2b-*.png` (automne 18 h 30, nuit 23 h, hiver 8 h, dimanche d'été 16 h, tour le
+    14 juillet, funiculaire), comparées à `captures/` ;
+  - [x] mesure (`.superpowers/harness-fond/app.html` : vraie ScenePanorama, branche contre `origin/main` en worktree, CPU ×4,
+    1 440 px) : décor seul +20 à +30 ms de tâches par seconde ; scène peuplée : processeur saturé dans les deux cas
+    (≈ 990 ms/s), écart de tâches ≤ 1 % ;
+  - [ ] suite complète (15 échecs déjà sur main dans ce conteneur), puis PR.
 - **PR 3 (verdure de la rue et arbres)** : À FAIRE.
   1. Commencer par la mesure au banc ralenti ×4 du vent par sprites cuits par masse à 15 Hz. Repli validé si le budget est
      dépassé : rue et échappée animées seulement, colline par tranches de 240 px.
