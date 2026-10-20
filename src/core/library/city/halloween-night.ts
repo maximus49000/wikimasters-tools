@@ -110,7 +110,8 @@ function pathOf(g: NightGroup, st: NightStreet, r: () => number, busy: Busy, pla
   let x = g.dir > 0 ? -EDGE : st.width + EDGE;
   const xEnd = g.dir > 0 ? st.width + EDGE + trail : -EDGE - trail;
   let t = g.t0;
-  let rang = false;
+  // Une bande sur six (18 %) sonnera et s'enfuira, à une porte tirée en chemin.
+  let rang = !(g.kind === 'teens' && r() < 0.18);
   const walkTo = (x1: number, k = 1): void => {
     const dt = Math.abs(x1 - x) / (g.speed * k);
     g.pieces.push({ mode: k > 1 ? 'run' : 'walk', t0: t, t1: t + dt, x0: x, x1 });
@@ -128,7 +129,7 @@ function pathOf(g: NightGroup, st: NightStreet, r: () => number, busy: Busy, pla
       const a = r();
       const b = r();
       if (a < p) kind = b < (dec ? 0.85 : 0.5) ? 'treat' : 'nobody';
-    } else if (g.kind === 'teens' && !rang && r() < 0.18) kind = 'ring';
+    } else if (g.kind === 'teens' && !rang && r() < 0.25) kind = 'ring';
     if (!kind) continue;
     const tArr = t + Math.abs(stopX - x) / g.speed;
     if (!busy.free(d.c, kind, tArr)) continue;
@@ -172,8 +173,8 @@ export function halloweenNight(date: YMD, st: NightStreet, seed: number, wet: bo
         plan.groups.push(g);
       }
     }
-    // Faire peur : de 20 h 30 à 22 h 45, environ une fois toutes les 7 minutes pour 720 px (pluie comprise).
-    if (h >= 20.5 && h < 22.75 && r() < Math.min(1, k / 7)) {
+    // Faire peur : de 20 h 30 à 22 h 45, environ une fois toutes les 7 minutes pour 900 px (pluie comprise).
+    if (h >= 20.5 && h < 22.75 && r() < Math.min(1, st.width / 900 / 7)) {
       const d = st.doors[Math.floor(r() * st.doors.length)]!;
       const c = d.x + DOOR_WIDTH / 2;
       const t0 = m * 60 + r() * 60;

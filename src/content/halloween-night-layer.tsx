@@ -1,7 +1,8 @@
 import { useMemo, useRef, type ReactElement } from 'react';
 import { groupFigures, residentAt, scareAt, scareSpan, doorStateAt, type DoorEvent, type NightFigure, type NightGroup, type NightMember, type NightPlan, type NightScare } from '../core/library/city/halloween-night';
-import { STREET_SCALE, DOOR_WIDTH, type CityMetrics } from '../core/library/city/metrics';
-import { DOOR_DARK, entranceOpening } from '../core/library/city/doorway';
+import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
+import { DOOR_DARK } from '../core/library/city/doorway';
+import { entranceScale } from '../core/library/paint/city-plan';
 import { phaseIndexOf, YAW_FRONT } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { tone } from './city-sprites';
@@ -29,6 +30,11 @@ const AFTER = 150;
 // Lumière du hall vue par l'embrasure ouverte (nuit) ; ombre de l'entrée le jour.
 const HALL_GLOW = '#F4DFA8';
 
+// Vantaux de l'entrée peinte (paint/shop/entrance.ts, repère de la maquette : ±6 de large, 18 de haut sous l'imposte).
+const leafOf = (cx: number, m: CityMetrics): { x: number; y: number; w: number; h: number } => {
+  const s = entranceScale(m.unit);
+  return { x: cx - 6 * s, y: m.doorY - 18 * s, w: 12 * s, h: 18 * s };
+};
 const kOf = (m: CityMetrics, member: NightMember): number => m.unit * STREET_SCALE.person * member.scale;
 const yOf = (m: CityMetrics, step: number): number => m.walkY + (m.doorY - m.walkY) * step;
 const poseOf = (f: { yaw: number; gait: PoseIn['gait']; arms: PoseIn['arms']; head: number; walked: number }, k: number, still: boolean): PoseIn =>
@@ -146,7 +152,7 @@ export function HalloweenNightLayer({ plan, width, metrics, sky, rainy, still, m
     <g data-halloween-night="" ref={root}>
       {/* Embrasures : porte ouverte sur le hall (éclairé la nuit), habitant qui donne ou qui regarde, jeune tapi dans l'ombre. */}
       {openDoors.map((x) => {
-        const o = entranceOpening(x - DOOR_WIDTH / 2, metrics);
+        const o = leafOf(x, metrics);
         const st = doorStateAt(plan.doors.get(x), sNow);
         const k = metrics.unit * STREET_SCALE.person;
         return (
