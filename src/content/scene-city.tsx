@@ -21,6 +21,7 @@ import { layerBox } from './shop/shop-host';
 import { shopLookOf, shopOrigin, type GlowLamp } from './shop/ghibli-shop-front';
 import { usePaintedCity } from './painted-city';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
+import { fondMoment, type FondMoment } from '../core/library/paint/fond-time';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
@@ -46,7 +47,25 @@ function useLingering(on: boolean, ms: number): boolean {
 // Les lampadaires ne sont pas ici : ils sont dans le calque animé, devant les passants (StreetLamps, city-life.tsx).
 // Locaux commerciaux (vague 1b-iv-a) : devanture et intérieur dans le décor fixe ; clients et équipe du chantier dans le
 // calque animé (city-shops-life.tsx). Sans `city.shops`, aucun commerce n'est dessiné.
-export function CityScene({ width, height, sky, minutes, seed, gloom = false, rainy = false, city, forcedNight = false }: SceneBodyProps): ReactElement {
+// Instant du fond vivant (PR 2a) : date de la scène (aujourd'hui sans contexte de ville), heure, météo lue une fois par minute
+// (neige posée au-delà de 35 % de couverture), arrondie au vingtième : la clé des tranches ne change qu'avec leurs poses lentes.
+function useFondMoment(minutes: number, gloom: boolean, rainy: boolean, city: SceneBodyProps['city'], weather: SceneBodyProps['weather']): FondMoment {
+  const q = (v: number): number => Math.round(Math.max(0, Math.min(1, v)) * 20) / 20;
+  const date = city?.day.date;
+  const iso = date ? `${date.y}-${date.m}-${date.d}` : '';
+  return useMemo(() => {
+    const now = new Date();
+    const d = date ?? { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() };
+    const w = weather?.read(Date.now());
+    const meteo = w
+      ? { cloud: q(w.cloud), precip: q(w.precip), wind: q(w.wind), snow: w.snowCover >= 0.35 || (w.kind === 'snow' && w.precip > 0.3) }
+      : { cloud: gloom ? 0.8 : 0.2, precip: rainy ? 0.6 : 0, wind: city?.storm ? 0.9 : 0.25, snow: city?.snow ?? false };
+    return fondMoment(d, Math.round(minutes), meteo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [iso, Math.round(minutes), gloom, rainy, weather, city?.snow, city?.storm]);
+}
+
+export function CityScene({ width, height, sky, minutes, seed, gloom = false, rainy = false, city, forcedNight = false, weather }: SceneBodyProps): ReactElement {
   const metrics = cityMetrics(height);
   const { ground, unit } = metrics;
   const far = mixHex('#232B5C', '#9FB4C8', sky.daylight);
@@ -74,7 +93,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
   const ghibli = art === 'ghibli';
   const lingering = useLingering(ghibli, reducedMotion() ? 0 : 1000);
   const plan = useMemo(() => (lingering ? cityPaintPlan(width, height, seed) : null), [lingering, width, height, seed]);
-  const painted = usePaintedCity(plan);
+  const moment = useFondMoment(minutes, gloom, rainy, city, weather);
+  const painted = usePaintedCity(plan, moment);
   const gradeId = useId().replace(/:/g, '');
   // Vitrines pour la lumière de nuit (G5) : vitre de chaque local, allumée la nuit quand le commerce est ouvert (comme ShopFront).
   const nightShops = useMemo(
@@ -253,7 +273,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
           ))}
         </g>
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
-        <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} />
+        <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} moment={moment} />
         <GhibliWindows buildings={buildings} minutes={minutes} day={city?.day} daylight={sky.daylight} gloom={gloom} dim={dim} farLight={FAR_LIGHT} plan={plan} life={life} states={states} />
       </g>
       {shopFronts}

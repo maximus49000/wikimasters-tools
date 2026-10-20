@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useReducer } from 'react';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
+import type { FondMoment } from '../core/library/paint/fond-time';
 import { paintCityTile, TILE, tileCount, tileKey } from '../core/library/paint/city-painter';
 import { FALL, type LightBlob, type WetStroke } from '../core/library/city/night-light';
 import { idle } from './paint-queue';
@@ -7,7 +8,8 @@ import { idle } from './paint-queue';
 // Peinture des tranches de la ville (vague Ghibli) : canvas hors écran pendant les temps morts, une tranche par créneau,
 // image PNG en data URL, cache mémoire (20 tranches au plus, les plus anciennes libérées).
 export type PaintedTile = { x: number; w: number; url: string };
-export type TilePainter = (plan: CityPaintPlan, tile: number) => Promise<string | null>;
+// `moment` : instant du fond vivant (date, météo, tranche de 10 min) ; absent = instant par défaut.
+export type TilePainter = (plan: CityPaintPlan, tile: number, moment?: FondMoment) => Promise<string | null>;
 
 const CACHE_MAX = 20;
 const cache = new Map<string, string>();
@@ -41,7 +43,7 @@ export function resetPaintedCacheForTests(): void {
   failed.clear();
 }
 
-export const canvasTilePainter: TilePainter = async (plan, tile) => {
+export const canvasTilePainter: TilePainter = async (plan, tile, moment) => {
   if (typeof document === 'undefined' || (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom'))) return null;
   const x0 = tile * TILE;
   const w = Math.min(TILE, plan.width - x0);
@@ -54,15 +56,21 @@ export const canvasTilePainter: TilePainter = async (plan, tile) => {
   if (!ctx) return null;
   ctx.setTransform(dpr, 0, 0, dpr, -x0 * dpr, 0);
   // Cellulo : aplats francs, pas de grain de papier.
-  paintCityTile(ctx, plan, tile);
+  paintCityTile(ctx, plan, tile, moment);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   return canvas.toDataURL('image/png');
 };
 
-// Tranches de la ville peinte pour ce plan. `ready` : toutes peintes. Sans plan : rien.
-export function usePaintedCity(plan: CityPaintPlan | null): { ready: boolean; tiles: PaintedTile[] } {
+// Tranches de la ville peinte pour ce plan. `ready` : toutes peintes. Sans plan : rien. `moment` (fond vivant) : la clé d'une
+// tranche ne change que si ses poses lentes changent (date, neige, volets, linge, parasols, étals) ; une tranche à repeindre
+// garde son image précédente jusqu'à la nouvelle (une par créneau de repos, jamais un retour au décor classique).
+export function usePaintedCity(plan: CityPaintPlan | null, moment?: FondMoment): { ready: boolean; tiles: PaintedTile[] } {
   const [, bump] = useReducer((n: number) => n + 1, 0);
-  const keys = useMemo(() => (plan ? Array.from({ length: tileCount(plan.width) }, (_, t) => tileKey(plan, t)) : []), [plan]);
+  const momentSig = moment ? JSON.stringify(moment) : '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const keys = useMemo(() => (plan ? Array.from({ length: tileCount(plan.width) }, (_, t) => tileKey(plan, t, moment)) : []), [plan, momentSig]);
+  const keysSig = keys.join('\n');
+  const last = useRef<{ plan: CityPaintPlan | null; urls: string[] }>({ plan: null, urls: [] });
   useEffect(() => {
     if (!plan) return;
     const painter = override ?? canvasTilePainter;
@@ -73,7 +81,7 @@ export function usePaintedCity(plan: CityPaintPlan | null): { ready: boolean; ti
       const t = keys.findIndex((k) => !cache.has(k) && !failed.has(k));
       if (t < 0) return;
       cancelIdle = idle(() => {
-        void painter(plan, t).catch(() => null).then((url) => {
+        void painter(plan, t, moment).catch(() => null).then((url) => {
           if (url) remember(keys[t]!, url);
           else failed.add(keys[t]!);
           if (!cancelled) {
@@ -88,9 +96,15 @@ export function usePaintedCity(plan: CityPaintPlan | null): { ready: boolean; ti
       cancelled = true;
       cancelIdle?.();
     };
-  }, [plan, keys]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, keysSig]);
   if (!plan) return { ready: false, tiles: [] };
-  const tiles = keys.map((k, t) => ({ x: t * TILE, w: Math.min(TILE, plan.width - t * TILE), url: touch(k) }));
+  if (last.current.plan !== plan) last.current = { plan, urls: [] };
+  const tiles = keys.map((k, t) => {
+    const url = touch(k) || last.current.urls[t] || '';
+    last.current.urls[t] = url;
+    return { x: t * TILE, w: Math.min(TILE, plan.width - t * TILE), url };
+  });
   return { ready: tiles.every((t) => t.url !== ''), tiles };
 }
 
@@ -102,7 +116,8 @@ export function usePaintedCity(plan: CityPaintPlan | null): { ready: boolean; ti
 // `tint` : teinte de la version éclairée ; par défaut l'ambre des lampadaires (réutilisable pour une lumière colorée).
 export type LitTint = { multiply: string; screen?: string; screenAlpha?: number };
 export const LAMP_TINT: LitTint = { multiply: '#FFD4A0', screen: 'rgb(255,196,112)', screenAlpha: 0.2 };
-export type LitPatchPainter = (plan: CityPaintPlan, box: { x: number; y: number; w: number; h: number }, blobs: readonly LightBlob[], tint?: LitTint) => string;
+// `moment` : instant du fond vivant des tranches de jour repeintes (mêmes volets et linge que les tranches affichées).
+export type LitPatchPainter = (plan: CityPaintPlan, box: { x: number; y: number; w: number; h: number }, blobs: readonly LightBlob[], tint?: LitTint, moment?: FondMoment) => string;
 
 let litOverride: LitPatchPainter | null = null;
 export function setLitPatchPainterForTests(painter: LitPatchPainter | null): void {
@@ -170,7 +185,7 @@ function maskBlob(m: CanvasRenderingContext2D, b: LightBlob): void {
   m.restore();
 }
 
-export const paintLitPatch: LitPatchPainter = (plan, box, blobs, tint = LAMP_TINT) => {
+export const paintLitPatch: LitPatchPainter = (plan, box, blobs, tint = LAMP_TINT, moment) => {
   if (noCanvas() || box.w <= 0 || box.h <= 0) return '';
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const pw = Math.max(1, Math.round(box.w * dpr));
@@ -189,7 +204,7 @@ export const paintLitPatch: LitPatchPainter = (plan, box, blobs, tint = LAMP_TIN
     lit.beginPath();
     lit.rect(t * TILE, 0, Math.min(TILE, plan.width - t * TILE), plan.height);
     lit.clip();
-    paintCityTile(lit, plan, t);
+    paintCityTile(lit, plan, t, moment);
     lit.restore();
   }
   lit.setTransform(1, 0, 0, 1, 0, 0);
