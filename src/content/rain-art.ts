@@ -32,7 +32,7 @@ const BRUME_DAY = hexRgb('#DCE4EC'), BRUME_NIGHT = hexRgb('#2A3450');
 const WHITE: Rgb = [255, 255, 255];
 const INK: Rgb = [42, 26, 24];
 const INK_STR = 'rgba(42,26,24,1)';
-const TRAIL_DAY = 'rgba(255,255,255,1)', TRAIL_NIGHT = 'rgba(200,212,236,1)';
+const TRAIL_NIGHT_RGB: Rgb = [200, 212, 236]; // filet des traces : blanc le jour, bleuté la nuit
 const FOG_DAY = hexRgb('#EEF2F6'), FOG_NIGHT = hexRgb('#C4CEE0');
 
 const lerp = (a: number, b: number, u: number): number => a + (b - a) * u;
@@ -126,7 +126,7 @@ function alphaAt(field: LightField, daylight: number, x: number, y: number, a: n
 }
 
 // ───────────── caches par contexte : dégradés des traits (par longueur et pas de nuit) et halos (par lampadaire) ─────────────
-type Caches = { grads: Map<number, CanvasGradient>; halos: WeakMap<RainLight, { R: number; nb: number; g: CanvasGradient }> };
+type Caches = { grads: Map<number, CanvasGradient>; halos: WeakMap<RainLight, { R: number; g: CanvasGradient }> };
 const CACHES = new WeakMap<CanvasRenderingContext2D, Caches>();
 function cachesOf(ctx: CanvasRenderingContext2D): Caches {
   let c = CACHES.get(ctx);
@@ -162,8 +162,9 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
   const dirx = 0.08 + lean * 0.55; // direction du trait = direction de la vitesse
   const nrm = 1 / Math.hypot(dirx, 1);
   ctx.lineCap = 'round';
-  // halos de pluie autour des lampadaires (nuit) : volume éclairé, plus large et plus dense avec l'averse
-  if (night > 0.05 && P > 0.02 && field.lights) {
+  // halos de pluie autour des lampadaires (nuit) : volume éclairé, plus large et plus dense avec l'averse ; monte en fondu dès P = 0,02
+  const haloIn = clamp01((P - 0.02) / 0.05);
+  if (night > 0.05 && haloIn > 0 && field.lights) {
     const R = Math.round(40 + 56 * P);
     for (const l of field.lights) {
       if (l.w > 10) continue;
@@ -172,9 +173,9 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
         const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
         g.addColorStop(0, l.color);
         g.addColorStop(1, 'rgba(0,0,0,0)');
-        caches.halos.set(l, (h = { R, nb, g }));
+        caches.halos.set(l, (h = { R, g }));
       }
-      ctx.globalAlpha = night * (0.14 + 0.26 * P) * l.k;
+      ctx.globalAlpha = night * (0.14 + 0.26 * P) * l.k * haloIn;
       ctx.fillStyle = h.g;
       ctx.translate(l.x, l.y - 4);
       ctx.fillRect(-R, -R, R * 2, R * 2);
@@ -237,6 +238,9 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
   ctx.globalAlpha = 1;
 }
 
+// Tirage des reflets au sol, calculé une fois (4096 valeurs, puissance de 2) : plus de générateur recréé à chaque image.
+const REFLECT_RNG: Float32Array = (() => { const g = mulberry32(11), a = new Float32Array(4096); for (let i = 0; i < a.length; i++) a[i] = g(); return a; })();
+
 /** Sol mouillé : reflets des lumières, éclaboussures, anneaux dans les flaques, lame du caniveau. */
 export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, world: RainWorld, env: RainEnv & { wet?: number }, field: LightField): void {
   const P = clamp01(env.precip);
@@ -249,7 +253,8 @@ export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, worl
   ctx.lineCap = 'round';
   // reflets des lumières sur le sol mouillé : traînée verticale sous chaque source, rompue par des rides (rangées inégales)
   if (wet > 0 && field.lights) {
-    const rr = mulberry32(11);
+    let ri = 0;
+    const rr = (): number => REFLECT_RNG[ri++ & (REFLECT_RNG.length - 1)]!; // tirage précalculé (même suite que mulberry32(11))
     for (const L of field.lights) {
       const lamp = L.w <= 10;
       const strength = wet * L.k * (lamp ? 0.14 + 0.5 * night : 0.05 + 0.16 * night);
@@ -291,10 +296,11 @@ export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, worl
   }
   // ruissellement du caniveau : lame d'eau le long de la bordure, filets clairs qui courent vers la grille, bouillon à la grille
   const gutter = world.gutter;
-  if (gutter && P > 0.08) {
+  const gutterIn = clamp01((P - 0.08) / 0.05); // la lame monte en fondu dès P = 0,08
+  if (gutter && gutterIn > 0) {
     const h = 1.5 + 6 * P;
-    ctx.fillStyle = tone('water', nb); ctx.globalAlpha = 0.55 + 0.3 * P; ctx.fillRect(0, gutter.y, world.width, h);
-    ctx.strokeStyle = tone('filet', nb); ctx.globalAlpha = alphaAt(field, daylight, world.width / 2, gutter.y, 0.55); ctx.lineWidth = 0.9;
+    ctx.fillStyle = tone('water', nb); ctx.globalAlpha = (0.55 + 0.3 * P) * gutterIn; ctx.fillRect(0, gutter.y, world.width, h);
+    ctx.strokeStyle = tone('filet', nb); ctx.globalAlpha = alphaAt(field, daylight, world.width / 2, gutter.y, 0.55) * gutterIn; ctx.lineWidth = 0.9;
     ctx.beginPath();
     const speed = 60 + 120 * P;
     for (let k = 0; k < 40 * P + 6; k++) {
@@ -303,7 +309,7 @@ export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, worl
       ctx.moveTo(x0, y); ctx.lineTo(x0 + 6 + 8 * P, y + Math.sin(k) * 0.6);
     }
     ctx.stroke();
-    ctx.fillStyle = tone('bouillon', nb); ctx.globalAlpha = 0.35 * P;
+    ctx.fillStyle = tone('bouillon', nb); ctx.globalAlpha = 0.35 * P * gutterIn;
     ctx.beginPath();
     for (let k = 0; k < 6; k++) { const ph = (env.t * 3 + k * 1.1) % 1; const x = gutter.grateX + 2 + k * 4 + Math.sin(k) * 2, y = gutter.y + 2 + ph * 3; ctx.moveTo(x + 1 + ph, y); ctx.arc(x, y, 1 + ph, 0, TAU); }
     ctx.fill();
@@ -311,33 +317,72 @@ export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, worl
   ctx.globalAlpha = 1;
 }
 
-// ───────────── gouttes de vitre : sprites par (rayon au demi-pixel, teinte, jour/nuit, échelle) ─────────────
-type Sprite = { cv: HTMLCanvasElement; half: number } | null;
+// ───────────── gouttes de vitre : sprites par (rayon au demi-pixel, teinte quantifiée, pas de nuit, échelle) ─────────────
+// Le cache est borné : au-delà du plafond, les entrées les moins récemment employées partent une à une (ordre d'insertion
+// de la `Map`, clé remise en fin à son premier emploi dans l'image) — jamais de vidage d'un coup, qui recréait 100 à 150
+// canvas dans la même image sous une averse de nuit (teintes réfractées nombreuses).
+type Sprite = { cv: HTMLCanvasElement | null; half: number; used: number };
 const SPRITES = new Map<number, Sprite>();
 const SPRITES_MAX = 400;
-const q3 = (v: number): number => Math.min(7, Math.max(0, Math.round(v) >> 5)); // 8 niveaux par canal
-const packQ = (c: number[]): number => (q3(c[0]!) << 6) | (q3(c[1]!) << 3) | q3(c[2]!);
-const unpackQ = (qv: number, out: number[]): void => { out[0] = ((qv >> 6) & 7) * 32 + 16; out[1] = ((qv >> 3) & 7) * 32 + 16; out[2] = (qv & 7) * 32 + 16; };
+let FRAME = 0; // compteur d'images de `drawGlass`
+// Teintes quantifiées (niveaux par canal) : la lumière `lit` (halo, bas lumineux, moitié du corps) à 4 niveaux (64 teintes) ;
+// la couleur derrière `here` à 2 niveaux (8 teintes) — elle ne pèse que 0,5 × 0,7 × 0,6 ≈ 20 % du pixel final, l'écart entre
+// deux niveaux y est invisible sur des gouttes de 1 à 5 px. Ainsi le nombre de sprites réellement employés reste petit.
+type Quant = { count: number; pack(c: number[]): number; unpack(qv: number, out: number[]): void };
+function quant(levels: number): Quant {
+  const step = 256 / levels;
+  const q = (v: number): number => Math.min(levels - 1, Math.max(0, Math.floor(v / step)));
+  return {
+    count: levels ** 3,
+    pack: (c) => (q(c[0]!) * levels + q(c[1]!)) * levels + q(c[2]!),
+    unpack: (qv, out) => {
+      out[0] = (Math.floor(qv / (levels * levels)) + 0.5) * step;
+      out[1] = (Math.floor(qv / levels) % levels + 0.5) * step;
+      out[2] = (qv % levels + 0.5) * step;
+    },
+  };
+}
+const Q_LIT = quant(4), Q_HERE = quant(2);
 const S_BELOW = [0, 0, 0], S_ABOVE = [0, 0, 0], S_HERE = [0, 0, 0], S_LIT = [0, 0, 0], S_BODY = [0, 0, 0], S_TMP = [0, 0, 0];
-const rgbStr = (c: number[], a: number): string => `rgba(${Math.round(c[0]!)},${Math.round(c[1]!)},${Math.round(c[2]!)},${Number(a.toFixed(3))})`;
+const rgbStr = (c: ArrayLike<number>, a: number): string => `rgba(${Math.round(c[0]!)},${Math.round(c[1]!)},${Math.round(c[2]!)},${Number(a.toFixed(3))})`;
+// Chaîne opaque d'une teinte quantifiée (queue des coulures, 4 niveaux) : calculée une fois par teinte.
+const TINTS: (string | undefined)[] = new Array<string | undefined>(Q_LIT.count);
+function tintStr(qv: number): string {
+  let s = TINTS[qv];
+  if (!s) { Q_LIT.unpack(qv, S_TMP); TINTS[qv] = s = rgbStr(S_TMP, 1); }
+  return s;
+}
+
+// Nuit des gouttes de vitre : paramètre continu (0 = jour plein à daylight ≥ 0,75, 1 = nuit pleine à daylight ≤ 0,25 ; centré
+// sur l'ancienne bascule à 0,5), quantifié en NIGHT_STEPS pas pour les sprites et les chaînes — la bascule se fait en fondu.
+const NIGHT_STEPS = 8;
+const nightOf = (daylight: number): number => clamp01((0.75 - clamp01(daylight)) / 0.5);
+const nightStepOf = (daylight: number): number => Math.round(nightOf(daylight) * NIGHT_STEPS);
+const TRAILS: (string | undefined)[] = new Array<string | undefined>(NIGHT_STEPS + 1);
+function trailStr(ns: number): string {
+  let s = TRAILS[ns];
+  if (!s) TRAILS[ns] = s = rgba(mixRgb(WHITE, TRAIL_NIGHT_RGB, ns / NIGHT_STEPS), 1);
+  return s;
+}
 
 // Goutte cellulo (maquette `drawDrop`) : corps clair teinté par ce qu'il y a derrière (image inversée : la lumière du bas paraît en
 // bas), haut assombri (jour), bas lumineux, bord encré bas-droit, reflet blanc en haut-gauche ; la nuit, devant une lumière, un halo.
-function paintDrop(c: CanvasRenderingContext2D, x: number, y: number, r: number, night: boolean, here: number[], lit: number[], stretch = 1): void {
+// `n` = nuit continue (0 jour, 1 nuit) : chaque réglage est interpolé, rien ne bascule d'un coup.
+function paintDrop(c: CanvasRenderingContext2D, x: number, y: number, r: number, n: number, here: number[], lit: number[], stretch = 1): void {
   const L = lum(lit);
   mixInto(S_TMP, here, lit, 0.5);
-  mixInto(S_BODY, S_TMP, WHITE, night ? 0.18 : 0.3);
-  if (night && L > 0.4 && r > 0.9) {
+  mixInto(S_BODY, S_TMP, WHITE, lerp(0.3, 0.18, n));
+  if (n > 0 && L > 0.4 && r > 0.9) {
     const g = c.createRadialGradient(x, y, 0, x, y, r * 3.2);
-    g.addColorStop(0, rgbStr(lit, 0.7 * (L - 0.25)));
+    g.addColorStop(0, rgbStr(lit, 0.7 * (L - 0.25) * n));
     g.addColorStop(1, rgbStr(lit, 0));
     c.fillStyle = g; c.fillRect(x - r * 3.2, y - r * 3.2, r * 6.4, r * 6.4);
   }
-  c.fillStyle = rgbStr(S_BODY, night ? 0.68 : 0.6);
+  c.fillStyle = rgbStr(S_BODY, lerp(0.6, 0.68, n));
   c.beginPath(); c.ellipse(x, y, r, r * 1.15 * stretch, 0, 0, TAU); c.fill();
-  if (!night) { c.fillStyle = 'rgba(42,26,24,0.14)'; c.beginPath(); c.ellipse(x, y - r * 0.35 * stretch, r * 0.7, r * 0.45 * stretch, 0, 0, TAU); c.fill(); }
+  if (n < 1) { c.fillStyle = rgbStr(INK, 0.14 * (1 - n)); c.beginPath(); c.ellipse(x, y - r * 0.35 * stretch, r * 0.7, r * 0.45 * stretch, 0, 0, TAU); c.fill(); }
   mixInto(S_TMP, lit, WHITE, 0.4);
-  c.fillStyle = rgbStr(S_TMP, night ? 0.35 + 0.5 * L : 0.4);
+  c.fillStyle = rgbStr(S_TMP, lerp(0.4, 0.35 + 0.5 * L, n));
   c.beginPath(); c.ellipse(x, y + r * 0.38 * stretch, r * 0.62, r * 0.5 * stretch, 0, 0, TAU); c.fill();
   if (r > 0.8) { c.strokeStyle = 'rgba(42,26,24,0.5)'; c.lineWidth = Math.min(1, r * 0.3); c.beginPath(); c.ellipse(x, y, r * 0.9, r * 1.05 * stretch, 0, -0.3, 1.9); c.stroke(); }
   c.fillStyle = 'rgba(255,255,255,0.85)';
@@ -352,18 +397,21 @@ function makeCanvas(w: number, h: number): { cv: HTMLCanvasElement; c: CanvasRen
   return c ? { cv, c } : null;
 }
 
-function spriteFor(r2: number, night: boolean, hq: number, lq: number, k2: number): Sprite {
-  const key = (((r2 * 2 + (night ? 1 : 0)) * 512 + hq) * 512 + lq) * 8 + k2;
+function spriteFor(r2: number, ns: number, hq: number, lq: number, k2: number): Sprite {
+  const key = (((r2 * (NIGHT_STEPS + 1) + ns) * Q_HERE.count + hq) * Q_LIT.count + lq) * 8 + k2;
   let s = SPRITES.get(key);
-  if (s !== undefined) return s;
-  if (SPRITES.size >= SPRITES_MAX) SPRITES.clear();
-  const r = r2 / 2, k = k2 / 2;
-  unpackQ(hq, S_HERE); unpackQ(lq, S_LIT);
-  const halo = night && lum(S_LIT) > 0.4 && r > 0.9;
+  if (s !== undefined) {
+    if (s.used !== FRAME) { s.used = FRAME; SPRITES.delete(key); SPRITES.set(key, s); } // le plus récent en fin (une fois par image)
+    return s;
+  }
+  while (SPRITES.size >= SPRITES_MAX) SPRITES.delete(SPRITES.keys().next().value!); // éviction du moins récent
+  const r = r2 / 2, k = k2 / 2, n = ns / NIGHT_STEPS;
+  Q_HERE.unpack(hq, S_HERE); Q_LIT.unpack(lq, S_LIT);
+  const halo = n > 0 && lum(S_LIT) > 0.4 && r > 0.9;
   const half = (halo ? 3.2 * r : 1.3 * r) + 1.5;
   const made = makeCanvas(Math.ceil(half * 2 * k), Math.ceil(half * 2 * k));
-  if (made) { made.c.scale(k, k); paintDrop(made.c, half, half, r, night, S_HERE, S_LIT); s = { cv: made.cv, half }; }
-  else s = null;
+  if (made) { made.c.scale(k, k); paintDrop(made.c, half, half, r, n, S_HERE, S_LIT); s = { cv: made.cv, half, used: FRAME }; }
+  else s = { cv: null, half, used: FRAME };
   SPRITES.set(key, s);
   return s;
 }
@@ -374,25 +422,31 @@ function scaleOf(ctx: CanvasRenderingContext2D): number {
   return t ? clamp(Math.round(t.a * 2) / 2, 1, 3) : 1;
 }
 
-function drawDropSprite(ctx: CanvasRenderingContext2D, field: LightField, x: number, y: number, r: number, night: boolean, k: number, stretch: number): void {
+// Rayons des sprites (en demi-pixels) : 5 gabarits, le sprite est étiré au rayon réel par `drawImage` (l'écart est ≤ 25 %,
+// invisible sur des gouttes de 1 à 5 px) — avec 11 rayons au demi-pixel, le cache ne se remplissait jamais.
+const spriteR2 = (r: number): number => (r < 1.25 ? 2 : r < 2.5 ? 4 : r < 3.5 ? 6 : r < 5 ? 8 : 12);
+
+function drawDropSprite(ctx: CanvasRenderingContext2D, field: LightField, x: number, y: number, r: number, ns: number, k: number, stretch: number): void {
   sample(field, x, y + r * 6, S_BELOW); sample(field, x, y - r * 6, S_ABOVE); sample(field, x, y, S_HERE);
   const lit = lum(S_BELOW) > lum(S_ABOVE) ? S_BELOW : S_ABOVE;
-  const r2 = Math.max(1, Math.round(r * 2));
-  const s = spriteFor(r2, night, packQ(S_HERE), packQ(lit), Math.round(k * 2));
-  if (s) ctx.drawImage(s.cv, x - s.half, y - s.half * stretch, s.half * 2, s.half * 2 * stretch);
-  else paintDrop(ctx, x, y, r, night, S_HERE, lit, stretch); // sans canvas hors écran (cas de repli) : tracé direct
+  const r2 = spriteR2(r);
+  const s = spriteFor(r2, ns, Q_HERE.pack(S_HERE), Q_LIT.pack(lit), Math.round(k * 2));
+  if (s.cv) {
+    const half = s.half * (r / (r2 / 2));
+    ctx.drawImage(s.cv, x - half, y - half * stretch, half * 2, half * 2 * stretch);
+  } else paintDrop(ctx, x, y, r, ns / NIGHT_STEPS, S_HERE, lit, stretch); // sans canvas hors écran (cas de repli) : tracé direct
 }
 
 // Trace d'une coulure : filet clair (eau) + bord encré léger, s'estompent en 8 s ; segments groupés par 6 (un style par groupe).
 const TRAIL_CHUNK = 6;
-function drawTrail(ctx: CanvasRenderingContext2D, tr: readonly GlassTrailPoint[], night: boolean): void {
+function drawTrail(ctx: CanvasRenderingContext2D, tr: readonly GlassTrailPoint[], ns: number): void {
   if (tr.length < 2) return;
-  const water = night ? TRAIL_NIGHT : TRAIL_DAY;
+  const water = trailStr(ns), waterA = lerp(0.3, 0.26, ns / NIGHT_STEPS);
   for (let i = 1; i < tr.length; i += TRAIL_CHUNK) {
     const q = tr[i]!, end = Math.min(tr.length, i + TRAIL_CHUNK);
     const a = Math.max(0, 1 - q.age / 8);
     if (a <= 0) continue;
-    ctx.strokeStyle = water; ctx.globalAlpha = (night ? 0.26 : 0.3) * a; ctx.lineWidth = Math.max(0.6, q.r * 0.7 * (0.4 + 0.6 * a));
+    ctx.strokeStyle = water; ctx.globalAlpha = waterA * a; ctx.lineWidth = Math.max(0.6, q.r * 0.7 * (0.4 + 0.6 * a));
     ctx.beginPath(); ctx.moveTo(tr[i - 1]!.x, tr[i - 1]!.y);
     for (let j = i; j < end; j++) ctx.lineTo(tr[j]!.x, tr[j]!.y);
     ctx.stroke();
@@ -408,7 +462,8 @@ const inPane = (p: Pane, x: number, y: number): boolean => x >= p.x && x <= p.x 
 /** Gouttes sur la vitre : buée, traces, gouttes posées, coulures — découpées à chaque vitre. */
 export function drawGlass(ctx: CanvasRenderingContext2D, sim: GlassSim, env: { precip: number; daylight: number }, field: LightField, fog: FogMask): void {
   if (sim.panes.length === 0) return;
-  const night = clamp01(env.daylight) < 0.5;
+  FRAME++;
+  const ns = nightStepOf(env.daylight);
   const k = scaleOf(ctx);
   ctx.lineCap = 'round';
   for (let i = 0; i < sim.panes.length; i++) {
@@ -418,10 +473,10 @@ export function drawGlass(ctx: CanvasRenderingContext2D, sim: GlassSim, env: { p
     ctx.beginPath(); ctx.rect(p.x, p.y, p.w, p.h); ctx.clip();
     ctx.globalAlpha = 1;
     fog.draw(ctx, p, env);
-    for (const tr of sim.trails) if (tr.length > 1 && inPane(p, tr[tr.length - 1]!.x, tr[tr.length - 1]!.y)) drawTrail(ctx, tr, night);
-    for (const R of sim.runners) if (R.pane === i) drawTrail(ctx, R.trail, night);
+    for (const tr of sim.trails) if (tr.length > 1 && inPane(p, tr[tr.length - 1]!.x, tr[tr.length - 1]!.y)) drawTrail(ctx, tr, ns);
+    for (const R of sim.runners) if (R.pane === i) drawTrail(ctx, R.trail, ns);
     ctx.globalAlpha = 1;
-    for (const s of sim.statics) if (s.pane === i) drawDropSprite(ctx, field, s.x, s.y, s.r, night, k, 1);
+    for (const s of sim.statics) if (s.pane === i) drawDropSprite(ctx, field, s.x, s.y, s.r, ns, k, 1);
     // coulures : goutte étirée vers le haut quand elle court (queue), ronde quand elle attend
     for (const R of sim.runners) {
       if (R.pane !== i) continue;
@@ -429,10 +484,11 @@ export function drawGlass(ctx: CanvasRenderingContext2D, sim: GlassSim, env: { p
       if (run > 0.1) {
         const tail = R.r * (1.5 + 2.5 * run);
         sample(field, R.x, R.y, S_HERE); mixInto(S_TMP, S_HERE, WHITE, 0.3);
-        ctx.fillStyle = rgbStr(S_TMP, 0.45);
+        ctx.fillStyle = tintStr(Q_LIT.pack(S_TMP)); ctx.globalAlpha = 0.45;
         ctx.beginPath(); ctx.moveTo(R.x - R.r * 0.6, R.y); ctx.lineTo(R.x, R.y - tail); ctx.lineTo(R.x + R.r * 0.6, R.y); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
       }
-      drawDropSprite(ctx, field, R.x, R.y, R.r, night, k, 1 + 0.25 * run);
+      drawDropSprite(ctx, field, R.x, R.y, R.r, ns, k, 1 + 0.25 * run);
     }
     ctx.restore();
   }
@@ -460,8 +516,21 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
     for (let m = 0; m < 26; m++) marks.push([rng() * p.w, p.h * (0.45 + rng() * 0.4), p.h]);
     return { pane: { ...p }, mask, fog: ok ? makeCanvas(Math.ceil(p.w), Math.ceil(p.h)) : null, marks, gradKey: -1, grad: null };
   });
-  const find = (x: number, y: number): FogCell | undefined => cells.find((c) => inPane(c.pane, x, y));
+  const find = (x: number, y: number): FogCell | undefined => {
+    for (let i = 0; i < cells.length; i++) if (inPane(cells[i]!.pane, x, y)) return cells[i];
+    return undefined;
+  };
   const same = (a: Pane, b: Pane): boolean => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+  // vitre (objet du moteur) → cellule : cherchée une fois par géométrie, puis retenue
+  const byPane = new WeakMap<Pane, FogCell>();
+  const cellOf = (pane: Pane): FogCell | undefined => {
+    let cell = byPane.get(pane);
+    if (cell) return cell;
+    for (let i = 0; i < cells.length && !cell; i++) if (same(cells[i]!.pane, pane)) cell = cells[i];
+    if (cell) byPane.set(pane, cell);
+    return cell;
+  };
+  let regrowKey = -1, regrowStr = '';
   return {
     erase(trail) {
       if (trail.length < 2) return;
@@ -480,22 +549,24 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
     regrow(dt) {
       const a = Math.min(1, Math.max(0, dt) * 0.03);
       if (a <= 0) return;
+      const key = Math.round(a * 10000); // même chaîne tant que le pas ne change pas (pas d'allocation par image)
+      if (key !== regrowKey) { regrowKey = key; regrowStr = `rgba(255,255,255,${key / 10000})`; }
       for (const cell of cells) {
         if (!cell.mask) continue;
         cell.mask.c.globalCompositeOperation = 'source-over';
-        cell.mask.c.fillStyle = `rgba(255,255,255,${Number(a.toFixed(4))})`;
+        cell.mask.c.fillStyle = regrowStr;
         cell.mask.c.fillRect(0, 0, cell.mask.cv.width, cell.mask.cv.height);
       }
     },
     draw(ctx, pane, env) {
-      const cell = cells.find((c) => c.pane === pane || same(c.pane, pane));
+      const cell = cellOf(pane);
       if (!cell?.fog || !cell.mask) return;
       const p = cell.pane, f = cell.fog.c;
-      const night = clamp01(env.daylight) < 0.5;
+      const ns = nightStepOf(env.daylight), n = ns / NIGHT_STEPS;
       const P = Math.round(clamp01(env.precip) * 20);
-      const key = P * 2 + (night ? 1 : 0);
-      if (key !== cell.gradKey || !cell.grad) { // voile plus dense en bas (0 à 45 % de la hauteur → max en bas)
-        const fogC = night ? FOG_NIGHT : FOG_DAY, fogA = (0.1 + 0.14 * (P / 20)) * (night ? 0.7 : 1);
+      const key = P * (NIGHT_STEPS + 1) + ns;
+      if (key !== cell.gradKey || !cell.grad) { // voile plus dense en bas (0 à 45 % de la hauteur → max en bas) ; teinte et densité en fondu jour → nuit
+        const fogC = mixRgb(FOG_DAY, FOG_NIGHT, n), fogA = (0.1 + 0.14 * (P / 20)) * lerp(1, 0.7, n);
         const g = f.createLinearGradient(0, p.h * 0.45, 0, p.h);
         g.addColorStop(0, rgba(fogC, 0)); g.addColorStop(0.7, rgba(fogC, fogA * 0.6)); g.addColorStop(1, rgba(fogC, fogA));
         cell.grad = g; cell.gradKey = key;

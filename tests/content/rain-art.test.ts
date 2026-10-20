@@ -3,7 +3,7 @@
 // Dessin de la pluie (canvas simulé) : nombre d'appels, sprites réutilisés, aucun `ctx.filter`, aucune exception.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFogMask, drawGlass, drawRainAir, drawRainGround, makeLightField, type RainLight } from '../../src/content/rain-art';
-import { createGlassSim, GLASS_BUDGET_PHONE, prefillGlass, stepGlass } from '../../src/core/library/weather/glass-rain';
+import { createGlassSim, GLASS_BUDGET_PHONE, GLASS_BUDGET_WIDE, prefillGlass, stepGlass } from '../../src/core/library/weather/glass-rain';
 import { createRainSim, prefillRain, RAIN_BUDGET_WIDE, stepRain, type RainEnv, type RainWorld } from '../../src/core/library/weather/rain-drops';
 import { recordingCtx, type RecordingCtx } from '../core/library/paint/recording-ctx';
 
@@ -101,6 +101,38 @@ describe('drawRainAir', () => {
     expect(air.filterSets + ground.filterSets).toBe(0);
   });
 
+  it('halo des lampadaires et lame du caniveau montent en fondu depuis leur seuil', () => {
+    const world: RainWorld = { ...WORLD, drips: [] };
+    const sim = createRainSim(world, 3, { soft: false, budget: RAIN_BUDGET_WIDE });
+    const field = makeLightField(LIGHTS, SKY_NIGHT, 460);
+    // halo : fillRect de 2R de côté juste après translate ; alpha lu au moment du fillRect
+    const haloAlpha = (precip: number): number => {
+      const ctx = fakeCtx();
+      const seen: number[] = [];
+      const fr = ctx.fillRect;
+      ctx.fillRect = (x: number, y: number, w: number, h: number) => { if (w === h && w > 60 && w < 200) seen.push(ctx.globalAlpha); fr(x, y, w, h); };
+      drawRainAir(asCtx(ctx), sim, world, env(precip, 0), field);
+      return seen[0] ?? 0;
+    };
+    expect(haloAlpha(0.02)).toBe(0);
+    expect(haloAlpha(0.03)).toBeGreaterThan(0);
+    expect(haloAlpha(0.03)).toBeLessThan(haloAlpha(0.05) * 0.5);
+    expect(haloAlpha(0.07)).toBeGreaterThan(haloAlpha(0.05));
+    // caniveau : premier fillRect pleine largeur sur gutter.y
+    const gutterAlpha = (precip: number): number => {
+      const ctx = fakeCtx();
+      const seen: number[] = [];
+      const fr = ctx.fillRect;
+      ctx.fillRect = (x: number, y: number, w: number, h: number) => { if (y === WORLD.gutter!.y && w === WORLD.width) seen.push(ctx.globalAlpha); fr(x, y, w, h); };
+      drawRainGround(asCtx(ctx), sim, world, env(precip, 1), field);
+      return seen[0] ?? 0;
+    };
+    expect(gutterAlpha(0.08)).toBe(0);
+    expect(gutterAlpha(0.09)).toBeGreaterThan(0);
+    expect(gutterAlpha(0.09)).toBeLessThan(gutterAlpha(0.11) * 0.5);
+    expect(gutterAlpha(0.13)).toBeGreaterThan(gutterAlpha(0.11));
+  });
+
   it('sans pluie ni goutte : rien n\'est dessiné', () => {
     const sim = createRainSim(WORLD, 3, { soft: false, budget: RAIN_BUDGET_WIDE });
     const e = env(0, 1);
@@ -166,6 +198,73 @@ describe('drawGlass', () => {
     expect(ctx.filterSets).toBe(0);
     // chaque vitre est découpée (clip) à chaque image
     expect(ctx.ops.filter((o) => o.op === 'clip').length).toBe(120 * PANES.length);
+  });
+
+  it('60 s simulées d\'averse de nuit : au plus 4 sprites créés par image, au plus 120 après la première seconde, 40 après 30 s', () => {
+    // 8 sources colorées (3 lampadaires + 5 vitrines) : beaucoup de teintes réfractées distinctes ; le cache ne doit plus
+    // se vider d'un coup (éviction des plus anciennes + teinte quantifiée + 5 gabarits de rayon), sinon 100 à 150 canvas
+    // renaissaient dans une seule image toutes les 8 s. Les teintes restantes apparaissent au fil des gouttes qui se posent
+    // (mesuré : ~95 en 59 s, ~27 dans les 30 dernières secondes, jamais plus de 3 par image).
+    const lights: RainLight[] = [
+      { x: 170, y: 212, w: 10, color: '#FFD86A', k: 1 }, { x: 500, y: 212, w: 10, color: '#FFD86A', k: 1 }, { x: 830, y: 212, w: 10, color: '#FFD86A', k: 1 },
+      { x: 90, y: 296, w: 50, color: '#FFF0C0', k: 0.7 }, { x: 300, y: 296, w: 60, color: '#C8DCFF', k: 0.7 }, { x: 460, y: 296, w: 40, color: '#FFB7C5', k: 0.7 },
+      { x: 640, y: 296, w: 60, color: '#FFD86A', k: 0.7 }, { x: 900, y: 296, w: 55, color: '#9CC4FF', k: 0.7 },
+    ];
+    const field = makeLightField(lights, SKY_NIGHT, 460);
+    const sim = createGlassSim(PANES, 23, GLASS_BUDGET_PHONE);
+    prefillGlass(sim, genv);
+    const fog = createFogMask(PANES);
+    const e = { precip: 0.85, daylight: 0 };
+    const dt = 1 / 30;
+    let afterFirstSecond = -1, afterHalf = -1, worstFrame = 0;
+    for (let f = 0; f < 60 * 30; f++) {
+      stepGlass(sim, genv, dt);
+      fog.regrow(dt);
+      for (const R of sim.runners) fog.erase(R.trail);
+      const before = created;
+      drawGlass(asCtx(fakeCtx()), sim, e, field, fog);
+      if (f >= 30) worstFrame = Math.max(worstFrame, created - before);
+      if (f === 29) afterFirstSecond = created;
+      if (f === 30 * 30 - 1) afterHalf = created;
+    }
+    expect(afterFirstSecond).toBeGreaterThan(0);
+    expect(worstFrame).toBeLessThanOrEqual(4); // jamais de rafale de canvas dans une seule image
+    expect(created - afterFirstSecond).toBeLessThanOrEqual(120);
+    expect(created - afterHalf).toBeLessThanOrEqual(40);
+  });
+
+  it('cache plein (crépuscule sur une large baie) : l\'éviction se fait une à une, jamais de vidage', () => {
+    // daylight balaie 1 → 0 en 60 s : chaque pas de nuit renouvelle les sprites à l'écran (au plus autant que de gouttes
+    // visibles, une fois par pas) ; entre deux pas, aucune rafale même quand le cache a dépassé son plafond.
+    const field = makeLightField(LIGHTS, SKY_NIGHT, 460);
+    const sim = createGlassSim(PANES, 29, GLASS_BUDGET_WIDE);
+    prefillGlass(sim, genv);
+    const fog = createFogMask(PANES);
+    const dt = 1 / 30;
+    const perFrame: number[] = [];
+    for (let f = 0; f < 60 * 30; f++) {
+      stepGlass(sim, genv, dt);
+      const before = created;
+      drawGlass(asCtx(fakeCtx()), sim, { precip: 0.85, daylight: 1 - f / (60 * 30) }, field, fog);
+      perFrame.push(created - before);
+    }
+    const bursts = perFrame.filter((n) => n > 4).length;
+    expect(created).toBeGreaterThan(400); // le plafond a bien été dépassé
+    expect(bursts).toBeLessThanOrEqual(9); // au plus une rafale par pas de nuit (8 pas + l'image froide)
+    expect(Math.max(...perFrame.slice(1))).toBeLessThanOrEqual(sim.statics.length + sim.runners.length);
+  });
+
+  it('bascule jour/nuit des gouttes en fondu : les sprites du crépuscule diffèrent de ceux du jour et de la nuit', () => {
+    const sim = createGlassSim(PANES, 11, GLASS_BUDGET_PHONE);
+    prefillGlass(sim, genv);
+    const field = makeLightField(LIGHTS, SKY_NIGHT, 460);
+    const fog = createFogMask(PANES);
+    const madeAt = (daylight: number): number => { const b = created; drawGlass(asCtx(fakeCtx()), sim, { precip: 0.85, daylight }, field, fog); return created - b; };
+    expect(madeAt(1)).toBeGreaterThan(0); // jour
+    expect(madeAt(1)).toBe(0); // réemploi
+    expect(madeAt(0)).toBeGreaterThan(0); // nuit
+    expect(madeAt(0.5)).toBeGreaterThan(0); // crépuscule : un rendu intermédiaire, pas l'un des deux
+    expect(madeAt(0.5)).toBe(0);
   });
 
   it('pièce sans fenêtre : rien, aucune exception', () => {
