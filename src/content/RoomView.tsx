@@ -32,7 +32,10 @@ import { CarContext, CarRegistry } from './vehicle/car-host';
 import { PropContext, PropRegistry } from './prop/prop-host';
 import { SceneActors, ScenePanoramaStatic } from './scene-panorama';
 import { reducedMotion } from './ghibli-sky';
-import { WindowArt, GlassDrops, glassRect } from './window-art';
+import { WindowArt, glassRect } from './window-art';
+import { RainGlassCanvas, rainLightsFor } from './rain-canvas';
+import type { RainLight } from './rain-art';
+import { useStreetShops } from './use-street-shops';
 import { WEATHER_SCENES, WeatherLayer } from './scene-weather';
 import { LightLayer } from './light-layer';
 import { petBoxesOf } from '../core/library/light/pet-boxes';
@@ -248,9 +251,22 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     [view.city, room.scene, room.cityEpoch, view.minutes, view.sky.daylight, rainy, gloom],
   );
   const forcedNight = view.city?.forcedNight ?? false;
-  // Gouttes sur la vitre (et leur animation SMIL) seulement quand il pleut assez : signalé par la boucle de météo, rarement.
-  const [wet, setWet] = useState(false);
-  const drops = weatherOn && wet;
+  // Lumières de la pluie (lampadaires allumés, vitrines des commerces ouverts) : reflets au sol, halos, couleur derrière les
+  // gouttes de la vitre. Même tableau tant que l'ensemble des lumières ne change pas (cache des halos indexé par lampadaire).
+  const { frames: shopFrames, views: shopViews } = useStreetShops(width, wallH, hashString(room.id), weatherOn ? city : undefined);
+  const rainLightsRef = useRef<{ key: string; lights: readonly RainLight[] }>({ key: '', lights: [] });
+  const rainLights = useMemo(() => {
+    if (!weatherOn) return rainLightsRef.current.lights;
+    const dark = view.sky.daylight < 0.45;
+    const shops = shopViews.flatMap((v) => {
+      const f = shopFrames.get(v.slot.id);
+      return f ? [{ x: f.window.x, w: f.window.w, top: f.window.y, lit: dark && v.phase === 'open' }] : [];
+    });
+    const next = rainLightsFor(room.scene, width, wallH, hashString(room.id), view.minutes, view.sky.daylight, { forcedNight, shops });
+    const key = next.map((l) => `${l.x.toFixed(1)},${l.y.toFixed(1)},${l.w.toFixed(1)},${l.color},${l.k}`).join('|');
+    if (key !== rainLightsRef.current.key) rainLightsRef.current = { key, lights: next };
+    return rainLightsRef.current.lights;
+  }, [weatherOn, room.scene, room.id, width, wallH, view.minutes, view.sky.daylight, forcedNight, shopViews, shopFrames]);
   const glasses = useMemo(() => windows.map((w) => glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }))), [room.layout]); // eslint-disable-line react-hooks/exhaustive-deps
   // Occulteurs et lampes allumées du calque de lumière ; la signature change quand l'un d'eux bouge ou s'allume.
   // HEIGHT est une constante : seuls le layout et wallH font varier la géométrie.
@@ -376,7 +392,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       return {
         rect,
         art: <WindowArt rect={rect} palette={palette} steampunk={steampunk} />,
-        liftedArt: <WindowArt rect={rect} palette={palette} steampunk={steampunk} view worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} drops={drops} clipId={`${worldId}-clip-${placed.id}`} />,
+        liftedArt: <WindowArt rect={rect} palette={palette} steampunk={steampunk} view worldHref={`#${worldId}`} actorsHref={`#${worldId}-actors`} weatherHref={weatherOn ? `#${worldId}-weather` : undefined} weatherGroundHref={weatherOn ? `#${worldId}-weather-ground` : undefined} clipId={`${worldId}-clip-${placed.id}`} />,
       };
     }
     if (placed.kind === 'deco') {
@@ -788,6 +804,8 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   );
   // La fenêtre soulevée n'a plus de vue à sa place (sa copie porte la sienne) : seul son cadre estompé reste sur le mur.
   const shownGlasses = glasses.filter((_, i) => windows[i]!.id !== drag?.id);
+  const liftedIndex = drag ? windows.findIndex((w) => w.id === drag.id) : -1;
+  const liftedPane = liftedIndex >= 0 ? liftedIndex : null;
   const worldRect = outside ? { x: 0, y: 0, w: width, h: wallH } : boundingRect(shownGlasses);
   const gaps = outside ? [] : gapRects(shownGlasses);
 
@@ -836,11 +854,15 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
           </g>
           {/* Météo : deux groupes (sol sous les acteurs, ciel par-dessus) ; seule sa boucle les modifie à chaque image. Sans météo, les acteurs seuls. */}
           {weatherOn && view.weather ? (
-            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} onWet={setWet} gloom={gloom} between={actors} />
+            <WeatherLayer scene={room.scene} width={width} height={wallH} seed={hashString(room.id)} sky={view.sky} clock={view.weather.clock} id={`${worldId}-weather`} groundId={`${worldId}-weather-ground`} gloom={gloom} between={actors} rainLights={rainLights} rainSoft={!outside} />
           ) : (
             actors
           )}
-          {drops && !outside && shownGlasses.map((g, i) => <GlassDrops key={i} glass={g} />)}
+          {/* Gouttes sur les vitres (vue pièce) : sous les châssis, les meubles et la lumière de la pièce. Toutes les vitres restent dans
+          // la simulation pendant un glissé (pas de remise à zéro) ; la vitre soulevée n'est simplement pas dessinée. */}
+          {weatherOn && view.weather && !outside && (
+            <RainGlassCanvas panes={glasses} seed={hashString(room.id) ^ 0x61a55} clock={view.weather.clock} sky={view.sky} lights={rainLights} hidden={false} skip={liftedPane} worldHeight={wallH} />
+          )}
           {outside && <g data-follow-marker="" opacity="0"><path d="M-7 -10 L7 -10 L0 0 Z" fill="#fff" stroke="#222" strokeWidth={2} strokeLinejoin="round" /></g>}
         </svg>
         </>

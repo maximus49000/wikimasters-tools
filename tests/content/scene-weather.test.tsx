@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WEATHER_SCENES, WeatherLayer } from '../../src/content/scene-weather';
+import { rainLoopsActive } from '../../src/content/rain-canvas';
 import { createWeatherClock, steadySource } from '../../src/core/library/weather/weather-clock';
 import type { SceneId } from '../../src/core/library/library-types';
 import type { Sky } from '../../src/core/library/sky';
@@ -45,6 +46,8 @@ const mount = (state: State, scene: SceneId = 'city', sky: Sky = SKY): void => {
 };
 const wx = (name: string): Element | null => container.querySelector(`[data-wx="${name}"]`);
 const opacity = (name: string): number => Number(wx(name)?.getAttribute('opacity') ?? 'NaN');
+// Pluie (canvas, rain-canvas.tsx) : la boucle de la pluie tourne seulement quand il pleut.
+const raining = (): boolean => rainLoopsActive() > 0 && container.querySelector('[data-weather] [data-rain-canvas="air"]') !== null;
 const visibleClouds = (): number => container.querySelectorAll('[data-wx-cloud]:not([display="none"])').length;
 const cloudLuma = (): number => {
   const hex = (wx('clouds')?.getAttribute('fill') ?? '#000000').slice(1);
@@ -64,7 +67,7 @@ describe('WeatherLayer', () => {
   });
   it('pluie : gouttes visibles, sol mouillé, ciel assombri, pas de flocons', () => {
     mount('rain');
-    expect(opacity('rain-near')).toBeGreaterThan(0.3);
+    expect(raining()).toBe(true);
     expect(opacity('snow-near')).toBe(0);
     expect(opacity('puddles')).toBeGreaterThan(0.5);
     expect(opacity('tint')).toBeGreaterThan(0.2);
@@ -74,12 +77,13 @@ describe('WeatherLayer', () => {
   it('neige : flocons et sol blanc, pas de gouttes', () => {
     mount('snow');
     expect(opacity('snow-near')).toBeGreaterThan(0.2);
-    expect(opacity('rain-near')).toBe(0);
+    expect(raining()).toBe(false);
     expect(opacity('snow-cover')).toBeGreaterThan(0.5);
   });
   it('soleil : tout est éteint', () => {
     mount('sun');
-    for (const name of ['rain-far', 'rain-near', 'snow-far', 'snow-near', 'puddles', 'snow-cover', 'fog']) expect(opacity(name)).toBe(0);
+    for (const name of ['snow-far', 'snow-near', 'puddles', 'snow-cover', 'fog']) expect(opacity(name)).toBe(0);
+    expect(raining()).toBe(false);
     expect(opacity('tint')).toBeLessThan(0.05);
     expect(visibleClouds()).toBeLessThan(8);
     expect(opacity('overcast')).toBe(0);
@@ -92,16 +96,18 @@ describe('WeatherLayer', () => {
     const clock = createWeatherClock();
     clock.setSource(steadySource('sun'), Date.now());
     act(() => root.render(<svg><WeatherLayer scene="city" width={720} height={216} seed={1} sky={SKY} clock={clock} /></svg>));
-    expect(opacity('rain-near')).toBe(0);
+    expect(raining()).toBe(false);
     clock.setSource(steadySource('rain'), Date.now());
     act(() => vi.advanceTimersByTime(40_000));
-    expect(opacity('rain-near')).toBeGreaterThan(0.3);
+    expect(raining()).toBe(true);
   });
   it('mouvement réduit : affiché mais figé (pas de boucle)', () => {
     const raf = vi.spyOn(window, 'requestAnimationFrame');
     window.matchMedia = ((query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as typeof window.matchMedia;
     mount('rain');
-    expect(opacity('rain-near')).toBeGreaterThan(0.3);
+    expect(container.querySelector('[data-weather] [data-rain-canvas="air"]')).not.toBeNull();
+    expect(opacity('puddles')).toBeGreaterThan(0.5);
+    expect(rainLoopsActive()).toBe(0);
     expect(raf).not.toHaveBeenCalled();
     const before = driftX();
     act(() => vi.advanceTimersByTime(5000));
@@ -240,10 +246,10 @@ describe('WeatherLayer', () => {
     }, 60_000);
     it('au-dessus des nuages et du voile, sous la pluie', () => {
       mount('drizzle');
-      const order = Array.from(container.querySelectorAll('[data-weather] > [data-wx]')).map((el) => el.getAttribute('data-wx'));
+      const order = Array.from(container.querySelectorAll('[data-weather] > [data-wx], [data-weather] > [data-rain-canvas]')).map((el) => el.getAttribute('data-wx') ?? `rain-${el.getAttribute('data-rain-canvas')}`);
       expect(order.indexOf('godrays')).toBeGreaterThan(order.indexOf('clouds-drift'));
       expect(order.indexOf('godrays')).toBeGreaterThan(order.indexOf('overcast'));
-      expect(order.indexOf('godrays')).toBeLessThan(order.indexOf('rain-far'));
+      expect(order.indexOf('godrays')).toBeLessThan(order.indexOf('rain-air'));
       expect(container.querySelectorAll('[data-wx="godrays"] polygon')).toHaveLength(7);
     });
   });

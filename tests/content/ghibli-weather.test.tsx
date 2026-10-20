@@ -88,11 +88,12 @@ describe('cumulus peints', () => {
 });
 
 describe('précipitations et phénomènes peints', () => {
-  it('pluie en stries arrondies, neige en flocons doux', async () => {
+  it('pluie en gouttes sur canvas (plus de stries en motif), neige en flocons doux', async () => {
     writeArt('ghibli');
     mount(clockOf('rain'));
     await flush(5);
-    expect(container.querySelector('[data-wx-pattern="rain-near"] line')!.getAttribute('stroke-linecap')).toBe('round');
+    expect(container.querySelector('[data-wx-pattern="rain-near"]')).toBeNull();
+    expect(container.querySelector('[data-weather] [data-rain-canvas="air"] canvas')).not.toBeNull();
     expect(container.querySelector('[data-wx-pattern="snow-near"] circle')!.getAttribute('fill')).toMatch(/^url\(#/);
   });
 

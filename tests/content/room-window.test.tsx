@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WindowArt } from '../../src/content/window-art';
 import { RoomView } from '../../src/content/RoomView';
+import { rainLoopsActive } from '../../src/content/rain-canvas';
 import { createInitialState, activeRoom, setRoomScene, setRoomStyle, updateLayout } from '../../src/core/library/library-book';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { createWeatherClock, steadySource } from '../../src/core/library/weather/weather-clock';
@@ -202,12 +203,12 @@ describe('RoomView — météo dans les fenêtres', () => {
     const ground = container.querySelector('[data-window-weather-ground]')!;
     expect(sky.id).not.toBe('');
     expect(ground.id).not.toBe(sky.id);
-    // Des gouttes sur chaque vitre (au moins 3 chacune).
-    expect(container.querySelectorAll('[data-glass-drops]')).toHaveLength(2);
-    for (const d of container.querySelectorAll('[data-glass-drops]')) expect(d.querySelectorAll('[data-glass-drop]').length).toBeGreaterThanOrEqual(3);
-    // Ordre : décor fixe, sol (flaques, neige), acteurs, puis ciel et précipitations par-dessus.
-    const kids = Array.from(container.querySelector('[data-window-views]')!.children).map((c) => (c.hasAttribute('data-window-view') ? 'view' : c.hasAttribute('data-window-weather-ground') ? 'ground' : c.hasAttribute('data-window-actors') ? 'actors' : c.hasAttribute('data-window-weather') ? 'sky' : c.hasAttribute('data-glass-drops') ? 'drops' : 'rect'));
-    expect(kids).toEqual(['view', 'ground', 'actors', 'sky', 'drops', 'drops']);
+    // Les gouttes de la vitre : UN canvas qui couvre les deux vitres (découpé à chacune), plus de gouttes SVG.
+    expect(container.querySelectorAll('[data-rain-canvas="glass"]')).toHaveLength(1);
+    expect(container.querySelector('[data-glass-drops]')).toBeNull();
+    // Ordre : décor fixe, sol (flaques, neige, sol mouillé), acteurs, puis ciel et précipitations par-dessus, puis la vitre.
+    const kids = Array.from(container.querySelector('[data-window-views]')!.children).map((c) => (c.hasAttribute('data-window-view') ? 'view' : c.hasAttribute('data-window-weather-ground') ? 'ground' : c.hasAttribute('data-window-actors') ? 'actors' : c.hasAttribute('data-window-weather') ? 'sky' : c.getAttribute('data-rain-canvas') === 'glass' ? 'glass' : 'rect'));
+    expect(kids).toEqual(['view', 'ground', 'actors', 'sky', 'glass']);
   });
 
   it('les drapeaux de la météo atteignent le décor : parapluies sous la pluie', () => {
@@ -231,6 +232,8 @@ describe('RoomView — météo dans les fenêtres', () => {
     expect(container.querySelectorAll('[data-window-weather]')).toHaveLength(1);
     expect(container.querySelector('[data-glass-drops]')).toBeNull();
     expect(container.querySelector('animate[attributeName="cy"]')).toBeNull();
+    // le canvas de la vitre est là mais ne tourne pas (rien à animer par temps sec)
+    expect(rainLoopsActive()).toBe(0);
   });
 
   it('sans météo, ni calque ni gouttes', () => {
@@ -238,6 +241,7 @@ describe('RoomView — météo dans les fenêtres', () => {
     expect(container.querySelector('[data-weather]')).toBeNull();
     expect(container.querySelector('[data-window-weather]')).toBeNull();
     expect(container.querySelector('[data-glass-drops]')).toBeNull();
+    expect(container.querySelector('[data-rain-canvas]')).toBeNull();
   });
 
   it.each(['space', 'earth'] as const)('scène %s : pas de météo même si le panneau en fournit une', (scene) => {
@@ -246,6 +250,7 @@ describe('RoomView — météo dans les fenêtres', () => {
     expect(container.querySelector('[data-window-weather]')).toBeNull();
     expect(container.querySelector('[data-window-weather-ground]')).toBeNull();
     expect(container.querySelector('[data-glass-drops]')).toBeNull();
+    expect(container.querySelector('[data-rain-canvas]')).toBeNull();
     expect(container.querySelector('[data-umbrella]')).toBeNull();
   });
 });
