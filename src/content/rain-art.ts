@@ -506,6 +506,9 @@ type FogCell = {
   grad: CanvasGradient | null;
 };
 
+const FOG_REGROW = 0.03; // repousse de la buée : 3 %/s
+const REGROW_EVERY = 0.5; // s entre deux repeints du masque (pas assez fin sur 8 bits à chaque image)
+
 export function createFogMask(panes: readonly Pane[]): FogMask {
   const cells: FogCell[] = panes.map((p, i) => {
     const ok = p.w > 0 && p.h > 0;
@@ -530,7 +533,7 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
     if (cell) byPane.set(pane, cell);
     return cell;
   };
-  let regrowKey = -1, regrowStr = '';
+  let regrowKey = -1, regrowStr = '', regrowAcc = 0;
   return {
     erase(trail) {
       if (trail.length < 2) return;
@@ -547,15 +550,21 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
       m.globalCompositeOperation = 'source-over';
     },
     regrow(dt) {
-      const a = Math.min(1, Math.max(0, dt) * 0.03);
-      if (a <= 0) return;
-      const key = Math.round(a * 10000); // même chaîne tant que le pas ne change pas (pas d'allocation par image)
-      if (key !== regrowKey) { regrowKey = key; regrowStr = `rgba(255,255,255,${key / 10000})`; }
+      // Le masque est sur 8 bits : 0,03 × dt à 30 Hz (0,001 par image) s'arrondissait à 0 et la buée ne repoussait jamais.
+      // Le temps est donc cumulé et la buée repeinte toutes les ~0,5 s d'un coup plus fort (≈ 0,015, soit 4 niveaux sur
+      // 255), en addition (`lighter`) : la repousse est linéaire (3 %/s) et remonte jusqu'à la buée pleine.
+      regrowAcc += Number.isFinite(dt) ? Math.max(0, dt) : 0;
+      if (regrowAcc < REGROW_EVERY) return;
+      const a = Math.min(1, regrowAcc * FOG_REGROW);
+      regrowAcc = 0;
+      const key = Math.round(a * 1000); // même chaîne tant que le pas ne change pas (pas d'allocation)
+      if (key !== regrowKey) { regrowKey = key; regrowStr = `rgba(255,255,255,${key / 1000})`; }
       for (const cell of cells) {
         if (!cell.mask) continue;
-        cell.mask.c.globalCompositeOperation = 'source-over';
+        cell.mask.c.globalCompositeOperation = 'lighter';
         cell.mask.c.fillStyle = regrowStr;
         cell.mask.c.fillRect(0, 0, cell.mask.cv.width, cell.mask.cv.height);
+        cell.mask.c.globalCompositeOperation = 'source-over';
       }
     },
     draw(ctx, pane, env) {

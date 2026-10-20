@@ -267,6 +267,40 @@ describe('drawGlass', () => {
     expect(madeAt(0.5)).toBe(0);
   });
 
+  it('la buée effacée repousse (masque sur 8 bits : pas de repousse perdue dans l’arrondi)', () => {
+    // Faux masque d'un pixel, arrondi sur 8 bits comme un vrai canvas : `source-over` (a + d(1 − a)), `lighter` (addition),
+    // `destination-out` (le trait de la coulure efface le pixel).
+    type PixelCtx = FakeCtx & { px: number; globalCompositeOperation: string };
+    const made: PixelCtx[] = [];
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
+      const c = fakeCtx() as PixelCtx;
+      c.px = 0;
+      const alphaOf = (s: unknown): number => { const m = /rgba\([^)]*,\s*([\d.]+)\)/.exec(String(s)); return m ? Number(m[1]) : 1; };
+      Object.assign(c, {
+        fillRect: () => {
+          const a = Math.round(alphaOf(c.fillStyle) * 255);
+          if (c.globalCompositeOperation === 'lighter') c.px = Math.min(255, c.px + a);
+          else if (c.globalCompositeOperation === 'source-over') c.px = Math.round(a + c.px * (1 - a / 255));
+        },
+        stroke: () => { if (c.globalCompositeOperation === 'destination-out') c.px = 0; },
+      });
+      made.push(c);
+      return c as never;
+    });
+    const pane = { x: 0, y: 0, w: 40, h: 40 };
+    const fog = createFogMask([pane]);
+    const mask = made[0]!; // masque créé en premier, puis le calque de buée
+    expect(mask.px).toBe(255); // buée pleine au départ
+    fog.erase([{ x: 10, y: 10, r: 3 }, { x: 10, y: 14, r: 3 }, { x: 10, y: 18, r: 3 }]);
+    expect(mask.px).toBe(0);
+    for (let i = 0; i < 20 * 30; i++) fog.regrow(1 / 30);
+    // 3 %/s pendant 20 s ≈ 60 % : nettement remontée, pas encore pleine
+    expect(mask.px).toBeGreaterThan(0.45 * 255);
+    expect(mask.px).toBeLessThan(0.75 * 255);
+    for (let i = 0; i < 30 * 30; i++) fog.regrow(1 / 30);
+    expect(mask.px).toBe(255); // et revient jusqu'à la buée pleine
+  });
+
   it('pièce sans fenêtre : rien, aucune exception', () => {
     const sim = createGlassSim([], 5, GLASS_BUDGET_PHONE);
     const fog = createFogMask([]);
