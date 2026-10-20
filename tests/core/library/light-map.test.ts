@@ -207,4 +207,41 @@ describe('buildLightMap avec des animaux', () => {
     const dt = performance.now() - t0;
     expect(dt).toBeLessThan(60);
   });
+  describe('clair de lune', () => {
+    const night: LightInput = { ...base, daylight: 0, sunFrac: null, sunX: 130 };
+    const moonlit = (over: Partial<LightInput> = {}) => buildLightMap({ ...night, moon: 0.5, elev: 0.6, ...over });
+    const dark = buildLightMap({ ...night, sunX: null });
+    // Pixels du sol éclaircis par rapport à la nuit sans lune, et leur teinte moyenne (bleu − rouge).
+    const lit = (m: { w: number; rgba: Uint8ClampedArray }): { count: number; cool: number } => {
+      let count = 0;
+      let cool = 0;
+      for (let y = 345; y < 510; y += LIGHT_SCALE) for (let x = 0; x < 600; x += LIGHT_SCALE) {
+        const p = at(m, x, y);
+        if (p[3]! < at(dark, x, y)[3]! - 3) {
+          count++;
+          cool += p[2]! - p[0]!;
+        }
+      }
+      return { count, cool: count ? cool / count : 0 };
+    };
+    it('la nuit, la lune pose un rayon argenté sur le sol', () => {
+      const m = lit(moonlit());
+      expect(m.count).toBeGreaterThan(10);
+      expect(m.cool).toBeGreaterThan(0);
+    });
+    it('un nuage devant la lune efface le rayon (et ses ombres), comme pour le soleil', () => {
+      expect(lit(moonlit({ hidden: 1 })).count).toBe(0);
+      expect(lit(moonlit({ hidden: 0.5 })).count).toBeLessThanOrEqual(lit(moonlit()).count);
+    });
+    it('un mince croissant éclaire bien moins qu’une pleine lune', () => {
+      const full = moonlit({ moon: 0.5 });
+      const crescent = moonlit({ moon: 0.05 });
+      const sum = (m: { w: number; rgba: Uint8ClampedArray }): number => {
+        let t = 0;
+        for (let y = 345; y < 510; y += LIGHT_SCALE) for (let x = 0; x < 600; x += LIGHT_SCALE) t += at(dark, x, y)[3]! - at(m, x, y)[3]!;
+        return t;
+      };
+      expect(sum(crescent)).toBeLessThan(sum(full) * 0.3);
+    });
+  });
 });

@@ -14,7 +14,7 @@ import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
 import { fadeStyle, useShownAfterMount } from './ghibli-sky';
 import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
-import { sunPlace } from './sky-place';
+import { moonPlace, sunPlace } from './sky-place';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
 import type { RainTraffic } from './rain-traffic';
@@ -180,6 +180,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       const w = clock.read(now);
       const { daylight, sunFrac } = skyRef.current;
       const sunAt = sunPlace(skyRef.current, width, height);
+      // Astre dont la part cachée est mesurée : le soleil, sinon la lune la nuit (clair de lune du calque de lumière).
+      const beamAt = sunAt ?? (daylight < 0.3 ? moonPlace(skyRef.current, width, height) : null);
       const snow = w.kind === 'snow' ? w.precip : 0;
 
       // Ciel : de vrais nuages (leur NOMBRE = la couverture) ; leur teinte et l'obscurité du ciel suivent l'intensité de la pluie.
@@ -296,15 +298,16 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         } else set(nodes.bolt, 0);
       }
 
-      // Filets de lumière : part du soleil masquée (nuages visibles + voile continu), relue au plus toutes les 250 ms.
-      if (sunFrac === null) hidden = 1;
+      // Filets de lumière et rayon des fenêtres : part de l'astre masquée (nuages visibles + voile continu), relue au plus
+      // toutes les 250 ms.
+      if (beamAt === null) hidden = 1;
       else if (now - coveredAt >= COVER_MS || still) {
         coveredAt = now;
-        const sun = sunAt!;
+        const sun = beamAt;
         const cov = sunCoverage(sun.x, sun.y, coverRef.current.filter((_, i) => (cloudOpacity[i] ?? 0) >= 0.5), m.drift, width);
         hidden = 1 - (1 - cov) * (1 - clamp01(overcast));
       }
-      // Part du soleil masquée, lue par le calque de lumière sur le <svg> de la pièce.
+      // Part de l'astre masquée (soleil, ou lune la nuit), lue par le calque de lumière sur le <svg> de la pièce.
       const hiddenText = hidden.toFixed(2);
       if (hiddenText !== lastHidden) {
         lastHidden = hiddenText;

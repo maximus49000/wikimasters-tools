@@ -21,6 +21,11 @@ export type LightInput = {
   pets?: readonly Box[];
   // Pièce sans ciel terrestre (ni fenêtre, ni météo) : pas d'ombre ambiante, seules les lampes et les meubles agissent.
   noSky?: boolean;
+  // Clair de lune : la nuit, `sunX` et `elev` décrivent la lune, `moon` est la force de son rayon (phase, nuit) ; teinte
+  // argentée au lieu de la teinte chaude. `hidden` est alors la part de la lune cachée par les nuages.
+  moon?: number;
+  // Élévation de l'astre (radians) ; absente : tirée de `sunFrac`.
+  elev?: number;
 };
 export type LightMap = { w: number; h: number; rgba: Uint8ClampedArray };
 
@@ -31,6 +36,7 @@ const hex = (h: string): [number, number, number] => {
 };
 const WARM = hex('#FFE9A8');
 const LAMP_WARM = hex('#FFD38A');
+const MOONLIGHT = hex('#C8D6FF');
 const MIN_ELEV = 0.02; // même seuil que beamPatch
 
 // Point dans un quadrilatère convexe : les quatre produits vectoriels ont le même signe.
@@ -140,8 +146,9 @@ export function buildLightMap(input: LightInput): LightMap {
   const dark = hex(mixHex(mixHex('#1B2236', '#0A1030', 1 - input.daylight), '#3A2418', input.twilight * 0.7));
   const floorH = height - wallH;
   const depthMax = wallH * ROOM_DEPTH_FACTOR;
-  const elev = sunElevation(input.sunFrac);
-  const gain = beamGain(elev, input.cloud, input.hidden);
+  const elev = input.elev ?? sunElevation(input.sunFrac);
+  const gain = beamGain(elev, input.cloud, input.hidden) * (input.moon ?? 1);
+  const tint = input.moon !== undefined ? MOONLIGHT : WARM;
   const patches: Point[][] = [];
   const sunX = input.sunX;
   const sunny = sunX !== null && gain > 0;
@@ -193,7 +200,7 @@ export function buildLightMap(input: LightInput): LightMap {
       const o = n * 4;
       // Teinte chaude = mélange du soleil et de la lampe pondéré par leur alpha.
       for (let c = 0; c < 3; c++) {
-        const warmC = glow > 0 ? (WARM[c]! * sunA + LAMP_WARM[c]! * glow * (1 - sunA)) / a2 : WARM[c]!;
+        const warmC = glow > 0 ? (tint[c]! * sunA + LAMP_WARM[c]! * glow * (1 - sunA)) / a2 : tint[c]!;
         rgba[o + c] = (warmC * a2 + dark[c]! * a1 * (1 - a2)) / a;
       }
       rgba[o + 3] = a * 255;

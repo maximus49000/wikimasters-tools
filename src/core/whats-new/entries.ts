@@ -2537,11 +2537,11 @@ export const ENTRIES: Entry[] = [
     ],
   },
   {
-    id: 'ciel-reel-2026-10',
+    id: 'ciel-reel-2026-10b',
     theme: 'collection',
     glyph: '🌗',
     title: 'Soleil, lune et nuages réels',
-    summary: 'Le soleil et la lune sont à leur vraie place pour votre lieu, la lune montre sa phase du jour, les nuages suivent la météo réelle',
+    summary: 'Le soleil et la lune sont à leur vraie place pour votre lieu, la lune montre sa phase du jour et éclaire la pièce la nuit, les nuages suivent la météo réelle',
     steps: [
       {
         target: '[data-wmt-library-entry]',
@@ -2561,6 +2561,16 @@ export const ENTRIES: Entry[] = [
         details: [
           { label: 'Comment ça marche', text: 'La place de la lune et sa part éclairée sont calculées sur l’appareil, comme pour le soleil. La nuit, la partie sombre d’un croissant se devine (lumière cendrée).' },
           { label: 'À savoir', text: 'Une nuit sans lune est normale : elle peut être couchée, ou presque nouvelle. Le chien ne hurle à la lune que si elle est dans le ciel.' },
+        ],
+        scene: { page: '/collection', closeWindows: true },
+      },
+      {
+        target: '[data-wmt-library-entry]',
+        title: 'Lumière et ombres sous les nuages',
+        text: 'Le jour, le rayon de soleil des fenêtres et les ombres des meubles et des animaux pâlissent quand un nuage passe devant le soleil. La nuit, la lune pose un rayon argenté, avec ses ombres, qui s’efface de la même façon derrière les nuages.',
+        details: [
+          { label: 'Comment ça marche', text: 'La part de l’astre cachée par les nuages est relue quatre fois par seconde ; un ciel couvert le cache entièrement. Le clair de lune vient de la direction et de la hauteur réelles de la lune.' },
+          { label: 'À savoir', text: 'Le clair de lune est fort à la pleine lune, à peine visible sur un mince croissant, absent quand la lune est couchée. Il s’allume avec le bouton Lumière, comme le soleil.' },
         ],
         scene: { page: '/collection', closeWindows: true },
       },

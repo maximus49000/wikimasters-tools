@@ -3,7 +3,7 @@ import { buildLightMap, type Glass, type LightInput, type LightMap } from '../co
 import type { Box, LampSource } from '../core/library/light/occluders';
 import type { Sky } from '../core/library/sky';
 import type { Weather } from '../core/library/weather/weather-types';
-import { sunPlace } from './sky-place';
+import { moonBeam, sunPlace } from './sky-place';
 
 export type LightLayerProps = {
   windows: readonly Glass[];
@@ -68,7 +68,9 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
       const r = (v: number, q: number): number => Math.round(v / q);
       const pets = getPetBoxes?.() ?? [];
       const pk = petKey(pets);
-      const key = [r(s.sunFrac ?? -1, 0.005), r(s.sunAt?.x ?? -1, 0.002), r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01), signature, pk].join('|');
+      // La nuit, le rayon est celui de la lune (même calcul, teinte argentée, force selon la phase).
+      const moon = moonBeam(s, width, wallH);
+      const key = [r(s.sunFrac ?? -1, 0.005), r(s.sunAt?.x ?? -1, 0.002), moon ? `${r(moon.x, 2)},${r(moon.elev, 0.005)},${r(moon.strength, 0.01)}` : '', r(s.daylight, 0.01), r(s.twilight, 0.01), r(w.cloud, 0.01), r(w.precip, 0.01), r(hidden, 0.01), signature, pk].join('|');
       if (key === lastKey && image.hasAttribute('href')) return;
       lastKey = key;
       lastPetKey = pk;
@@ -79,8 +81,9 @@ export function LightLayer({ windows, width, height, wallH, sky, clock, boxes, l
         width, height, wallH, windows, sunX: null, sunFrac: null, daylight: 0, twilight: 0, cloud: 0, precip: 0, hidden: 0, boxes, lamps, noSky, pets,
       } : {
         width, height, wallH, windows,
-        sunX: sunPlace(s, width, wallH)?.x ?? null,
+        sunX: moon ? moon.x : sunPlace(s, width, wallH)?.x ?? null,
         sunFrac: s.sunFrac, daylight: s.daylight, twilight: s.twilight, cloud: w.cloud, precip: w.precip, hidden, boxes, lamps, pets,
+        ...(moon ? { moon: moon.strength, elev: moon.elev } : {}),
       };
       const url = toUrl(buildLightMap(input));
       if (url !== null && image.getAttribute('href') !== url) image.setAttribute('href', url);
