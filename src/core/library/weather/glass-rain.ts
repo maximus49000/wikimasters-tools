@@ -185,7 +185,7 @@ export function stepGlass(sim: GlassSim, env: { precip: number; wind: number; t:
     sim.spawnAcc = Math.min(sim.spawnAcc + SPAWN_RATE * dt, SPAWN_RATE * MAX_DT);
     while (sim.spawnAcc >= 1) {
       const i = neediest(have, quota);
-      if (i < 0) break;
+      if (i < 0) { sim.spawnAcc = Math.min(sim.spawnAcc, 1); break; } // vitres servies : pas de réserve (sinon rafale après absorption)
       sim.statics.push(newStatic(sim, i));
       have[i] = have[i]! + 1;
       sim.spawnAcc -= 1;

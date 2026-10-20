@@ -64,6 +64,18 @@ describe('vitre : moteur des gouttes', () => {
     expect(drizzle.statics.length).toBeGreaterThan(90);
   });
 
+  it('après une absorption, les gouttes reviennent une à une (pas de rafale de réserve)', () => {
+    const sim = createGlassSim([PANE], 9, GLASS_BUDGET_WIDE);
+    prefillGlass(sim, env(1, 0));
+    sim.runners = [];
+    sim.runnerAcc = -1e9; // aucune coulure : seule l'arrivée des gouttes posées compte
+    run(sim, 1, 2); // vitre servie : la réserve ne doit pas s'accumuler pendant ce temps
+    sim.statics.splice(0, 12); // une coulure vient d'absorber 12 gouttes
+    const before = sim.statics.length;
+    stepGlass(sim, env(1, 3), 1 / 30);
+    expect(sim.statics.length - before).toBeLessThanOrEqual(2); // 40/s × 1/30 s ≈ 1,33
+  });
+
   it('les coulures descendent et absorbent les gouttes sur leur passage', () => {
     const sim = createGlassSim([PANE], 9, GLASS_BUDGET_WIDE);
     const x = PANE.x + 300;
