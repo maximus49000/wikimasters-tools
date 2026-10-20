@@ -218,3 +218,31 @@ describe('voiture Ghibli : occupants 3D', () => {
     expect(keys.at(-1)).toMatch(/@3d$/);
   });
 });
+
+// En dernier : ces voitures de nuit peignent des couches dans le cache commun des sprites.
+describe('voiture Ghibli : phares', () => {
+  it('phares de nuit en dégradés (lueur, faisceau abaissé jusqu’au sol, tache sur la chaussée), plus vifs sous la pluie', async () => {
+    const draw = async (dir: 1 | -1, rainy: boolean): Promise<HTMLElement> => {
+      const host = document.createElement('div');
+      await act(async () => createRoot(host).render(<svg><Probe /><GhibliCar look={lookOfCar(genCar(11, 'berline', 0.2))} dir={dir} sky={night} rainy={rainy} lights /></svg>));
+      return host;
+    };
+    const host = await draw(1, false);
+    const hl = host.querySelector('[data-headlight]')!;
+    // aucune forme à aplat : tout est peint par des dégradés propres à la voiture
+    for (const shape of hl.querySelectorAll('circle, path, ellipse')) expect(shape.getAttribute('fill')).toMatch(/^url\(#beam/);
+    const beam = hl.querySelector('linearGradient')!;
+    expect(Number(beam.getAttribute('x2'))).toBeGreaterThan(Number(beam.getAttribute('x1'))); // vers l'avant (sens 1)
+    const ys = hl.querySelector('path')!.getAttribute('d')!.match(/-?[\d.]+/g)!.map(Number).filter((_, i) => i % 2 === 1);
+    expect(Math.max(...ys)).toBeCloseTo(-0.2, 5); // le bas du faisceau touche le sol
+    const back = (await draw(-1, false)).querySelector('[data-headlight] linearGradient')!;
+    expect(Number(back.getAttribute('x2'))).toBeLessThan(Number(back.getAttribute('x1')));
+    const op = (h: HTMLElement): number => Number(h.querySelector('[data-headlight] linearGradient stop')!.getAttribute('stop-opacity'));
+    expect(op(await draw(1, true))).toBeGreaterThan(op(host));
+    // deux voitures : identifiants de dégradés distincts
+    const two = document.createElement('div');
+    await act(async () => createRoot(two).render(<svg><Probe /><GhibliCar look={lookOfCar(genCar(11, 'berline', 0.2))} dir={1} sky={night} rainy={false} lights /><GhibliCar look={lookOfCar(genCar(12, 'break', 0.2))} dir={1} sky={night} rainy={false} lights /></svg>));
+    const ids = [...two.querySelectorAll('[data-headlight] linearGradient')].map((g) => g.id);
+    expect(new Set(ids).size).toBe(2);
+  });
+});
