@@ -6,6 +6,7 @@ import { mulberry32 } from '../core/library/scene-world';
 import { INK, light, shade } from '../core/library/paint/cel';
 import { hexRgb, rgba } from '../core/library/paint/color';
 import { curtainWidth, nightCurtain, nightVoile } from './ghibli-window-art';
+import { HeldDecor } from './halloween-art';
 
 // Dessins de la façade vivante (chantier « vie au-dessus de la rue », spec §5.2) : port en SVG de `paintShutters`,
 // `paintSash`, `paintFlowerBox`, `paintSapin`, `paintInteriorProp` et `paintHandProps` de
@@ -453,6 +454,14 @@ export function HeldProp({ kind, at, phase, night, dark = 0 }: { kind: HandProp;
         <path d="M-1.6 -1.4L0 -1.1L1.6 -1.4V0.6L0 0.9L-1.6 0.6z" fill={sil ?? BOOK} stroke={INK} strokeWidth={0.3} strokeLinejoin="round" />
         <path d="M0 -1.1V0.9" stroke={INK} strokeWidth={0.3} />
         <path d="M-1.6 -1.4L0 -1.1L1.6 -1.4V0.6L0 0.9L-1.6 0.6z" {...dv} />
+      </g>
+    );
+  }
+  if (kind === 'pumpkin' || kind === 'witch' || kind === 'skeleton' || kind === 'crow' || kind === 'spider') {
+    // Décor d'Halloween porté pendant sa pose ou son retrait (le calque des décors le dessine une fois posé).
+    return (
+      <g data-held-prop={kind} transform={t}>
+        <HeldDecor kind={kind} dark={dark} />
       </g>
     );
   }

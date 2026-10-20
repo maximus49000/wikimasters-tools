@@ -333,3 +333,55 @@ describe('Fête de la musique : scènes, barrières, stands de bière', () => {
     expect(STEPS_BY_EQUIPMENT.ladder).toContain('fix');
   });
 });
+
+describe('Halloween : lampadaires (mairie) et entrées (habitants)', () => {
+  const OCT = (d: number): YMD => ({ y: 2026, m: 10, d });
+  const NOV = (d: number): YMD => ({ y: 2026, m: 11, d });
+  const HW = dayNumber(OCT(31));
+  const doorSets = (date: YMD): DecorSet[] => decorSetsFor(date, W, H, SEED).filter((s) => s.id.startsWith('halloween-'));
+
+  it('lampadaires : posés au camion élévateur le samedi 24 octobre, retirés le mardi 3 novembre, de 9 h à 17 h', () => {
+    expect(ids(OCT(23))).not.toContain('lamps-halloween');
+    expect(ids(NOV(4))).not.toContain('lamps-halloween');
+    const set = setOf(OCT(24), 'lamps-halloween');
+    expect(set.equipment).toBe('lift');
+    expect(set.transport).toBe('lift');
+    expect(set.day).toBe(HW);
+    expect(new Set(set.items.map((i) => i.kind))).toEqual(new Set(['lamp-pumpkin', 'lamp-bats']));
+    for (const item of set.items) {
+      expect(itemPhase(set, item, at(OCT(24), 8, 59), set.day).phase).toBe('absent');
+      expect(itemPhase(set, item, at(OCT(27), 12), set.day).phase).toBe('present');
+      expect(itemPhase(set, item, at(NOV(3), 17, 1), set.day).phase).toBe('absent');
+    }
+    // Un seul exemplaire du jeu chaque jour de la période.
+    for (const d of [OCT(24), OCT(28), OCT(31), NOV(1), NOV(3)]) expect(ids(d).filter((x) => x === 'lamps-halloween')).toHaveLength(1);
+  });
+
+  it('entrées : une partie seulement, posées entre le 24 et le 31, retirées entre le 1er et le 8 novembre, par un habitant à l’échelle', () => {
+    const all = doorSets(OCT(31));
+    expect(all.length).toBeGreaterThan(0);
+    for (const set of all) {
+      expect(set.transport).toBe('door');
+      expect(set.equipment).toBe('ladder');
+      expect(set.items).toHaveLength(1);
+      expect(['door-web', 'door-ghost']).toContain(set.items[0]!.kind);
+      expect(set.install.dayOffset).toBeGreaterThanOrEqual(-7);
+      expect(set.install.dayOffset).toBeLessThanOrEqual(0);
+      expect(set.remove.dayOffset).toBeGreaterThanOrEqual(1);
+      expect(set.remove.dayOffset).toBeLessThanOrEqual(8);
+      expect(set.install.to - set.install.from).toBe(12);
+      // Le geste suit les étapes de l'échelle ; présent entre la pose et le retrait.
+      const item = set.items[0]!;
+      const day0 = set.day + set.install.dayOffset;
+      expect(itemPhase(set, item, absMinute(day0, set.install.from + 1), set.day).phase).toBe('installing');
+      expect(itemPhase(set, item, absMinute(set.day, 1200), set.day).phase).toBe('present');
+    }
+    // Le 8 novembre, il reste au plus les jeux retirés ce jour-là ; le 9, plus rien.
+    expect(doorSets(NOV(9))).toEqual([]);
+  });
+
+  it('les jeux d’autres fêtes ne débordent pas (drapeaux du 14 juillet : de la veille au lendemain)', () => {
+    expect(ids({ y: 2026, m: 7, d: 11 })).toEqual([]);
+    expect(ids({ y: 2026, m: 7, d: 17 })).toEqual([]);
+  });
+});

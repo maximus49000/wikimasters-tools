@@ -21,6 +21,15 @@ Tout reste calculé depuis la date, l'heure et la graine : aucun état ajouté, 
 | Hors périmètre | Ciel (chauves-souris, sorcière devant la lune), décor dans la pièce, entrée « Quoi de neuf ». |
 | Maquette | Maquette rapide des décors (celle-ci) avant la PR 1 ; maquette des déguisés et des farces pendant que la PR 1 avance, avant la PR 2. |
 
+## Écarts décidés à l'implémentation (PR 1)
+
+- **Pas de chaudron** : il n'était pas dans la liste validée, et un aller-retour à la main n'apportait rien.
+- **Entrées** : le décor est posé par « un habitant de l'immeuble » qui n'est pas relié à un foyer précis. Sa tenue est
+  tirée de la porte et son heure vient du plan des entrées (`install.ts`, transport `door`, sans véhicule). Il sort par
+  la porte (fondu à l'encadrement) avec une petite échelle (16 unités), accroche le décor et rentre ; le geste dure
+  12 minutes.
+- **Pluie** : on décore quel que soit le temps (point à valider n° 1, choix par défaut).
+
 ## 1. Calendrier (`city/calendar.ts`)
 
 - `FestivityId` gagne `halloween` ; ligne `{ id: 'halloween', m: 10, d: 31, hours: [[1020, 1380]] }` (17 h à 23 h). Le

@@ -6,6 +6,7 @@ import '../core/library/paint/props/install';
 import '../core/library/paint/props/music';
 import { mixHex, type Sky } from '../core/library/sky';
 import { Cyclist, PersonSprite, tone } from './city-sprites';
+import { Bats, Ghost, Pumpkin, Web } from './halloween-art';
 import { GhibliRider } from './figure/ghibli-cyclist';
 import { PropImage, PropInMirror } from './prop/prop-host';
 import { ScriptedCar } from './vehicle/scripted-car';
@@ -728,6 +729,64 @@ export function Flatbed({ sky, lights, open, ladder, load, ghibli }: { sky: Sky;
       <circle cx={-22} cy={-4.5} r={4.5} fill="#222" />
       <circle cx={36} cy={-4.5} r={4.5} fill="#222" />
       {lights && <circle cx={46} cy={-10} r={2.2} fill="#FFE9A0" />}
+    </g>
+  );
+}
+
+// ---------- Halloween (spec 2026-10-20 « Halloween » §4) ----------
+// Dessins de halloween-art.tsx, teints la nuit par son voile (`dark`). Lampadaire : repère du LampSprite (pied y = 0, fût
+// jusqu'à −72), côté du drapeau (−x) ; entrée : repère de EntranceSprite (ouverture 0..22, auvent de −31 à −27).
+const nightOf = (sky: Sky): number => Math.min(1, Math.max(0, (0.7 - sky.daylight) / 0.5));
+const LAMP_LANTERN = { x: -8, y: -47 } as const;
+// Lanterne citrouille pendue à une potence du fût ; allumée avec le lampadaire. `held` : tenue (repère de la main).
+export function LampPumpkin({ sky, lit, held = false }: { sky: Sky; lit: boolean; held?: boolean }): ReactElement {
+  const pumpkin = <Pumpkin v={0.58} r={4} lit={lit} dark={nightOf(sky)} />;
+  if (held) return <g data-lamp-pumpkin="held">{pumpkin}</g>;
+  return (
+    <g data-lamp-pumpkin="">
+      <path d={`M-1.2 -58H${LAMP_LANTERN.x}V${LAMP_LANTERN.y - 7.2}`} fill="none" stroke={tone(POLE, sky)} strokeWidth={0.8} strokeLinecap="round" />
+      <g transform={`translate(${LAMP_LANTERN.x} ${LAMP_LANTERN.y})`}>{pumpkin}</g>
+    </g>
+  );
+}
+// Guirlande de chauves-souris en papier : trois festons depuis le haut du fût ; yeux orange quand le lampadaire est allumé.
+const BAT_STRING = 'M-1 -72Q-6 -64 -12 -62M1 -72Q6 -64 12 -62M0 -72V-52';
+const BAT_SPOTS: readonly (readonly [number, number])[] = [[-6, -66], [-11, -62.5], [6, -66], [11, -62.5], [0, -60], [0, -54]];
+export function LampBats({ sky, lit = false, held = false }: { sky: Sky; lit?: boolean; held?: boolean }): ReactElement {
+  if (held) return <g data-lamp-bats="held"><Bats at={[[0, 0], [3, 1.5]]} s={2.2} eyes={false} /></g>;
+  return (
+    <g data-lamp-bats="">
+      <path d={BAT_STRING} fill="none" stroke={tone('#8A5A8E', sky)} strokeWidth={0.5} />
+      <Bats at={BAT_SPOTS} s={2.4} eyes={lit} />
+    </g>
+  );
+}
+// Toile d'araignée dans l'angle haut de la porte (une ou deux selon l'entrée).
+export function DoorWeb({ sky, variant, seed }: { sky: Sky; variant: 0 | 1 | 2; seed: number }): ReactElement {
+  const night = sky.daylight < 0.3;
+  const left = seed < 0.5;
+  return (
+    <g data-door-web="" data-variant={variant}>
+      <g transform={left ? 'translate(2 -27)' : 'translate(20 -27)'}><Web s={9} dir={left ? 1 : -1} night={night} /></g>
+      {seed > 0.7 && <g transform={left ? 'translate(20 -27)' : 'translate(2 -27)'}><Web s={6} dir={left ? -1 : 1} night={night} /></g>}
+    </g>
+  );
+}
+// Fantôme en drap pendu sous l'auvent, au-dessus de la porte.
+export function DoorGhost({ sky }: { sky: Sky }): ReactElement {
+  return (
+    <g data-door-ghost="">
+      <path d="M11 -27V-25.6" stroke={INK} strokeWidth={0.3} />
+      <g transform="translate(11 -25.8)"><Ghost w={10} h={12} glow={sky.daylight < 0.3} dark={nightOf(sky)} /></g>
+    </g>
+  );
+}
+// Décor d'entrée tenu à la main (repère de la main, sous elle) : toile roulée en pelote, fantôme plié sur le bras.
+export function HeldDoorDecor({ kind, sky }: { kind: 'web' | 'ghost'; sky: Sky }): ReactElement {
+  if (kind === 'ghost') return <g data-held-door="ghost"><Ghost w={5} h={6} glow={false} dark={nightOf(sky)} /></g>;
+  return (
+    <g data-held-door="web">
+      <circle cx={0} cy={1.4} r={1.4} fill={tone('#F4F2EC', sky)} stroke={INK} strokeWidth={0.25} />
     </g>
   );
 }
