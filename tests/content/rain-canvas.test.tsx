@@ -260,6 +260,11 @@ describe('pluie naturelle — canvas dans la scène', () => {
     expect(city.drips.length).toBeLessThanOrEqual(40);
     expect(city.drips.every((d) => d.x >= 0 && d.x <= 720 && d.y >= 0 && d.y < city.groundTop)).toBe(true);
     expect(new Set(city.drips.map((d) => d.kind)).size).toBeGreaterThan(1);
+    // tailles ramenées au monde de l'app (≈ 0,55 à 340 de haut), vitesses à la même durée de traversée (hauteur / 460)
+    const w340 = rainWorldFor('city', 1080, 340, 1);
+    expect(w340.scale).toBeCloseTo(0.55, 2);
+    expect(w340.speed).toBeCloseTo(340 / 460, 6);
+    expect(rainWorldFor('countryside', 1080, 340, 1).scale).toBeCloseTo(0.55, 2);
     expect(city.gutter).not.toBeNull();
     expect(city.gutter!.y).toBeGreaterThan(city.groundTop);
     expect(rainLightsFor('city', 720, 216, 1, 22 * 60, 0).length).toBeGreaterThan(0);

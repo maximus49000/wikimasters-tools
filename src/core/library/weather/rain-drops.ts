@@ -25,7 +25,15 @@ export type RainWorld = {
   gutter: { y: number; grateX: number } | null;
   /** Faux en mer : aucune éclaboussure au sol. */
   splashGround: boolean;
+  /** Échelle des TAILLES (longueur des traits, rayons des gouttes des bords, éclaboussures, anneaux) par rapport à la maquette
+   *  (scène 1000 × 460 aux grands immeubles) ; 1 par défaut. Les épaisseurs suivent √scale (un trait sous 1 px disparaît). */
+  scale?: number;
+  /** Échelle des VITESSES (même durée de traversée qu'à la maquette : hauteur du monde / 460) ; 1 par défaut. */
+  speed?: number;
 };
+
+const sizeOf = (w: RainWorld): number => (w.scale !== undefined && Number.isFinite(w.scale) && w.scale > 0 ? w.scale : 1);
+const speedOf = (w: RainWorld): number => (w.speed !== undefined && Number.isFinite(w.speed) && w.speed > 0 ? w.speed : 1);
 
 export type RainLayer = { name: string; part: number; v: [number, number]; len: [number, number]; w: number; a: number; blur: number; sway: number; splash: number };
 
@@ -113,14 +121,15 @@ function spawnDrop(sim: RainSim, layer: 0 | 1 | 2, fromTop = true): RainDrop {
   const r = sim.rng;
   const w = sim.world;
   const ground = w.groundTop + Math.pow(r(), 0.8) * (w.groundBottom - w.groundTop);
+  const k = sizeOf(w), sp = speedOf(w);
   return {
     layer,
     x: r() * (w.width + 200) - 100,
     y: fromTop ? -r() * 60 - 10 : r() * ground,
-    v: lerp(L.v[0], L.v[1], r()),
-    len: lerp(L.len[0], L.len[1], r()) * (0.6 + r() * 0.9),
+    v: lerp(L.v[0], L.v[1], r()) * sp,
+    len: lerp(L.len[0], L.len[1], r()) * (0.6 + r() * 0.9) * k,
     a: L.a * (0.55 + r() * 0.7),
-    w: L.w * (0.8 + r() * 0.5),
+    w: L.w * (0.8 + r() * 0.5) * Math.sqrt(k),
     ph: r() * Math.PI * 2,
     ground,
     big: r() < 0.06,
@@ -137,6 +146,7 @@ function pickLayer(sim: RainSim): 0 | 1 | 2 {
 
 function addSplash(sim: RainSim, x: number, y: number, k: number): void {
   if (!sim.world.splashGround || sim.splashes.length >= sim.budget.splashes) return;
+  k *= sizeOf(sim.world); // couronne, gouttelettes et leur envol à l'échelle du monde
   const r = sim.rng;
   const parts: RainSplash['parts'] = [];
   const n = 3 + Math.floor(r() * 3);
@@ -166,6 +176,7 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
   const t = env.t;
   const w = sim.world;
   const r = sim.rng;
+  const K = sizeOf(w), SP = speedOf(w);
 
   // population : monte au plus de 40/s vers la cible ; en trop, les gouttes finissent leur chute avant de partir
   const target = rainTarget(P, sim.budget, sim.soft);
@@ -183,7 +194,7 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
   for (let i = 0; i < sim.drops.length; i++) {
     const d = sim.drops[i]!;
     const L = LAYERS[d.layer]!;
-    const vx = d.v * (0.08 + lean * 0.55) + Math.sin(t * 3.1 + d.ph) * L.sway * 18; // dérive + léger balancement (proche)
+    const vx = d.v * (0.08 + lean * 0.55) + Math.sin(t * 3.1 + d.ph) * L.sway * 18 * SP; // dérive + léger balancement (proche)
     d.y += d.v * dt;
     d.x += vx * dt;
     if (d.x > w.width + 60) d.x -= w.width + 160;
@@ -206,7 +217,7 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
     for (const p of s.parts) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vy += GRAVITY * dt;
+      p.vy += GRAVITY * K * dt; // gravité à l'échelle du monde (comme l'envol des gouttelettes)
     }
   }
   sim.splashes = sim.splashes.filter((s) => s.age < SPLASH_LIFE);
@@ -216,7 +227,7 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
     if (sim.ripples.length >= sim.budget.ripples) break;
     if (r() < P * P * dt * p.rx * 0.11) {
       const u = r() * 2 - 1;
-      sim.ripples.push({ x: p.x + u * p.rx * 0.85, y: p.y + (r() * 2 - 1) * p.rx * 0.12, age: 0, life: 0.7 + r() * 0.5, R: 5 + r() * 7 });
+      sim.ripples.push({ x: p.x + u * p.rx * 0.85, y: p.y + (r() * 2 - 1) * p.rx * 0.12, age: 0, life: 0.7 + r() * 0.5, R: (5 + r() * 7) * K });
     }
   }
   for (const rp of sim.ripples) rp.age += dt;
@@ -231,16 +242,16 @@ export function stepRain(sim: RainSim, env: RainEnv, dtIn: number): void {
       tm.phase += dt / period;
       if (tm.phase >= 1) {
         tm.phase -= 1;
-        const ground = pt.kind === 'auvent' ? w.groundTop + 8 + r() * 30 : w.groundTop + r() * 40;
-        sim.drips.push({ x: pt.x, y: pt.y, vy: 20, r: 1.3 + r() * 0.9, ground });
+        const ground = pt.kind === 'auvent' ? w.groundTop + (8 + r() * 30) * K : w.groundTop + r() * 40 * K;
+        sim.drips.push({ x: pt.x, y: pt.y, vy: 20 * SP, r: (1.3 + r() * 0.9) * K, ground });
       }
     });
   }
   const g = gust(t);
   sim.drips = sim.drips.filter((d) => {
-    d.vy += GRAVITY * dt;
+    d.vy += GRAVITY * SP * dt;
     d.y += d.vy * dt;
-    d.x += W * g * 14 * dt;
+    d.x += W * g * 14 * SP * dt;
     if (d.y < d.ground) return true;
     addSplash(sim, d.x, d.ground, 1.3);
     return false;

@@ -125,6 +125,18 @@ function alphaAt(field: LightField, daylight: number, x: number, y: number, a: n
   return a * lerp(0.3 + 0.9 * Math.min(1.2, field.lightAt(x, y)), 1, daylight);
 }
 
+// Échelles du monde (tailles et vitesses par rapport à la maquette, voir `RainWorld.scale` / `speed`).
+const worldScale = (w: RainWorld): number => (w.scale !== undefined && w.scale > 0 ? w.scale : 1);
+const worldSpeed = (w: RainWorld): number => (w.speed !== undefined && w.speed > 0 ? w.speed : 1);
+const DRIP_A = 0.5; // gouttes et perles des bords
+
+// Marques au sol (éclaboussures, anneaux) : plancher de nuit plus haut que la pluie qui tombe (0,75 au lieu de 0,3) — une fois
+// ramenées à l'échelle du monde, elles disparaissaient la nuit hors des cônes ; le sol mouillé renvoie la lumière diffuse.
+function groundAlphaAt(field: LightField, daylight: number, x: number, y: number, a: number): number {
+  if (daylight > 0.95) return a;
+  return a * lerp(0.75 + 0.5 * Math.min(1, field.lightAt(x, y)), 1, daylight);
+}
+
 // ───────────── caches par contexte : dégradés des traits (par longueur et pas de nuit) et halos (par lampadaire) ─────────────
 type Caches = { grads: Map<number, CanvasGradient>; halos: WeakMap<RainLight, { R: number; g: CanvasGradient }> };
 const CACHES = new WeakMap<CanvasRenderingContext2D, Caches>();
@@ -184,6 +196,7 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
   }
   // gouttes, par couche (loin → proche)
   const soft = sim.soft ? 0.85 : 1;
+  const K = worldScale(world), blurK = Math.sqrt(K); // tailles à l'échelle du monde (épaisseurs en √)
   for (let li = 0; li < 3; li++) {
     const L = LAYERS[li]!;
     for (const d of sim.drops) {
@@ -192,7 +205,7 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
       const a = alphaAt(field, daylight, d.x, d.y, d.a) * soft;
       if (a < 0.015) continue;
       if (L.blur > 0) { // halo flou de la couche proche : même trait, plus large et pâle
-        ctx.strokeStyle = baseStr; ctx.globalAlpha = a * 0.22; ctx.lineWidth = d.w + L.blur;
+        ctx.strokeStyle = baseStr; ctx.globalAlpha = a * 0.22; ctx.lineWidth = d.w + L.blur * blurK;
         ctx.beginPath(); ctx.moveTo(d.x - dx, d.y - dy); ctx.lineTo(d.x, d.y); ctx.stroke();
       }
       ctx.lineWidth = d.w; ctx.globalAlpha = a;
@@ -208,11 +221,12 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
       if (d.big && li === 2) { ctx.fillStyle = baseStr; ctx.globalAlpha = a * 0.9; ctx.beginPath(); ctx.ellipse(d.x, d.y, d.w * 0.9, d.w * 1.4, 0, 0, TAU); ctx.fill(); }
     }
   }
-  // gouttes qui tombent des bords : goutte allongée par la vitesse
+  // gouttes qui tombent des bords : goutte allongée par la vitesse (alpha 0,5 : de l'eau, pas des flocons)
   ctx.fillStyle = baseStr;
+  const vyRef = 250 * worldSpeed(world);
   for (const d of sim.drips) {
-    ctx.globalAlpha = alphaAt(field, daylight, d.x, d.y, 0.8);
-    ctx.beginPath(); ctx.ellipse(d.x, d.y, d.r * 0.8, d.r * (1 + d.vy / 250), 0, 0, TAU); ctx.fill();
+    ctx.globalAlpha = alphaAt(field, daylight, d.x, d.y, DRIP_A);
+    ctx.beginPath(); ctx.ellipse(d.x, d.y, d.r * 0.8, d.r * (1 + d.vy / vyRef), 0, 0, TAU); ctx.fill();
   }
   // perles qui pendent aux points des bords (grossissent avec la phase) ; s'effacent avec la pluie qui cesse
   const pearl = Math.min(1, P * 8);
@@ -220,8 +234,8 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
     for (let i = 0; i < world.drips.length; i++) {
       const pt = world.drips[i]!, tm = sim.dripTimers[i];
       if (!tm) continue;
-      const r = 0.6 + tm.phase * 1.6;
-      const a = alphaAt(field, daylight, pt.x, pt.y, 0.75) * pearl;
+      const r = (0.6 + tm.phase * 1.6) * K;
+      const a = alphaAt(field, daylight, pt.x, pt.y, DRIP_A) * pearl;
       ctx.fillStyle = baseStr; ctx.globalAlpha = a;
       ctx.beginPath(); ctx.ellipse(pt.x, pt.y + r * 0.6, r * 0.8, r, 0, 0, TAU); ctx.fill();
       // la gouttière coule en filet au-delà de P = 0,55
@@ -274,7 +288,7 @@ export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, worl
   // éclaboussures : couronne (anneau qui s'ouvre) + gouttelettes
   for (const s of sim.splashes) {
     const u = s.age / 0.3;
-    const a = alphaAt(field, daylight, s.x, s.y, 0.7) * (1 - u);
+    const a = Math.min(1, groundAlphaAt(field, daylight, s.x, s.y, 0.85) * (1 - u));
     if (a <= 0) continue;
     ctx.strokeStyle = baseStr; ctx.globalAlpha = a * 0.8; ctx.lineWidth = 0.8;
     ctx.beginPath(); ctx.ellipse(s.x, s.y, (1 + u * 7) * s.k, (0.4 + u * 2) * s.k, 0, 0, TAU); ctx.stroke();
@@ -284,14 +298,15 @@ export function drawRainGround(ctx: CanvasRenderingContext2D, sim: RainSim, worl
     ctx.fill();
   }
   // anneaux dans les flaques
+  const K = worldScale(world);
   if (sim.ripples.length) {
     ctx.strokeStyle = tone('ripple', nb); ctx.lineWidth = 0.9;
     for (const rp of sim.ripples) {
       const u = rp.age / rp.life;
-      const a = alphaAt(field, daylight, rp.x, rp.y, 0.55) * (1 - u) * P;
+      const a = Math.min(1, groundAlphaAt(field, daylight, rp.x, rp.y, 0.75) * (1 - u) * P);
       if (a <= 0.01) continue;
       ctx.globalAlpha = a;
-      ctx.beginPath(); ctx.ellipse(rp.x, rp.y, rp.R * u + 1, (rp.R * u + 1) * 0.26, 0, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(rp.x, rp.y, rp.R * u + K, (rp.R * u + K) * 0.26, 0, 0, TAU); ctx.stroke();
     }
   }
   // ruissellement du caniveau : lame d'eau le long de la bordure, filets clairs qui courent vers la grille, bouillon à la grille

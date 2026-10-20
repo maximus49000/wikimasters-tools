@@ -168,6 +168,24 @@ describe('pluie dehors : moteur', () => {
     expect(phone.drops.length).toBe(350);
   });
 
+  it('échelle du monde : tailles × scale (épaisseurs × √scale), vitesses × speed, même durée de traversée', () => {
+    const big = make(RUE, 7);
+    const small = make({ ...RUE, scale: 0.5, speed: 0.74 }, 7);
+    prefillRain(big, env(1, 0));
+    prefillRain(small, env(1, 0));
+    big.drops.forEach((d, i) => {
+      const s = small.drops[i]!;
+      expect(s.len).toBeCloseTo(d.len * 0.5, 6);
+      expect(s.w).toBeCloseTo(d.w * Math.SQRT1_2, 6);
+      expect(s.v).toBeCloseTo(d.v * 0.74, 6);
+    });
+    // gouttes des bords, éclaboussures et anneaux plus petits
+    run(small, 1, 6);
+    for (const d of small.drips) expect(d.r).toBeLessThanOrEqual(2.2 * 0.5 + 1e-9);
+    for (const rp of small.ripples) expect(rp.R).toBeLessThanOrEqual(12 * 0.5 + 1e-9);
+    for (const sp of small.splashes) expect(sp.k).toBeLessThanOrEqual(1.6 * 0.5 + 1e-9);
+  });
+
   it('rafales : gust entre 0,45 et 1,55', () => {
     for (let t = 0; t < 200; t += 0.37) {
       expect(gust(t)).toBeGreaterThanOrEqual(0.45);

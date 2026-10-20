@@ -46,6 +46,10 @@ export function weatherPuddles(scene: SceneId, width: number, height: number, se
 }
 
 const MAX_DRIPS = 40; // points des bords qui gouttent (notes §Android)
+// Tailles de la maquette (scène 1000 × 460 aux grands immeubles : vitrines de 55 px, trottoir de 46 px) ramenées au monde de
+// l'app (≈ 1080 × 340, petites façades : vitrines ≈ 25 px, trottoir 20 px) : ≈ 0,5. Sans elle, les gouttes des bords lisaient
+// comme des flocons et les traits proches barraient passants et façades. Les vitesses gardent la même durée de traversée.
+const RAIN_SIZE = 0.55;
 
 /** Monde de la pluie d'une scène. Ville : bords qui gouttent accrochés au vrai décor (corniches et bouts de toit des façades du
  *  premier plan, bandeau des boutiques), caniveau à la bordure du trottoir et une grille tirée. Autres scènes : sans bâti ;
@@ -53,7 +57,10 @@ const MAX_DRIPS = 40; // points des bords qui gouttent (notes §Android)
 export function rainWorldFor(scene: SceneId, width: number, height: number, seed: number): RainWorld {
   const frac = GROUND[scene];
   const groundTop = height * (frac ?? SEA_TOP);
-  const base: RainWorld = { width, height, groundTop, groundBottom: height, puddles: weatherPuddles(scene, width, height, seed), drips: [], gutter: null, splashGround: scene !== 'sea' };
+  const base: RainWorld = {
+    width, height, groundTop, groundBottom: height, puddles: weatherPuddles(scene, width, height, seed), drips: [], gutter: null, splashGround: scene !== 'sea',
+    scale: RAIN_SIZE * (height / 340), speed: height / 460,
+  };
   if (scene !== 'city') return base;
   const rng = mulberry32(seed ^ hashString('rain-drips'));
   const m = cityMetrics(height);
