@@ -41,6 +41,8 @@ nouveau calque) : `01-outils` (cellulo, temps, météo, ciel), `02-plan-fond` (p
 | `rue-ete-15h.png`, `rue-automne-15h.png`, `rue-novembre-15h.png` | 7 juillet (platanes, tilleuls, marronniers, géraniums et lavande) ; 27 octobre (jaunissement, vigne vierge rouge, chrysanthèmes, feuilles mortes) ; 14 novembre (chute en cours, tapis de feuilles). |
 | `rue-hiver-11h.png`, `rue-neige-11h.png`, `rue-nuit-22h.png` | 10 février (arbres nus, bruyères et paillage) ; 20 janvier sous la neige (branches et parterres enneigés) ; 27 octobre 22 h (houppiers éclairés par les lampadaires). |
 | `zoom-pied-arbre{,-printemps}.png`, `zoom-parterre{,-automne}.png` | pied d'arbre ×3 (fosse à grille, pied fleuri, ombre au sol, houppier devant la façade avec son ombre) ; parterre, bacs, pots ×3. |
+| `colline-avant.png` / `colline-apres.png` | l'échappée élargie ×3 avant / après ce retour (marché, lavoir, verger clos, ruisseau, bassin, sentiers, moulin, pétanque, poulailler, rochers, crête garnie). |
+| `seq-vent-faible-ete-1..5`, `seq-rafales-automne-1..6`, `seq-pluie-vent-1..5`, `seq-orage-1..6`, `seq-neige-redoux-1..5`, `seq-petales-avril-1..5`, `seq-colline-vent-1..5` (+ `.gif`) | séquences à 0,4 s d'écart (pied d'arbre ×3, échappée ×3) : frémissement, feuilles arrachées, pluie et vent, orage (feuilles retournées), neige qui glisse au redoux, pétales, tranches de colline cisaillées et moulin ; un GIF par séquence (ffmpeg, 2,5 images/s). |
 | `annee-planche.png` | une année : même coin de rue (haut), même échappée (milieu), mêmes toits du mur du fond (bas), le 15 de chaque mois à 14 h (janvier sous la neige, 15 août un dimanche : fanfare). |
 
 ## 2. Corrections de l'audit (D1 à D6) — correspondance avec le code
@@ -155,6 +157,73 @@ l'heure pile ; 14 juillet 14 h → 4 véhicules/cabines, 2 piétons, 5 drapeaux,
 départ, figées entre). Hors fumées et fenêtres, toujours ≤ 25 nœuds mobiles ; avec 12 fumées plafonnées (7 cercles chacune,
 un `<g>` par panache) ≤ 40 nœuds.
 
+## 3 b. Colline encore plus garnie (retour du 20 octobre, `?garni=0` rend la colline d'avant pour comparer)
+
+Contrainte géométrique à garder en tête : au-dessus de la rue, la colline visible fait **≈ 50 px de haut** (crête à 0,16-0,24 H,
+mur du fond plafonné à 0,20-0,28 H, trois rangs de maisons) ; les pentes « vides » sont la bande de crête (entre le ciel et les
+toits du rang 0, la plus visible), les creux entre maisons et l'échappée. Tout est fixe dans les tranches, tiré par graine et
+position, saison appliquée (§3 ter) :
+- **Bande de crête** : un élément tous les 13-33 px (était 40-115) : arbres isolés (peupliers, cyprès, marronniers, cerisiers,
+  chênes), bosquets, **haies et murets de terrasses** le long de la pente, mini-vergers de 3-4 arbres, cabanes, rochers,
+  bancs, **sentiers de terre** qui descendent vers une maison du rang 0 ; **moulin à vent** (Moulin de la Galette) à droite
+  de la gare haute de chaque échappée, ailes qui tournent avec le vent ; **château d'eau** sur une bande sur deux ; chapelle.
+- **Échappée** (élargie : 170-290 px d'immeubles du fond, abaissés jusqu'à la silhouette de la rue ; la route n'occupe que
+  ses 90 px de gauche) : **place du marché** en terre battue avec 3-4 étals (ouverts mercredi, samedi, dimanche de 6 h 40 à
+  13 h 50, montés et remballés un à un ; marchandises de saison) bordée de deux platanes et d'un **lavoir** ; **verger clos**
+  (clôture de piquets avec portail, cabane, trois ruches ; fleurs en avril, fruits rouges juillet-septembre, roux puis nu) ;
+  **ruisseau** de la crête à un **bassin** (gelés de décembre à février et sous la neige, joncs l'été) ; **sentiers** de la
+  gare, de l'escalier, de la place, du verger et du square vers la route, avec lampadaires de sentier (allumés par la vie) ;
+  poulailler (poules dehors 8 h-19 h, pas sous la neige), terrain de pétanque (boules de 10 h à 19 h, saison belle), bancs,
+  rochers et talus, jardin clos, square agrandi (kiosque, fontaine), vigne.
+- **Creux des rangs** (≥ 14 × échelle du rang) : une scène à l'échelle du rang — verger en rangs, petit marché (2-3 étals),
+  bassin avec banc ; creux moyens : cabane, poulailler, rochers, banc ou clôture ; sinon bouquet ou grand arbre.
+- Coût : ≈ 110 éléments de crête + 20-30 par échappée + ≈ 40 dans les creux, peints une fois par tranche ; nouveaux
+  animés : 4 ailes de moulin par échappée (une rotation), lampadaires de sentier (points), rien d'autre.
+
+## 3 c. Arbres au vent et à la météo (`src/04a-vent.js`, rue ET colline ; `?vent=0..3`, `?dir=-1`, `?motion=0`)
+
+**Champ de vent** `windAt(x, t)` : fonction pure de la position et du temps, tirée de la météo (force `wind` 0-1, direction) :
+base turbulente (trois ondes progressives de périodes incommensurables 0,9 / 1,7 / 3,1 rad/s, déphasées par x) + **rafales**
+(paquets gaussiens de 120-240 px, amplitude 0,6-1,5, tirés par graine, qui traversent la scène à 50-110 px/s dans le sens du
+vent, toutes les 4-9 s). Jamais un balancement sinusoïdal synchrone : deux arbres voisins ne sont jamais en phase.
+
+**Arbre de rue** : 6 sprites cuits par arbre (tronc, charpentières, rameaux + voile, masses basses, masses hautes, rehauts
++ rehauts pâles), recuits seulement quand la date, la pluie ou la neige changent. À chaque image, chaque sprite est dessiné
+avec un **cisaillement autour du pied** `x' = x + (pied − y) · s` : tronc 0,18 b, charpentières 0,35 b, rameaux 0,8 b (+ un
+tremblement rapide de 3 % par vent), masses basses 0,7 b, masses hautes 1,0 b, où `b` = vent local × raideur de l'essence
+(peuplier 1,6, cerisier 1,1, tilleul 1, marronnier 0,8, chêne 0,75, platane 0,7, cyprès 0,5 ; **jeune au tuteur 1,8**) × 1,25
+sous la pluie × 1,3 par orage, borné à ± 0,55. **Frémissement** : le sprite des rehauts est redessiné à opacité variable
+(deux sinus déphasés par arbre) dès que le vent dépasse 0,04 ; **feuilles retournées** : sprite des rehauts pâles (face claire)
+quand le vent local dépasse 0,9 (orage). L'hiver, ce sont les mêmes sprites avec les couches rameaux / charpentières : les
+rameaux fins bougent plus que les charpentières.
+
+**Colline** : les trois calques d'arbres (crête, rang 1 + échappée, rang 2) sont dessinés par **tranches de 96 px** cisaillées
+autour de la base du rang (facteur 0,9 / 1 / 1,1 × vent local × 0,05) : 15 tranches × 3 calques = 45 transformations par
+image, aucun nœud par arbre. Les maisons restent fixes (calques H0-H2 intercalés).
+
+**Pluie** (`meteo=pluie|orage|apres-pluie`) : feuillage assombri (28 % vers un bleu nuit) et liseré luisant en haut à gauche
+des masses, troncs mouillés (35 % plus sombres), flaque au pied, **gouttes** qui tombent des masses basses et éclaboussent au
+sol (3 par arbre), branches qui ploient davantage. **Automne** : par rafale qui passe l'arbre, 1-5 feuilles se détachent du
+houppier, dérivent sous le vent en tournoyant et retombent au sol (elles y restent 50 s) — jamais créées sur place ; plafond
+40 en vue. **Avril** : pétales de cerisier, même mécanique (plafond 30). **Mai-juin** : graines et chatons des tilleuls et
+platanes en suspension (plafond 20). **Neige** : par rafale ou au redoux (`meteo=redoux`), paquets blancs qui glissent des
+branches (plafond 16). **Oiseaux** : toutes les ~110 s par bande de 480 px, un oiseau arrive en vol par un bord, se perche
+20-40 s dans un arbre feuillu, repart par l'autre bord (jamais la nuit ni sous forte pluie). **Moulin** : ailes à
+0,15 + 1,1 × vent rad/s avec à-coups des rafales.
+
+**Mouvement réduit** (`prefers-reduced-motion` ou `?motion=0`) : vent nul, arbres immobiles, aucune particule, ailes figées.
+
+**Rendu proposé pour l'appli, à coût borné** : un `<g>` par arbre de rue avec 5 `<image>` (sprites cuits par le peintre des
+tranches, une fois par jour / météo) et un `transform="matrix(1 0 s 1 −s·pied 0)"` par couche, mis à jour à **15 Hz** par
+`requestAnimationFrame` (une passe d'écriture d'attributs, nœuds constants) ; arbres de la colline : 3 calques × 15 tranches
+= 45 `<g>` à transformation (les `<image>` des tranches de 360 px sont découpées par `clipPath` en 96 px) ; particules : un
+pool fixe de 40 + 30 + 24 + 16 + 20 `<rect>` (opacité 0 quand inactifs), positions écrites à 15 Hz ; oiseaux : 3 `<path>` ;
+moulin : un `rotate`. **Budget** : 8 arbres × 6 = 48 transformations de rue + 45 de colline + ≤ 130 particules actives (en
+pratique 0-40) ; au banc (Chromium, scène de 1 440 × 340 rendue ×2 sur canvas) : **≈ 50 ms par image sans vent, ≈ 90-100 ms
+avec vent** (dont ≈ 45 ms pour les 45 tranches de colline en `drawImage` cisaillé et ≈ 5 ms pour les arbres de rue) — c'est
+la part la plus chère : sur Android, regrouper la colline en **tranches de 240 px** (6 × 3 = 18 transformations, ≈ 18 ms) ou
+n'animer que le calque T1 (échappée) est le réglage à prévoir ; les arbres de rue (48 nœuds) tiennent dans le budget.
+
 ## 3 bis. Verdure de la rue principale (`src/03b-rue-verte.js`, couche peinte PAR-DESSUS le premier plan)
 
 Dans l'appli : à peindre dans les tranches de `paintCityTile`, après `paintTree` et `paintFurniture` (ordre : fosses et
@@ -249,4 +318,5 @@ platane − 10 j, tilleul − 8, peuplier − 5, marronnier − 4, cerisier − 
 8. Calendrier : dates à ajuster (avance des platanes, fréquence du balayage un matin sur trois) ? Magnolias non faits (cerisiers seulement).
 9. Densité de la verdure de la colline : ≈ 150 formes par scène (bosquets, haies, vigne, square, potagers, arbres de crête) ; en vouloir plus ou moins ?
 10. Fond garni : faut-il aussi un petit marché avec étals de saison (non fait : la place manque dans l'échappée) et un lavoir ? Fréquence des piétons (12/h) et de la fanfare ?
-11. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.
+11. Vent : tranches de colline de 96 px (45 transformations, ≈ 45 ms au banc) ou de 240 px (18, ≈ 18 ms) sur Android ? Fréquence de mise à jour 15 Hz ou 20 Hz ? Les feuilles au sol restent 50 s : plus ?
+12. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.

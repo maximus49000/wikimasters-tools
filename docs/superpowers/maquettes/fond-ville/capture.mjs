@@ -26,5 +26,9 @@ for (const cid of ids) {
   const url = await ev(`document.getElementById(${JSON.stringify(cid)}).toDataURL('image/png')`);
   fs.writeFileSync(path.join(out, cid + '.png'), Buffer.from(url.split(',')[1], 'base64'));
 }
+// Séquences `seq-<nom>-<n>` → GIF animé (ffmpeg, 2,5 images/s) si ffmpeg est là.
+const { execSync } = await import('node:child_process');
+const seqs = new Set(ids.map((i) => (i.match(/^(seq-.+)-\d+$/) || [])[1]).filter(Boolean));
+for (const sq of seqs) { try { execSync(`ffmpeg -y -loglevel error -framerate 2.5 -i ${path.join(out, sq + '-%d.png')} -vf "split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer" -loop 0 ${path.join(out, sq + '.gif')}`); console.log('gif', sq); } catch (e) { console.log('pas de gif pour', sq, e.message.split('\n')[0]); } }
 console.log(ids.length, 'captures dans', out);
 ws.close(); proc.kill(); process.exit(err ? 1 : 0);

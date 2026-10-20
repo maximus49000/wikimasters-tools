@@ -52,12 +52,20 @@ const METEO = {
   pluie: { cloud: 0.92, precip: 0.65, fog: 0.2, wind: 0.5, gloom: true },
   brouillard: { cloud: 0.55, precip: 0, fog: 0.85, wind: 0.05, gloom: false },
   neige: { cloud: 0.85, precip: 0.5, fog: 0.25, wind: 0.2, gloom: true, snow: true },
+  orage: { cloud: 1, precip: 1, fog: 0.15, wind: 0.9, gloom: true, wet: 1, storm: true },
+  'apres-pluie': { cloud: 0.6, precip: 0, fog: 0.1, wind: 0.3, gloom: false, wet: 1 },   // l'averse vient de passer : tout est mouillé, il goutte
+  redoux: { cloud: 0.5, precip: 0, fog: 0.1, wind: 0.35, gloom: false, snow: true, thaw: true }, // neige posée qui glisse des branches
 };
+METEO.pluie.wet = 1;
+// Réglages d'URL (mode animé / débogage) : `?vent=0..3` force le vent (calme, faible, fort, tempête), `?dir=-1` l'inverse,
+// `?motion=0` = prefers-reduced-motion (arbres immobiles, pas de particules), `?garni=0` = colline d'avant (comparatif).
+const PARAMS = { vent: null, dir: 1, motion: 1, garni: 1 };
+const WIND_FORCES = [0, 0.2, 0.55, 0.9];
 // Contexte du jour : date ISO, mois, saison, jour de semaine, férié (calendar.ts), météo.
 function dayOf(dateStr, meteoName) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dc = dayContext({ y, m, d }, [], false);
-  const meteo = METEO[meteoName] || METEO.soleil;
+  const base = METEO[meteoName] || METEO.soleil, meteo = PARAMS.vent === null ? { ...base, dir: PARAMS.dir } : { ...base, wind: WIND_FORCES[PARAMS.vent], dir: PARAMS.dir };
   const month = m, season = seasonOf(m);
   const cold = month <= 3 || month >= 11 || meteo.snow;
   const holiday = dc.publicHoliday;

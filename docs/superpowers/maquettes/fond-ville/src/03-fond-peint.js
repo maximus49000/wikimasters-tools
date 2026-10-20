@@ -41,9 +41,10 @@ function paintRoad(ctx, e, D = CUR_D) {
   ctx.strokeStyle = rgba(haze(shade(ROAD, 0.45), 0.2), 1); ctx.lineWidth = 4.6; ctx.beginPath(); e.road.forEach(([x, y], i) => (i ? ctx.lineTo(x, y + 0.9) : ctx.moveTo(x, y + 0.9))); ctx.stroke();
   ctx.strokeStyle = rgba(haze(ROAD, 0.2), 1); ctx.lineWidth = 3.6; ctx.beginPath(); e.road.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
   ctx.strokeStyle = rgba(haze(light(ROAD, 0.5), 0.2), 1); ctx.lineWidth = 0.7; ctx.beginPath(); e.road.forEach(([x, y], i) => (i ? ctx.lineTo(x, y - 1.3) : ctx.moveTo(x, y - 1.3))); ctx.stroke();
-  for (const v of e.verdure) paintVerdure(ctx, v, 0.2);
+  for (const v of e.verdure) if (!isTree(v)) paintVerdure(ctx, v, 0.2);
   paintParked(ctx, e, D);
   paintStairs(ctx, e.stairs, D);
+  if (e.mill) paintMill(ctx, e.mill);
   for (const l of e.lamps) { const p = roadPoint(e, l.d); ctx.strokeStyle = ink(0.7); ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y - 4); ctx.lineTo(p.x + 1, p.y - 4); ctx.stroke(); }
   // Voie du funiculaire (J) : bande de pierre, deux rails, gares en haut et en bas (petites halles au toit rouge).
   const f = e.funi;
@@ -77,7 +78,12 @@ function paintBouquet(ctx, tx, ty, tr, s, hz, D = CUR_D, key = `${Math.round(tx)
   }
   if (D.meteo.snow) { ctx.fillStyle = rgba(haze(hexRgb('#F0F4F8'), hz), 0.9); ctx.beginPath(); ctx.arc(tx - tr * 0.5, ty - tr * 0.56, tr * 0.42 * k, Math.PI, 0); ctx.arc(tx + tr * 0.3, ty - tr * 0.26, tr * 0.34 * k, Math.PI, 0); ctx.fill(); }
 }
-let CUR_D = null, F_SEED = 7;
+let CUR_D = null, F_SEED = 7, CUR_T = 12;
+const TREE_KINDS = new Set(['bouquet', 'chestnut', 'cerisier', 'chene', 'poplar', 'cypress', 'platane', 'orchard']);
+const isTree = (v) => TREE_KINDS.has(v.kind);
+// Jours de marché : mercredi, samedi, dimanche ; étals montés un à un entre 6 h 40 et 7 h 10, remballés entre 13 h 20 et 13 h 50.
+function marketK(T, D, i) { if (![0, 3, 6].includes(D.weekday)) return 0; const up = 6 + (40 + i * 8) * MIN, down = 13 + (20 + i * 8) * MIN; return T >= up && T < down ? 1 : 0; }
+const GOODS = { spring: ['#6AB04A', '#F6C62E', '#E8456B', '#FFFFFF'], summer: ['#E03A3A', '#F0C040', '#6AB04A', '#F0609A'], autumn: ['#E08A30', '#A05A2A', '#D8B050', '#8A5A3A'], winter: ['#8A8A70', '#E8E0C8', '#A05A2A', '#6A8A48'] };
 const fountainOn = (D) => D.doy >= 74 && D.doy < 319 && !D.meteo.snow;
 // ── Verdure (G) : même langage que les bouquets (masses sombre / moyen / clair, rehaut en haut à gauche, trait encré), brume
 // selon le rang, saison : vert vif au printemps et l'été, roux et or en automne, nus (feuillus) ou sombres (persistants) l'hiver.
@@ -90,7 +96,7 @@ function paintVerdure(ctx, v, hz0 = 0, D = CUR_D) {
     const h = v.h, r = h * (v.kind === 'cerisier' ? 0.36 : 0.42), cx = v.x, cy = v.y - h * 0.55, masses = [[0, 0, 1], [-0.62, 0.28, 0.7], [0.62, 0.3, 0.68], [0.05, -0.5, 0.62]];
     // Cerisier en fleurs (20 mars → 15 avril) : masses roses avant les feuilles.
     const blc = v.kind === 'cerisier' ? bloomOf(D, 'cerisier') : 0; if (blc > 0) { tones = ['#D88AA8', '#F0B0C8', '#FCDCE8'].map(hexRgb); bare = false; f.d = Math.max(f.d, 0.5 + 0.5 * blc); }
-    const sp = v.kind === 'chestnut' ? 'marronnier' : v.kind, rk = mulberry32(hashString('gui-' + key));
+    const sp = v.species || (v.kind === 'chestnut' ? 'marronnier' : v.kind), rk = mulberry32(hashString('gui-' + key));
     if (f.d < 0.85 || blc > 0) { const sk = treeSkeleton(key, sp, cx, v.y, h, 4); paintSkeleton(ctx, sk, { hz, veilAlpha: 0.26 * (1 - Math.min(1, f.d)), snow: D.meteo.snow, dryLeaves: dryLeavesOf(D, sp), mistletoe: rk() < 0.3 && f.d < 0.5 ? 1 + Math.floor(rk() * 2) : 0 }); }
     else { ctx.strokeStyle = ink(0.85 - hz); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, v.y); ctx.lineTo(cx, cy + r * 0.4); ctx.stroke(); }
     if (bare) return;
@@ -119,6 +125,70 @@ function paintVerdure(ctx, v, hz0 = 0, D = CUR_D) {
     for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tn[t]); ctx.beginPath(); for (let i = 0; i < v.pts.length; i++) { const [x, y] = v.pts[i], rr = r * (1 - t * 0.3); ctx.moveTo(x - t * 0.4 + rr, y - t * 0.4); ctx.arc(x - t * 0.4, y - t * 0.4, rr, 0, TAU); } ctx.fill(); }
     return;
   }
+  if (v.kind === 'platane') return paintVerdure(ctx, { ...v, kind: 'chestnut', species: 'platane' }, hz0, D);
+  if (v.kind === 'market') {
+    // Place du marché : terre battue, étals de saison (ouverts les jours de marché, 04 : fonction de l'heure), lavoir et platanes à part.
+    const g = fill(mixRgb(hexRgb('#C8B088'), GRASS, 0.2)), pts = [[v.x + 1, v.y], [v.x + v.w, v.y + 0.8], [v.x + v.w - 1, v.y + v.h], [v.x, v.y + v.h - 0.6]];
+    poly(ctx, g, pts); inkPath(ctx, pts, 0.5, 0.55 - hz, true);
+    const goods = GOODS[season];
+    const sc = v.s || 1; for (let i = 0; i < v.stalls; i++) { if (!marketK(CUR_T, D, i)) continue; const sx = v.x + 2 * sc + i * ((v.w - 4 * sc) / v.stalls), sy = v.y + v.h * 0.45 + (i % 2) * 1.5 * sc, cols = ['#E8456B', '#F4F0E8', '#3E78A0', '#F6C62E']; ctx.save(); ctx.translate(sx, sy); ctx.scale(sc, sc); ctx.translate(-sx, -sy);
+      fillRect(ctx, fill(hexRgb('#8A6A48')), sx + 0.5, sy, 4, 1.4); fillRect(ctx, fill(hexRgb(goods[i % goods.length])), sx + 0.8, sy - 0.6, 1.4, 0.8); fillRect(ctx, fill(hexRgb(goods[(i + 1) % goods.length])), sx + 2.6, sy - 0.6, 1.4, 0.8);
+      ctx.strokeStyle = ink(0.7 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(sx + 0.6, sy); ctx.lineTo(sx + 0.6, sy - 3.2); ctx.moveTo(sx + 4.4, sy); ctx.lineTo(sx + 4.4, sy - 3.2); ctx.stroke();
+      const aw = fill(hexRgb(cols[i % cols.length])); poly(ctx, aw, [[sx - 0.2, sy - 3.2], [sx + 5.2, sy - 3.2], [sx + 4.6, sy - 4.4], [sx + 0.4, sy - 4.4]]); ctx.fillStyle = 'rgba(255,255,255,0.55)'; for (let k = 0; k < 3; k++) ctx.fillRect(sx + 0.6 + k * 1.6, sy - 4.2, 0.6, 1); inkPath(ctx, [[sx - 0.2, sy - 3.2], [sx + 5.2, sy - 3.2], [sx + 4.6, sy - 4.4], [sx + 0.4, sy - 4.4]], 0.4, 0.7 - hz, true); ctx.restore(); }
+    return;
+  }
+  if (v.kind === 'lavoir') {
+    // Lavoir : bassin de pierre sous un auvent sur quatre poteaux ; en eau comme la fontaine (gelé / vide l'hiver).
+    const x = v.x, y = v.y, c = fill(STONE), on = fountainOn(D);
+    fillRect(ctx, fill(shade(STONE, 0.3)), x - 5, y + 1, 10, 2.4); fillRect(ctx, on ? fill(hexRgb('#7FB4E0')) : fill(shade(STONE, 0.45)), x - 4.2, y + 1.4, 8.4, 1.4); inkPath(ctx, [[x - 5, y + 1], [x + 5, y + 1], [x + 5, y + 3.4], [x - 5, y + 3.4]], 0.4, 0.65 - hz, true);
+    ctx.strokeStyle = ink(0.75 - hz); ctx.lineWidth = 0.5; ctx.beginPath(); for (const px of [-4.6, 4.6]) { ctx.moveTo(x + px, y + 1); ctx.lineTo(x + px, y - 3.5); } ctx.stroke();
+    poly(ctx, fill(hexRgb('#C25E44')), [[x - 6, y - 3.5], [x - 4, y - 5.5], [x + 4, y - 5.5], [x + 6, y - 3.5]]); poly(ctx, fill(light(hexRgb('#C25E44'), 0.35)), [[x - 6, y - 3.5], [x - 4, y - 5.5], [x - 1, y - 5.5], [x - 2, y - 3.5]]); inkPath(ctx, [[x - 6, y - 3.5], [x - 4, y - 5.5], [x + 4, y - 5.5], [x + 6, y - 3.5]], 0.5, 0.75 - hz, true);
+    if (D.meteo.snow) poly(ctx, '#F0F4F8', [[x - 6, y - 3.5], [x - 4, y - 5.5], [x + 4, y - 5.5], [x + 6, y - 3.5], [x + 6, y - 4.3], [x + 4, y - 6.3], [x - 4, y - 6.3], [x - 6, y - 4.3]]);
+    return;
+  }
+  if (v.kind === 'bench') { const x = v.x, y = v.y; fillRect(ctx, fill(hexRgb('#C48A54')), x - 1.8, y - 1.2, 3.6, 0.6); fillRect(ctx, fill(hexRgb('#C48A54')), x - 1.8, y - 2.2, 3.6, 0.5); ctx.strokeStyle = ink(0.75 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(x - 1.4, y - 1.2); ctx.lineTo(x - 1.4, y); ctx.moveTo(x + 1.4, y - 1.2); ctx.lineTo(x + 1.4, y); ctx.stroke(); return; }
+  if (v.kind === 'orchard') {
+    // Verger en rangs : arbres fruitiers (fleurs en avril, fruits rouges juillet → septembre, roux puis nus), herbe rase.
+    const g = fill(light(hexRgb(D.season === 'winter' ? '#9A9A80' : TONES.summer[1]), 0.2)); poly(ctx, g, [[v.x, v.y], [v.x + v.w, v.y], [v.x + v.w, v.y + v.h], [v.x, v.y + v.h]]);
+    const r = mulberry32(Math.floor(v.seed * 100)), fruit = D.doy >= 185 && D.doy < 265 ? sat((D.doy - 185) / 20) : 0;
+    const sc = v.s || 0.7, st = 4.5 * sc, sr = 4 * sc; for (let row = 0; row < Math.max(1, Math.floor(v.h / sr)); row++) for (let col = 0; col < Math.floor(v.w / st); col++) {
+      const tx = v.x + st * 0.55 + col * st + (r() - 0.5) * sc, ty = v.y + sr * 0.75 + row * sr + (r() - 0.5) * 0.8 * sc, tr = (1.5 + r() * 0.5) * sc, kkey = `${key}-${row}-${col}`;
+      const bl = bloomOf(D, 'cerisier'), f2 = foliageOf(D, kkey, 'cerisier');
+      ctx.strokeStyle = ink(0.8 - hz); ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(tx, ty + tr); ctx.lineTo(tx, ty - tr * 0.3); if (f2.d < 0.5) { ctx.moveTo(tx, ty); ctx.lineTo(tx - tr * 0.8, ty - tr * 0.9); ctx.moveTo(tx, ty); ctx.lineTo(tx + tr * 0.8, ty - tr * 0.9); } ctx.stroke();
+      const tn = bl > 0 ? ['#F0B0C8', '#FCDCE8'].map(hexRgb) : f2.tones, kd = Math.max(f2.d, bl);
+      if (kd > 0.1) { disc(ctx, fill(tn[0], 0.4 + 0.6 * kd), tx, ty - tr * 0.3, tr * (0.5 + 0.5 * kd)); disc(ctx, fill(tn[1], 0.4 + 0.6 * kd), tx - tr * 0.3, ty - tr * 0.6, tr * 0.55 * (0.5 + 0.5 * kd)); if (fruit > 0 && f2.stage === 'green') { ctx.fillStyle = fill(hexRgb('#D83A3A'), fruit); ctx.fillRect(tx + 0.4, ty - 0.2, 0.5, 0.5); ctx.fillRect(tx - 0.8, ty - 0.9, 0.5, 0.5); } }
+      if (D.meteo.snow && kd > 0.1) disc(ctx, '#F0F4F8', tx - tr * 0.2, ty - tr * 0.9, tr * 0.4);
+    }
+    return;
+  }
+  if (v.kind === 'fence') {
+    // Clôture de piquets avec lisse, portail (planches plus hautes) à `gate` de la longueur.
+    const pts = v.pts; let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    ctx.strokeStyle = ink(0.75 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y - 1.2) : ctx.moveTo(x, y - 1.2))); ctx.stroke();
+    let d = 0; for (let i = 1; i < pts.length; i++) { const [ax, ay] = pts[i - 1], [bx, by] = pts[i], l = Math.hypot(bx - ax, by - ay); for (let t = 0; t < l; t += 1.6) { const q = t / l, x = ax + (bx - ax) * q, y = ay + (by - ay) * q, gate = Math.abs((d + t) / L - v.gate) < 2.5 / L; fillRect(ctx, gate ? fill(hexRgb('#8A6A48')) : ink(0.75 - hz), x - 0.2, y - (gate ? 2 : 1.6), gate ? 0.8 : 0.4, gate ? 2 : 1.6); } d += l; }
+    return;
+  }
+  if (v.kind === 'cabane') { const x = v.x, y = v.y, c = fill(hexRgb('#8A6A48')); fillRect(ctx, c, x - 2.2, y - 3, 4.4, 3); fillRect(ctx, fill(shade(hexRgb('#8A6A48'), 0.35)), x + 1, y - 3, 1.2, 3); poly(ctx, fill(hexRgb('#5A6A84')), [[x - 2.8, y - 3], [x, y - 4.6], [x + 2.8, y - 3]]); fillRect(ctx, ink(0.7 - hz), x - 0.6, y - 2, 1.2, 2); inkPath(ctx, [[x - 2.2, y - 3], [x + 2.2, y - 3], [x + 2.2, y], [x - 2.2, y]], 0.4, 0.7 - hz, true); if (D.meteo.snow) poly(ctx, '#F0F4F8', [[x - 2.8, y - 3], [x, y - 4.6], [x + 2.8, y - 3], [x + 2.8, y - 3.6], [x, y - 5.2], [x - 2.8, y - 3.6]]); return; }
+  if (v.kind === 'ruche') { const x = v.x, y = v.y; fillRect(ctx, fill(hexRgb('#F0E0B0')), x - 0.7, y - 1.6, 1.4, 1.6); fillRect(ctx, fill(hexRgb('#C8A050')), x - 0.9, y - 1.9, 1.8, 0.4); ctx.strokeStyle = ink(0.6 - hz); ctx.lineWidth = 0.3; ctx.strokeRect(x - 0.7, y - 1.6, 1.4, 1.6); return; }
+  if (v.kind === 'stream') {
+    // Ruisseau : filet d'eau (gelé, gris-bleu mat, de décembre à février ou sous la neige), berges plus vertes.
+    const frozen = D.doy >= 335 || D.doy < 60 || D.meteo.snow; ctx.lineCap = 'round';
+    ctx.strokeStyle = fill(D.season === 'winter' ? mixRgb(GRASS, hexRgb('#9A9A80'), 0.3) : light(hexRgb(TONES.summer[1]), 0.1)); ctx.lineWidth = 3; ctx.beginPath(); v.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.strokeStyle = fill(frozen ? hexRgb('#B8C8D8') : hexRgb('#5A9AD0')); ctx.lineWidth = 1.2; ctx.beginPath(); v.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.strokeStyle = frozen ? 'rgba(255,255,255,0.7)' : 'rgba(220,240,255,0.8)'; ctx.lineWidth = 0.4; ctx.beginPath(); v.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x - 0.3, y) : ctx.moveTo(x - 0.3, y))); ctx.stroke();
+    return;
+  }
+  if (v.kind === 'pond') {
+    const frozen = D.doy >= 335 || D.doy < 60 || D.meteo.snow; ctx.fillStyle = fill(shade(hexRgb('#8A9A70'), 0.2)); ctx.beginPath(); ctx.ellipse(v.x, v.y + 0.4, v.rx + 0.8, v.ry + 0.5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = fill(frozen ? hexRgb('#C4D0DC') : hexRgb('#5A9AD0')); ctx.beginPath(); ctx.ellipse(v.x, v.y, v.rx, v.ry, 0, 0, TAU); ctx.fill(); ctx.fillStyle = frozen ? 'rgba(255,255,255,0.5)' : 'rgba(220,240,255,0.6)'; ctx.beginPath(); ctx.ellipse(v.x - v.rx * 0.3, v.y - v.ry * 0.3, v.rx * 0.4, v.ry * 0.35, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = ink(0.5 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); ctx.ellipse(v.x, v.y, v.rx, v.ry, 0, 0, TAU); ctx.stroke();
+    if (!frozen) { ctx.strokeStyle = fill(hexRgb('#3F8A3A')); ctx.lineWidth = 0.5; ctx.beginPath(); for (let k = 0; k < 4; k++) { ctx.moveTo(v.x + v.rx * 0.6 + k * 0.6, v.y + 0.3); ctx.lineTo(v.x + v.rx * 0.6 + k * 0.6 + 0.2, v.y - 1.4 - (k % 2)); } ctx.stroke(); }
+    return;
+  }
+  if (v.kind === 'path') { ctx.lineCap = 'round'; ctx.strokeStyle = fill(mixRgb(ROAD, hexRgb('#A08A60'), 0.5)); ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(v.pts[0][0], v.pts[0][1]); ctx.quadraticCurveTo(v.pts[1][0], v.pts[1][1], v.pts[2][0], v.pts[2][1]); ctx.stroke(); ctx.strokeStyle = fill(shade(ROAD, 0.4), 0.6); ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(v.pts[0][0], v.pts[0][1] + 0.8); ctx.quadraticCurveTo(v.pts[1][0], v.pts[1][1] + 0.8, v.pts[2][0], v.pts[2][1] + 0.8); ctx.stroke(); return; }
+  if (v.kind === 'poulailler') { const x = v.x, y = v.y, sc = v.small ? 0.7 : 1; fillRect(ctx, fill(hexRgb('#A08A68')), x - 2 * sc, y - 2.2 * sc, 3 * sc, 2.2 * sc); poly(ctx, fill(hexRgb('#7A6A58')), [[x - 2.4 * sc, y - 2.2 * sc], [x - 0.5 * sc, y - 3.2 * sc], [x + 1.4 * sc, y - 2.2 * sc]]); ctx.strokeStyle = ink(0.6 - hz); ctx.lineWidth = 0.3; ctx.beginPath(); for (let k = 0; k < 6; k++) { ctx.moveTo(x + 1.2 * sc + k * 0.9 * sc, y); ctx.lineTo(x + 1.2 * sc + k * 0.9 * sc, y - 1.4 * sc); } ctx.moveTo(x + 1.2 * sc, y - 1.2 * sc); ctx.lineTo(x + 5.7 * sc, y - 1.2 * sc); ctx.stroke(); if (CUR_T >= 8 && CUR_T < 19 && !D.meteo.snow) { for (let k = 0; k < 3; k++) { disc(ctx, fill(hexRgb(k === 1 ? '#F4F0E0' : '#B86A3A')), x + 2 * sc + k * 1.3 * sc, y - 0.5 * sc, 0.45 * sc); } } return; }
+  if (v.kind === 'petanque') { poly(ctx, fill(hexRgb('#D8C8A0')), [[v.x, v.y], [v.x + v.w, v.y], [v.x + v.w - 0.6, v.y + v.h], [v.x + 0.6, v.y + v.h]]); ctx.strokeStyle = ink(0.6 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(v.x, v.y); ctx.lineTo(v.x + v.w, v.y); ctx.lineTo(v.x + v.w - 0.6, v.y + v.h); ctx.lineTo(v.x + 0.6, v.y + v.h); ctx.closePath(); ctx.stroke(); if (CUR_T >= 10 && CUR_T < 19 && D.meteo.precip === 0 && D.doy >= 100 && D.doy < 300) { disc(ctx, fill(hexRgb('#8A8A90')), v.x + v.w * 0.4, v.y + v.h * 0.5, 0.4); disc(ctx, fill(hexRgb('#8A8A90')), v.x + v.w * 0.5, v.y + v.h * 0.6, 0.4); disc(ctx, fill(hexRgb('#E8A040')), v.x + v.w * 0.46, v.y + v.h * 0.4, 0.25); } return; }
+  if (v.kind === 'rocks') { const r = mulberry32(Math.floor(v.seed * 100)); for (let k = 0; k < v.n; k++) { const x = v.x + (r() - 0.5) * 4, y = v.y + (r() - 0.5) * 1.5, w = 1.5 + r() * 1.5, h = 0.8 + r() * 0.8; const c = hexRgb('#9A9490'); poly(ctx, fill(c), [[x - w, y], [x - w * 0.6, y - h], [x + w * 0.4, y - h * 1.1], [x + w, y]]); poly(ctx, fill(light(c, 0.4)), [[x - w, y], [x - w * 0.6, y - h], [x - w * 0.1, y - h * 1.05], [x - w * 0.3, y]]); inkPath(ctx, [[x - w, y], [x - w * 0.6, y - h], [x + w * 0.4, y - h * 1.1], [x + w, y]], 0.4, 0.6 - hz, true); if (D.meteo.snow) fillRect(ctx, '#F0F4F8', x - w * 0.6, y - h * 1.1, w, 0.5); } return; }
   if (v.kind === 'wall') {
     // Muret de pierre d'un jardin en terrasses : face claire, ombre dessous, trait ; neige sur le chaperon.
     ctx.lineCap = 'round'; ctx.strokeStyle = fill(shade(STONE, 0.35)); ctx.lineWidth = 2.2; ctx.beginPath(); v.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y + 1.2) : ctx.moveTo(x, y + 1.2))); ctx.stroke();
@@ -191,6 +261,23 @@ function paintParked(ctx, e, D) {
     if (bike) { ctx.strokeStyle = ink(0.8); ctx.lineWidth = 0.5; ctx.beginPath(); ctx.arc(x - 0.9, y - 0.4, 0.7, 0, TAU); ctx.moveTo(x + 1.6, y - 0.4); ctx.arc(x + 0.9, y - 0.4, 0.7, 0, TAU); ctx.moveTo(x - 0.9, y - 0.4); ctx.lineTo(x, y - 1.6); ctx.lineTo(x + 0.9, y - 0.4); ctx.stroke(); continue; }
     ctx.save(); ctx.translate(x, y); ctx.rotate(ang); fillRect(ctx, c, -2, -2.2, 4, 2); fillRect(ctx, shade(c, 0.35), 0.4, -2.2, 1.6, 2); fillRect(ctx, light(c, 0.5), -1, -2.8, 2, 0.7); fillRect(ctx, ink(0.8), -1.6, -0.4, 1, 0.6); fillRect(ctx, ink(0.8), 0.6, -0.4, 1, 0.6); ctx.restore();
   }
+}
+// Moulin (tour seule : les ailes tournent au vent, 04a-vent.js) et château d'eau sur la crête.
+function paintMill(ctx, m) {
+  const { x, y, s } = m, hz = 0.34, c = haze(hexRgb('#E8DCC0'), hz);
+  poly(ctx, c, [[x - 4 * s, y], [x - 3 * s, y - 12 * s], [x + 3 * s, y - 12 * s], [x + 4 * s, y]]); poly(ctx, shade(c, 0.3), [[x + 1.5 * s, y], [x + 1.8 * s, y - 12 * s], [x + 3 * s, y - 12 * s], [x + 4 * s, y]]);
+  poly(ctx, haze(hexRgb('#5A6A84'), hz), [[x - 4 * s, y - 12 * s], [x, y - 16 * s], [x + 4 * s, y - 12 * s]]); inkPath(ctx, [[x - 4 * s, y - 12 * s], [x, y - 16 * s], [x + 4 * s, y - 12 * s]], 0.6, 0.85 - hz, true);
+  fillRect(ctx, ink(0.7 - hz), x - 0.8 * s, y - 3 * s, 1.6 * s, 3 * s); fillRect(ctx, haze(GLASS_FAR, 0.4), x - 0.7 * s, y - 8 * s, 1.4 * s, 1.6 * s);
+  ctx.strokeStyle = ink(0.8 - hz); ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(x - 4 * s, y); ctx.lineTo(x - 3 * s, y - 12 * s); ctx.lineTo(x + 3 * s, y - 12 * s); ctx.lineTo(x + 4 * s, y); ctx.closePath(); ctx.stroke();
+  if (CUR_D && CUR_D.meteo.snow) poly(ctx, '#F0F4F8', [[x - 4 * s, y - 12 * s], [x, y - 16 * s], [x + 4 * s, y - 12 * s], [x + 4 * s, y - 12.8 * s], [x, y - 16.8 * s], [x - 4 * s, y - 12.8 * s]]);
+}
+function paintReservoir(ctx, r) {
+  const { x, y, s, hz } = r, c = haze(STONE, hz);
+  ctx.strokeStyle = ink(0.75 - hz); ctx.lineWidth = 0.6; ctx.beginPath(); for (const o of [-3, 3]) { ctx.moveTo(x + o * s, y); ctx.lineTo(x + o * s * 0.7, y - 9 * s); } ctx.moveTo(x - 2.5 * s, y - 4 * s); ctx.lineTo(x + 2.5 * s, y - 4 * s); ctx.stroke();
+  fillRect(ctx, c, x - 4.5 * s, y - 15 * s, 9 * s, 6 * s); fillRect(ctx, shade(c, 0.3), x + 1.5 * s, y - 15 * s, 3 * s, 6 * s); fillRect(ctx, light(c, 0.4), x - 4.5 * s, y - 15 * s, 1 * s, 6 * s);
+  poly(ctx, haze(hexRgb('#8290A2'), hz), [[x - 5 * s, y - 15 * s], [x, y - 18 * s], [x + 5 * s, y - 15 * s]]); inkPath(ctx, [[x - 5 * s, y - 15 * s], [x, y - 18 * s], [x + 5 * s, y - 15 * s]], 0.6, 0.85 - hz, true);
+  ctx.strokeStyle = ink(0.8 - hz); ctx.lineWidth = 0.6; ctx.strokeRect(x - 4.5 * s, y - 15 * s, 9 * s, 6 * s);
+  if (CUR_D && CUR_D.meteo.snow) poly(ctx, '#F0F4F8', [[x - 5 * s, y - 15 * s], [x, y - 18 * s], [x + 5 * s, y - 15 * s], [x + 5 * s, y - 15.8 * s], [x, y - 18.8 * s], [x - 5 * s, y - 15.8 * s]]);
 }
 // Chapelle secondaire sur la crête : nef, clocher à flèche, croix ; neige sur les toits.
 function paintChapel(ctx, ch) {
@@ -334,18 +421,26 @@ function paintNearShadows(ctx, F) {
 }
 
 // Fond statique complet (colline, échappée, maisons, repères, mur du fond, ruelles) à l'instant T (poses lentes).
-function paintFondStatic(ctx, F, env) {
-  CUR_D = env.D; F_SEED = F.seed;
-  paintGround(ctx, F, env.D);
-  for (const v of F.crestVerdure) paintVerdure(ctx, v);
-  for (const e of F.escapes) paintRoad(ctx, e, env.D);
-  for (const ch of F.chapels) paintChapel(ctx, ch);
+// Calques du fond : `sol` (herbe, route, échappée sans ses arbres, chapelles, château d'eau, moulin), `T0` (arbres de la crête),
+// `H0` (maisons du rang 0), `T1` (arbres du rang 1 et de l'échappée), `H1`, `T2`, `H2`. Les calques d'arbres sont dessinés par
+// tranches cisaillées selon le vent (04a-vent.js) ; `all` = tout dans l'ordre (sans vent).
+const FOND_LAYERS = ['sol', 'T0', 'H0', 'T1', 'H1', 'T2', 'H2'];
+function paintFondStatic(ctx, F, env, layer = 'all') {
+  CUR_D = env.D; F_SEED = F.seed; CUR_T = env.T;
+  const want = (l) => layer === 'all' || layer === l;
+  if (want('sol')) { paintGround(ctx, F, env.D); for (const v of F.crestVerdure) if (!isTree(v)) paintVerdure(ctx, v); for (const e of F.escapes) paintRoad(ctx, e, env.D); for (const ch of F.chapels) paintChapel(ctx, ch); for (const r of F.reservoirs) paintReservoir(ctx, r); }
+  if (want('T0')) for (const v of F.crestVerdure) if (isTree(v)) paintVerdure(ctx, v);
   for (let row = 0; row < 3; row++) {
-    // Massifs qui dépassent derrière les maisons du rang précédent, puis verdure des creux du rang, puis les maisons.
-    for (const v of F.rowVerdure[row]) if (!v.behind) paintVerdure(ctx, v);
-    for (const v of F.rowVerdure[row]) if (v.behind) paintVerdure(ctx, v);
-    for (const h of F.houses) if (h.row === row) paintHouse(ctx, h, env);
-    for (const l of F.landmarks) if (Math.abs(l.base - H * HILL_ROWS[row].y) < 1e-6) paintLandmarkC(ctx, l, HILL_ROWS[row].haze);
+    if (want(`T${row + 1}`)) {
+      // Verdure des creux du rang (arbres ET petits éléments : les petits éléments restent avec les arbres, peu cisaillés), massifs derrière les maisons.
+      for (const v of F.rowVerdure[row]) if (!v.behind) paintVerdure(ctx, v);
+      for (const v of F.rowVerdure[row]) if (v.behind) paintVerdure(ctx, v);
+      if (row === 1) for (const e of F.escapes) for (const v of e.verdure) if (isTree(v)) paintVerdure(ctx, v, 0.2);
+    }
+    if (want(`H${row}`)) {
+      for (const h of F.houses) if (h.row === row) paintHouse(ctx, h, env);
+      for (const l of F.landmarks) if (Math.abs(l.base - H * HILL_ROWS[row].y) < 1e-6) paintLandmarkC(ctx, l, HILL_ROWS[row].haze);
+    }
   }
 }
 function paintFarStatic(ctx, F, env) {
