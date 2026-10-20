@@ -12,7 +12,7 @@ const bucket10 = (T) => Math.floor(T * 6) / 6;
 // Premier plan (vrai paintCityTile, fond transparent) + ombres D3 corrigées : une fois par graine et par échelle.
 const fgCanvas = (F, scale) => cached(`fg|${F.seed}|${scale}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); for (let t = 0; t < tileCount(W); t++) { ctx.save(); ctx.beginPath(); ctx.rect(t * 360, 0, 360, H); ctx.clip(); paintCityTile(ctx, F.plan, t); ctx.restore(); } paintNearShadows(ctx, F); });
 // Verdure de la rue (par-dessus le premier plan) : une fois par graine, échelle, saison et neige.
-const rueCanvas = (F, env, scale) => { F.rue ||= streetVerdure(F); return cached(`rue|${F.seed}|${scale}|${env.D.season}|${env.D.meteo.snow ? 'n' : ''}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintRueVerdure(ctx, F, env); }); };
+const rueCanvas = (F, env, scale) => { F.rue ||= streetVerdure(F); return cached(`rue|${F.seed}|${scale}|${env.D.date}|${env.T >= 7.5 ? 'b' : 'a'}|${env.D.meteo.snow ? 'n' : ''}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); paintRueVerdure(ctx, F, env); }); };
 // Décor actuel (bundle AVANT) : captures « avant ».
 const avantCanvas = (seed, scale) => cached(`avant|${seed}|${scale}`, W * scale, H * scale, (ctx) => { ctx.scale(scale, scale); const plan = AVANT.cityPaintPlan(W, H, seed); for (let t = 0; t < AVANT.tileCount(W); t++) { ctx.save(); ctx.beginPath(); ctx.rect(t * 360, 0, 360, H); ctx.clip(); AVANT.paintCityTile(ctx, plan, t); ctx.restore(); } });
 // Fond statique (poses lentes : tranche de 10 min, date, météo).
@@ -85,7 +85,7 @@ function smokeView(F, T, D, scale = 4) {
   return { x0: Math.max(0, Math.round(ch.x - 70)), y0: Math.max(0, Math.round(ch.y - 45)), w: 150, h: 90, scale };
 }
 // Vues de la rue : un pied d'arbre fleuri, un parterre.
-const pitView = (F, scale = 3) => { F.rue ||= streetVerdure(F); const p = F.rue.find((v) => v.kind === 'pit' && !v.empty && v.flowers && v.x > 80) || F.rue.find((v) => v.kind === 'pit'); return { x0: Math.max(0, Math.round(p.x - 80)), y0: F.ground - 85, w: 160, h: 120, scale }; };
+const pitView = (F, scale = 3) => { F.rue ||= streetVerdure(F); const p = F.rue.find((v) => v.kind === 'pit' && !v.empty && !v.young && v.flowers && v.r > 13 && v.x > 80 && v.x < W - 100) || F.rue.find((v) => v.kind === 'pit' && !v.empty && !v.young) || F.rue.find((v) => v.kind === 'pit'); return { x0: Math.max(0, Math.round(p.x - 80)), y0: F.ground - 85, w: 160, h: 120, scale }; };
 const bedView = (F, scale = 3) => { F.rue ||= streetVerdure(F); const p = F.rue.find((v) => v.kind === 'parterre' && v.x0 > 80) || F.rue.find((v) => v.kind === 'bac'); return { x0: Math.max(0, Math.round(p.x0 + p.w / 2 - 80)), y0: F.ground - 85, w: 160, h: 120, scale }; };
 const wallView = (F, scale = 3) => { const b = F.far.reduce((m, b) => (b.nFloors > m.nFloors ? b : m), F.far[0]); return { x0: Math.max(0, Math.round(b.x - 60)), y0: Math.max(0, Math.round(b.top - 20)), w: 180, h: 130, scale }; };
 
@@ -118,9 +118,12 @@ function renderCaptures() {
   // Rue (graine 7) : saisons et nuit, vue de la rue seule (toits du premier plan → chaussée).
   const RUE_VIEW = { x0: 0, y0: 70, w: W, h: H - 70, scale: 2 };
   const RUES = [
-    { id: 'rue-printemps-11h', T: 11 + 0.2 * MIN, date: '2027-04-20', meteo: 'soleil', note: 'mardi 20 avril, 11 h — tulipes aux pieds d’arbres, bacs et parterres, glycine en fleurs, arbres en jeunes feuilles' },
+    { id: 'rue-printemps-11h', T: 11 + 0.2 * MIN, date: '2027-04-28', meteo: 'soleil', note: 'mercredi 28 avril, 11 h — tulipes, glycine en grappes, chandelles des marronniers, feuillage tendre' },
+    { id: 'rue-cerisiers-11h', T: 11 + 0.2 * MIN, date: '2027-04-02', meteo: 'soleil', note: 'vendredi 2 avril, 11 h — cerisiers en fleurs, premières feuilles, parterres replantés (pousses)' },
     { id: 'rue-ete-15h', T: 15 + 0.3 * MIN, date: ETE, meteo: 'soleil', note: '7 juillet, 15 h — platanes, tilleuls et marronniers en feuilles, géraniums et lavande' },
-    { id: 'rue-automne-15h', T: 15 + 0.3 * MIN, date: AUT, meteo: 'soleil', note: '27 octobre, 15 h — feuillages roux, feuilles mortes sur le trottoir, chrysanthèmes, vigne vierge rouge' },
+    { id: 'rue-automne-15h', T: 15 + 0.3 * MIN, date: AUT, meteo: 'soleil', note: '27 octobre, 15 h — jaunissement (platanes avant les autres), feuilles mortes accumulées, chrysanthèmes, vigne vierge rouge' },
+    { id: 'rue-novembre-15h', T: 15 + 0.3 * MIN, date: '2026-11-14', meteo: 'nuages', note: '14 novembre, 15 h — chute en cours, arbres à moitié nus, tapis de feuilles avant balayage' },
+    { id: 'rue-neige-11h', T: 11 + 0.2 * MIN, date: '2027-01-20', meteo: 'neige', note: '20 janvier, 11 h, neige — neige sur les branches et les parterres' },
     { id: 'rue-hiver-11h', T: 11 + 0.2 * MIN, date: HIV, meteo: 'nuages', note: '10 février, 11 h — arbres nus, sol paillé et bruyères, grimpantes en bois' },
     { id: 'rue-nuit-22h', T: 22 + 0.2 * MIN, date: AUT, meteo: 'soleil', note: '27 octobre, 22 h — houppiers éclairés par les lampadaires' },
   ];
@@ -147,6 +150,20 @@ function renderCaptures() {
   // Séquence : la fumée naît au conduit (matin d'hiver, 6 h 40 + 0 / 2 / 5 / 9 s).
   const DH = dayOf(HIV, 'soleil'), sv = smokeView(F, 8.5, DH, 4);
   [0, 2, 5, 9].forEach((s, i) => { const id = `fumee-seq-${i + 1}`; renderScene(canvasFor(id, sv.w * 4, sv.h * 4, `${id} — la fumée naît au conduit : 8 h 30 + ${s} s, 10 février (×4)`), 7, 8.5 + s * SEC, DH, sv); ids.push(id); });
+  // Planche « une année » : même coin de rue et même coin de colline, une vignette par mois (le 15, 14 h, soleil ; janvier avec neige).
+  {
+    const id = 'annee-planche', vw = 300, vhR = 120, vhC = 90, S = 2, cols = 4, cw = vw * S + 12, chh = (vhR + vhC) * S + 34;
+    const ctx = canvasFor(id, cols * cw, 3 * chh, `${id} — une année de la rue (haut) et de l’échappée de la colline (bas), le 15 de chaque mois à 14 h`);
+    ctx.fillStyle = '#1c1a22'; ctx.fillRect(0, 0, cols * cw, 3 * chh);
+    const pv = pitView(F, S), rueV = { x0: pv.x0, y0: F.ground - 95, w: vw, h: vhR, scale: S }, colV = { ...escapeView(F, 0, S), w: vw, h: vhC, y0: 40 };
+    const NOMS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    for (let m = 0; m < 12; m++) {
+      const D = dayOf(`2027-${String(m + 1).padStart(2, '0')}-15`, m === 0 ? 'neige' : 'soleil'), ox = (m % cols) * cw, oy = Math.floor(m / cols) * chh;
+      ctx.fillStyle = '#e8e0cc'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(`15 ${NOMS[m]}${m === 0 ? ' (neige)' : ''}`, ox + 4, oy + 18);
+      for (const [v, dy] of [[rueV, 24], [colV, 24 + vhR * S + 4]]) { const c = document.createElement('canvas'); c.width = v.w * S; c.height = v.h * S; renderScene(c.getContext('2d'), 7, 14 + 0.2 * MIN, D, v); ctx.drawImage(c, ox, oy + dy); }
+    }
+    ids.push(id);
+  }
   // Comparatifs avant / après empilés (graines 1, 7, 42, jour).
   for (const seed of [1, 7, 42]) {
     const id = `comparatif-graine${seed}`, ctx = canvasFor(id, W * 2, H * 4 + 60, `${id} — en haut le décor actuel, en bas le fond corrigé (D1 à D6) avec la vie du fond, 7 juillet 15 h`);

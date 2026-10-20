@@ -29,7 +29,7 @@ function parasolK(T, D, tr) {
 // ── Colline ──
 function paintGround(ctx, F, D) {
   const crest = F.crest, g = F.ground;
-  const season = { spring: light(GRASS, 0.2), summer: GRASS, autumn: mixRgb(GRASS, hexRgb('#B89040'), 0.35), winter: D.meteo.snow ? hexRgb('#E8ECF0') : mixRgb(GRASS, hexRgb('#9A9A80'), 0.45) }[D.season];
+  const doy = D.doy, dry = sat((doy - 250) / 60) * (1 - sat((doy - 340) / 25)), cold = Math.max(sat((doy - 320) / 30), 1 - sat((doy - 60) / 40)), season = D.meteo.snow ? hexRgb('#E8ECF0') : mixRgb(mixRgb(light(GRASS, 0.2 * (1 - sat((doy - 100) / 60))), hexRgb('#B89040'), dry * 0.35), hexRgb('#9A9A80'), cold * 0.45);
   ctx.fillStyle = rgba(haze(season, 0.35), 1); ctx.beginPath(); ctx.moveTo(-4, g);
   for (let x = -4; x <= W + 4; x += 4) ctx.lineTo(x, crest(x)); ctx.lineTo(W + 4, g); ctx.closePath(); ctx.fill();
   ctx.fillStyle = rgba(haze(light(season, 0.4), 0.3), 1); ctx.beginPath();
@@ -62,60 +62,69 @@ function roadPoint(e, d) {
   const s = e.segs[e.segs.length - 1]; return { x: s.bx, y: s.by, dir: Math.sign(s.bx - s.ax) || 1 };
 }
 // Bouquet d'arbres (le même dessin que ceux des maisons, hill-painter.ts), saison comprise.
-function paintBouquet(ctx, tx, ty, tr, s, hz, season = CUR_SEASON) {
-  const tones = LEAF_SEASON[season].map(hexRgb), bare = season === 'winter';
+function paintBouquet(ctx, tx, ty, tr, s, hz, D = CUR_D, key = `${Math.round(tx)}-${Math.round(ty)}`) {
+  const f = foliageOf(D, 'b' + key, 'bouquet'), bare = f.d <= 0.1, k = bare ? 0.75 : 0.6 + 0.4 * f.d, tones = f.tones;
   ctx.strokeStyle = ink(0.85 - hz); ctx.lineWidth = 1.1; ctx.beginPath();
-  if (bare) { ctx.moveTo(tx, ty + tr); ctx.lineTo(tx, ty - tr * 0.4); ctx.moveTo(tx, ty + tr * 0.2); ctx.lineTo(tx - tr * 0.7, ty - tr * 0.5); ctx.moveTo(tx, ty); ctx.lineTo(tx + tr * 0.8, ty - tr * 0.6); ctx.stroke(); }
-  else { ctx.arc(tx, ty, tr, 0, TAU); ctx.moveTo(tx + tr * 1.6, ty + tr * 0.3); ctx.arc(tx + tr * 0.8, ty + tr * 0.3, tr * 0.8, 0, TAU); ctx.stroke(); }
+  if (f.d < 0.6) { ctx.moveTo(tx, ty + tr); ctx.lineTo(tx, ty - tr * 0.4); ctx.moveTo(tx, ty + tr * 0.2); ctx.lineTo(tx - tr * 0.7, ty - tr * 0.5); ctx.moveTo(tx, ty); ctx.lineTo(tx + tr * 0.8, ty - tr * 0.6); ctx.stroke(); ctx.beginPath(); }
+  ctx.arc(tx, ty, tr * k, 0, TAU); ctx.moveTo(tx + tr * 0.8 + tr * 0.8 * k, ty + tr * 0.3); ctx.arc(tx + tr * 0.8, ty + tr * 0.3, tr * 0.8 * k, 0, TAU); ctx.stroke();
   for (let t = 0; t < 3; t++) {
-    ctx.fillStyle = rgba(haze(tones[t], hz + (bare ? 0.25 : 0)), bare ? 0.55 : 1); const k = bare ? 0.75 : 1; ctx.beginPath();
+    ctx.fillStyle = rgba(haze(tones[t], hz + (bare ? 0.25 : 0)), bare ? 0.55 : 0.6 + 0.4 * f.d); ctx.beginPath();
     ctx.arc(tx - t * tr * 0.25, ty - t * tr * 0.28, tr * (1 - t * 0.3) * k, 0, TAU);
     ctx.moveTo(tx + tr * 0.8 - t * tr * 0.25 + tr * 0.8 * (1 - t * 0.3) * k, ty + tr * 0.3 - t * tr * 0.28); ctx.arc(tx + tr * 0.8 - t * tr * 0.25, ty + tr * 0.3 - t * tr * 0.28, tr * 0.8 * (1 - t * 0.3) * k, 0, TAU); ctx.fill();
   }
+  if (D.meteo.snow) { ctx.fillStyle = rgba(haze(hexRgb('#F0F4F8'), hz), 0.9); ctx.beginPath(); ctx.arc(tx - tr * 0.5, ty - tr * 0.56, tr * 0.42 * k, Math.PI, 0); ctx.arc(tx + tr * 0.3, ty - tr * 0.26, tr * 0.34 * k, Math.PI, 0); ctx.fill(); }
 }
-let CUR_SEASON = 'summer';
+let CUR_D = null;
 // ── Verdure (G) : même langage que les bouquets (masses sombre / moyen / clair, rehaut en haut à gauche, trait encré), brume
 // selon le rang, saison : vert vif au printemps et l'été, roux et or en automne, nus (feuillus) ou sombres (persistants) l'hiver.
-const EVERGREEN = ['#2E5A3A', '#3E7048', '#5C8E5A'].map(hexRgb);
-function paintVerdure(ctx, v, hz0 = 0, season = CUR_SEASON) {
-  const hz = v.hz ?? hz0, bare = season === 'winter', tones = LEAF_SEASON[season].map(hexRgb), s = v.s || 0.6;
+function paintVerdure(ctx, v, hz0 = 0, D = CUR_D) {
+  const hz = v.hz ?? hz0, s = v.s || 0.6, key = `${v.kind}-${Math.round(v.x ?? v.pts?.[0]?.[0] ?? 0)}-${Math.round(v.y ?? 0)}`;
+  const f = foliageOf(D, key, v.kind === 'cypress' || v.kind === 'hedge' ? 'cypress' : v.kind === 'vineyard' ? 'vigne' : v.kind); let bare = f.d <= 0.1, tones = f.tones; const season = D.season;
   const fill = (c, a = 1) => rgba(haze(c, hz), a);
-  if (v.kind === 'bouquet') return paintBouquet(ctx, v.x, v.y, v.r, s, hz, season);
-  if (v.kind === 'chestnut') {
-    const h = v.h, r = h * 0.42, cx = v.x, cy = v.y - h * 0.55, masses = [[0, 0, 1], [-0.62, 0.28, 0.7], [0.62, 0.3, 0.68], [0.05, -0.5, 0.62]];
+  if (v.kind === 'bouquet') return paintBouquet(ctx, v.x, v.y, v.r, s, hz, D, key);
+  if (v.kind === 'chestnut' || v.kind === 'cerisier') {
+    const h = v.h, r = h * (v.kind === 'cerisier' ? 0.36 : 0.42), cx = v.x, cy = v.y - h * 0.55, masses = [[0, 0, 1], [-0.62, 0.28, 0.7], [0.62, 0.3, 0.68], [0.05, -0.5, 0.62]];
+    // Cerisier en fleurs (20 mars → 15 avril) : masses roses avant les feuilles.
+    const blc = v.kind === 'cerisier' ? bloomOf(D, 'cerisier') : 0; if (blc > 0) { tones = ['#D88AA8', '#F0B0C8', '#FCDCE8'].map(hexRgb); bare = false; f.d = Math.max(f.d, 0.5 + 0.5 * blc); }
     ctx.strokeStyle = ink(0.85 - hz); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, v.y); ctx.lineTo(cx, cy + r * 0.4); ctx.stroke();
     if (bare) { ctx.lineWidth = 0.7; ctx.beginPath(); for (const [mx, my] of masses) { ctx.moveTo(cx, cy + r * 0.4); ctx.lineTo(cx + mx * r * 1.1, cy + my * r - r * 0.4); } ctx.stroke(); }
     ctx.lineWidth = 1.1; ctx.beginPath(); for (const [mx, my, k] of masses) { ctx.moveTo(cx + mx * r + r * k, cy + my * r); ctx.arc(cx + mx * r, cy + my * r, r * k, 0, TAU); } ctx.stroke();
-    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tones[t], bare ? 0.5 : 1); ctx.beginPath(); for (const [mx, my, k] of masses) { const rr = r * k * (1 - t * 0.28) * (bare ? 0.7 : 1), x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, TAU); } ctx.fill(); }
+    const kd = bare ? 0.7 : 0.6 + 0.4 * f.d;
+    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tones[t], bare ? 0.5 : 1); ctx.beginPath(); for (const [mx, my, k] of masses) { const rr = r * k * (1 - t * 0.28) * kd, x = cx + mx * r - t * r * 0.2, y = cy + my * r - t * r * 0.22; ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, TAU); } ctx.fill(); }
+    const bl = bloomOf(D, v.kind === 'chestnut' ? 'marronnier' : 'cerisier');
+    if (bl > 0 && v.kind === 'chestnut') { ctx.fillStyle = fill(hexRgb('#FFF4F0'), bl); for (const [mx, my, k] of masses) for (let i = -1; i <= 1; i++) ctx.fillRect(cx + mx * r + i * r * k * 0.5 - 0.3, cy + my * r - r * k * 0.9, 0.6, 1.6); }
+    if (D.meteo.snow) { ctx.fillStyle = fill(hexRgb('#F0F4F8'), 0.9); ctx.beginPath(); for (const [mx, my, k] of masses) ctx.arc(cx + mx * r, cy + my * r - r * k * 0.1, r * k * kd * 0.8, Math.PI, 0); ctx.fill(); }
     return;
   }
   if (v.kind === 'poplar' || v.kind === 'cypress') {
-    const h = v.h, cyp = v.kind === 'cypress', rx = h * (cyp ? 0.14 : 0.2), cy = v.y - h * 0.5, tn = cyp ? EVERGREEN : tones;
+    const h = v.h, cyp = v.kind === 'cypress', rx = h * (cyp ? 0.14 : 0.2), cy = v.y - h * 0.5, tn = cyp ? EVERGREEN : tones; if (cyp) { /* persistant */ }
     ctx.strokeStyle = ink(0.85 - hz); ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(v.x, v.y); ctx.lineTo(v.x, v.y - h * (bare && !cyp ? 0.95 : 0.2)); ctx.stroke();
     if (bare && !cyp) { ctx.lineWidth = 0.6; ctx.beginPath(); for (let k = 0; k < 5; k++) { const y = v.y - h * (0.25 + k * 0.14); ctx.moveTo(v.x, y); ctx.lineTo(v.x + (k % 2 ? 1 : -1) * rx * 0.9, y - h * 0.12); } ctx.stroke(); }
     ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(v.x, cy, rx, h * 0.5, 0, 0, TAU); ctx.stroke();
-    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tn[t], bare && !cyp ? 0.45 : 1); ctx.beginPath(); ctx.ellipse(v.x - t * rx * 0.25, cy - t * h * 0.06, rx * (1 - t * 0.3), h * 0.5 * (1 - t * 0.22), 0, 0, TAU); ctx.fill(); }
+    const kd = cyp ? 1 : bare ? 0.6 : 0.6 + 0.4 * f.d;
+    for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tn[t], bare && !cyp ? 0.45 : 1); ctx.beginPath(); ctx.ellipse(v.x - t * rx * 0.25, cy - t * h * 0.06, rx * (1 - t * 0.3) * kd, h * 0.5 * (1 - t * 0.22) * kd, 0, 0, TAU); ctx.fill(); }
+    if (D.meteo.snow) { ctx.fillStyle = fill(hexRgb('#F0F4F8'), 0.9); ctx.beginPath(); ctx.ellipse(v.x - rx * 0.2, cy - h * 0.3, rx * 0.5, h * 0.12, 0, Math.PI, 0); ctx.fill(); }
     return;
   }
   if (v.kind === 'hedge') {
-    const tn = bare ? ['#4A5A48', '#5A6E56', '#6E8468'].map(hexRgb) : tones, r = 1.5 * s;
+    const tn = D.season === 'winter' ? ['#3A5A40', '#4A6E50', '#5E8460'].map(hexRgb) : EVERGREEN, r = 1.5 * s;
     ctx.strokeStyle = ink(0.8 - hz); ctx.lineWidth = 0.9; ctx.beginPath(); v.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
     for (let t = 0; t < 3; t++) { ctx.fillStyle = fill(tn[t]); ctx.beginPath(); for (let i = 0; i < v.pts.length; i++) { const [x, y] = v.pts[i], rr = r * (1 - t * 0.3); ctx.moveTo(x - t * 0.4 + rr, y - t * 0.4); ctx.arc(x - t * 0.4, y - t * 0.4, rr, 0, TAU); } ctx.fill(); }
     return;
   }
   if (v.kind === 'lawn') {
-    const g = bare ? mixRgb(GRASS, hexRgb('#9A9A80'), 0.4) : light(tones[1], 0.25), pts = [[v.x + 2, v.y], [v.x + v.w, v.y + 1], [v.x + v.w - 2, v.y + v.h], [v.x, v.y + v.h - 1]];
+    const g = season === 'winter' ? mixRgb(GRASS, hexRgb('#9A9A80'), 0.4) : light(hexRgb(TONES.summer[1]), 0.25), pts = [[v.x + 2, v.y], [v.x + v.w, v.y + 1], [v.x + v.w - 2, v.y + v.h], [v.x, v.y + v.h - 1]];
     poly(ctx, fill(g), pts); inkPath(ctx, pts, 0.5, 0.6 - hz, true);
     ctx.strokeStyle = fill(haze(ROAD, 0.1)); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(v.x + v.w * 0.5, v.y); ctx.quadraticCurveTo(v.x + v.w * 0.3, v.y + v.h * 0.6, v.x + v.w * 0.55, v.y + v.h); ctx.stroke();
-    disc(ctx, fill(bare ? hexRgb('#6A5A50') : tones[1]), v.x + v.w * 0.75, v.y + v.h * 0.45, 1.6); disc(ctx, fill(bare ? hexRgb('#8A7A6A') : tones[2]), v.x + v.w * 0.75 - 0.5, v.y + v.h * 0.45 - 0.5, 1);
+    paintBouquet(ctx, v.x + v.w * 0.75, v.y + v.h * 0.45, 1.4, 0.5, hz, D, key + 'sq');
     return;
   }
   if (v.kind === 'vineyard') {
-    const soil = fill(mixRgb(hexRgb('#B89A6A'), GRASS, 0.45)), leaf = season === 'autumn' ? ['#B07A2A', '#D8A840'] : season === 'winter' ? null : ['#3A7A38', '#62A848'];
+    const soil = fill(mixRgb(hexRgb('#B89A6A'), GRASS, 0.45)), leaf = f.d > 0.15 ? [mixRgb(tones[0], hexRgb('#3A7A38'), 0.3), mixRgb(tones[1], hexRgb('#62A848'), 0.3)] : null;
     poly(ctx, soil, [[v.x, v.y], [v.x + v.w, v.y - v.slant * 4], [v.x + v.w, v.y + v.h - v.slant * 4], [v.x, v.y + v.h]]);
     for (let r = 2; r < v.h - 1; r += 3.2) {
       const y = v.y + r; ctx.strokeStyle = ink(0.45 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(v.x + 1, y); ctx.lineTo(v.x + v.w - 1, y - v.slant * 4); ctx.stroke();
-      for (let x = v.x + 2; x < v.x + v.w - 1; x += 2.8) { const yy = y - v.slant * 4 * ((x - v.x) / v.w); if (leaf) { disc(ctx, fill(hexRgb(leaf[0])), x, yy - 0.5, 0.85); disc(ctx, fill(hexRgb(leaf[1])), x - 0.3, yy - 0.8, 0.5); } else fillRect(ctx, ink(0.7 - hz), x - 0.25, yy - 1.6, 0.5, 1.6); }
+      for (let x = v.x + 2; x < v.x + v.w - 1; x += 2.8) { const yy = y - v.slant * 4 * ((x - v.x) / v.w); if (leaf) { disc(ctx, fill(leaf[0]), x, yy - 0.5, 0.85 * (0.6 + 0.4 * f.d)); disc(ctx, fill(leaf[1]), x - 0.3, yy - 0.8, 0.5); } else fillRect(ctx, ink(0.7 - hz), x - 0.25, yy - 1.6, 0.5, 1.6); }
     }
     inkPath(ctx, [[v.x, v.y], [v.x + v.w, v.y - v.slant * 4], [v.x + v.w, v.y + v.h - v.slant * 4], [v.x, v.y + v.h]], 0.5, 0.5 - hz, true);
     return;
@@ -124,7 +133,7 @@ function paintVerdure(ctx, v, hz0 = 0, season = CUR_SEASON) {
     // Potager derrière la maison : rangs de terre, légumes verts (vides l'hiver), clôture de piquets.
     const w = v.w, y = v.y, soil = fill(hexRgb('#A8865E'));
     fillRect(ctx, fill(mixRgb(GRASS, hexRgb('#A8865E'), 0.35)), v.x, y - 6 * s, w, 6 * s);
-    for (let k = 0; k < 3; k++) { const yy = y - 5 * s + k * 1.8 * s; fillRect(ctx, soil, v.x + 1, yy, w - 2, 0.7 * s); if (!bare && k < 2) for (let x = v.x + 2; x < v.x + w - 1.5; x += 1.8 * s) disc(ctx, fill(tones[k === 0 ? 1 : 2]), x, yy - 0.2, 0.55 * s); }
+    for (let k = 0; k < 3; k++) { const yy = y - 5 * s + k * 1.8 * s; fillRect(ctx, soil, v.x + 1, yy, w - 2, 0.7 * s); if (D.doy >= 120 && D.doy < 320 && k < 2) for (let x = v.x + 2; x < v.x + w - 1.5; x += 1.8 * s) disc(ctx, fill(hexRgb(TONES.summer[k === 0 ? 1 : 2])), x, yy - 0.2, 0.55 * s); }
     ctx.strokeStyle = ink(0.7 - hz); ctx.lineWidth = 0.4; ctx.beginPath(); for (let x = v.x; x <= v.x + w; x += 1.6 * s) { ctx.moveTo(x, y); ctx.lineTo(x, y - 1.6 * s); } ctx.moveTo(v.x, y - 1 * s); ctx.lineTo(v.x + w, y - 1 * s); ctx.stroke();
     return;
   }
@@ -155,7 +164,7 @@ function paintHouse(ctx, h, env) {
     ctx.fillStyle = rgba(pc, 1); ctx.beginPath(); ctx.moveTo(tx - r, ty - 4.2 * s); ctx.quadraticCurveTo(tx, ty - 4.2 * s - r * 0.9 - 0.4 * s, tx + r, ty - 4.2 * s); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = ink(0.8 - hz); ctx.lineWidth = 0.5; ctx.stroke();
   }
-  if (h.trees) paintBouquet(ctx, h.trees.x, base - 6 * s, h.trees.r, s, hz, D.season);
+  if (h.trees) paintBouquet(ctx, h.trees.x, base - 6 * s, h.trees.r, s, hz, D, h.key);
 }
 // Repères (port de paintLandmark) : la tour sans ses aiguilles (E : peintes par la vie), mât de drapeau (N).
 function paintLandmarkC(ctx, l, hz) {
@@ -244,7 +253,7 @@ function paintNearShadows(ctx, F) {
 
 // Fond statique complet (colline, échappée, maisons, repères, mur du fond, ruelles) à l'instant T (poses lentes).
 function paintFondStatic(ctx, F, env) {
-  CUR_SEASON = env.D.season;
+  CUR_D = env.D;
   paintGround(ctx, F, env.D);
   for (const v of F.crestVerdure) paintVerdure(ctx, v);
   for (const e of F.escapes) paintRoad(ctx, e);

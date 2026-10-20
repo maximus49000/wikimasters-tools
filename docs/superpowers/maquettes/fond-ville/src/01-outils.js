@@ -29,6 +29,7 @@ const LIT_WARM = '#FFDFA0', LIT_BLUE = '#C4D8FF';
 const haze = (c, t) => mixRgb(c, HAZE, t);
 const FUNI_GAP = 2.2; // demi-écart des deux voies du funiculaire (les cabines se croisent côte à côte)
 // Saisons du feuillage (G) : vert, roux, nu, fleuri.
+const EVERGREEN = ['#2E5A3A', '#3E7048', '#5C8E5A'].map(hexRgb);
 const LEAF_SEASON = {
   spring: ['#4E8A3A', '#8CC46A', '#F4C8D8'],
   summer: ['#2E6E34', '#56A844', '#A6DC60'],
@@ -62,7 +63,7 @@ function dayOf(dateStr, meteoName) {
   const holiday = dc.publicHoliday;
   // Fêtes nationales (drapeaux) : 14 juillet, 8 mai, 11 novembre.
   const national = ['07-14', '05-08', '11-11'].includes(dateStr.slice(5));
-  return { date: dateStr, y, month, day: d, season, weekday: dc.weekday, kind: dc.kind, holiday, national, meteo, cold, week: Math.floor((Date.UTC(y, m - 1, d) / 864e5 + 3) / 7), dc };
+  return { date: dateStr, y, month, day: d, doy: doyOf(y, m, d), season, weekday: dc.weekday, kind: dc.kind, holiday, national, meteo, cold, week: Math.floor((Date.UTC(y, m - 1, d) / 864e5 + 3) / 7), dc };
 }
 // Ambiance de l'instant : lumière du jour, crépuscule, obscurité (window-lights.ts : nightness), fraction allumée.
 function envAt(T, D) {
@@ -88,4 +89,57 @@ function paintSky(ctx, env) {
   if (dn < 0.55 && env.D.meteo.cloud < 0.5) { const r = mulberry32(9); ctx.fillStyle = `rgba(255,246,208,${sat((0.55 - dn) / 0.3)})`; for (let i = 0; i < 90; i++) ctx.fillRect(r() * W, r() * 60, 1, 1); }
   if (dn < 0.5 && env.D.meteo.cloud < 0.5) { disc(ctx, 'rgba(255,245,200,0.18)', 760, 24, 12); disc(ctx, '#FFF4C8', 760, 24, 6); }
   else if (dn > 0.9 && env.D.meteo.cloud < 0.5) { disc(ctx, 'rgba(255,255,230,0.35)', 120, 22, 14); disc(ctx, '#FFFBE0', 120, 22, 7); }
+}
+
+// ───────────── calendrier des saisons (G, « on respectera les saisons ») : progressif, jamais une bascule à date fixe ─────────────
+// Jour de l'année `doy` (0 = 1er janvier). Chaque arbre a son décalage propre (± 7 jours, tiré de sa clé) et son essence son
+// avance d'automne (platanes et tilleuls roussissent avant les chênes).
+const doyOf = (y, m, d) => Math.round((Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 864e5);
+const EVERGREENS = new Set(['cypress', 'hedge', 'lierre']);
+const AUTUMN_LEAD = { platane: -10, tilleul: -8, marronnier: -4, cerisier: -6, vigne: -6, glycine: -2, bouquet: 0, poplar: -5, chestnut: -4, chene: 4 };
+const TONES = {
+  tender: ['#5E9A4A', '#8CC46A', '#C4E89A'], summer: ['#2E6E34', '#56A844', '#A6DC60'],
+  gold: ['#8A6A20', '#D8A830', '#F0D060'], roux: ['#7A3A1E', '#C86A2A', '#F0A040'], winter: ['#6A5A50', '#8A7A6A', '#A89888'],
+};
+const mixTones = (a, b, t) => a.map((c, i) => mixRgb(hexRgb(c), hexRgb(b[i]), t));
+// État du feuillage d'un arbre à la date D : `d` densité 0..1 (0 = nu), `tones` (3 masses), `stage`, `drop` (part tombée).
+//   débourrement 25 mars → 25 avril (vert tendre jusqu'à fin mai) · plein feuillage mai → septembre · jaunissement 1er oct → 15 nov
+//   · chute 20 oct → 25 nov · nu fin novembre → mars. Persistants (cyprès, haies, lierre) : toujours verts.
+function foliageOf(D, key, species = 'bouquet') {
+  if (EVERGREENS.has(species)) return { d: 1, tones: EVERGREEN, stage: 'green', drop: 0 };
+  const r = mulberry32(hashString('pheno-' + key)), o = (r() - 0.5) * 14, roux = r() < 0.5, lead = AUTUMN_LEAD[species] ?? 0, doy = D.doy;
+  if (doy < 84 + o || doy >= 330 + o + lead) return { d: 0, tones: TONES.winter.map(hexRgb), stage: 'bare', drop: 1 };
+  if (doy < 151 + o) { const out = sat((doy - (84 + o)) / 30); return { d: Math.max(0.1, out), tones: mixTones(TONES.tender, TONES.summer, sat((doy - (110 + o)) / 40)), stage: out < 1 ? 'tender' : 'green', drop: 0 }; }
+  const yel = sat((doy - (274 + o + lead)) / 45), drop = sat((doy - (293 + o + lead)) / 36);
+  return { d: Math.max(0.1, 1 - drop), tones: mixTones(TONES.summer, roux ? TONES.roux : TONES.gold, yel), stage: yel > 0 ? 'autumn' : 'green', drop };
+}
+// Floraisons à leur date (0..1) : marronniers (chandelles) 25 avril → 25 mai, cerisiers 20 mars → 15 avril, glycine 10 avril → 20 mai,
+// tilleuls 5 → 28 juin, vigne vierge rouge vif 1er octobre → 5 novembre.
+const BLOOMS = { marronnier: [114, 144], cerisier: [78, 105], glycine: [99, 140], tilleul: [155, 178], vigne: [273, 309] };
+function bloomOf(D, species) { const b = BLOOMS[species]; if (!b) return 0; const t = (D.doy - b[0]) / (b[1] - b[0]); return t < 0 || t > 1 ? 0 : Math.min(1, t * 4, (1 - t) * 3); }
+// Parterres replantés par les jardiniers de la ville : bulbes 15 mars → 31 mai (fleurs 1er avril → 10 mai, fanées ensuite),
+// géraniums et lavande 5 juin → 5 octobre (fanées à partir du 20 septembre), chrysanthèmes 10 octobre → 30 novembre (fanées à partir
+// du 20 novembre), bruyères et paillage 5 décembre → 10 mars ; sol nu les quelques jours de replantation.
+function bedState(D) {
+  const doy = D.doy;
+  if (doy >= 73 && doy < 151) return { kind: 'spring', shoots: 1 - sat((doy - 80) / 12), bloom: sat((doy - 91) / 10), faded: sat((doy - 130) / 20) };
+  if (doy >= 151 && doy < 156) return { kind: 'bare', faded: 0, bloom: 0 };
+  if (doy >= 156 && doy < 279) return { kind: 'summer', bloom: sat((doy - 156) / 12), faded: sat((doy - 263) / 16) };
+  if (doy >= 279 && doy < 283) return { kind: 'bare', faded: 0, bloom: 0 };
+  if (doy >= 283 && doy < 335) return { kind: 'autumn', bloom: sat((doy - 283) / 8), faded: sat((doy - 324) / 11) };
+  if (doy >= 335 && doy < 340) return { kind: 'bare', faded: 0, bloom: 0 };
+  return { kind: 'winter', bloom: 1, faded: 0 };
+}
+// Feuilles mortes au sol (0..~0,7) : chute nominale cumulée depuis le dernier balayage (un matin sur trois, à 7 h 30, tiré par
+// graine et date), en moyenne sur les essences.
+function leavesOnGround(D, T, seed) {
+  const rate = (doy) => { let s = 0; for (const lead of [-10, -6, -2, 2]) s += doy >= 293 + lead && doy < 329 + lead ? 1 / 36 : 0; return s / 4; };
+  let amount = 0;
+  for (let k = 0; k < 30; k++) {
+    const t = new Date(Date.UTC(D.y, D.month - 1, D.day - k)), ds = t.toISOString().slice(0, 10), doy = doyOf(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+    const sweep = rngOf(seed, 'balayage', ds)() < 0.35;
+    if (sweep && (k > 0 || T >= 7.5)) { if (k === 0) return 0; break; }
+    amount += rate(doy) * (k === 0 ? sat(T / 24) : 1);
+  }
+  return amount;
 }

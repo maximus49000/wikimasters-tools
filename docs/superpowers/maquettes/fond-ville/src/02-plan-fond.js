@@ -48,7 +48,7 @@ function escapeVerdure(rng, e) {
   const vine = patch(22 + rng() * 10, 12 + rng() * 5); if (vine) out.push({ kind: 'vineyard', ...vine, slant: 0.35 + rng() * 0.2 });
   const lawn = patch(16 + rng() * 8, 9 + rng() * 4); if (lawn) out.push({ kind: 'lawn', ...lawn });
   // Grands arbres isolés (2-3), bosquets (4-6 groupes de 1-3 bouquets), potager (0-1).
-  for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++) { const h = 11 + rng() * 9, p = place(h * 0.3); if (p) out.push({ kind: pick(['chestnut', 'poplar', 'poplar', 'cypress'], rng), ...p, h, s: 0.7 }); }
+  for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++) { const h = 11 + rng() * 9, p = place(h * 0.3); if (p) out.push({ kind: pick(['chestnut', 'poplar', 'poplar', 'cypress', 'cerisier'], rng), ...p, h, s: 0.7 }); }
   for (let i = 0, n = 6 + Math.floor(rng() * 4); i < n; i++) { const r = 2 + rng() * 3.2, p = place(r); if (!p) continue; out.push({ kind: 'bouquet', ...p, r, s: 0.55 + rng() * 0.2 }); for (let j = 0, m = Math.floor(rng() * 3); j < m; j++) { const r2 = r * (0.6 + rng() * 0.5), x = p.x + (rng() - 0.5) * r * 3, y = p.y + (rng() - 0.3) * r * 1.4; if (free(x, y, r2)) out.push({ kind: 'bouquet', x, y, r: r2, s: 0.55 + rng() * 0.2 }); } }
   if (rng() < 0.7) { const p = place(6); if (p) out.push({ kind: 'garden', x: p.x - 6, y: p.y + 3, w: 12, s: 0.7, hz: 0.2 }); }
   // Haies : le long de deux tronçons de route, côté amont (perpendiculaire à la route, décalage 4 px).
@@ -174,7 +174,7 @@ function fondPlan(seed) {
     // Derrière chaque maison du rang (au-dessus de son toit, sur l'herbe du rang suivant) : parfois un massif qui dépasse.
     for (const h of rowH) if (rng() < 0.22) rowVerdure[row].push({ kind: 'bouquet', x: h.x + h.w * (0.2 + rng() * 0.5), y: h.top + 1, r: (3 + rng() * 2.5) * s, s, hz: Math.min(0.4, hz + 0.08), behind: true });
   }
-  const crestVerdure = []; { const rng = rngOf(seed, 'verdure-crete'); for (let x = 20 + rng() * 40; x < W; x += 40 + rng() * 75) { const kind = pick(['poplar', 'poplar', 'cypress', 'chestnut', 'bouquet', 'bouquet'], rng); crestVerdure.push(kind === 'bouquet' ? { kind, x, y: crest(x) + 1, r: 2.8 + rng() * 2.4, s: 0.5, hz: 0.38 } : { kind, x, y: crest(x) + 1.5, h: 7 + rng() * 6, s: 0.5, hz: 0.38 }); } }
+  const crestVerdure = []; { const rng = rngOf(seed, 'verdure-crete'); for (let x = 20 + rng() * 40; x < W; x += 40 + rng() * 75) { const kind = pick(['poplar', 'poplar', 'cypress', 'chestnut', 'bouquet', 'bouquet', 'cerisier'], rng); crestVerdure.push(kind === 'bouquet' ? { kind, x, y: crest(x) + 1, r: 2.8 + rng() * 2.4, s: 0.5, hz: 0.38 } : { kind, x, y: crest(x) + 1.5, h: 7 + rng() * 6, s: 0.5, hz: 0.38 }); } }
   // Réverbères de la crête (chapelet) : un tous les ~55 px sur la ligne de crête, allumés en vague.
   const crestLamps = []; { const rng = rngOf(seed, 'fond-crete'); for (let x = 20 + rng() * 30; x < W; x += 48 + rng() * 16) crestLamps.push({ x, y: crest(x) + 1.5, u: 0.4 + rng() * 0.07, off: Math.round(rng() * 30 - 15) }); }
   const landmarks = plan.hill.landmarks.map((l) => ({ ...l, lit: true }));

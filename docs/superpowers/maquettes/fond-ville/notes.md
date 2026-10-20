@@ -37,6 +37,11 @@ nouveau calque) : `01-outils` (cellulo, temps, météo, ciel), `02-plan-fond` (p
 | `zoom-ruelle.png` | une fente du premier plan : mur du fond à étages, fenêtres sous l'égout, ruelle en retrait sous le haut du rez-de-chaussée. |
 | `zoom-mur{,-nuit}.png` | bandeaux, corniche, travées, volets, linge ; à 22 h 10 volets qui se ferment, fenêtres allumées. |
 | `fumee-seq-1..4.png` | 8 h 30 + 0 / 2 / 5 / 9 s : le panache naît au conduit et se dissipe (×4). |
+| `rue-cerisiers-11h.png`, `rue-printemps-11h.png` | 2 avril (cerisiers en fleurs, pousses des parterres) ; 28 avril (tulipes, glycine, chandelles des marronniers, feuillage tendre). |
+| `rue-ete-15h.png`, `rue-automne-15h.png`, `rue-novembre-15h.png` | 7 juillet (platanes, tilleuls, marronniers, géraniums et lavande) ; 27 octobre (jaunissement, vigne vierge rouge, chrysanthèmes, feuilles mortes) ; 14 novembre (chute en cours, tapis de feuilles). |
+| `rue-hiver-11h.png`, `rue-neige-11h.png`, `rue-nuit-22h.png` | 10 février (arbres nus, bruyères et paillage) ; 20 janvier sous la neige (branches et parterres enneigés) ; 27 octobre 22 h (houppiers éclairés par les lampadaires). |
+| `zoom-pied-arbre{,-printemps}.png`, `zoom-parterre{,-automne}.png` | pied d'arbre ×3 (fosse à grille, pied fleuri, ombre au sol, houppier devant la façade avec son ombre) ; parterre, bacs, pots ×3. |
+| `annee-planche.png` | une année : même coin de rue (haut) et même coin de colline (bas), le 15 de chaque mois à 14 h (janvier sous la neige). |
 
 ## 2. Corrections de l'audit (D1 à D6) — correspondance avec le code
 
@@ -112,6 +117,54 @@ pour la fumée et la brume, 30 pour les cabines et les véhicules (ils sont peti
 … | saison | neige | tranche de 10 min`. Une tranche se repeint donc au plus 6 fois par heure (en pratique quand un volet,
 un parasol ou une pièce de linge change dans la tranche : on peut ne repeindre que si le hachage des états change).
 
+## 3 bis. Verdure de la rue principale (`src/03b-rue-verte.js`, couche peinte PAR-DESSUS le premier plan)
+
+Dans l'appli : à peindre dans les tranches de `paintCityTile`, après `paintTree` et `paintFurniture` (ordre : fosses et
+pieds → bacs, parterres, pots → troncs → houppiers), avec une clé de cache qui ajoute la date (calendrier) et « balayé /
+non balayé » (7 h 30). Le plan (`streetVerdure`) se calcule dans `cityPaintPlan` à côté de `trees` / `furniture`, avec les
+mêmes entrées (`blocked` = entrées ± DOOR_MARGIN et locaux, `plan.trees`, `plan.furniture`, `lampsFor`).
+
+| Élément | Emplacement (tirage par graine et position) | Interdits |
+|---|---|---|
+| Arbres en fosse (grille en fonte 8 × 3,2 px à la bordure, `curb − 1,4`) | un tous les 52-82 px, 7 essais décalés de ± 7 px ; platane (×2), tilleul (×2), marronnier, cerisier ; 14 % jeune au tuteur, 8 % fosse vide ; tronc 21-32 px (13 jeune), houppier r 11-18 px (4-5,5 jeune), inclinaison ± 1 px ; 45 % de pieds fleuris | entrées ± 4 (+2), lampadaires ± 9, arbres existants du plan ± (r + 6), mobilier ± 3, 8 px à chaque bout d'un local (porte du commerce), autres éléments ± 3 |
+| Bacs de trottoir | 40 % des locaux ≥ 30 px : 1-2 bacs de 6-9 px collés à la façade (ground + 0,5), côté vitrine, jamais devant la porte | entrées, mobilier |
+| Parterre | 50 % des immeubles sans commerce : 12-22 px au pied, haie basse ou fleurs | entrées, mobilier, arbres |
+| Grimpante | 15 % des façades, sur l'arête (x ± 1,5), du sol à 6-36 px au-dessus du rez-de-chaussée ; glycine ou vigne vierge | — (sur le mur, hors fenêtres) |
+| Pots devant une porte | 30 % des entrées, un ou deux côtés, hors du vantail | — |
+| Herbe entre les pavés | une touffe tous les 30-75 px au bord de la chaussée (curb + 0,8 … + 2,4) | — |
+
+**Passage des passants** : le couloir `doorY → walkY` (ground + 2 … ground + 14, soit 12 px) reste libre sur toute la
+longueur : les fosses sont à la bordure (curb − 5 … curb, sous `walkY`), les bacs, parterres et pots collés à la façade
+(ground … ground + 3,5, au-dessus de `doorY`). Les **terrasses** (deux rangs de tables entre doorY et walkY, devant la
+vitrine) ne croisent ni fosses ni bacs. Éléments de l'appli qui passeraient DEVANT un houppier ou un tronc : rien (les
+passants, véhicules, terrasses, files et stands sont dans les calques animés au-dessus des tranches : un passant marche
+donc devant le tronc, comme devant les arbres existants). Éléments que la couche masquerait si on la mettait au-dessus
+des calques : aucun, elle reste dans les tranches.
+
+**Perf** : ≈ 20 arbres, 10 bacs, 8 parterres, 4 grimpantes, 10 pots, 25 touffes par 1 440 px, peints une fois par tranche
+(≈ 1 ms par tranche) ; tapis de feuilles : 0 à ~1 500 rectangles de 1 px en novembre. Aucun nœud animé ; le balancement
+éventuel resterait limité aux arbres déjà comptés (même choix que la colline : à sauter sur Android).
+
+## 3 ter. Calendrier des saisons (`foliageOf`, `bloomOf`, `bedState`, `leavesOnGround` dans `src/01-outils.js`)
+
+Progressif, par jour de l'année, jamais une bascule à date fixe ; `?date=AAAA-MM-JJ` règle la date dans la maquette.
+Chaque arbre a un décalage propre de ± 7 jours (tiré de sa clé) et son essence une avance d'automne :
+platane − 10 j, tilleul − 8, peuplier − 5, marronnier − 4, cerisier − 6, vigne − 6, glycine − 2, bouquet 0, chêne + 4.
+
+| Étape | Dates (± décalage) | Rendu |
+|---|---|---|
+| Débourrement | 25 mars → 25 avril (densité 0 → 1), vert tendre jusqu'à fin mai | masses réduites (0,4 + 0,6 d), tons `tender` → `summer` |
+| Plein feuillage | mai → septembre | tons `summer` |
+| Jaunissement | 1er octobre → 15 novembre (+ avance d'essence) | tons `summer` → `gold` ou `roux` (tiré par arbre) |
+| Chute | 20 octobre → 25 novembre (+ avance) | masses qui s'éclaircissent, branches visibles sous 75 % |
+| Nu | fin novembre → 25 mars | branches encrées, masses grises à 45 % |
+| Persistants | toute l'année | cyprès, haies, lierre : `EVERGREEN` |
+| Feuilles mortes | chute cumulée depuis le dernier balayage (un matin sur trois à 7 h 30, tiré graine + date) | 60 % sous les arbres, 40 % sur le trottoir ; ramassées = 0 |
+| Floraisons | cerisiers 20 mars → 15 avril (roses avant les feuilles) ; glycine 10 avril → 20 mai (grappes) ; marronniers 25 avril → 25 mai (chandelles) ; tilleuls 5 → 28 juin (points crème) ; vigne vierge rouge 1er octobre → 5 novembre | montée en 1/4, descente en 1/3 de la période |
+| Parterres (jardiniers de la ville) | bulbes 15 mars → 31 mai (pousses, fleurs 1er avril → 10 mai, fanées 10 → 30 mai) ; sol nu 31 mai → 5 juin ; géraniums et lavande 5 juin → 5 octobre (fanées dès le 20 septembre) ; sol nu 5 → 10 octobre ; chrysanthèmes 10 octobre → 30 novembre (fanées dès le 20 novembre) ; sol nu 1er → 5 décembre ; bruyères et paillage 5 décembre → 10 mars | fanées : fleurs brunies et penchées, mélangées aux fraîches selon la part |
+| Neige | météo `neige` | calottes blanches sur les masses (arbres de rue et de colline), parterres et bacs blancs, herbe de la colline blanche |
+| Herbe de la colline | pâle au printemps, sèche (ocre) de septembre à décembre, grise l'hiver | progressif |
+
 ## 4. Couleurs et constantes (toutes dans `01-outils.js` / `02-plan-fond.js`)
 
 - Palette reprise telle quelle de hill-painter.ts et city-plan.ts (HAZE `#9CC0E4`, GRASS `#5E9A50`, STONE `#EAD6B0`, SPIRE,
@@ -154,5 +207,7 @@ un parasol ou une pièce de linge change dans la tranche : on peut ne repeindre 
 5. Les volets du fond en tranche de 10 min repeignent la tranche jusqu'à 6 fois par heure : acceptable, ou volets figés par
    demi-journée (fermés la nuit, ouverts le jour, sans l'après-midi d'été) ?
 6. Nuées d'étourneaux de 36 points : taille (36) et nombre de passages (3) à ajuster ?
-7. Densité de la verdure : ≈ 150 formes par scène (bosquets, haies, vigne, square, potagers, arbres de crête) ; en vouloir plus ou moins ?
-8. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.
+7. Rue : espacement des arbres (52-82 px) et part des fosses vides / jeunes arbres ; faut-il des arbres aussi devant les cafés (les terrasses sont entre la façade et `walkY`, la fosse à la bordure : pas de conflit) ? Les grimpantes sur 15 % des façades : trop ?
+8. Calendrier : dates à ajuster (avance des platanes, fréquence du balayage un matin sur trois) ? Magnolias non faits (cerisiers seulement).
+9. Densité de la verdure de la colline : ≈ 150 formes par scène (bosquets, haies, vigne, square, potagers, arbres de crête) ; en vouloir plus ou moins ?
+10. Faut-il un cycle de jour de la tour (cloche visible ?) : pour l'instant seuls les pigeons marquent l'heure pile.
