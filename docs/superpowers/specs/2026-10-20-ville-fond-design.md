@@ -88,6 +88,12 @@ ni la circulation des passants. **Les saisons sont respectées** : calendrier r�
 jaunissement arbre par arbre, chute et feuilles mortes ramassées, arbres nus), floraisons à leur date, parterres replantés
 à chaque saison, neige sur les branches. Calendrier détaillé dans `maquettes/fond-ville/notes.md`.
 
+**Arbres (2026-10-20)** : l'évolution saisonnière (feuillage, floraisons, ramure d'hiver) est validée. Les arbres de la rue
+et de la colline bougent avec le vent de la météo (rafales qui passent, raideur par essence, déphasage par position) et
+réagissent à la pluie, à l'orage, à la neige et aux saisons (feuilles et pétales emportés, gouttes, neige qui glisse,
+oiseaux), de la façon la plus naturelle possible, à coût borné sur Android ; immobiles en mouvement réduit. La colline
+reçoit encore plus d'éléments.
+
 ## 4. Étapes
 
 1. ~~Choix du catalogue (§3) et des corrections de l'audit (§2)~~ : fait le 2026-10-20.
