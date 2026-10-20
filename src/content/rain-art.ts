@@ -3,7 +3,7 @@
 // maquette docs/superpowers/maquettes/pluie-naturelle (couleurs et formules de notes.md). Sans l'éclair ni le flash (couche météo).
 // Les moteurs sont ailleurs (weather/rain-drops.ts, weather/glass-rain.ts) : ici on ne fait que peindre leur état.
 // Économies Android : aucune `ctx.filter` ; alpha par `globalAlpha` (une seule chaîne de couleur par rôle et par pas de nuit) ;
-// dégradés des traits et halos mis en cache par contexte ; sprites des gouttes de vitre précalculés par (rayon au demi-pixel,
+// traits pleins regroupés par alpha (le « dégradé » des traits en 3 marches), halos mis en cache par contexte ; sprites des gouttes de vitre précalculés par (rayon au demi-pixel,
 // teinte quantifiée, jour/nuit, échelle) ; buée = masque à demi-résolution ; aucune allocation de tableau par image.
 import { hexRgb, mixRgb, rgba, type Rgb } from '../core/library/paint/color';
 import { mulberry32 } from '../core/library/scene-world';
@@ -212,32 +212,18 @@ class StrokeBatch {
 }
 const EDGES = new StrokeBatch(), HALOS = new StrokeBatch(), MAINS = new StrokeBatch();
 const RINGS = new StrokeBatch(), DOTS = new StrokeBatch();
-const LATE: number[] = []; // traits en dégradé (couches moyenne et proche), tracés un par un après les groupes
+const STEPS = new StrokeBatch(); // marches des traits en « dégradé » (couches moyenne et proche)
+const STEP_U = [0.12, 0.4, 0.7, 1], STEP_A = [0.3, 0.7, 1];
+const LATE: number[] = []; // têtes ovales des grosses gouttes, posées après les traits
 
-// ───────────── caches par contexte : dégradés des traits (par longueur et pas de nuit) et halos (par lampadaire) ─────────────
-type Caches = { grads: Map<number, CanvasGradient>; halos: WeakMap<RainLight, { R: number; g: CanvasGradient }> };
+// ───────────── cache par contexte : halos (par lampadaire) ─────────────
+type Caches = { halos: WeakMap<RainLight, { R: number; g: CanvasGradient }> };
 const CACHES = new WeakMap<CanvasRenderingContext2D, Caches>();
 function cachesOf(ctx: CanvasRenderingContext2D): Caches {
   let c = CACHES.get(ctx);
-  if (!c) CACHES.set(ctx, (c = { grads: new Map(), halos: new WeakMap() }));
+  if (!c) CACHES.set(ctx, (c = { halos: new WeakMap() }));
   return c;
 }
-// Trait qui s'estompe vers la queue (tête en bas) : dégradé vertical local (0, −len) → (0, 0), l'alpha global fait le reste.
-function strokeGradient(ctx: CanvasRenderingContext2D, caches: Caches, lenBucket: number, nb: number): CanvasGradient {
-  const key = lenBucket * 32 + nb;
-  let g = caches.grads.get(key);
-  if (!g) {
-    if (caches.grads.size > 600) caches.grads.clear();
-    const base = mixRgb(RAIN, RAIN_NIGHT, nb / 20);
-    g = ctx.createLinearGradient(0, -lenBucket * 2, 0, 0);
-    g.addColorStop(0, rgba(base, 0));
-    g.addColorStop(0.7, rgba(base, 1));
-    g.addColorStop(1, rgba(base, 1));
-    caches.grads.set(key, g);
-  }
-  return g;
-}
-
 /** Pluie qui tombe : gouttes à 3 profondeurs, gouttes des bords, halos des lampadaires, brume. */
 export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: RainWorld, env: RainEnv, field: LightField): void {
   const P = clamp01(env.precip);
@@ -291,21 +277,28 @@ export function drawRainAir(ctx: CanvasRenderingContext2D, sim: RainSim, world: 
       if (edge > 0) EDGES.push(a * 0.5 * edge, wb, d.x - dx, d.y - dy, d.x, d.y); // liseré : un peu plus large, sombre, sous le trait
       if (L.blur > 0) HALOS.push(a * 0.22, wb, d.x - dx, d.y - dy, d.x, d.y); // halo flou de la couche proche : même trait, large et pâle
       if (li === 0) { MAINS.push(a, wb, d.x - dx, d.y - dy, d.x, d.y); continue; }
-      LATE.push(d.x, d.y, dx, dy, a, d.w, d.big && li === 2 ? 1 : 0);
+      // couches moyenne et proche : queue transparente → tête opaque (cassure à 70 %). Le dégradé par trait coûtait 3 fois un
+      // trait plein (banc : 20 ms contre 6,5 ms pour 900 traits, CPU ×4) ; il est rendu par 3 marches pleines, regroupées
+      // comme les autres : 12-40 % à 0,3, 40-70 % à 0,7, 70-100 % à 1 (bouts carrés : les marches ne se chevauchent pas).
+      const x0 = d.x - dx, y0 = d.y - dy;
+      for (let k = 0; k < 3; k++) {
+        const u0 = STEP_U[k]!, u1 = STEP_U[k + 1]!;
+        STEPS.push(a * STEP_A[k]!, wb, x0 + dx * u0, y0 + dy * u0, x0 + dx * u1, y0 + dy * u1);
+      }
+      if (d.big && li === 2) LATE.push(d.x, d.y, a, d.w);
     }
     // traits pleins regroupés par (alpha au 1/64, épaisseur en 3 classes) : un seul `stroke` par groupe au lieu d'un par goutte
     EDGES.flush(ctx, EDGE_STR, (wb) => binWidth(wb) * wRef + 0.7);
     HALOS.flush(ctx, baseStr, (wb) => binWidth(wb) * wRef + L.blur * blurK);
     MAINS.flush(ctx, baseStr, (wb) => binWidth(wb) * wRef);
-    // couches moyenne et proche : queue transparente → tête opaque (cassure à 70 %), un dégradé par goutte
-    for (let q = 0; q < LATE.length; q += 7) {
-      const x = LATE[q]!, y = LATE[q + 1]!, dx = LATE[q + 2]!, dy = LATE[q + 3]!, a = LATE[q + 4]!, w = LATE[q + 5]!;
-      ctx.lineWidth = w; ctx.globalAlpha = a;
-      ctx.strokeStyle = strokeGradient(ctx, caches, Math.max(1, Math.round(dy / 2)), nb);
-      ctx.translate(x, y);
-      ctx.beginPath(); ctx.moveTo(-dx, -dy); ctx.lineTo(0, 0); ctx.stroke();
-      ctx.translate(-x, -y);
-      if (LATE[q + 6]) { ctx.fillStyle = baseStr; ctx.globalAlpha = a * 0.9; ctx.beginPath(); ctx.ellipse(x, y, w * 0.9, w * 1.4, 0, 0, TAU); ctx.fill(); }
+    ctx.lineCap = 'butt';
+    STEPS.flush(ctx, baseStr, (wb) => binWidth(wb) * wRef);
+    ctx.lineCap = 'round';
+    // grosses gouttes de la couche proche : tête ovale
+    ctx.fillStyle = baseStr;
+    for (let q = 0; q < LATE.length; q += 4) {
+      const x = LATE[q]!, y = LATE[q + 1]!, w = LATE[q + 3]!;
+      ctx.globalAlpha = LATE[q + 2]! * 0.9; ctx.beginPath(); ctx.ellipse(x, y, w * 0.9, w * 1.4, 0, 0, TAU); ctx.fill();
     }
     LATE.length = 0;
   }

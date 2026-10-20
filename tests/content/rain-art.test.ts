@@ -43,8 +43,11 @@ const WORLD: RainWorld = {
 const env = (precip: number, daylight: number): RainEnv => ({ precip, wind: 0.4, daylight, t: 5 });
 
 const strokes = (c: FakeCtx): number => c.ops.filter((o) => o.op === 'stroke').length;
-// Segments de trait (un `moveTo` par trait, qu'il soit tracé seul ou dans un groupe)
+// Segments de trait (un `moveTo` par segment, tracé seul ou dans un groupe)
 const segments = (c: FakeCtx): number => c.ops.filter((o) => o.op === 'moveTo').length;
+// Segments attendus pour un jeu de gouttes : lointaine 1, moyenne et proche 3 marches, + halo des proches, + liseré éventuel
+const expectedSegments = (drops: readonly { layer: number }[], edge = false): number =>
+  drops.reduce((n, d) => n + (d.layer === 0 ? 1 : 3) + (d.layer === 2 ? 1 : 0) + (edge ? 1 : 0), 0);
 
 let created = 0;
 beforeEach(() => {
@@ -71,11 +74,10 @@ describe('drawRainAir', () => {
     drawRainAir(asCtx(ctx), sim, world, e, field);
     const near = sim.drops.filter((d) => d.layer === 2).length; // la couche proche a un halo flou en plus (second trait)
     expect(sim.drops.length).toBeGreaterThan(100);
-    expect(segments(ctx)).toBe(sim.drops.length + near);
-    // traits pleins regroupés par alpha : bien moins de `stroke` que de traits (un par goutte des couches à dégradé + les groupes)
-    const graded = sim.drops.filter((d) => d.layer > 0).length;
+    expect(near).toBeGreaterThan(0);
+    expect(segments(ctx)).toBe(expectedSegments(sim.drops));
+    // tout est regroupé par (alpha au 1/64, classe d'épaisseur) : bien moins de `stroke` que de gouttes
     expect(strokes(ctx)).toBeLessThan(sim.drops.length);
-    expect(strokes(ctx)).toBeGreaterThanOrEqual(graded);
   });
 
   it('bruine de jour : liseré gris-bleu sous chaque trait et alpha relevé ; rien de tel la nuit', () => {
@@ -90,11 +92,12 @@ describe('drawRainAir', () => {
     ctx.stroke = () => { alphas.push(ctx.globalAlpha); stroke(); };
     drawRainAir(asCtx(ctx), sim, world, e, field);
     const near = sim.drops.filter((d) => d.layer === 2).length;
-    expect(segments(ctx)).toBe(2 * sim.drops.length + near); // liseré + trait (+ halo des proches)
+    expect(near).toBeGreaterThan(0);
+    expect(segments(ctx)).toBe(expectedSegments(sim.drops, true)); // liseré + trait (+ halo des proches)
     expect(Math.max(...alphas)).toBeGreaterThanOrEqual(Math.min(1, 1.5 * Math.max(...sim.drops.map((d) => d.a)))); // alpha relevé (× 1,9)
     const night = fakeCtx();
     drawRainAir(asCtx(night), sim, world, env(0.25, 0), makeLightField([], SKY_NIGHT, 460));
-    expect(segments(night)).toBe(sim.drops.length + near);
+    expect(segments(night)).toBe(expectedSegments(sim.drops));
   });
 
   it('la nuit, une goutte hors des lumières reste visible (30 %) et aucune n\'est sautée', () => {
@@ -107,7 +110,8 @@ describe('drawRainAir', () => {
     drawRainAir(asCtx(ctx), sim, world, e, field);
     const near = sim.drops.filter((d) => d.layer === 2).length;
     // + halos des lampadaires (fillRect, pas des traits) : les traits restent ceux des gouttes
-    expect(segments(ctx)).toBe(sim.drops.length + near);
+    expect(near).toBeGreaterThan(0);
+    expect(segments(ctx)).toBe(expectedSegments(sim.drops));
     expect(ctx.filterSets).toBe(0);
   });
 
