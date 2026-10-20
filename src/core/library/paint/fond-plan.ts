@@ -1,3 +1,4 @@
+import { mulberry32 } from '../scene-world';
 import { hexRgb, type Rgb } from './color';
 import { fondRng, sat } from './fond-time';
 import { treeModelOf, type TreeModel } from './hill-trees';
@@ -103,6 +104,9 @@ export type Fond = {
   crestLamps: Lamp[];
   fillers: number;
   ruelleY: number;
+  // Haut du premier plan et du fond visible (mur du fond ou premier plan) en chaque x entier : découpes de la vie (PR 2b).
+  nearTop: Float32Array;
+  hillTop: Float32Array;
 };
 // Vie du mur du fond (tirage à part : celui des fenêtres allumables reste celui de la PR 1). `wins` : parallèle à `b.wins`.
 export type FarRoof = { terrace: { x: number; w: number; potager: boolean } | null; verriere: { x: number; w: number } | null; antenna: number | null; pots: number };
@@ -648,7 +652,18 @@ export function markItem(m: Mask, v: FondItem): void {
     case 'lavoir': markRect(m, x - 5.5, y - 5.5, x + 5.5, y + 3.4); return;
     case 'cabane': markRect(m, x - 2.6, y - 4, x + 2.6, y); return;
     case 'poulailler': { const sc = v.small ? 0.7 : 1; markRect(m, x - 2 * sc, y - 2.6 * sc, x + 1.2 * sc, y); return; }
-    case 'rocks': markRect(m, x - 3, y - 1.5, x + 3, y + 0.8); return;
+    case 'rocks': {
+      // Mêmes rochers que le peintre (même générateur) : seulement leur emprise réelle.
+      const r = mulberry32(Math.floor(v.seed! * 100));
+      for (let k = 0; k < v.n!; k++) {
+        const rx = x + (r() - 0.5) * 4;
+        const ry = y + (r() - 0.5) * 1.5;
+        const w = 1.5 + r() * 1.5;
+        const h = 0.8 + r() * 0.8;
+        markPoly(m, [[rx - w, ry], [rx - w * 0.6, ry - h], [rx + w * 0.4, ry - h * 1.1], [rx + w, ry]]);
+      }
+      return;
+    }
     default: return;
   }
 }
@@ -893,14 +908,15 @@ export function fondPlan(I: FondInput): FondOutput {
   // Le rang 2 n'a pas de calque de verdure dans la scène de la maquette (calques T0 à T2 seulement) : ses creux sont derrière
   // le mur du fond, sauf dans l'échappée, où un élément tomberait sur la route. Tirage gardé, rien de peint.
   rowVerdure[2] = [];
-  const fond: Fond = { escapes, rowVerdure, crestVerdure, chapels, reservoirs, crestHouses, crestLamps, fillers: 0, ruelleY: I.ruelleY };
+  const fond: Fond = { escapes, rowVerdure, crestVerdure, chapels, reservoirs, crestHouses, crestLamps, fillers: 0, ruelleY: I.ruelleY, nearTop, hillTop };
   // ── Verdure jamais sur la route (dans l'échappée), la voie, les gares ni l'escalier : les éléments des rangs et de la crête
   // qui les toucheraient sont retirés (tirages inchangés), et les bouquets des maisons aussi.
-  const hitsEscape = (box: readonly [number, number, number, number]): boolean => escapes.some((e) => escapeHit(e, box));
-  for (const list of [...rowVerdure, crestVerdure]) drop(list, (v) => !hitsEscape(itemBox(v)));
+  for (const list of [...rowVerdure, crestVerdure]) drop(list, (v) => !escapes.some((e) => itemHitsEscape(e, v)));
+  // Arbres de l'échappée (placés à distance de la route par leur centre) : ceux dont le houppier déborderait sont retirés.
+  for (const e of escapes) drop(e.verdure, (v) => !isTree(v) || !escapes.some((x) => itemHitsEscape(x, v)));
   for (const h of houses) {
     const m = houseBouquet(h);
-    if (m && hitsEscape([m.box.x0, m.box.y0, m.box.x1, m.box.y1])) h.trees = null;
+    if (m && escapes.some((e) => escapeHit(e, [m.box.x0, m.box.y0, m.box.x1, m.box.y1]) && treeHitsEscape(e, m))) h.trees = null;
   }
   fond.fillers = fillBareGrass(fond, houses, I, hillTop);
   for (const list of [...rowVerdure, crestVerdure, ...escapes.map((e) => e.verdure)]) for (const v of list) v.b = itemBox(v);
@@ -926,6 +942,29 @@ export function escapeHit(e: Escape, [x0, y0, x1, y1]: readonly [number, number,
   return false;
 }
 
+// Élément qui recouvrirait la route visible, la voie, une gare ou l'escalier. Arbres : masses du houppier (touffes, lobes
+// compris) et fût, au lieu de la boîte ; autres éléments : leur boîte.
+export function itemHitsEscape(e: Escape, v: FondItem): boolean {
+  const box = itemBox(v);
+  if (!escapeHit(e, box)) return false;
+  const t = treeOfItem(v);
+  return t ? treeHitsEscape(e, t.m) : true;
+}
+export function treeHitsEscape(e: Escape, m: TreeModel): boolean {
+  const near = (x: number, y: number, r: number): boolean => {
+    for (const s of e.segs) {
+      if (Math.max(s.ax, s.bx) < e.x || Math.min(s.ax, s.bx) > e.x1) continue;
+      if (distToSeg({ x0: s.ax, y0: s.ay + 0.45, x1: s.bx, y1: s.by + 0.45 }, x, y) < r + 2.4) return true;
+    }
+    if (distToSeg(e.funi, x, y) < r + 4.2) return true;
+    if (distToSeg(e.stairs, x, y) < r + 2.6) return true;
+    for (const [sx, sy] of [[e.funi.x0, e.funi.y0 + 8], [e.funi.x1, e.funi.y1 - 8]] as const) if (x + r > sx - 10 && x - r < sx + 10 && y + r > sy - 10 && y - r < sy + 9) return true;
+    return false;
+  };
+  for (const tf of m.tufts) if (near(tf.x, tf.y, tf.rr * 1.4 + 0.5)) return true;
+  return near(m.foot.x, (m.foot.y + m.rootY) / 2, m.w0 * 1.3 + (m.foot.y - m.rootY) / 2);
+}
+
 // Couverture du fond (masque) : tout ce qui est peint devant l'herbe, et la zone visible de la colline.
 export function fondCoverage(fond: Fond, houses: readonly FondHouse[], I: Pick<FondInput, 'width' | 'height' | 'ground' | 'crest' | 'landmarks'>, hillTop: Float32Array): { cover: Mask; visible: Mask } {
   const W = Math.ceil(I.width);
@@ -935,7 +974,11 @@ export function fondCoverage(fond: Fond, houses: readonly FondHouse[], I: Pick<F
   for (let x = 0; x < W; x++) {
     const c = I.crest(x);
     const top = hillTop[Math.min(hillTop.length - 1, x)]!;
-    for (let y = 0; y < H; y++) if (!(y < c - 1 || y >= top)) visible.a[y * W + x] = 1;
+    for (let y = 0; y < H; y++) {
+      if (!(y < c - 1 || y >= top)) visible.a[y * W + x] = 1;
+      // Au-dessus de la ligne de crête : du ciel, pas de l'herbe (même règle que la mesure sur les pixels).
+      if (y + 0.5 < c) cover.a[y * W + x] = 1;
+    }
   }
   for (const h of houses) {
     markHouse(cover, h);
@@ -948,6 +991,14 @@ export function fondCoverage(fond: Fond, houses: readonly FondHouse[], I: Pick<F
   for (const r of fond.reservoirs) markRect(cover, r.x - 4.5 * r.s, r.y - 15 * r.s, r.x + 4.5 * r.s, r.y);
   for (const e of fond.escapes) markEscape(cover, e);
   for (const list of [...fond.rowVerdure, fond.crestVerdure]) for (const v of list) markItem(cover, v);
+  // Bords des formes : trait encré et anticrénelage changent la couleur du pixel voisin (ce n'est plus de l'herbe nue à
+  // l'écran) ; on dilate d'un pixel (4 voisins), comme la mesure faite sur les pixels de la maquette.
+  const a = cover.a.slice();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (a[i]) continue;
+    if ((x > 0 && a[i - 1]) || (x + 1 < W && a[i + 1]) || (y > 0 && a[i - W]) || (y + 1 < H && a[i + W])) cover.a[i] = 1;
+  }
   return { cover, visible };
 }
 
@@ -959,8 +1010,10 @@ function fillBareGrass(fond: Fond, houses: readonly FondHouse[], I: FondInput, h
   const bare = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) bare[i] = visible.a[i]! && !cover.a[i] ? 1 : 0;
   // Fenêtre de w × h entièrement nue (sortie au premier pixel couvert).
-  const allBare = (x: number, y: number, w: number, h: number): boolean => {
-    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (!bare[yy * W + xx]) return false;
+  // Fenêtre presque nue : au plus `miss` pixels couverts (le masque est dilaté d'un pixel, comme l'écran).
+  const allBare = (x: number, y: number, w: number, h: number, miss = 4): boolean => {
+    let n = 0;
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (!bare[yy * W + xx] && ++n > miss) return false;
     return true;
   };
   const y0 = I.height * I.rows[0]!.y;
@@ -976,17 +1029,20 @@ function fillBareGrass(fond: Fond, houses: readonly FondHouse[], I: FondInput, h
     const hz = row < 0 ? 0.36 : I.rows[row + 1]!.haze;
     const rng = fondRng(I.seed, `comblement-${x}-${y}`);
     const u = rng();
-    const item: FondItem =
+    let item: FondItem =
       u < 0.5 ? { kind: 'bouquet', x: cx - 1.5 * s, y: cy - 2.2 * s, r: (3.2 + rng() * 2) * s, s, hz }
         : u < 0.7 ? { kind: pickK(['chestnut', 'cerisier', 'chene', 'poplar'] as const, rng), x: cx, y: cy + 1, h: (9 + rng() * 5) * s * 1.4, s, hz }
           : u < 0.85 ? { kind: 'hedge', pts: Array.from({ length: 5 }, (_, k): Pt => [x + 0.5 + k * 2.1, cy - 0.5 + Math.sin(k) * 0.4]), s, hz }
             : { kind: 'rocks', x: cx, y: cy, n: 2 + Math.floor(rng() * 2), seed: rng() * 100, s, hz };
-    if (fond.escapes.some((e) => escapeHit(e, itemBox(item)))) continue;
+    // Près de la voie, de l'escalier ou de la route : à défaut d'arbre, des rochers (plus bas, plus étroits).
+    if (fond.escapes.some((e) => itemHitsEscape(e, item))) item = { kind: 'rocks', x: cx - 1, y: cy - 1, n: 3, seed: rng() * 100, s, hz };
+    if (fond.escapes.some((e) => itemHitsEscape(e, item))) continue;
     (row < 0 ? fond.crestVerdure : fond.rowVerdure[row as 0 | 1]).push(item);
     n++;
     // La zone est comblée : effacée du masque (comme la maquette) et de ce que l'élément couvre vraiment.
-    for (let yy = y; yy < Math.min(H, y + 7); yy++) for (let xx = x - 4; xx < x + 13; xx++) if (xx >= 0 && xx < W) bare[yy * W + xx] = 0;
     markItem({ W, H, a: bare, v: 0 }, item);
+    // Comme la maquette, la fenêtre comblée n'est plus candidate (l'élément ne la couvre pas forcément en entier).
+    for (let yy = y; yy < y + 6; yy++) for (let xx = x; xx < x + 8; xx++) bare[yy * W + xx] = 0;
     x += 8;
   }
   return n;

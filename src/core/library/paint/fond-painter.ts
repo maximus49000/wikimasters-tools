@@ -2,7 +2,7 @@ import { hashString, mulberry32 } from '../scene-world';
 import { TAU, disc, fillRect, ink, light, poly, shade } from './cel';
 import { HILL_ROWS, hillCrestY, type CityPaintPlan, type HillHouse, type Landmark } from './city-plan';
 import { hexRgb, mixRgb, rgba, type Rgb } from './color';
-import { CLOTH, houseBouquet, isTree, itemKey, lawnBouquet, treeOfItem, type Escape, type FondHouse, type FondItem } from './fond-plan';
+import { CLOTH, houseBouquet, isTree, itemKey, lawnBouquet, treeOfItem, type Chapel, type Escape, type FondHouse, type FondItem } from './fond-plan';
 import { EVERGREEN, TONES, bloomOf, boulesOut, foliageOf, fondRng, fountainOn, hensOut, hillLaundry, lerp, marketK, parasolK, sat, slotHours, smooth, waterFrozen, type FondMoment } from './fond-time';
 import { paintHillHouse, paintLandmark } from './hill-painter';
 import { paintBranches, paintDryLeaves, paintLeaves, paintTrunk, type TreeModel } from './hill-trees';
@@ -851,9 +851,11 @@ export function paintFondHouse(ctx: PaintCtx, h: FondHouse | HillHouse, D: FondM
 
 // ── Fond complet d'une tranche [x0, x1] : ordre des calques de la scène de la maquette (sol, arbres de crête, rang de crête,
 // puis pour chaque rang ses maisons et repères, et la verdure du rang devant).
-export function paintFond(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number, D: FondMoment, landmarks: readonly Landmark[]): void {
+// Ce que la tranche [x0, x1] peint du fond : tout élément dont la boîte touche la tranche (± 2 px). Deux tranches voisines
+// peignent donc toutes deux, dans le même ordre, ce qui est à cheval sur leur bord (raccord).
+export type FondTile = { crest: FondItem[]; escapes: Escape[]; chapels: Chapel[]; reservoirs: Chapel[]; crestHouses: FondHouse[]; houses: HillHouse[]; rows: [FondItem[], FondItem[]] };
+export function fondTile(plan: CityPaintPlan, x0: number, x1: number): FondTile {
   const F = plan.fond;
-  const T = slotHours(D.minutes);
   const lo = x0 - 2;
   const hi = x1 + 2;
   const inTile = (v: FondItem): boolean => !v.b || (v.b[2] >= lo && v.b[0] <= hi);
@@ -863,23 +865,38 @@ export function paintFond(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: nu
     const b = Math.max(h.x + h.w + 2 * h.s + 1, m ? m.box.x1 : -Infinity, h.x + h.w + 3);
     return b >= lo && a <= hi;
   };
-  const escapes = F.escapes.filter((e) => e.span[1] >= lo && e.span[0] <= hi);
+  return {
+    crest: F.crestVerdure.filter(inTile),
+    escapes: F.escapes.filter((e) => e.span[1] >= lo && e.span[0] <= hi),
+    chapels: F.chapels.filter((ch) => ch.x + 14 >= lo && ch.x - 10 <= hi),
+    reservoirs: F.reservoirs.filter((r) => r.x + 6 >= lo && r.x - 6 <= hi),
+    crestHouses: F.crestHouses.filter(houseIn),
+    houses: plan.hill.houses.filter(houseIn),
+    rows: [F.rowVerdure[0].filter(inTile), F.rowVerdure[1].filter(inTile)],
+  };
+}
+
+// ── Fond complet d'une tranche [x0, x1] : ordre des calques de la scène de la maquette (sol, arbres de crête, rang de crête,
+// puis pour chaque rang ses maisons et repères, et la verdure du rang devant).
+export function paintFond(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number, D: FondMoment, landmarks: readonly Landmark[]): void {
+  const T = slotHours(D.minutes);
+  const it = fondTile(plan, x0, x1);
   paintFondGround(ctx, plan, x0, x1, D);
-  for (const v of F.crestVerdure) if (!isTree(v) && inTile(v)) paintVerdure(ctx, v, 0, D, T);
-  for (const e of escapes) paintEscape(ctx, e, D, T, plan.seed);
-  for (const ch of F.chapels) if (ch.x + 14 >= lo && ch.x - 10 <= hi) paintChapel(ctx, ch, D);
-  for (const r of F.reservoirs) if (r.x + 6 >= lo && r.x - 6 <= hi) paintReservoir(ctx, r, D);
-  for (const v of F.crestVerdure) if (isTree(v) && inTile(v)) paintVerdure(ctx, v, 0, D, T);
-  for (const h of F.crestHouses) if (houseIn(h)) paintFondHouse(ctx, h, D, T, plan.seed);
+  for (const v of it.crest) if (!isTree(v)) paintVerdure(ctx, v, 0, D, T);
+  for (const e of it.escapes) paintEscape(ctx, e, D, T, plan.seed);
+  for (const ch of it.chapels) paintChapel(ctx, ch, D);
+  for (const r of it.reservoirs) paintReservoir(ctx, r, D);
+  for (const v of it.crest) if (isTree(v)) paintVerdure(ctx, v, 0, D, T);
+  for (const h of it.crestHouses) paintFondHouse(ctx, h, D, T, plan.seed);
   for (let row = 0; row < HILL_ROWS.length; row++) {
-    for (const h of plan.hill.houses) if (h.row === row && houseIn(h)) paintFondHouse(ctx, h, D, T, plan.seed);
-    for (const e of escapes) for (const h of e.houses) if (h.row === row) paintFondHouse(ctx, h, D, T, plan.seed);
+    for (const h of it.houses) if (h.row === row) paintFondHouse(ctx, h, D, T, plan.seed);
+    for (const e of it.escapes) for (const h of e.houses) if (h.row === row) paintFondHouse(ctx, h, D, T, plan.seed);
     for (const l of landmarks) if (Math.abs(l.base - plan.height * HILL_ROWS[row]!.y) < 1e-6) paintLandmark(ctx, l, HILL_ROWS[row]!.haze);
     if (row < 2) {
-      const list = F.rowVerdure[row]!;
-      for (const v of list) if (!v.behind && inTile(v)) paintVerdure(ctx, v, 0, D, T);
-      for (const v of list) if (v.behind && inTile(v)) paintVerdure(ctx, v, 0, D, T);
-      if (row === 1) for (const e of escapes) for (const v of e.verdure) if (isTree(v)) paintVerdure(ctx, v, 0.2, D, T);
+      const list = it.rows[row as 0 | 1];
+      for (const v of list) if (!v.behind) paintVerdure(ctx, v, 0, D, T);
+      for (const v of list) if (v.behind) paintVerdure(ctx, v, 0, D, T);
+      if (row === 1) for (const e of it.escapes) for (const v of e.verdure) if (isTree(v)) paintVerdure(ctx, v, 0.2, D, T);
     }
   }
 }

@@ -106,13 +106,23 @@ export function treeModel(key: string, species: string, foot: { x: number; y: nu
     bx1 = Math.max(bx1, s.x0 + m, s.x1 + m);
     by0 = Math.min(by0, s.y0 - m, s.y1 - m);
   }
+  // Gui (boules sur les branches de niveau 2, arbre nu).
+  const gui = Math.max(1, ry * 0.16) + 0.2;
+  for (const sg of segs) {
+    if (sg.lv !== 2) continue;
+    const mx = (sg.x0 + sg.x1) / 2;
+    const my = (sg.y0 + sg.y1) / 2;
+    bx0 = Math.min(bx0, mx - gui);
+    bx1 = Math.max(bx1, mx + gui);
+    by0 = Math.min(by0, my - gui);
+  }
   for (const tf of tufts) {
     const r = tf.rr * 1.4 + 1.6;
     bx0 = Math.min(bx0, tf.x - r);
     bx1 = Math.max(bx1, tf.x + r);
     by0 = Math.min(by0, tf.y - r);
   }
-  return { key, species, foot, trunkH, rootY, w0, segs, tufts, cx, cy, rx, ry, top: minY - tuftR, trunkBox: { x: foot.x - w0, y: rootY, w: 2 * w0, h: trunkH }, span: [minX, maxX], box: { x0: bx0, y0: by0 - 0.5, x1: bx1, y1: foot.y + 0.5 } };
+  return { key, species, foot, trunkH, rootY, w0, segs, tufts, cx, cy, rx, ry, top: minY - tuftR, trunkBox: { x: foot.x - w0, y: rootY, w: 2 * w0, h: trunkH }, span: [minX, maxX], box: { x0: bx0, y0: by0 - 0.5, x1: bx1, y1: Math.max(foot.y + 0.5, ...segs.map((sg) => Math.max(sg.y0, sg.y1) + Math.max(0.6, sg.w * 1.5) + 0.5), ...tufts.map((tf) => tf.y + tf.rr * 1.4 + 1.6)) } };
 }
 
 // Modèles en mémoire (les mêmes arbres sont repeints à chaque tranche et à chaque créneau) ; borné.

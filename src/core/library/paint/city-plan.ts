@@ -378,6 +378,7 @@ function farTops(buildings: PaintBuilding[], width: number, height: number, grou
 // Plans récents (le décor, la météo, les mouettes, le père Noël et la pluie demandent le même plan) : le fond vivant coûte
 // quelques dizaines de ms à calculer. Le plan est en lecture seule pour ses lecteurs.
 const PLANS = new Map<string, CityPaintPlan>();
+export const clearPlanCacheForTests = (): void => PLANS.clear();
 export function cityPaintPlan(width: number, height: number, seed: number): CityPaintPlan {
   const key = `${width}|${height}|${seed}`;
   const hit = PLANS.get(key);

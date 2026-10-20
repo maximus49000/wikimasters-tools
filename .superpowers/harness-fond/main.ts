@@ -9,6 +9,7 @@ import { grassOf } from '../../src/core/library/paint/fond-painter';
 import { hexRgb, mixRgb } from '../../src/core/library/paint/color';
 import { light } from '../../src/core/library/paint/cel';
 import type { PaintCtx } from '../../src/core/library/paint/paint-ctx';
+import { paintSnowTile } from '../../src/core/library/paint/snow-painter';
 
 const q = new URLSearchParams(location.search);
 const W = Number(q.get('w') ?? 1440);
@@ -42,6 +43,8 @@ for (let t = 0; t < tileCount(W); t++) {
   ctx.rect(t * 360, 0, 360, H);
   ctx.clip();
   paintCityTile(ctx as unknown as PaintCtx, plan, t, moment);
+  // Neige posée (calque à part dans l'appli, scene-weather.tsx) : par-dessus quand il neige.
+  if (moment.meteo.snow) paintSnowTile(ctx as unknown as PaintCtx, plan, t);
   ctx.restore();
 }
 if (LAMPS) {
@@ -77,6 +80,18 @@ if (q.get('audit') === 'vert' && SCALE === 1 && vx === 0 && vy === 0) {
     let all = true;
     for (let a = 0; a < 8 && all; a++) for (let b = 0; b < 12; b++) if (!mask[(yy + a) * W + x + b]) { all = false; break; }
     if (all) { windows++; first ??= [x, yy]; }
+  }
+  if (q.has('img')) {
+    // Image de contrôle : herbe nue en rouge, colline visible en bleu sombre, le reste en noir.
+    const out = ctx.createImageData(W, H);
+    for (let yy = 0; yy < H; yy++) for (let x = 0; x < W; x++) {
+      const i = (yy * W + x) * 4;
+      const v = !(yy < hillCrestY(plan, x) - 1 || yy >= top[x]! || yy >= plan.ground);
+      out.data[i] = mask[yy * W + x] ? 255 : 0;
+      out.data[i + 2] = v ? 80 : 0;
+      out.data[i + 3] = 255;
+    }
+    ctx.putImageData(out, 0, 0);
   }
   (window as unknown as { audit: unknown }).audit = { herbeNue: ((100 * bare) / Math.max(1, vis)).toFixed(1), fenetres12x8: windows, premiere: first, comblements: plan.fond.fillers };
 }

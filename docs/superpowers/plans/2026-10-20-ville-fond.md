@@ -84,7 +84,7 @@ Branche de travail : `ccr-f0374a79-8v8eca`. Pour reprendre, relire ce plan, la s
     1. Brancher date, météo et neige dans `scene-city.tsx` et `painted-city` : garder l'ancienne image pendant la repeinte,
        jamais de retour au classique.
     2. Neige posée sur les nouvelles maisons et la crête (`snow-painter.ts`).
-    3. Tests : déterminisme du plan, échappée par bande hors des bords, route, voie, gares et escalier jamais recouverts,
+    3. [x] Tests : déterminisme du plan, échappée par bande hors des bords, route, voie, gares et escalier jamais recouverts,
        herbe nue (≤ 12 % et aucune zone de 12 × 8 px nue, graines 1/7/42 × 720/1440/2880), clé de tranche qui ne change
        qu'avec saison, neige et tranche de 10 min, raccord des tranches.
     4. Captures au banc (`.superpowers/harness-fond`) en été 15 h, en automne et en hiver sous la neige, comparées à
