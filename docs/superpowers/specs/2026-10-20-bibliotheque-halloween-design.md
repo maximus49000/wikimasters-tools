@@ -30,6 +30,22 @@ Tout reste calculé depuis la date, l'heure et la graine : aucun état ajouté, 
   12 minutes.
 - **Pluie** : on décore quel que soit le temps (point à valider n° 1, choix par défaut).
 
+## Écarts décidés à l'implémentation (PR 2)
+
+- **Ghibli seulement** : la couche de la nuit et les déguisements n'existent que dans le rendu Ghibli (celui de la production) ;
+  le dessin classique reste inchangé.
+- **Déguisements dans le pantin** : un champ `g:<déguisement>` de la signature (`dress.ts`), des pièces cuites dans `bake.ts`
+  (comme le père Noël), pantin 2D forcé (pas de déguisement sur la base 3D). Trois accessoires en plus des dix costumes :
+  chapeau pointu, cornes, oreilles.
+- **Animaux** : un passage dans l'axe d'une fenêtre fait réagir une fois sur deux (groupe ou passant déguisé) ou sept fois
+  sur dix (promeneur de chien), au plus une réaction toutes les 45 s. Le chat sursaute (deux fois sur trois) ou file sous le
+  canapé (une fois sur trois) ; il ne feule pas. Pont rue → pièce : la ville est dessinée dans le repère de la pièce, la
+  scène publie ses passages (`street-passes.ts`), le contexte des animaux les relit (`pet-context.ts`).
+- **Plan et pluie** : le plan de la soirée est recalculé quand la pluie franchit le seuil (précipitations 0,2).
+- **Bonbons** : pas de bonbons qui volent dans l'app (la maquette les montrait) ; l'enfant tend son seau, l'habitant tend la
+  main.
+- **Faire peur** : environ une fois toutes les 7 minutes pour 900 px de rue (la rue de la maquette).
+
 ## 1. Calendrier (`city/calendar.ts`)
 
 - `FestivityId` gagne `halloween` ; ligne `{ id: 'halloween', m: 10, d: 31, hours: [[1020, 1380]] }` (17 h à 23 h). Le
@@ -146,17 +162,99 @@ ou deux accents, pas un mélange au hasard (la rue reste lisible).
 - `ItemKind` gagne `lamp-pumpkin` et `lamp-bats` ; sprites dans `install-sprites.tsx` (repère du lampadaire, comme
   `LampFlag`).
 
-## 5. PR 2 : la nuit du 31 (à détailler après la maquette des déguisés)
+## 5. PR 2 : la nuit du 31
 
-- `CityIntensity.festive` pour `halloween` : affluence forte du coucher du soleil à 23 h, part de déguisés élevée ; veille
-  et lendemain : quelques déguisés isolés. Sous la pluie : affluence réduite, parapluies.
-- Couche « déguisement » du passant (sorcière, fantôme, squelette, vampire, momie, zombie, diable, citrouille, chat noir,
-  super-héros), portée par-dessus la tenue, choisie par `p.u < festive.share` (aucun tirage de plus).
-- Enfants accompagnés, seau à bonbons, **d'entrée en entrée** ; à certaines entrées décorées, un habitant ouvre (hall éclairé)
-  et donne des bonbons.
-- Farces : **sonner et s'enfuir** (le hall s'allume, personne n'est là, la porte se referme) ; **faire peur** (un jeune
-  déguisé surgit d'une entrée, le passant sursaute).
-- Animaux (vague 1c) : déclencheur « groupe déguisé dans l'axe d'une fenêtre », même plan qu'au promeneur de chien.
+Maquette : `docs/superpowers/maquettes/halloween/` (`capture.mjs nuit=1`, notes « Nuit du 31 »). Décision du 2026-10-20 :
+la réaction des animaux (vague 1c, jamais codée jusqu'ici) est construite **dans cette PR**, pour les groupes déguisés et
+pour le promeneur de chien.
+
+### 5.1 Ce que le code a déjà, ce qui manque
+
+- Les passants (`people.ts`) bouclent en ligne droite (`loopX`) sans jamais s'arrêter ; `p.u` sert de **porte de présence**
+  (`p.u < pedestrianGate`). Un déguisement tiré par `p.u` lierait « déguisé » à « présent » : on tire comme les signes de fête,
+  par un hachage de l'id (`costumeU(id)`, comme `markU`).
+- `FESTIVE_SHARE.halloween = 0`, `FESTIVE_CROWD.halloween = { mult: 1, floor: 0 }` : à remplir. `kids` tombe à zéro la nuit :
+  les enfants du 31 ont leur propre plan.
+- Portes : `doorway.ts` (`passageAt`, seuil), `door-passage.ts` (`placeSill`, fondu dans l'encadrement), minuterie du hall
+  (`hallUntil`, `HALL_TIMER_S = 120`), `EntranceSprite`. Personne ne s'arrête à une porte aujourd'hui.
+- Entrées décorées : dans `install.ts` (`halloweenSets`, privé). À exposer : `halloweenDoors(date, width, height, seed)`.
+- Animaux : `PetAction` a `hiss`, `cower`, `hide`, pas d'aboiement ni de sursaut ; modèle d'interruption : l'orage
+  (`runner.ts` `stormStrikes`, `storm.ts` `stormPlan`). Aucun lien entre la rue et la pièce.
+
+### 5.2 Affluence et déguisements des passants (`intensity.ts`, `people.ts`)
+
+- `FESTIVE_SHARE.halloween = 0.45`, `FESTIVE_CROWD.halloween = { mult: 1.5, floor: 0.45 }` pendant la plage du 31
+  (17 h-23 h) ; la veille et le lendemain soir (19 h-minuit), une part de 0,06 sans hausse d'affluence (quelques déguisés
+  isolés) : nouvelle plage `halloween-eve` dans le calendrier, ou lecture de la date dans `cityIntensity`.
+- Déguisement d'un passant ordinaire : `costumeU(p.id) < festive.share` ; costume tiré du même hachage dans la liste adulte
+  (sorcière, vampire, diable, squelette, zombie, momie, chat noir) ; sinon un accessoire (chapeau pointu, cornes, oreilles)
+  pour une partie. Les accompagnateurs d'enfants : 30 % d'accessoire.
+- Pluie : la baisse existante (`weatherWalk`) s'applique ; parapluies comme aujourd'hui (`intensity.umbrellas`).
+
+### 5.3 Le plan de la soirée (`city/halloween-night.ts`, pur, nouveau)
+
+Comme la maquette : `halloweenNight(day, doors, decorated, width, seed, wet)` rend, pour la soirée, une liste de **groupes**
+(familles, jeunes, adultes déguisés) et de **farces**, tirés par minute de 16 h à minuit (`seed ^ hashString('halloween-night' +
+date)`). Chaque groupe a un trajet d'un bord à l'autre fait de pièces `walk | stop | run` ; on lit sa position à la seconde.
+Les passants ordinaires restent ceux de `people.ts` (avec leur déguisement §5.2) : le plan n'ajoute que les groupes qui
+s'arrêtent.
+
+| Groupe | Heures, débit par minute pour 900 px | Composition | Arrêts |
+| --- | --- | --- | --- |
+| Famille | 17 h 15 → 20 h 45, 1,4 au plus fort | 1-3 enfants déguisés (taille 0,55-0,7), seau citrouille ou sac ; un adulte derrière | entrée décorée 80 %, immeuble à citrouille allumée 35 % ; on ouvre 85 % (50 % sans décor) |
+| Jeunes | 18 h 50 → 23 h 15, 1,8 | 2-4 déguisés (90 %) | 18 % sonnent et s'enfuient une fois |
+| Adultes déguisés | 18 h 50 → 23 h 55, 1,4 | deux, au moins un déguisé | aucun |
+| Faire peur | 20 h 30 → 22 h 45, ≈ 1 / 7 min | un jeune tapi dans une entrée, un passant | — |
+
+- Débits ramenés à la largeur (comme `pedestriansFor`) ; pluie : familles × 0,35, jeunes × 0,7, adultes × 0,6.
+- **Une porte, une scène à la fois** : créneaux occupés par porte ; une bande qui arrive pendant celui d'une autre passe.
+- Costumes (enfants) : sorcière 2, super-héros 1,6, fantôme 1,5, citrouille 1,5, squelette 1,2, chat 1,2, diable 1,
+  vampire 0,8, momie 0,6, zombie 0,6 ; (jeunes) zombie 2, squelette 1,5, vampire 1,2, puis les autres, pas de citrouille.
+- Budget : les groupes comptent dans le budget des passants (≈ 14 groupes / 720 px) ; au-delà, les plus éloignés du centre
+  ne sont pas dessinés (le plan ne change pas).
+
+### 5.4 Les scènes à la porte
+
+| Scène | Durée | Déroulé (secondes depuis l'arrêt) | Porte et hall |
+| --- | --- | --- | --- |
+| Bonbons | 24 s | enfants au pas de la porte (0-2,4), l'aîné sonne (2,6), attente ; l'habitant tient une coupe, donne à chaque enfant à son tour (9 + 2,4 k), bonbons qui volent au seau tendu, « merci » (17-19), retour vers l'adulte resté au bord du trottoir | hall allumé à 4,5 (minuterie 2 min), porte ouverte de 7,5 à 20,5, habitant dans l'embrasure |
+| Pas de réponse | 13 s | sonnent deux fois (2,6 et 7), se regardent, repartent | rien |
+| Sonner et s'enfuir | 4 s + course | un jeune file à la porte, sonne (1,5), revient en courant ; la bande accroupie détale en riant (× 2,6 sur 42 unités) | hall allumé à 8, porte ouverte de 12 à 19,5, l'habitant regarde à gauche et à droite, personne |
+| Faire peur | ≈ 12 s | jeune tapi dans l'embrasure entrouverte (dans l'ombre, dès 22 s avant) ; il surgit (5,5, « bouh »), le passant sursaute, recule, main au cœur, repart plus vite ; le jeune rit et rentre | porte entrouverte puis refermée |
+
+- L'habitant qui ouvre n'est pas relié à un foyer : tenue tirée de la porte (comme l'habitant des décors d'entrée, PR 1), 30 %
+  avec un chapeau pointu ; il apparaît dans l'embrasure par le seuil existant (`door-passage.ts`), hall éclairé derrière lui.
+- Hall : l'événement pose `hallUntil` comme un passage d'habitant (`HALL_TIMER_S`), donc la cage s'éteint seule.
+- Rendu : nouvelle couche `content/halloween-night-layer.tsx` dans `city-life.tsx` (après les passants, avant les
+  véhicules), figures `GhibliFigure` avec `costume` (pantin 2D forcé, comme `santa`) et objets tenus (`held` : seau, sac,
+  coupe, parapluie) ; classique : `PersonSprite` avec `costume`.
+
+### 5.5 Déguisements (dessin, `figure/costumes.tsx`)
+
+Couche par-dessus le pantin (planche `planche-deguisements`) : couleurs de base remplacées (tenue, peau, cheveux), pièces
+derrière le corps (capes de vampire et de super-héros, queues de diable et de chat) et devant (chapeau de sorcière, robe,
+os, bandelettes, haillons, cornes, oreilles, boule de citrouille, masque, insigne). Fantôme : un drap remplace le pantin
+(bas qui ondule et traîne, trous des yeux, pieds dessous). Zombie : bras tendus en marchant. Vus de dos au pas de la porte :
+pas de visage.
+
+### 5.6 Animaux (vague 1c, `pets/`)
+
+- **Déclencheur** : un groupe déguisé (§5.3), un passant déguisé ou le promeneur de chien (`events.ts`) qui passe **dans
+  l'axe d'une fenêtre de la pièce**. Pont rue → pièce : la scène Ville publie les passages (`{ id, x, at }`, x en unités de
+  la rue) ; la pièce connaît la plage de la rue vue par chaque fenêtre (`sceneView`) et en tire un événement `outside`
+  dans `PetContext` (`{ id, since, window }`), un tirage par passage.
+- **Chien** éveillé (toute action sauf `sleep`) : interrompt son plan, court à la fenêtre (cellule `window` du plan de la
+  pièce), se dresse (pattes sur l'appui) et **aboie** 3 à 5 s (`bark`, nouvelle action), puis reprend. **Chat** éveillé à
+  moins de quelques cellules d'un chien qui aboie : **sursaut** (`startle`, dos rond, nouvelle action), puis une fois sur
+  trois `hiss` et `hide` sous un meuble. Robot : rien. Endormi : rien.
+- Plans à heure absolue comme l'orage (`barkPlan`, `startlePlan`), donc un rechargement retrouve le même état ;
+  mouvement réduit : pas de réaction.
+
+### 5.7 Mouvement réduit, budget, nuit
+
+- Mouvement réduit : groupes dessinés à leur place, debout ; aucune scène de porte, aucune farce, aucune réaction animale.
+- Les figures de la rue restent lisibles la nuit (elles sont sous les lampadaires, comme les passants aujourd'hui).
+- Après 23 h 55, plus de groupe ; les derniers finissent leur traversée.
 
 ## 6. Tests
 
@@ -177,8 +275,21 @@ ou deux accents, pas un mélange au hasard (la rue reste lisible).
 1. Spec et maquette des décors (ce document).
 2. **PR 1** : plan, calendrier, moteur (`halloween.ts`, `install.ts`), scènes de l'emploi du temps, rendu, tests, captures au
    banc `.superpowers/harness-ville` (`date=2026-10-24`, `2026-10-31`, `2026-11-03`).
-3. Maquette des déguisés et des farces.
-4. **PR 2** : nuit du 31, réaction des animaux.
+3. Maquette des déguisés et des farces (`capture.mjs nuit=1`).
+4. **PR 2** : nuit du 31 (§5), réaction des animaux (vague 1c) ; tests (§6 bis) et captures au banc (`date=2026-10-31`,
+   `h=18.5`, `h=21.2`, pluie).
+
+## 6 bis. Tests de la PR 2
+
+- Plan de la soirée : déterminisme ; aucun groupe avant 16 h ni après minuit ; familles seulement de 17 h 15 à 20 h 45 ;
+  arrêts seulement devant des entrées décorées ou des immeubles à citrouille ; jamais deux scènes en même temps à une porte ;
+  pluie : moins de groupes, mêmes farces possibles.
+- Scènes : porte ouverte et hall allumé exactement aux instants prévus ; pas de réponse : aucune lumière ; position des
+  figures continue d'une pièce de trajet à l'autre.
+- Passants : part de déguisés ≈ `share` sur plusieurs graines ; `p.u` (présence) inchangé ; aucun tirage déplacé.
+- Animaux : chien éveillé → `bark` à la fenêtre ; endormi → rien ; chat près d'un chien qui aboie → `startle` ; mouvement
+  réduit → rien ; même plan après rechargement.
+- Rendu (jsdom) : dix déguisements sans erreur, pantin 2D forcé, vu de dos sans visage.
 
 ## Points à valider
 
@@ -189,3 +300,5 @@ ou deux accents, pas un mélange au hasard (la rue reste lisible).
 2. **Retrait jusqu'au 8 novembre** (une semaine et un jour, pour couvrir le second week-end).
 3. **La mairie le samedi 24** (pose) : garder le samedi, ou avancer au vendredi 23 ?
 4. Proportions et taux du §2, à juger sur les captures (`nuit-31oct-21h`).
+5. **PR 2** : débits du §5.3 (« grand spectacle » sans saturer le trottoir), part des passants déguisés (0,45), fréquence de
+   « faire peur » (une fois toutes les 7 min), et l'habitant qui ouvre avec un chapeau pointu une fois sur trois.

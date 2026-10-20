@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useContext, useId, useMemo, useRef, type ReactElement } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useId, useMemo, useRef, type ReactElement } from 'react';
 import { activeFestivities, addDays, isoDate, publicHolidays } from '../core/library/city/calendar';
 import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
@@ -12,7 +12,7 @@ import { busArrivals, serviceKindOf } from '../core/library/city/traffic/bus-tim
 import { lampLit as streetLampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics, type CityMetrics } from '../core/library/city/metrics';
 import { actorShadow, nearestLamp } from '../core/library/city/night-light';
-import { EDGE_PAD, festiveMark, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
+import { EDGE_PAD, festiveMark, guiseOf, pedShown, pedestrianGate, pedestriansFor, type Pedestrian } from '../core/library/city/people';
 import { CUSTOMER_SCALE, customerGate, visitsFor, type Visit, type VisitLock } from '../core/library/city/shops/customers';
 import { paradeOn } from '../core/library/city/parade';
 import { inScene } from '../core/library/city/shops/scene/slots';
@@ -23,7 +23,11 @@ import { SHOP_DEFS, type ShopTypeId } from '../core/library/city/shops/catalog';
 import type { StaffShift } from '../core/library/city/shops/staff';
 import type { Vehicle } from '../core/library/city/vehicles';
 import { facingYaw, phaseIndexOf } from '../core/library/figure/gait';
-import { loopX } from '../core/library/scene-world';
+import type { ArmPose } from '../core/library/figure/skeleton';
+import { WORLD_MARGIN, loopX } from '../core/library/scene-world';
+import { publishStreetPasses } from './street-passes';
+import type { StreetPass } from '../core/library/pets/outside';
+import { pieceAt } from '../core/library/city/halloween-night';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { useArtStyle } from './art-setting';
@@ -66,6 +70,9 @@ import { useSceneLife, type SceneLife } from './use-scene-life';
 import { WindowLifeLayer } from './window-life';
 import { RoofLifeLayer } from './roof-life-layer';
 import { HalloweenLayer } from './halloween-layer';
+import { HalloweenNightLayer, nightHalls } from './halloween-night-layer';
+import { halloweenNight, isHalloweenNight, type NightPlan } from '../core/library/city/halloween-night';
+import { halloweenDoorIds } from '../core/library/city/install';
 
 // Vie de la scène Ville : passants, habitants qui sortent de leur immeuble ou y rentrent, deux files de circulation,
 // les événements de la ville (vague 1b-i), les clients des commerces et l'équipe d'un chantier (vague 1b-iv-a,
@@ -426,6 +433,23 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Vie des logements (même objet que celui du calque des fenêtres de CityScene : cache partagé de use-scene-life) : vie
   // derrière les fenêtres, Ghibli seulement. Déménagement : un local de la rue change de commerce aujourd'hui.
   const life = useSceneLife(facades, city, seed, shops.street.some((s) => s.change !== null));
+  // Nuit d'Halloween (Ghibli) : plan de la soirée du 31 (city/halloween-night.ts) ; entrées décorées et immeubles à citrouille.
+  const nightDay = city.day.date;
+  const nightPlan = useMemo<NightPlan | null>(() => {
+    if (!ghibli || !isHalloweenNight(nightDay) || doors.length === 0) return null;
+    const decorated = halloweenDoorIds(nightDay, 17 * 60, width, height, seed);
+    const pumpkins = new Set<string>();
+    for (const it of life?.halloween?.items ?? []) {
+      if (it.kind !== 'pumpkin') continue;
+      const dx = life!.byFacadeHome.get(it.dwelling)?.doorX;
+      if (dx === null || dx === undefined) continue;
+      const d = doors.reduce((a, b) => (Math.abs(b.x + DOOR_WIDTH / 2 - dx) < Math.abs(a.x + DOOR_WIDTH / 2 - dx) ? b : a));
+      if (Math.abs(d.x + DOOR_WIDTH / 2 - dx) < 3 * DOOR_WIDTH) pumpkins.add(d.id);
+    }
+    return halloweenNight(nightDay, { doors, decorated, pumpkins, width, unit: metrics.unit }, seed, city.precip >= 0.2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghibli, nightDay.y, nightDay.m, nightDay.d, doors, width, height, seed, metrics.unit, life, city.precip >= 0.2]);
+  const nightHallBuf = useRef<Map<number, number>>(new Map());
   // Ciel de mauvais temps (RoomView : précipitations 0,1 par temps couvert, 0,7 sous la pluie) : on allume en plein jour.
   const gloom = city.precip > 0 || city.storm;
   // Bouts de trajet des clients : les entrées d'immeubles (centres), comme les habitants.
@@ -499,6 +523,8 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   };
   // Minute de la scène (fractionnaire) à l'instant mural s, dans le repère de l'horloge de la scène (retours accrochés).
   const sceneMinuteAt = (s: number): number => (sceneClock.current ? sceneClock.current.m + (s - sceneClock.current.base) / 60 : city.minutes);
+  // Seconde de la journée de la scène à l'instant mural s.
+  const sceneSecondsAt = (s: number): number => sceneMinuteAt(s) * 60;
 
   // Terrasses : météo de la minute et des 10 précédentes (hystérésis du moteur).
   const terraceSky = useTerraceWeather(weather, rainy, city.minutes);
@@ -642,6 +668,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   const zonesNow = useRef<DodgeZone[]>([]);
   const pedsByDepth = useMemo(() => [...peds].sort((a, b) => b.depth - a.depth), [peds]);
   const marks = useMemo(() => new Map(peds.map((p) => [p.id, festiveMark(p, intensity)] as const)), [peds, intensity]);
+  // Halloween : déguisement de chaque passant (zombie : bras tendus, sauf sous un parapluie).
+  const guises = useMemo(() => new Map(peds.map((p) => [p.id, guiseOf(p, intensity)] as const)), [peds, intensity]);
+  const pedArms = (id: string): ArmPose => {
+    const arms = markArms(marks.get(id));
+    return arms === 'swing' && guises.get(id) === 'zombie' && !intensity.umbrellas ? 'handlebar' : arms;
+  };
   // Placement à chaque image. La table des nœuds est remplie au premier appel (après le montage) ;
   // tout est placé une fois, puis bougent les présents et, pendant leur fondu, ceux qui viennent de disparaître.
   const place = useMemo(() => {
@@ -778,7 +810,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           const pose = pedPose(p, metrics, t, still);
           // Le chef du groupe (dernière figure) tient son signe de fête : bras `hold` pour un objet à la main.
           const figs = pedFigs.get(p.id) ?? [];
-          const arms = markArms(marks.get(p.id));
+          const arms = pedArms(p.id);
           figs.forEach((fig, i) => poseFigure(figures, fig, i === figs.length - 1 && arms !== 'swing' ? { ...pose, arms } : pose));
         }
       }
@@ -867,6 +899,15 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         // Clients des commerces hors scène G4b (ceux de la scène : placeScene).
         warmCustomers(nodes, shopVisits, gates, width, metrics, t, figures, customerWarm, muted, visitLock.current);
       }
+      // Nuit d'Halloween : on sonne, l'habitant descend ouvrir ; le hall s'allume (même minuterie que les habitants).
+      if (nightPlan && !still) {
+        const s = sceneSecondsAt(t);
+        for (const [x, until] of nightHalls(nightPlan, s, nightHallBuf.current)) {
+          const wall = t + (until - s);
+          if ((hallUntil.current.get(x) ?? -Infinity) < wall) hallUntil.current.set(x, wall);
+          if ((stairUntil.current.get(x) ?? -Infinity) < wall) stairUntil.current.set(x, wall);
+        }
+      }
       // Halls : allumés tant que la minuterie court et qu'il fait sombre ; n'écrire qu'à la bascule (allumage franc, extinction douce).
       for (const [x, node] of hallNodes) {
         const on = hallLit(hallUntil.current, x, t, hallDark);
@@ -939,8 +980,36 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
     // `terraceSky` : la météo relue après le montage peut sortir une terrasse hors du changement de minute ; le plafond des
     // figurants (shopSpriteBudget) doit alors compter ses convives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, sceneShops, traffic, litLamps, hallDark, stairs, dodgeZones, life]);
+  }, [peds, trips, pedActive, flow, metrics, width, still, events, frame, shopVisits, gates, city.minutes, terraceSky, ghibli, figures, props, marks, guises, sceneShops, traffic, litLamps, hallDark, stairs, dodgeZones, life, nightPlan]);
   useWallClockLoop(place, [place]);
+
+  // Passages de la rue pour les animaux de la pièce (vague 1c) : groupes et passants déguisés, promeneur de chien.
+  const passState = useRef({ nightPlan, peds, guises, events: events.active, frame, width, still });
+  passState.current = { nightPlan, peds, guises, events: events.active, frame, width, still };
+  useEffect(
+    () =>
+      publishStreetPasses(seed, (t) => {
+        const st = passState.current;
+        if (st.still) return [];
+        const out: StreetPass[] = [];
+        if (st.nightPlan) {
+          const s = sceneSecondsAt(t);
+          for (const g of st.nightPlan.groups) {
+            const p = pieceAt(g, s);
+            if (p) out.push({ id: g.id, kind: 'costumed', x: p.x0 + ((p.x1 - p.x0) * (s - p.t0)) / Math.max(1e-6, p.t1 - p.t0) });
+          }
+        }
+        for (const p of st.peds) {
+          if (!st.guises.get(p.id) || !shownPeds.current.get(p.id)) continue;
+          const turn = Math.floor((p.phase + p.speed * t) / (st.width + 2 * WORLD_MARGIN));
+          out.push({ id: `${p.id}#${turn}`, kind: 'costumed', x: loopX(p.phase, p.dir * p.speed, st.width, t) });
+        }
+        for (const e of st.events) if (e.id === 'dog-walker') out.push({ id: e.key, kind: 'dog-walker', x: placeEvent(e, t, st.frame).x });
+        return out;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seed],
+  );
 
   // Rendu initial : mêmes calculs qu'à la première image, pour que le premier dessin (et les tests) soient justes.
   const t0 = still ? frozen.current : Date.now() / 1000;
@@ -1163,6 +1232,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-role={p.role}
               data-profile={p.profile}
               data-mark={mark ?? undefined}
+              data-guise={guises.get(p.id) ?? undefined}
               data-active={active ? 'true' : 'false'}
               transform={pedTransform(p, metrics, width, t0, !ghibli, dodgeZones)}
               opacity={active ? 1 : 0}
@@ -1183,8 +1253,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
                   sky={sky}
                   rainy={rainy}
                   umbrella={intensity.umbrellas}
-                  initial={{ ...pedPose(p, metrics, t0, still), arms: markArms(mark) }}
+                  initial={{ ...pedPose(p, metrics, t0, still), arms: pedArms(p.id) }}
                   hidden={!active}
+                  guise={guises.get(p.id)}
                   citizen={citizenSeed(p.id)}
                   kind={kindOfProfile(p.profile)}
                   waitFor3D
@@ -1198,6 +1269,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         })}
         {of((e) => e.layer === 'sidewalk').map(eventNode)}
         {/* Foule du défilé du 14 juillet : au bord du trottoir, derrière les barrières (posées sur la chaussée) et les équipes. */}
+        {nightPlan && <HalloweenNightLayer plan={nightPlan} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} minutes={city.minutes} sceneS={sceneSecondsAt} frozenT={frozen.current!} />}
         <ParadeCrowd width={width} seed={seed} sky={sky} still={still} rainy={rainy} dayFests={dayFests} minutes={city.minutes} metrics={metrics} doorXs={doorXs} ghibli={ghibli} />
         {/* Scène, équipes à l'échelle et porteurs : devant les passants (un passant passe toujours derrière une équipe). */}
         <InstallLayer {...install} part="crew" />

@@ -9,9 +9,10 @@ import { isStanding } from '../room-grid';
 import { hasRole } from './roles';
 import { proposeScene, sceneIsValid } from './scenes';
 import { huddlePlans, stormPlan } from './storm';
+import { barkPlan, startlePlan, STARTLE_NEAR } from './outside';
 import type { Standing } from './route';
 
-export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower' | 'scan' | 'standby' | 'charge' | 'beep' | 'howl' | 'shake' | 'umbrella' | 'shortcircuit' | 'reboot';
+export type Pose = 'walk' | 'jump' | 'sit' | 'groom' | 'stretch' | 'yawn' | 'sleep' | 'eat' | 'scratch' | 'hide' | 'purr' | 'pant' | 'sniff' | 'greet' | 'play' | 'hiss' | 'cower' | 'scan' | 'standby' | 'charge' | 'beep' | 'howl' | 'shake' | 'umbrella' | 'shortcircuit' | 'reboot' | 'bark' | 'startle';
 export type PetFrame = { id: string; species: Species; coat: Coat; name: string; pose: Pose; facing: 'l' | 'r'; behind: number; top: boolean; /* id du meuble qui porte l'animal, null au sol */ on: string | null; pos: Pt; /* ordonnée des pieds : départage deux animaux au même rang de dessin */ depthY: number };
 
 // Un animal posé sur un dessus (étagère, bureau, commode, guéridon, arbre à chat) est dessiné « en haut ».
@@ -20,6 +21,8 @@ const isTop = (room: Room, on: string | null): boolean => {
   return host !== undefined && isStanding(host) && hasRole(host.kind, 'catTop');
 };
 const FUTURE_SLACK_MS = 60_000;
+// Un passage dans la rue n'est plus une nouvelle au-delà de ce délai (onglet revenu au premier plan, rechargement).
+const OUTSIDE_FRESH_MS = 3000;
 
 // Si l'animal est en plein saut, son état « d'abandon » est le point d'atterrissage du saut (jamais en l'air).
 function settledState(plan: PetPlan, now: number): PetState {
@@ -78,6 +81,8 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
   // Contexte de l'image en cours ; dernier orage traité (une seule réaction par orage) ; chiens déjà ébroués (par fin de pluie).
   let curCtx: PetContext | undefined;
   let stormSeen = 0;
+  // Dernier passage dans la rue traité (vague 1c : une réaction par passage).
+  let outsideSeen = '';
   const shook = new Set<string>();
 
   const planOf = (room: Room, id: string): PetPlan | undefined => plans.get(id) ?? room.pets.find((p) => p.id === id)?.plan;
@@ -103,6 +108,7 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
       plans.clear();
       roomId = room.id;
       stormSeen = 0;
+      outsideSeen = '';
       shook.clear();
     }
     for (const id of Array.from(plans.keys())) if (!room.pets.some((p) => p.id === id)) plans.delete(id);
@@ -156,6 +162,30 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
     }
   };
 
+  // Passage dans la rue dans l'axe d'une fenêtre (vague 1c) : le chien éveillé court à la fenêtre et aboie ; le chat éveillé
+  // près d'un chien qui aboie sursaute (une fois sur trois, file sous le canapé). Un animal qui dort ne réagit pas.
+  const outsidePasses = (room: Room, now: number, windowX: number): void => {
+    const asleep = (id: string): boolean => {
+      const plan = planOf(room, id);
+      return plan !== undefined && plan.action === 'sleep' && now < planEndsAt(plan) && stateAt(plan, now).phase === 'act';
+    };
+    const barkers: number[] = [];
+    for (const dog of room.pets.filter((p) => p.species === 'dog')) {
+      if (asleep(dog.id) || isRiding(planOf(room, dog.id), now)) continue;
+      const at = standingOf(room, dog.id, now);
+      if (!at) continue;
+      record(dog.id, withJump(barkPlan(envFor(room, 'dog', takenBy(room, dog.id, now), dog.id), at.standing, windowX, now), at.jump));
+      barkers.push(at.standing.pt.x);
+    }
+    if (barkers.length === 0) return;
+    for (const cat of room.pets.filter((p) => p.species === 'cat')) {
+      if (asleep(cat.id) || isRiding(planOf(room, cat.id), now)) continue;
+      const at = standingOf(room, cat.id, now);
+      if (!at || !barkers.some((x) => Math.abs(x - at.standing.pt.x) < STARTLE_NEAR)) continue;
+      record(cat.id, withJump(startlePlan(envFor(room, 'cat', takenBy(room, cat.id, now), cat.id), at.standing, now, rng() < 1 / 3), at.jump));
+    }
+  };
+
   // Le plan qui suit une sieste sur le robot : un saut de descente, puis le choix habituel depuis le sol (en mouvement réduit : posé directement).
   const dismount = (env: BrainEnv, room: Room, plan: PetPlan, now: number): PetPlan => {
     const { landing, jump } = descent(room, plan, now);
@@ -175,6 +205,12 @@ export function createPetRunner(opts: { rng?: Rng; still?: boolean; onPlan: (pet
       if (ctx?.storm && ctx.storm.id !== stormSeen && now - ctx.storm.since < STORM_HOLD_MS) {
         stormSeen = ctx.storm.id;
         stormStrikes(room, now);
+      }
+      // Passage dans la rue : pas pendant l'orage, ni en mouvement réduit.
+      const stormy = ctx?.storm !== undefined && ctx.storm !== null && now - ctx.storm.since < STORM_HOLD_MS;
+      if (ctx?.outside && ctx.outside.id !== outsideSeen && now - ctx.outside.since < OUTSIDE_FRESH_MS) {
+        outsideSeen = ctx.outside.id;
+        if (!still && !stormy) outsidePasses(room, now, ctx.outside.window);
       }
       return room.pets.map((pet) => {
         const env = envFor(room, pet.species, takenBy(room, pet.id, now), pet.id);

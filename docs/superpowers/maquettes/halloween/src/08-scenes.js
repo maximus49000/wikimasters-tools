@@ -117,7 +117,7 @@ function renderScene(ctx, T, D, view) {
   const states = street.facades.map((f) => f.homes.map((hm) => (hm.hh ? homeState(hm, T) : null)));
   const cull = cullAnimated(street.facades, states, W);
   let prev = null;
-  const scs = street.facades.map((f, i) => ({ T, D, W, states: states[i], street: hwStreetEvents(f, T, D, streetEvents(f, T, W)), doorX: f.bayX(f.doorBay) }));
+  const scs = street.facades.map((f, i) => ({ T, D, W, states: states[i], street: n31StreetEvents(f, T, D, hwStreetEvents(f, T, D, streetEvents(f, T, W))), doorX: f.bayX(f.doorBay) }));
   street.facades.forEach((f, i) => { paintFacade(ctx, f, scs[i], { leftTouch: prev && prev.x + prev.w >= f.x - 0.5 ? Math.max(prev.top, f.top) + 10 : null }); paintStairFigure(ctx, f, scs[i]); prev = f; });
   for (const f of street.facades) for (const fl of f.flocks || []) flockPaint(ctx, fl, T, true);
   paintStreet(ctx);
@@ -125,6 +125,7 @@ function renderScene(ctx, T, D, view) {
   paintHwLamps(ctx, T, D);
   street.facades.forEach((f, i) => paintWalkers(ctx, f, scs[i]));
   street.facades.forEach((f, i) => paintHwStreet(ctx, f, scs[i]));
+  paintN31(ctx, street, T, D);                                    // nuit du 31 : déguisés, porte-à-porte, farces, pluie
   ctx.restore();
   return { cull, street };
 }

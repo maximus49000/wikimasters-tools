@@ -37,15 +37,18 @@ export type CityIntensity = {
 // Part des passants qui portent le signe de la fête (0 = pas de signe).
 export const FESTIVE_SHARE: Readonly<Record<FestivityId, number>> = {
   epiphany: 0.25, valentine: 0.3, easter: 0.35, 'may-day': 0.4, bastille: 0.35, armistice: 0.3, 'new-year': 0.5, music: 0.4, 'christmas-eve': 0,
-  // Halloween : les déguisements arrivent avec la nuit du 31 (PR 2).
-  halloween: 0,
+  // Halloween : part des passants déguisés le soir du 31 (people.ts, `guiseOf`).
+  halloween: 0.45,
 };
 // Affluence pendant la fête : `mult` multiplie les marcheurs, `floor` est un plancher (avant météo).
 export const FESTIVE_CROWD: Readonly<Record<FestivityId, { mult: number; floor: number }>> = {
   epiphany: { mult: 1, floor: 0 }, valentine: { mult: 1.2, floor: 0 }, easter: { mult: 1, floor: 0 }, 'may-day': { mult: 0.8, floor: 0 },
   bastille: { mult: 1.4, floor: 0.3 }, armistice: { mult: 0.7, floor: 0 }, 'new-year': { mult: 1.4, floor: 0.4 }, music: { mult: 1.5, floor: 0.5 }, 'christmas-eve': { mult: 0.6, floor: 0 },
-  halloween: { mult: 1, floor: 0 },
+  halloween: { mult: 1.5, floor: 0.45 },
 };
+// Veille et lendemain soir d'Halloween (19 h → minuit) : quelques déguisés isolés, sans hausse d'affluence.
+export const HALLOWEEN_EVE_SHARE = 0.06;
+const halloweenEve = (d: { m: number; d: number }, hour: number): boolean => hour >= 19 && ((d.m === 10 && d.d === 30) || (d.m === 11 && d.d === 1));
 
 // Part des marcheurs ordinaires qui restent en mouvement pendant la fermeture de la route.
 export const CLOSED_WALKERS = 0.3;
@@ -119,5 +122,6 @@ export function cityIntensity(ctx: CityContext): CityIntensity {
 
   const sport = clamp01((bump(hour, 6, 7, 9, 10) + bump(hour, 17, 18, 19.5, 21)) * 0.12 * (weekendLike ? 1.4 : 1) * (1 - wet) * light * (ctx.storm ? 0.3 : 1) * (ctx.snow ? 0.5 : 1));
 
-  return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike, festive: fest && FESTIVE_SHARE[fest] > 0 ? { id: fest, share: FESTIVE_SHARE[fest] } : null, closed };
+  const festive = fest && FESTIVE_SHARE[fest] > 0 ? { id: fest, share: FESTIVE_SHARE[fest] } : !fest && halloweenEve(ctx.day.date, hour) ? { id: 'halloween' as const, share: HALLOWEEN_EVE_SHARE } : null;
+  return { traffic, walkers, suits, schoolTo, schoolFrom, kids, sport, umbrellas: wet >= 0.2, weekendLike, festive, closed };
 }

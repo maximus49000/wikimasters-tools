@@ -9,7 +9,8 @@ import { shapeFromSignature, type Shape } from './dress';
 // partie éclairée. Les couleurs ne sont pas ici : chaque tracé porte une case (`slot`) que le dessin relie à une variable CSS.
 // Tenues de travail : `vest` (gilet), `band` (bande claire du gilet), `apron` (tablier). Père Noël (G5) : `beard` (barbe,
 // moustache, sourcils), `fur` (fourrure : ourlet, poignets, bord du bonnet, pompon), `belt`, `buckle`, `glove`, `nose`, `cheek`.
-export type Slot = 'skin' | 'top' | 'bottom' | 'hair' | 'hat' | 'acc' | 'shoe' | 'umb' | 'vest' | 'band' | 'apron' | 'beard' | 'fur' | 'belt' | 'buckle' | 'glove' | 'nose' | 'cheek';
+// Déguisements d'Halloween : `cos`, `cos2`, `cos3`, `bone` (dress.ts, GUISE_COLORS).
+export type Slot = 'skin' | 'top' | 'bottom' | 'hair' | 'hat' | 'acc' | 'shoe' | 'umb' | 'vest' | 'band' | 'apron' | 'beard' | 'fur' | 'belt' | 'buckle' | 'glove' | 'nose' | 'cheek' | 'cos' | 'cos2' | 'cos3' | 'bone';
 export type BakedPart = { slot: Slot; shade: string; lit: string | null };
 export type BakedGroup = { ink: string; parts: BakedPart[] };
 export type Baked = { groups: BakedGroup[]; eyes: P2[] };
@@ -115,6 +116,130 @@ export function anchorsOf(key: FigureKey): Record<Anchor, readonly [number, numb
   return a;
 }
 
+// ── Déguisements d'Halloween (spec Halloween §5.5, maquette `planche-deguisements`) ──
+// Bandelettes de la momie : deux traits en travers d'un segment de membre (rayon `r`).
+function wrapBands(a: V3, b: V3, r: number): Part[] {
+  return [0.3, 0.68].map((t) => {
+    const c = add3(mul3(a, 1 - t), mul3(b, t));
+    return capPart(add3(c, [-r, 0.6, 0.6]), add3(c, [r, -0.6, 0.6]), 0.26, 0.26, 'cos2');
+  });
+}
+// Visage tourné vers nous (repère du tronc tourné de `turn`) : pièces de face (citrouille sculptée, insigne, côtes).
+const facing = (key: FigureKey, turn: number): boolean => Math.sin((key.yaw * Math.PI) / 8 + turn) > -0.25;
+// Pièces sur le tronc : côtes du squelette, bandelettes du tronc, citrouille (boule orange sculptée), insigne du super-héros.
+function guiseTorso(guise: NonNullable<Shape['guise']>, q: Pose, key: FigureKey, shC: V3, waist: V3, turn: number): Part[] {
+  const fr = q.fr;
+  const band = (u: number): V3 => at(q.pelvis, fr, u * Math.sin(q.lean), u * Math.cos(q.lean), 0);
+  const front = facing(key, turn);
+  const out: Part[] = [];
+  if (guise === 'skeleton' && front) for (const u of [8.2, 6.8, 5.4]) out.push(hullPart([...frontArc(band(u), fr, turn, 8.6, 6.2), ...frontArc(band(u + 0.45), fr, turn, 8.6, 6.2)], 'bone', 0.8));
+  if (guise === 'mummy') for (const u of [2.5, 5, 7.5]) out.push(capPart(at(band(u), fr, 3, 0.8, -4), at(band(u), fr, 3, -0.8, 4), 0.26, 0.26, 'cos2'));
+  if (guise === 'hero' && front) {
+    const c = at(band(7.4), frameOf((key.yaw * Math.PI) / 8 + turn), 3.2, 0, 0);
+    out.push(capPart(c, add3(c, [0.01, 0, 0]), 1.2, 1.2, 'cos3'));
+  }
+  void shC;
+  void waist;
+  return out;
+}
+// Pièces derrière le corps (triées avec lui par profondeur : devant quand on le voit de dos) : capes, queues.
+function guiseBack(guise: NonNullable<Shape['guise']>, q: Pose, shC: V3, key: FigureKey, turn: number): Group[] {
+  const fr = q.fr;
+  const out: Group[] = [];
+  // Citrouille : grosse boule orange sculptée par-dessus le tronc et le haut des bras (les bras sortent des côtés).
+  if (guise === 'pumpkin') {
+    const band = (u: number): V3 => at(q.pelvis, fr, u * Math.sin(q.lean), u * Math.cos(q.lean), 0);
+    const rings: V3[] = [];
+    for (const [u, w, d] of [[0, 12, 10], [2.5, 19, 16], [5, 21, 18], [7.5, 19, 16], [9.8, 12, 10]] as const) rings.push(...ring(band(u), fr, turn, w, d, 14));
+    const parts: Part[] = [hullPart(rings, 'cos')];
+    if (facing(key, turn)) {
+      const tri = (u: number, l: number, s: number): Part => hullPart([at(band(u), fr, 9.2, -s * 0.5, l - s), at(band(u), fr, 9.2, -s * 0.5, l + s), at(band(u), fr, 9.2, s * 0.9, l)], 'cos3', 0.6);
+      parts.push(tri(6.4, -3, 1.3), tri(6.4, 3, 1.3), hullPart([at(band(3.2), fr, 9.6, 0.7, -4.2), at(band(3.2), fr, 9.6, 0.7, 4.2), at(band(3.2), fr, 9.6, -1.1, 2.8), at(band(3.2), fr, 9.6, -1.1, -2.8)], 'cos3', 0.6));
+    }
+    out.push({ parts, z: project(q.pelvis)[2] + 3 });
+  }
+  if (guise === 'vampire' || guise === 'hero') {
+    const drop = guise === 'vampire' ? -10.5 : -7;
+    const pts: V3[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const a = Math.PI / 2 + (i / 8) * Math.PI;
+      pts.push(at(shC, fr, Math.cos(a) * 3.4 - 0.6, 0.6, Math.sin(a) * 6));
+      pts.push(at(q.pelvis, fr, Math.cos(a) * 5.4 - 2.4, drop, Math.sin(a) * (guise === 'vampire' ? 9 : 7.6)));
+    }
+    // De face, on voit l'intérieur de la cape du vampire (doublure rouge) ; de dos, le dessus noir.
+    const inside = guise === 'vampire' && fr.F[2] > -0.3;
+    const z = project(at(q.pelvis, fr, -3.2, 4, 0))[2];
+    out.push({ parts: [hullPart(pts, inside ? 'cos2' : 'cos', 0.9)], z });
+  }
+  if (guise === 'devil' || guise === 'cat') {
+    const cat = guise === 'cat';
+    const p0 = at(q.pelvis, fr, -2.8, 1, 0);
+    const p1 = at(q.pelvis, fr, -6.2, -1.6, 0.6);
+    const p2 = at(q.pelvis, fr, -9.4, cat ? 5.5 : 1.2, 1.2);
+    const parts = [capPart(p0, p1, 0.65, 0.55, 'cos'), capPart(p1, p2, 0.55, cat ? 0.6 : 0.45, 'cos')];
+    if (!cat) parts.push(hullPart([at(p2, fr, 0.4, 1.4, 0), at(p2, fr, 0.4, -1.4, 0), at(p2, fr, -2.2, 0, 0)], 'cos', 0.7));
+    out.push({ parts, z: project(p1)[2] });
+  }
+  return out;
+}
+// Champ du masque du super-héros (bande sur les yeux, devant seulement).
+const MASK = (el: number, az: number): number => Math.min(el + 0.12, 0.34 - el, 1.35 - Math.abs(az));
+// Pièces sur la tête : chapeau pointu, cornes, oreilles de chat, tige de la citrouille, masque, bandelettes.
+function guiseHead(guise: NonNullable<Shape['guise']>, q: Pose, sph: (el: number, az: number) => V3, headIdx: number, region: (P: P2[], slot: Slot) => Part): Part[] {
+  const hf = q.headFrame;
+  const out: Part[] = [];
+  if (guise === 'witch' || guise === 'witch-hat') {
+    const c = at(q.head, hf, -0.3, HEAD_R * 0.55, 0);
+    out.push(hullPart([...ring(c, hf, 0, 14, 14, 14), ...ring(add3(c, [0, 0.5, 0]), hf, 0, 13.4, 13.4, 14)], 'cos', 0.88));
+    out.push(hullPart([...ring(add3(c, [0, 0.4, 0]), hf, 0, 8, 8, 12), at(q.head, hf, -2.4, HEAD_R * 3.6, 0)], 'cos'));
+    out.push(hullPart([...ring(add3(c, [0, 0.7, 0]), hf, 0, 8.1, 8.1, 12), ...ring(add3(c, [0, 1.9, 0]), hf, 0, 7.4, 7.4, 12)], 'cos2', 0.8));
+  }
+  if (guise === 'devil' || guise === 'horns') for (const sgn of [-1, 1]) out.push(capPart(sph(0.85, sgn * 0.75), at(q.head, hf, 1, HEAD_R + 3.2, sgn * 3.2), 1.05, 0.22, 'cos'));
+  if (guise === 'cat' || guise === 'ears') {
+    for (const sgn of [-1, 1]) {
+      out.push(hullPart([sph(0.95, sgn * 0.55), sph(0.95, sgn * 1.45), at(q.head, hf, -0.2, HEAD_R + 3, sgn * 3.4)], 'cos', 0.85));
+      out.push(hullPart([sph(1.05, sgn * 0.8), sph(1.05, sgn * 1.2), at(q.head, hf, 0, HEAD_R + 1.9, sgn * 3.1)], 'cos2', 0.85));
+    }
+  }
+  if (guise === 'pumpkin') out.push(capPart(at(q.head, hf, 0, HEAD_R - 0.4, 0), at(q.head, hf, 0.6, HEAD_R + 2.4, 0.4), 0.75, 0.6, 'cos2'));
+  if (guise === 'hero') for (const P of regionPolys('hero-mask', MASK, headIdx)) out.push(region(P, 'cos2'));
+  if (guise === 'mummy') for (const y of [2, 0, -2]) out.push(capPart(add3(q.head, [-4, y + 0.7, 2.6]), add3(q.head, [4, y - 0.7, 2.6]), 0.28, 0.28, 'cos2'));
+  return out;
+}
+// Fantôme : un drap remplace le corps (tête, tronc, bras et jambes) ; seules les chaussures dépassent dessous. Les yeux du
+// pantin deviennent les trous du drap.
+function ghostOf(q: Pose, key: FigureKey): Baked {
+  const fr = q.fr;
+  const feet: Group[] = q.legs.map((g) => {
+    const p = capPart(g.ankle, g.toe, 1.15, 1.05, 'shoe');
+    return { parts: [p], z: p.z };
+  });
+  const hf = q.headFrame;
+  const top: V3[] = [];
+  for (let i = 0; i < 12; i++) for (const el of [0.1, 0.7, 1.2]) {
+    const az = (i / 12) * 2 * Math.PI;
+    const ce = Math.cos(el);
+    top.push(add3(q.head, add3(add3(mul3(hf.F, ce * Math.cos(az) * HEAD_R * 1.15), mul3(hf.R, ce * Math.sin(az) * HEAD_R * 1.15)), mul3(hf.U, Math.sin(el) * HEAD_R * 1.15))));
+  }
+  const hem = at([q.pelvis[0], 1.4, q.pelvis[2]], fr, -0.8, 0, 0);
+  const sheet = hullPart([...top, ...ring(at(q.pelvis, fr, 0, 10.4, 0), fr, q.shoulderTurn, 13, 9), ...ring(hem, fr, q.pelvisTurn, 17, 12, 14)], 'cos', 0.88);
+  const eyes: P2[] = [];
+  for (const sgn of [-1, 1]) {
+    const az = sgn * 0.38;
+    const n = add3(add3(mul3(hf.F, Math.cos(az)), mul3(hf.R, Math.sin(az))), [0, 0, 0]);
+    if (n[1] * Math.sin((12 * Math.PI) / 180) + n[2] * Math.cos((12 * Math.PI) / 180) > 0.2) {
+      const e = project(add3(q.head, add3(mul3(hf.F, Math.cos(az) * HEAD_R * 1.15), mul3(hf.R, Math.sin(az) * HEAD_R * 1.15))));
+      eyes.push([Math.round(e[0] * 10) / 10, Math.round(e[1] * 10) / 10]);
+    }
+  }
+  void key;
+  const all: Group[] = [...feet.sort((a, b) => a.z - b.z), { parts: [sheet], z: Infinity }];
+  return {
+    groups: all.map((g) => ({ ink: g.parts.map((p) => pathOf(p.P)).join(''), parts: g.parts.map((p) => ({ slot: p.slot, shade: pathOf(p.P), lit: p.lit ? pathOf(p.lit) : null })) })),
+    eyes,
+  };
+}
+
 export function bakeFigure(s: Shape, key: FigureKey): Baked {
   const q: Pose = poseOfKey(s, key);
   const fr = q.fr;
@@ -123,6 +248,10 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
   const bare = s.bottom === 'skirt' || s.bottom === 'shorts';
   const coat = s.top === 'coat';
   const santa = s.santa === true;
+  const guise = s.guise;
+  if (guise === 'ghost') return ghostOf(q, key);
+  const bones = guise === 'skeleton';
+  const wraps = guise === 'mummy';
   for (const g of q.legs) {
     const parts: Part[] = [];
     const legSlot: Slot = bare ? 'skin' : 'bottom';
@@ -134,6 +263,8 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
     parts.push(capPart(g.ankle, g.toe, 1.15, 1.05, 'shoe'));
     // Bottes du père Noël : tige noire au-dessus de la cheville, plus large que le tibia.
     if (santa) parts.push(capPart(g.ankle, add3(g.ankle, [0, SANTA.boot, 0]), 1.6, 1.75, 'shoe'));
+    if (bones) parts.push(capPart(g.hip, g.knee, 0.42, 0.38, 'bone'), capPart(g.knee, g.ankle, 0.38, 0.34, 'bone'));
+    if (wraps) parts.push(...wrapBands(g.hip, g.knee, 2.4), ...wrapBands(g.knee, g.ankle, 1.8));
     legsG.push({ parts, z: Math.max(...parts.map((p) => p.z)) });
   }
   legsG.sort((a, b) => a.z - b.z);
@@ -179,6 +310,7 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
     const kn = q.legs.map((g) => add3(mul3(g.hip, 0.3), mul3(g.knee, 0.7)));
     torso.push(hullPart([...frontArc(waist, fr, (q.shoulderTurn + q.pelvisTurn) / 2, 8.6, 6.2), ...frontArc(mul3(add3(kn[0]!, kn[1]!), 0.5), fr, q.pelvisTurn, 9.6, 6.8)], 'apron'));
   }
+  if (guise) torso.push(...guiseTorso(guise, q, key, shC, waist, waistTurn));
   if (s.acc === 'scarf') torso.push(hullPart(ring(at(shC, fr, 0, 0.9, 0), fr, q.shoulderTurn, 6.5, 4.4, 8), 'acc', 0.8));
   midG.push({ parts: torso, z: project(q.pelvis)[2] });
   if (s.acc === 'backpack') {
@@ -196,6 +328,8 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
       const along = (t: number): V3 => add3(g.hand, mul3(d, t / n));
       ps.push(capPart(along(1), along(2.4), SANTA.cuff, SANTA.cuff, 'fur'));
     }
+    if (bones) ps.push(capPart(g.sh, g.elb, 0.38, 0.36, 'bone'), capPart(g.elb, g.hand, 0.34, 0.3, 'bone'));
+    if (wraps) ps.push(...wrapBands(g.sh, g.elb, 2.0), ...wrapBands(g.elb, g.hand, 1.6));
     ps.push(capPart(g.hand, add3(g.hand, [0, -0.6, 0]), 1.05 * ak, 0.95 * ak, santa ? 'glove' : 'skin'));
     if (g.l > 0 && !s.umbrella && (s.acc === 'bag' || s.acc === 'case')) {
       const c = add3(g.hand, [0, s.acc === 'case' ? -3 : -3.6, 0]);
@@ -253,9 +387,12 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
     pts.push(at(q.head, hf, -2.4, -8.6, -3.6), at(q.head, hf, -2.4, -8.6, 3.6), at(q.head, hf, -3.2, -6, 0));
     midG.push({ parts: [hullPart(pts, 'hair', 0.84)], z: project(at(q.head, hf, -3, 0, 0))[2] });
   }
+  if (guise) midG.push(...guiseBack(guise, q, shC, key, waistTurn));
   midG.sort((a, b) => a.z - b.z);
   // Tête : cou, crâne, cheveux ou couvre-chef, chignon, pompon, visière ; yeux si le visage est tourné vers nous.
   const head: Part[] = [capPart(q.neck, at(q.neck, fr, 0.3, 2.2, 0), 1.35, 1.35, 'skin')];
+  // Col dressé du vampire : derrière la tête.
+  if (guise === 'vampire') for (const sgn of [-1, 1]) head.push(hullPart([at(q.neck, fr, 0, -0.6, sgn * 2.4), at(q.neck, fr, -0.6, 4.2, sgn * 3.8), at(q.neck, fr, -1.4, 3, sgn * 1.2)], 'cos2', 0.8));
   const hc = project(q.head);
   const circle = (c: readonly number[], r: number): P2[] => capsule([c[0]!, c[1]!], [c[0]! + 0.01, c[1]!], r, r);
   head.push({ P: circle(hc, HEAD_R), lit: circle([hc[0] - 0.6, hc[1] - 0.6], HEAD_R - 0.85), slot: 'skin', z: hc[2] });
@@ -294,6 +431,7 @@ export function bakeFigure(s: Shape, key: FigureKey): Baked {
       head.push(capPart(c, add3(c, [0.01, 0, 0]), 1.1, 1.1, 'hat'));
     }
     if (s.hair === 'cap') head.push(capPart(sph(0.35, 0), at(q.head, hf, HEAD_R + 2.6, 1.3, 0), 0.8, 0.7, 'hat'));
+    if (guise) head.push(...guiseHead(guise, q, sph, headIdx, region));
   }
   const eyes: P2[] = [];
   for (const sgn of [-1, 1]) {

@@ -85,7 +85,7 @@ export type Pt = { x: number; y: number };
 // Un déplacement : marche sur son support, ou saut en arc. `fromOn` / `on` : le meuble (dessus) qui porte l'animal au départ / à l'arrivée, null = le sol.
 export type Segment = { kind: 'walk' | 'jump'; from: Pt; to: Pt; ms: number; fromOn: string | null; on: string | null };
 
-export const PET_ACTIONS = ['sit', 'groom', 'stretch', 'yawn', 'sleep', 'eat', 'drink', 'scratch', 'perch', 'hide', 'purr', 'pant', 'sniff', 'greet', 'play', 'hiss', 'cower', 'scan', 'standby', 'charge', 'beep', 'sunbathe', 'howl', 'shake', 'umbrella', 'shortcircuit', 'reboot'] as const;
+export const PET_ACTIONS = ['sit', 'groom', 'stretch', 'yawn', 'sleep', 'eat', 'drink', 'scratch', 'perch', 'hide', 'purr', 'pant', 'sniff', 'greet', 'play', 'hiss', 'cower', 'scan', 'standby', 'charge', 'beep', 'sunbathe', 'howl', 'shake', 'umbrella', 'shortcircuit', 'reboot', 'bark', 'startle'] as const;
 export type PetAction = (typeof PET_ACTIONS)[number];
 
 // Les scènes à deux : se saluer, toilette mutuelle, poursuite, le chat remet le chien à sa place, dormir côte à côte, le chien suit le robot, le chat dort sur le dos du robot, se serrer ensemble pendant l'orage.

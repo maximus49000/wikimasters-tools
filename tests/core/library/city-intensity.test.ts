@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dayContext } from '../../../src/core/library/city/calendar';
-import { CLOSED_WALKERS, FESTIVE_SHARE, cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
+import { CLOSED_WALKERS, FESTIVE_SHARE, HALLOWEEN_EVE_SHARE, cityIntensity, type CityContext } from '../../../src/core/library/city/intensity';
 
 const vacations = [{ name: 'Toussaint', start: '2026-10-17', end: '2026-11-02' }];
 const DAYS = {
@@ -218,6 +218,18 @@ describe('intensité festive', () => {
     const noel = cityIntensity(ctx(10, fete(12, 25)));
     const base = cityIntensity(ctx(10, { ...fete(12, 25), festivities: [] }));
     expect(noel.walkers).toBeLessThan(base.walkers);
+  });
+  it('Halloween : déguisés et foule le soir du 31, quelques déguisés la veille et le lendemain soir', () => {
+    expect(cityIntensity(ctx(16, fete(10, 31))).festive).toBeNull();
+    const n31 = cityIntensity(ctx(20, fete(10, 31)));
+    expect(n31.festive).toEqual({ id: 'halloween', share: FESTIVE_SHARE.halloween });
+    expect(n31.walkers).toBeGreaterThan(cityIntensity(ctx(20, { ...fete(10, 31), festivities: [] })).walkers);
+    expect(cityIntensity(ctx(21, fete(10, 30))).festive).toEqual({ id: 'halloween', share: HALLOWEEN_EVE_SHARE });
+    expect(cityIntensity(ctx(21, fete(11, 1))).festive).toEqual({ id: 'halloween', share: HALLOWEEN_EVE_SHARE });
+    expect(cityIntensity(ctx(18, fete(10, 30))).festive).toBeNull();
+    expect(cityIntensity(ctx(21, fete(11, 2))).festive).toBeNull();
+    // la veille : pas de foule en plus
+    expect(cityIntensity(ctx(21, fete(10, 30))).walkers).toBe(cityIntensity(ctx(21, { ...fete(10, 30), festivities: [] })).walkers);
   });
   it('reste dans [0, 1]', () => {
     for (const m of [1, 2, 5, 6, 7, 11, 12]) for (const h of [0, 4, 12, 22]) {

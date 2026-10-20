@@ -368,3 +368,15 @@ export function inVehicle(set: DecorSet, item: DecorItem, abs: number): boolean 
   if (p.phase === 'installing') return p.step === 'arrive' || (p.step === 'deploy' && p.progress < LIFT_FETCH.from);
   return p.step === 'leave' || (p.step === 'stow' && p.progress >= LIFT_FETCH.to);
 }
+
+// Entrées décorées pour Halloween (toile, fantôme) le jour `date` à la minute `minute` : ids des portes (nuit du 31 :
+// porte-à-porte, city/halloween-night.ts).
+export function halloweenDoorIds(date: YMD, minute: number, width: number, height: number, seed: number): Set<string> {
+  const abs = absMinute(dayNumber(date), minute);
+  const out = new Set<string>();
+  for (const set of decorSetsFor(date, width, height, seed)) {
+    if (set.fest !== 'halloween' || set.transport !== 'door') continue;
+    for (const item of set.items) if (DOOR_KINDS.has(item.kind) && itemShown(set, item, itemPhase(set, item, abs, set.day))) out.add(item.id);
+  }
+  return out;
+}
