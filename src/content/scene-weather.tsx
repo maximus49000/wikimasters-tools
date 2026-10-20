@@ -33,8 +33,6 @@ type Props = {
   between?: ReactNode;
   id?: string;
   groundId?: string;
-  // Appelé quand la pluie devient (ou cesse d'être) assez forte pour des gouttes sur la vitre (avec hystérésis) : rare, sans boucle React.
-  onWet?: (wet: boolean) => void;
   // Ciel sombre : étalonnage de la neige posée peinte, comme la ville.
   gloom?: boolean;
   // Pluie naturelle (rain-canvas.tsx) : lumières de la scène (lampadaires, vitrines) et pluie adoucie derrière la vitre (vue pièce).
@@ -49,9 +47,6 @@ const TILE = 80;
 const COVER_MS = 250;
 // Durée (s) du fondu d'un nuage qui apparaît ou disparaît quand la couverture change.
 const CLOUD_FADE_S = 1.5;
-// Gouttes sur la vitre : apparaissent au-delà de 0,12 de pluie, disparaissent sous 0,08.
-const WET_ON = 0.12;
-const WET_OFF = 0.08;
 // Pied de l'arc-en-ciel (sol ou horizon).
 const ARC_FOOT: Partial<Record<SceneId, number>> = { city: CITY_GROUND, countryside: 0.78, mountain: 0.82, sea: 0.5 };
 // Bas de la bande où flottent les nuages : au-dessus des toits, des collines ou de l'horizon (jamais devant les immeubles).
@@ -109,7 +104,7 @@ function PatternDefs({ id, seed, ghibli }: { id: string; seed: number; ghibli: b
 }
 
 // `cover` : nuages pris pour la couverture du soleil (forme peinte quand les nuages peints sont montrés), relus à chaque relevé.
-type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; cover: RefObject<readonly CloudSpot[]>; sky: RefObject<Sky>; onWet: RefObject<Props['onWet']>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string };
+type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; cover: RefObject<readonly CloudSpot[]>; sky: RefObject<Sky>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string };
 
 // Positions intégrées des nuages, de la neige et de la brume : gardées d'une relance de la boucle à l'autre (pas de saut).
 type Motion = { drift: number; snowFarX: number; snowNearX: number; fogX: number };
@@ -121,7 +116,6 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   const placeRef = useRef<(() => void) | null>(null);
   const { clock, seed, width, height, pool, layout } = input;
   const skyRef = input.sky;
-  const onWetRef = input.onWet;
   const onStepRef = input.onStep;
   const coverRef = input.cover;
   const motionRef = useRef<Motion | null>(null);
@@ -155,8 +149,6 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     let lastStep = '';
     let lastHidden = '';
     let lastOvercast = '';
-    // null : pas encore signalé — le premier placement signale toujours l'état (une relance de la boucle ne laisse pas d'état périmé).
-    let wet: boolean | null = null;
     let lastMs = Date.now();
     // Positions intégrées (vitesse × durée) : un changement de vent change la VITESSE, jamais la position d'un coup.
     // Posées une fois (premier lancement), puis reprises telles quelles à chaque relance.
@@ -302,16 +294,11 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         }
       }
 
-      // Les gouttes sur la vitre (dans WindowArt) lisent cette variable sur le <svg> de la pièce.
+      // Intensité de la pluie, exposée sur le <svg> de la pièce (variable CSS ; les gouttes de vitre sont désormais sur canvas).
       const precipText = rain.toFixed(2);
       if (precipText !== lastPrecip) {
         lastPrecip = precipText;
         svg?.style.setProperty('--wmt-precip', precipText);
-      }
-      const nextWet = wet ? rain > WET_OFF : rain > WET_ON;
-      if (nextWet !== wet) {
-        wet = nextWet;
-        onWetRef.current?.(wet);
       }
     };
     placeRef.current = place;
@@ -342,7 +329,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   return placeRef;
 }
 
-function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, between, onWet, gloom = false, rainLights = NO_LIGHTS, rainSoft = false }: Props): ReactElement {
+function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId, between, gloom = false, rainLights = NO_LIGHTS, rainSoft = false }: Props): ReactElement {
   // Préfixe des motifs/dégradés, propre à chaque pièce (deux pièces affichées ne partagent pas leurs motifs).
   const uid = `wx${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const floorFrac = CLOUD_FLOOR[scene] ?? 0.45;
@@ -356,8 +343,6 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const groundRoot = useRef<SVGGElement | null>(null);
   const skyRef = useRef<Sky>(sky);
   skyRef.current = sky;
-  const onWetRef = useRef(onWet);
-  onWetRef.current = onWet;
   const [step, setStep] = useState<CloudStep | null>(null);
   // Le cran n'est signalé qu'en Ghibli Ville : en classique et sur les autres scènes, la boucle ne re-rend pas la couche.
   const onStepRef = useRef<((s: CloudStep) => void) | undefined>(undefined);
@@ -392,7 +377,7 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const skyline = useMemo(() => (cityPlan ? skylinePath(cityPlan) : ''), [cityPlan]);
   // La boucle met ses nœuds en cache : elle repart quand la neige posée ou la brume changent de nœud.
   const layout = `${ghibli}|${snow.ready}|${fogUrl !== ''}`;
-  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onWet: onWetRef, onStep: onStepRef, layout });
+  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onStep: onStepRef, layout });
   // Mouvement réduit : pas de boucle, mais le ciel (chaque minute) relance un placement pour suivre la météo.
   useLayoutEffect(() => {
     if (still) placeRef.current?.();

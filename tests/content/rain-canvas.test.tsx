@@ -5,12 +5,13 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RainAirCanvas, rainLightsFor, rainLoopsActive, rainWorldFor } from '../../src/content/rain-canvas';
+import { RainAirCanvas, RainGlassCanvas, rainLightsFor, rainLoopsActive, rainWorldFor } from '../../src/content/rain-canvas';
 import { WeatherLayer } from '../../src/content/scene-weather';
 import { RoomView } from '../../src/content/RoomView';
 import { activeRoom, createInitialState, setRoomScene, updateLayout } from '../../src/core/library/library-book';
 import { skyAt, sunTimes, type Sky } from '../../src/core/library/sky';
 import { createWeatherClock, steadySource } from '../../src/core/library/weather/weather-clock';
+import { targetOf } from '../../src/core/library/weather/weather-types';
 import type { SceneId } from '../../src/core/library/library-types';
 import { dayContext } from '../../src/core/library/city/calendar';
 import { recordingCtx, type RecordingCtx } from '../core/library/paint/recording-ctx';
@@ -24,13 +25,14 @@ const cityDay = dayContext({ y: 2024, m: 6, d: 21 }, []);
 // Faux contexte 2D (jsdom n'a pas de canvas) : compte les dessins.
 type FakeCtx = RecordingCtx & { images: number };
 let drawn = 0;
+let cleared = 0;
 function fakeCtx(): FakeCtx {
   const base = recordingCtx() as FakeCtx;
   base.images = 0;
   const stroke = base.stroke;
   Object.assign(base, {
     drawImage: () => { base.images++; drawn++; },
-    clearRect: () => undefined,
+    clearRect: () => { cleared++; },
     setTransform: () => undefined,
     getTransform: () => ({ a: 1, d: 1 }),
     stroke: () => { drawn++; stroke(); },
@@ -50,6 +52,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'requestAnimationFrame', 'cancelAnimationFrame', 'performance'] });
   vi.setSystemTime(new Date(2024, 5, 21, 13, 0));
   drawn = 0;
+  cleared = 0;
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => fakeCtx() as never);
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -184,6 +187,43 @@ describe('pluie naturelle — canvas dans la scène', () => {
     expect(rainLoopsActive()).toBe(0);
     // une image fixe est quand même dessinée (gouttes figées)
     expect(drawn).toBeGreaterThan(0);
+  });
+
+  it('mouvement réduit : la pluie qui cesse vide la vitre (et qui commence la remplit)', () => {
+    reduceMotion();
+    let now = targetOf('rain');
+    const clock = { read: () => now };
+    const panes = [{ x: 20, y: 20, w: 120, h: 80 }, { x: 200, y: 20, w: 160, h: 80 }];
+    const render = (sky: Sky): void =>
+      act(() => root.render(<svg><RainGlassCanvas panes={panes} seed={3} clock={clock} sky={sky} lights={[]} hidden={false} /></svg>));
+    render({ ...SKY });
+    expect(drawn).toBeGreaterThan(0); // vitre couverte tout de suite (préremplie)
+    expect(rainLoopsActive()).toBe(0);
+    // la pluie cesse : au relevé suivant (ciel de la minute suivante), la vitre est vidée et plus rien n'est dessiné
+    now = targetOf('sun');
+    drawn = 0;
+    cleared = 0;
+    render({ ...SKY });
+    expect(cleared).toBeGreaterThan(0);
+    expect(drawn).toBe(0);
+    act(() => vi.advanceTimersByTime(5000));
+    expect(drawn).toBe(0);
+    // la pluie reprend : la vitre se couvre de nouveau, toujours sans boucle
+    now = targetOf('rain');
+    render({ ...SKY });
+    expect(drawn).toBeGreaterThan(0);
+    expect(rainLoopsActive()).toBe(0);
+  });
+
+  it('démontage : tampons des canvas rendus (largeur 0)', () => {
+    showRoom();
+    act(() => vi.advanceTimersByTime(300));
+    const canvases = Array.from(container.querySelectorAll('[data-rain-canvas] canvas')) as HTMLCanvasElement[];
+    expect(canvases.length).toBe(3);
+    act(() => root.unmount());
+    expect(canvases.every((c) => c.width === 0)).toBe(true);
+    expect(rainLoopsActive()).toBe(0);
+    root = createRoot(container);
   });
 
   it('largeur qui change : redimensionnement sans remontage du composant', () => {

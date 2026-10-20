@@ -110,7 +110,10 @@ export function rainLightsFor(
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Téléphone : petit côté de l'écran < 600 px CSS (budgets « téléphone » de notes §Android). */
 export const isPhone = (): boolean => typeof screen !== 'undefined' && Math.min(screen.width || 0, screen.height || 0) > 0 && Math.min(screen.width, screen.height) < 600;
-const IDLE_MS = 1000; // guet de la pluie quand rien ne tourne
+// Guet de la pluie quand rien ne tourne (temps sec, neige) : une minuterie d'une seconde, pas une boucle d'images. Elle relit
+// l'horloge météo (rien d'autre ne prévient quand la pluie commence) et redessine les reflets du sol qui sèche ; coût négligeable.
+const IDLE_MS = 1000;
+const RAIN_FRAME_MS = 1000 / 60 - 1; // pluie dehors : 60 Hz au plus (écrans 120 Hz : pas de coût doublé)
 const MAX_UNIT_SCALE = 2; // px de tampon par unité de scène au plus (vue zoomée)
 const MAX_PIXELS = 4_200_000;
 const RESIZE_EVERY = 30; // images entre deux relevés de la taille affichée (zoom de la caméra)
@@ -290,7 +293,7 @@ export function createRainHub(): RainHub {
     else { clear(); lastWet = 0; }
     if (surfaces.ground || surfaces.air) loop.poll(wake);
   };
-  const loop = createLoop(frame, idle);
+  const loop = createLoop(frame, idle, RAIN_FRAME_MS);
 
   const wake = (): void => {
     if (!cfg || !(surfaces.ground || surfaces.air)) { loop.dispose(); return; }
@@ -298,11 +301,19 @@ export function createRainHub(): RainHub {
     const w = read();
     fillEnv(w);
     if (reducedMotion()) {
-      // image fixe : simulation refaite et préremplie (gouttes figées dans l'air), aucune boucle
+      // image fixe, aucune boucle : gouttes figées posées quand la pluie est là (gardées tant qu'elle dure), vidées quand elle cesse
       loop.dispose();
-      sim = createRainSim(cfg.world, cfg.seed, { soft: cfg.soft, budget: isPhone() ? RAIN_BUDGET_PHONE : RAIN_BUDGET_WIDE });
-      prefillRain(sim, env);
-      paint(w);
+      if (env.precip > 0) {
+        if (!sim || sim.drops.length === 0) {
+          sim = createRainSim(cfg.world, cfg.seed, { soft: cfg.soft, budget: isPhone() ? RAIN_BUDGET_PHONE : RAIN_BUDGET_WIDE });
+          prefillRain(sim, env);
+        }
+        paint(w);
+      } else {
+        sim = createRainSim(cfg.world, cfg.seed, { soft: cfg.soft, budget: isPhone() ? RAIN_BUDGET_PHONE : RAIN_BUDGET_WIDE });
+        if (wetOf(w) > 0.01 && field?.lights?.length) paint(w);
+        else clear();
+      }
       return;
     }
     if (env.precip > 0 || (sim && busy(sim))) loop.start();
@@ -333,6 +344,8 @@ export function createRainHub(): RainHub {
       if (cfg) wake();
     },
     detach(role) {
+      const s = surfaces[role];
+      if (s) { s.cv.width = 0; s.cv.height = 0; } // tampon rendu tout de suite (WebView : mémoire)
       delete surfaces[role];
       if (!surfaces.ground && !surfaces.air) loop.dispose();
     },
@@ -464,12 +477,14 @@ export function RainGlassCanvas(p: RainGlassProps): ReactElement | null {
     const cv = ref.current;
     if (!cv || !box) return undefined;
     const surface = makeSurface(cv, box, isPhone() ? 1.5 : 2);
-    const sim: GlassSim = createGlassSim(panes, p.seed, isPhone() ? GLASS_BUDGET_PHONE : GLASS_BUDGET_WIDE);
-    const fog: FogMask = createFogMask(panes);
+    const budget = isPhone() ? GLASS_BUDGET_PHONE : GLASS_BUDGET_WIDE;
+    let sim: GlassSim = createGlassSim(panes, p.seed, budget);
+    // Buée créée à la première image de pluie seulement (rien d'alloué par temps sec), recréée avec la simulation.
+    let fog: FogMask | null = null;
+    const fogOf = (): FogMask => (fog ??= createFogMask(panes));
     const env = { precip: 0, wind: 0, t: 0 };
     const drawEnv = { precip: 0, daylight: 1 };
     let t = 0;
-    let frames = 0;
     const read = (): void => {
       const w = live.current.clock.read(Date.now());
       env.precip = rainOf(w);
@@ -491,15 +506,15 @@ export function RainGlassCanvas(p: RainGlassProps): ReactElement | null {
     const paint = (): void => {
       if (live.current.hidden) { wipe(surface); return; }
       const c = begin(surface);
-      if (c) drawGlass(c, view(), drawEnv, fieldRef.current, fog);
+      if (c) drawGlass(c, view(), drawEnv, fieldRef.current, fogOf());
     };
     const frame = (dt: number): boolean => {
       t += dt;
       read();
       stepGlass(sim, env, dt);
-      fog.regrow(dt);
-      for (const R of sim.runners) fog.erase(R.trail);
-      if (++frames % RESIZE_EVERY === 0) surface.dirty = true;
+      const f = fogOf();
+      f.regrow(dt);
+      for (const R of sim.runners) f.erase(R.trail);
       paint();
       return env.precip > 0 || glassActive(sim);
     };
@@ -510,21 +525,47 @@ export function RainGlassCanvas(p: RainGlassProps): ReactElement | null {
     const loop = createLoop(frame, idle, GLASS_FRAME_MS);
     const wake = (): void => {
       read();
-      if (reducedMotion()) { loop.dispose(); paint(); return; }
+      if (reducedMotion()) {
+        // image fixe, aucune boucle : la vitre se couvre quand la pluie est là (gouttes gardées tant qu'elle dure), se vide quand
+        // elle cesse
+        loop.dispose();
+        if (env.precip > 0) {
+          if (!glassActive(sim)) { sim = createGlassSim(panes, p.seed, budget); masked = null; fog = null; prefillGlass(sim, env); }
+          paint();
+        } else {
+          sim = createGlassSim(panes, p.seed, budget);
+          masked = null;
+          fog = null;
+          wipe(surface);
+        }
+        return;
+      }
       if (env.precip > 0 || glassActive(sim)) loop.start();
       else idle();
     };
     read();
     if (env.precip > 0) prefillGlass(sim, env);
     ctl.current = { redraw: () => { surface.dirty = true; if (!loop.running) wake(); else paint(); } };
-    if (env.precip > 0 || reducedMotion()) paint();
+    if (env.precip > 0 && !reducedMotion()) paint(); // pluie déjà là : pas de première image vide (mouvement réduit : wake dessine)
     wake();
-    const onResize = (): void => { surface.dirty = true; };
+    // Taille affichée : relue sur redimensionnement (pas de caméra en vue pièce, donc pas de relevé périodique).
+    const onResize = (): void => { surface.dirty = true; if (!loop.running) ctl.current?.redraw(); };
     window.addEventListener('resize', onResize);
-    return () => { loop.dispose(); ctl.current = null; window.removeEventListener('resize', onResize); };
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(onResize) : null;
+    ro?.observe(cv);
+    return () => {
+      loop.dispose();
+      ctl.current = null;
+      window.removeEventListener('resize', onResize);
+      ro?.disconnect();
+      cv.width = 0; // tampon rendu tout de suite (WebView : mémoire) ; la buée part avec la simulation
+      cv.height = 0;
+      fog = null;
+    };
   }, [panes, box, p.seed]); // eslint-disable-line react-hooks/exhaustive-deps
-  // ciel, lumières, vitre soulevée ou masquée : une image refaite (la boucle, si elle tourne, relit tout à chaque image)
-  useLayoutEffect(() => { ctl.current?.redraw(); }, [field, p.hidden, p.skip, p.sky.daylight, p.clock]);
+  // ciel (chaque minute), lumières, vitre soulevée ou masquée : une image refaite (la boucle, si elle tourne, relit tout à chaque
+  // image) ; en mouvement réduit, c'est aussi ce qui fait suivre la météo à l'image fixe.
+  useLayoutEffect(() => { ctl.current?.redraw(); }, [field, p.hidden, p.skip, p.sky, p.clock]);
   if (!box) return null;
   return (
     <foreignObject data-rain-canvas="glass" data-skip-pane={p.skip ?? undefined} x={box.x} y={box.y} width={box.w} height={box.h} style={{ pointerEvents: 'none' }}>
