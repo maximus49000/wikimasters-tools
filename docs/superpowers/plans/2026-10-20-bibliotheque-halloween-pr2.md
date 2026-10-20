@@ -32,4 +32,7 @@ sursaute quand un groupe déguisé (ou le promeneur de chien) passe dans l'axe.
 
 ## Échecs déjà présents sur `main` (ne pas confondre)
 
-`tests/content/city-life-ghibli.test.tsx` : 3 (ombres portées la nuit, habitants 3D des passants, habitant 3D au seuil).
+Suite complète sur la branche : 34 échecs sur 6 888, tous présents à l'identique sur `main` (1ae04cb) dans ce conteneur :
+`library-drag` (11), `library-cards` (7), `shop/shop-scene` (4), `city-life-ghibli` (2 à 3, habitants 3D, ombres),
+`window-life` (2), `moving-ghibli`, `vehicle/ghibli-car`, `city-shops-life`, `install-ghibli`, `install-layer`,
+`citizens/interrupteur-scene`, `item-case`, `library-scene` (1 chacun).
