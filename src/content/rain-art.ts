@@ -26,7 +26,7 @@ export type LightField = {
 export type FogMask = {
   erase(trail: readonly { x: number; y: number; r: number }[]): void;
   regrow(dt: number): void;
-  draw(ctx: CanvasRenderingContext2D, pane: Pane, env: { precip: number; daylight: number }): void;
+  draw(ctx: CanvasRenderingContext2D, pane: Pane, env: GlassEnv): void;
 };
 
 const TAU = Math.PI * 2;
@@ -638,7 +638,10 @@ function drawStatics(ctx: CanvasRenderingContext2D, sim: GlassSim, i: number, p:
 }
 
 /** Gouttes sur la vitre : buée, traces, gouttes posées, coulures — découpées à chaque vitre. */
-export function drawGlass(ctx: CanvasRenderingContext2D, sim: GlassSim, env: { precip: number; daylight: number }, field: LightField, fog: FogMask): void {
+/** `fog` : opacité de la buée (absent = 1). */
+export type GlassEnv = { precip: number; daylight: number; fog?: number };
+
+export function drawGlass(ctx: CanvasRenderingContext2D, sim: GlassSim, env: GlassEnv, field: LightField, fog: FogMask): void {
   if (sim.panes.length === 0) return;
   FRAME++;
   const ns = nightStepOf(env.daylight);
@@ -763,7 +766,16 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
       // Recomposition (dégradé + marques + masque) seulement si la teinte a changé, ou si le masque a changé et que 5 images
       // (~170 ms à 30 Hz) ont passé : sinon le calque déjà composé est reposé tel quel.
       const recompose = !cell.composed || key !== cell.gradKey || (cell.dirty && cell.since >= FOG_EVERY);
-      if (!recompose) { ctx.drawImage(cell.fog.cv, p.x, p.y); return; }
+      const alpha = env.fog ?? 1;
+      if (!(alpha > 0)) return;
+      const put = (): void => {
+        if (alpha >= 1) { ctx.drawImage(cell.fog!.cv, p.x, p.y); return; }
+        const a0 = ctx.globalAlpha;
+        ctx.globalAlpha = a0 * alpha;
+        ctx.drawImage(cell.fog!.cv, p.x, p.y);
+        ctx.globalAlpha = a0;
+      };
+      if (!recompose) { put(); return; }
       cell.composed = true; cell.dirty = false; cell.since = 0;
       if (key !== cell.gradKey || !cell.grad) { // voile plus dense en bas (0 à 45 % de la hauteur → max en bas) ; teinte et densité en fondu jour → nuit
         const fogC = mixRgb(FOG_DAY, FOG_NIGHT, n), fogA = (0.1 + 0.14 * (P / 20)) * lerp(1, 0.7, n);
@@ -781,7 +793,7 @@ export function createFogMask(panes: readonly Pane[]): FogMask {
       f.globalCompositeOperation = 'destination-in';
       f.drawImage(cell.mask.cv, 0, 0, p.w, p.h);
       f.globalCompositeOperation = 'source-over';
-      ctx.drawImage(cell.fog.cv, p.x, p.y);
+      put();
     },
   };
 }

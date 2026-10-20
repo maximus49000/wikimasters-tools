@@ -406,6 +406,21 @@ describe('drawGlass', () => {
     expect(composed).toBe(before + 1);
   });
 
+  it('buée en fondu : reposée à l’opacité demandée, plus rien à 0 (vitre sèche)', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => fakeCtx() as never);
+    const fog = createFogMask(PANES);
+    const main = fakeCtx();
+    const alphas: number[] = [];
+    const di = (main as unknown as { drawImage: () => void }).drawImage;
+    (main as unknown as { drawImage: () => void }).drawImage = () => { alphas.push((main as unknown as { globalAlpha: number }).globalAlpha); di(); };
+    (main as unknown as { globalAlpha: number }).globalAlpha = 1;
+    fog.draw(asCtx(main), { ...PANES[0]! }, { precip: 0, daylight: 1 });
+    fog.draw(asCtx(main), { ...PANES[0]! }, { precip: 0, daylight: 1, fog: 0.5 });
+    fog.draw(asCtx(main), { ...PANES[0]! }, { precip: 0, daylight: 1, fog: 0 });
+    expect(alphas).toEqual([1, 0.5]);
+    expect((main as unknown as { globalAlpha: number }).globalAlpha).toBe(1); // opacité du contexte rendue
+  });
+
   it('grille de lumière : mêmes valeurs que le calcul exact, à l’interpolation près', () => {
     const exact = makeLightField(LIGHTS, SKY_NIGHT, 460);
     const fast = makeLightField(LIGHTS, SKY_NIGHT, 460, 1000);

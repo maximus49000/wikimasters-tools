@@ -245,7 +245,7 @@ export function createRainHub(): RainHub {
   let sim: RainSim | null = null;
   let simKey: { world: RainWorld; seed: number; soft: boolean } | null = null;
   let field: LightField | null = null;
-  let fieldKey: { lights: readonly RainLight[]; top: string; bottom: string; h: number } | null = null;
+  let fieldKey: { lights: readonly RainLight[]; top: string; bottom: string; h: number; w: number } | null = null;
   let t = 0;
   let frames = 0;
   let lastWet = -1;
@@ -341,9 +341,9 @@ export function createRainHub(): RainHub {
       if (env.precip > 0) prefillRain(sim, env);
       lastWet = -1;
     }
-    if (!field || !fieldKey || fieldKey.lights !== c.lights || fieldKey.top !== c.sky.top || fieldKey.bottom !== c.sky.bottom || fieldKey.h !== c.world.height) {
+    if (!field || !fieldKey || fieldKey.lights !== c.lights || fieldKey.top !== c.sky.top || fieldKey.bottom !== c.sky.bottom || fieldKey.h !== c.world.height || fieldKey.w !== c.world.width) {
       field = makeLightField(c.lights, c.sky, c.world.height, c.world.width);
-      fieldKey = { lights: c.lights, top: c.sky.top, bottom: c.sky.bottom, h: c.world.height };
+      fieldKey = { lights: c.lights, top: c.sky.top, bottom: c.sky.bottom, h: c.world.height, w: c.world.width };
       lastWet = -1;
     }
   };
@@ -461,6 +461,7 @@ export type RainGlassProps = {
 };
 
 const GLASS_FRAME_MS = 1000 / 30 - 1; // coulures lentes : 30 Hz suffisent (notes §Android)
+const FOG_FADE_S = 6; // la buée s'efface en fondu quand la vitre a séché (rien ne disparaît d'un coup)
 const NO_PANE: Pane = { x: 0, y: 0, w: 0, h: 0 };
 
 function boundsOf(panes: readonly Pane[]): Box | null {
@@ -497,7 +498,8 @@ export function RainGlassCanvas(p: RainGlassProps): ReactElement | null {
     let fog: FogMask | null = null;
     const fogOf = (): FogMask => (fog ??= createFogMask(panes));
     const env = { precip: 0, wind: 0, t: 0 };
-    const drawEnv = { precip: 0, daylight: 1 };
+    // `fog` : opacité de la buée (1 tant qu'il pleut ou que des gouttes restent, puis fondu à 0 quand la vitre a séché).
+    const drawEnv = { precip: 0, daylight: 1, fog: 1 };
     let t = 0;
     const read = (): void => {
       const w = live.current.clock.read(Date.now());
@@ -528,8 +530,10 @@ export function RainGlassCanvas(p: RainGlassProps): ReactElement | null {
       const f = fogOf();
       f.regrow(dt);
       for (const R of sim.runners) f.erase(R.trail);
+      const wet = env.precip > 0 || glassActive(sim);
+      drawEnv.fog = wet ? 1 : Math.max(0, drawEnv.fog - dt / FOG_FADE_S);
       paint();
-      return env.precip > 0 || glassActive(sim);
+      return wet || drawEnv.fog > 0;
     };
     const idle = (): void => {
       wipe(surface);

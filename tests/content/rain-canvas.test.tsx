@@ -233,6 +233,23 @@ describe('pluie naturelle — canvas dans la scène', () => {
     expect(rainLoopsActive()).toBe(0);
   });
 
+  it('vitre sèche : la buée s’efface en fondu, puis la boucle s’arrête', () => {
+    let now = targetOf('rain');
+    const clock = { read: () => now };
+    const panes = [{ x: 20, y: 20, w: 120, h: 80 }];
+    act(() => root.render(<svg><RainGlassCanvas panes={panes} seed={3} clock={clock} sky={{ ...SKY }} lights={[]} /></svg>));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(rainLoopsActive()).toBeGreaterThan(0);
+    now = targetOf('sun');
+    // gouttes séchées et traînées effacées (≤ 60 s) : la buée seule tourne encore, en fondu de quelques secondes
+    let stoppedAt = -1;
+    for (let s = 1; s <= 120 && stoppedAt < 0; s++) { act(() => vi.advanceTimersByTime(1000)); if (rainLoopsActive() === 0) stoppedAt = s; }
+    expect(stoppedAt).toBeGreaterThan(0);
+    drawn = 0;
+    act(() => vi.advanceTimersByTime(5000));
+    expect(drawn).toBe(0);
+  });
+
   it('démontage : tampons des canvas rendus (largeur 0)', () => {
     showRoom();
     act(() => vi.advanceTimersByTime(300));
