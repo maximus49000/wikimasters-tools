@@ -281,3 +281,41 @@ plafonds `{ feuilles: 40, petales: 30, gouttes: 24, neige: 16, graines: 20 }` ; 
   de l'eau.
 - [ ] `npm run test:famille -- scene-ville scene-commun scene-meteo`, `npx tsc --noEmit`, `npm run build`.
 - [ ] Mise à jour de l'état des lieux et du plan général ; PR, fusion, `npm run preprod`.
+
+### Task 1c: Le camion élévateur d'Halloween transporte des drapeaux tricolores (bogue signalé le 2026-10-24)
+
+Constat (capture de l'utilisateur, 31 octobre) : la nacelle pose des guirlandes de chauves-souris sur les lampadaires, mais le
+plateau du camion porte la caisse de drapeaux bleu-blanc-rouge. Cause probable : `src/content/install-layer.tsx:1253` monte
+toujours `<FlagCrate … flags={…}>` sur le plateau (`transport: 'lift'`), quel que soit le genre des décors (`lamp-flag`,
+`lamp-pumpkin`, `lamp-bats`, `LAMP_KINDS` de `src/core/library/city/install.ts`) ; la caisse se dessine dans
+`src/core/library/paint/props/install.ts` (`flagCrate`, `'flag-crate'`).
+
+**Files:** `src/content/install-layer.tsx`, `src/core/library/paint/props/install.ts` (et le registre des accessoires s'il faut
+une variante) ; Test `tests/content/install-layer*.test.tsx` ou `tests/core/library/paint/props/*` (fichiers existants).
+
+- [ ] Test rouge : pour un ensemble de décors de lampadaires Halloween (`lamp-bats`, `lamp-pumpkin`), le chargement du
+  plateau ne contient aucun drapeau (pas de `flagArt` peint, pas de nœud de drapeau) et montre les décors du genre posé ; pour
+  le 14 juillet (`lamp-flag`) le rendu reste inchangé.
+- [ ] Correction : le contenu de la caisse suit le genre des décors encore dans le véhicule (citrouilles et guirlandes de
+  chauves-souris roulées, dessinées EN RÉUTILISANT l'art existant de `lamp-pumpkin` / `lamp-bats` réduit, pas de nouveau
+  dessin) ; un décor posé quitte la caisse comme un drapeau aujourd'hui (rien n'apparaît ni ne disparaît sur place).
+- [ ] Vert (`npm run test:famille -- scene-evenements`), commit `fix(ville): le camion d'Halloween transporte ses décors, pas des drapeaux`.
+
+### Task 1d: Le camion élévateur roule au pas entre deux lampadaires (bogue signalé le 2026-10-24)
+
+Constat : le camion de montage avance très lentement sur la route. Cause : `src/core/library/city/install.ts`, `slotOf` /
+`stepAt` répartissent la fenêtre de pose (Halloween : 9 h → 17 h, `HALLOWEEN_LAMPS`, 14 juillet : `EVE`) en créneaux égaux par
+lampadaire, et l'étape `arrive` prend 3/20 du créneau (`WEIGHTS.lift = [3, 2, 2, 6, 2, 2, 3]`) ; le rendu
+(`src/content/install-layer.tsx` ≈ 1140-1155) interpole la position du camion sur toute l'étape : avec ~20 lampadaires, ≈ 3,6 min
+pour ≈ 70 px, soit moins de 0,5 px/s (la circulation roule à plusieurs dizaines de px/s).
+
+**Files:** `src/content/install-layer.tsx` (pose du camion `lift`), éventuellement `src/core/library/city/install.ts` ;
+Test : fichier de test existant de install-layer / install.
+
+- [ ] Test rouge : pendant `arrive` et `leave` du camion élévateur, la vitesse affichée (dérivée de `tx` sur 1 s) est soit 0
+  (garé ou à l'arrêt), soit comprise entre 15 et 40 px/s ; le camion atteint sa place AVANT la fin de l'étape `arrive` et
+  n'est jamais téléporté (position continue d'une minute à l'autre, mêmes bornes de trajet qu'aujourd'hui, entrée et sortie
+  par un bord pour le premier et le dernier lampadaire).
+- [ ] Correction : la durée de roulage = distance / vitesse (constante nommée, ≈ 25 px/s, accélération et freinage doux) ; le
+  reste de l'étape, le camion attend à l'arrêt à sa place (équipe en cabine) ; aucune autre étape ne change de durée.
+- [ ] Vert (`npm run test:famille -- scene-evenements`), commit `fix(ville): le camion élévateur roule à une vitesse normale entre deux lampadaires`.
