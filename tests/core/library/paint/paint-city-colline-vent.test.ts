@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
+import { HILL_ROWS, cityPaintPlan, hillCrestY } from '../../../../src/core/library/paint/city-plan';
+import { HILL_SLICE_ANDROID, HILL_SLICE_DESKTOP, hillSlices } from '../../../../src/core/library/paint/hill-wind';
+import { windOf, type Wind } from '../../../../src/core/library/paint/fond-vent';
 import { PAINT_VERSION, TILE, hillCanopyBox, paintCityTile, tileCount, type HillPart } from '../../../../src/core/library/paint/city-painter';
 import { fondMoment, SUNNY } from '../../../../src/core/library/paint/fond-time';
 import { hashString } from '../../../../src/core/library/scene-world';
@@ -140,5 +142,65 @@ describe('colline au vent : tranche peinte en parties', () => {
       }
     }
     expect(seen).toBeGreaterThan(9);
+  });
+});
+
+// Colline au vent (PR 3b, tâche 2) : mouvement pur des bandes de feuillage.
+describe('colline au vent : mouvement des bandes', () => {
+  const CALM: Wind = { wind: 0, dir: 1, wet: 0, storm: false };
+  const WINDS: Record<string, Wind> = {
+    calme: CALM,
+    '0.5': windOf({ ...SUNNY, wind: 0.5 }, false),
+    '1': windOf({ ...SUNNY, wind: 1 }, false),
+    orage: windOf({ ...SUNNY, wind: 1, precip: 0.6 }, true),
+  };
+  const GROUPS3 = [0, 1, 2] as const;
+  const SLICES = [HILL_SLICE_DESKTOP, HILL_SLICE_ANDROID];
+
+  it('bandes contiguës de [0, largeur), largeur `slice` sauf la dernière, pivots du pied du rang', () => {
+    const plan = cityPaintPlan(W, H, 1);
+    for (const slice of SLICES) for (const g of GROUPS3) {
+      const bands = hillSlices(plan, g, slice, 3, WINDS['1']!);
+      expect(bands[0]!.x0).toBe(0);
+      expect(bands[bands.length - 1]!.x1).toBe(W);
+      bands.forEach((b, i) => {
+        if (i > 0) expect(b.x0).toBe(bands[i - 1]!.x1);
+        if (i < bands.length - 1) expect(b.x1 - b.x0).toBe(slice);
+        expect(b.x1 - b.x0).toBeLessThanOrEqual(slice);
+        if (g > 0) expect(b.pivot).toBe(H * HILL_ROWS[g - 1]!.y);
+        else expect(b.pivot).toBe(hillCrestY(plan, (b.x0 + b.x1) / 2));
+      });
+    }
+  });
+
+  it('vent nul : aucun déplacement ni cisaillement', () => {
+    const plan = cityPaintPlan(W, H, 1);
+    for (const slice of SLICES) for (const g of GROUPS3) for (let t = 0; t <= 60; t += 0.25) {
+      for (const b of hillSlices(plan, g, slice, t, CALM)) {
+        expect(b.dx).toBe(0);
+        expect(b.s).toBe(0);
+      }
+    }
+  });
+
+  it('bornes |dx| ≤ 2, |s| ≤ 0,03, écart voisin ≤ 0,75 et pas de saut en 1/15 s (600 s, pas de 0,25 s)', () => {
+    let maxGap = 0;
+    let maxStep = 0;
+    for (const seed of [1, 7, 42]) {
+      const plan = cityPaintPlan(W, H, seed);
+      for (const [name, w] of Object.entries(WINDS)) for (const slice of SLICES) for (const g of GROUPS3) {
+        for (let t = 0; t <= 600; t += 0.25) {
+          const a = hillSlices(plan, g, slice, t, w);
+          const b = hillSlices(plan, g, slice, t + 1 / 15, w);
+          a.forEach((s, i) => {
+            if (Math.abs(s.dx) > 2 || Math.abs(s.s) > 0.03) throw new Error(`borne ${name} g${g} t${t}: dx ${s.dx} s ${s.s}`);
+            if (i + 1 < a.length) maxGap = Math.max(maxGap, Math.abs(s.dx - a[i + 1]!.dx));
+            maxStep = Math.max(maxStep, Math.abs(b[i]!.dx - s.dx));
+          });
+        }
+      }
+    }
+    expect(maxGap).toBeLessThanOrEqual(0.75);
+    expect(maxStep).toBeLessThanOrEqual(0.5);
   });
 });
