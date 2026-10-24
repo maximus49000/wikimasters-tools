@@ -71,7 +71,9 @@ export function createCollectionScanner({
   collection,
   store,
   now = () => Date.now(),
-  maxPages = 200,
+  // Garde-fou contre une liste sans fin, pas une taille attendue : une Collection de 11 000 cartes dépasse déjà 200 pages.
+  // Un parcours arrêté sur l'ancienne limite reprend à sa page (nombres déjà comptés gardés) et va maintenant au bout.
+  maxPages = 5000,
   schedule = (fn, ms) => void setTimeout(fn, ms),
 }: ScannerDeps) {
   const listeners = new Set<() => void>();

@@ -363,6 +363,29 @@ describe('createCollectionScanner', () => {
     await first;
   });
 
+  it('une grande Collection (plus de 200 pages) va au bout et retire les cartes parties', async () => {
+    const { scanner, collection, getCollectionPage } = setup([]);
+    await collection.observe([{ slug: 'Vendue', title: 'Vendue', copies: 1 }], true);
+    getCollectionPage.mockImplementation(async (index: number) => (index < 300 ? page(`C${index}`) : EMPTY));
+    await scanner.run({ force: true });
+    expect(await scanner.state()).toMatchObject({ status: 'done' });
+    const slugs = (await collection.list()).map((c) => c.slug);
+    expect(slugs).toHaveLength(300);
+    expect(slugs).not.toContain('Vendue');
+  });
+
+  it('un parcours arrêté sur l’ancienne limite de 200 pages reprend à sa page et se termine', async () => {
+    const { scanner, store, collection, getCollectionPage } = setup([]);
+    await collection.observe([{ slug: 'Gardée', title: 'Gardée', copies: 1 }, { slug: 'Vendue', title: 'Vendue', copies: 1 }], true);
+    await store.set('collectionScan', { status: 'error', error: 'limite de pages atteinte', nextPage: 200, entries: 200, updatedAt: 1, version: 9, pass: 'full' });
+    await store.set('collectionScanCounts', { nextPage: 200, counts: { Gardée: 1 } });
+    getCollectionPage.mockImplementation(async (index: number) => (index === 0 ? EMPTY : index === 200 ? page('Neuve') : EMPTY));
+    await scanner.run();
+    expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 200, 201]);
+    expect(await scanner.state()).toMatchObject({ status: 'done' });
+    expect((await collection.list()).map((c) => c.slug).sort()).toEqual(['Gardée', 'Neuve']);
+  });
+
   it('s’arrête sur la limite de pages', async () => {
     const { scanner, getCollectionPage } = setup([page('A'), page('B'), page('C')], { maxPages: 2 });
     await scanner.run();
