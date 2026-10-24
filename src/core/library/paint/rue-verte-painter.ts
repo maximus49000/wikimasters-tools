@@ -25,7 +25,9 @@ const FLOWERS: Record<'spring' | 'summer' | 'autumn' | 'winter', readonly string
 const LEAF_COLORS = ['#C87A2A', '#E0A040', '#A85A30', '#D8B050', '#B86A28'];
 // Écorce des arbres de rue (pour le calque des arbres).
 export const RUE_BARK: Record<string, Rgb> = { platane: hexRgb('#C8B898'), tilleul: hexRgb('#8A7A66'), marronnier: hexRgb('#7A6654'), cerisier: hexRgb('#6A5A54'), jeune: hexRgb('#A89880') };
-export const rueBark = (v: RuePit): Rgb => RUE_BARK[v.young ? 'jeune' : v.species]!;
+// Essences V5 sans modèle propre dans `hill-trees` (en attendant le modèle d'arbre de rue V5) : allure la plus proche.
+export const RUE_LOOK: Record<RuePit['species'], string> = { platane: 'platane', tilleul: 'tilleul', robinier: 'tilleul', frene: 'marronnier', cerisier: 'cerisier' };
+export const rueBark = (v: RuePit): Rgb => RUE_BARK[v.young ? 'jeune' : RUE_LOOK[v.species]]!;
 // Densité de la maquette : 3 600 feuilles par unité de `leavesOnGround` sur 1 440 px. Le tapis est tiré par bande de
 // LEAF_BAND px (graine + numéro de bande) : il ne dépend pas de la largeur de la pièce (agrandir la pièce ne repeint pas
 // les premières tranches).
@@ -35,7 +37,7 @@ export const LEAF_BAND = 120;
 // Modèle d'un arbre de rue (squelette fixe : fût = v.h, ramure = 2 × r, 4 niveaux, ≤ 60 touffes de rayon 0,3 r ; jeune :
 // 3 niveaux, 20 touffes de 0,42 r, fût de 0,7 px).
 export const rueTreeModel = (v: RuePit): TreeModel =>
-  treeModelOf('rue' + Math.round(v.x), v.species, { x: v.x, y: v.y }, v.h, v.r * 2, v.young ? 3 : 4, v.r * (v.young ? 0.42 : 0.3), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
+  treeModelOf('rue' + Math.round(v.x), RUE_LOOK[v.species], { x: v.x, y: v.y }, v.h, v.r * 2, v.young ? 3 : 4, v.r * (v.young ? 0.42 : 0.3), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
 
 // Pluie : chaussée mouillée, flaques au pied des arbres (0 sec, 1 mouillé).
 export const rueWet = (D: Pick<FondMoment, 'meteo'>): number => (D.meteo.precip > 0 ? 1 : 0);

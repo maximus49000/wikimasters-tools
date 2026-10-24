@@ -5,12 +5,12 @@ import { shopFrame, shopSlotsFor } from '../../../../src/core/library/city/shops
 import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
 import { stageXs } from '../../../../src/core/library/city/install';
 import { createTraffic, streetFixtures } from '../../../../src/core/library/city/traffic/engine';
-import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_MIN_GAP, PIT_STAGE_CLEAR, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
+import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_PITCH, PIT_REPLANT, PIT_SEARCH, PIT_STAGE_CLEAR, pitFootY, pitTopY, rueCuts, rueSlots, sectionOf, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
 import { hashString } from '../../../../src/core/library/scene-world';
 import { TILE, tileCount, tileItems } from '../../../../src/core/library/paint/city-painter';
 import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
 import { treeModel } from '../../../../src/core/library/paint/hill-trees';
-import { LEAF_BAND, paintRueVerdure, rueLeafCount, rueSpan, rueTreeModel } from '../../../../src/core/library/paint/rue-verte-painter';
+import { LEAF_BAND, paintRueVerdure, RUE_LOOK, rueLeafCount, rueSpan, rueTreeModel } from '../../../../src/core/library/paint/rue-verte-painter';
 import { recordingCtx } from './recording-ctx';
 
 const H = 340;
@@ -79,10 +79,11 @@ describe('verdure de la rue (streetVerdure)', () => {
         const { rue: _omit, ...rest } = plan;
         expect(streetVerdure(rest, width)).toEqual(streetVerdure(rest, width));
         expect(streetVerdure(rest, width)).toEqual(rue);
-        // Un arbre tous les 48-72 px (densifié le 2026-10-24, au lieu de 70-110) sur la rue hors des abords sans arbre, moins
-        // les pas sautés devant les portes et les lampadaires : plancher d'une fosse (vides comprises) par 85 px de longueur
-        // libre, arrondi à l'entier inférieur (mesuré : une par 76 à 103 px ; l'ancien pas donnait une par 115 à 180 px).
-        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((width - cleared) / 85));
+        // Boulevard (2026-10-24, notes §1 variante A) : une place tous les 60 px sur la rue hors des abords sans arbre, moins
+        // les places sautées devant les entrées, portes de local et lampadaires (une porte tous les 30 px environ dans une rue
+        // de locaux) : plancher d'une fosse (vides comprises) par 190 px de longueur libre, arrondi à l'entier inférieur
+        // (mesuré : une par 72 à 179 px ; l'ancien pas de 48-72 px à ± 21 donnait une par 76 à 103 px).
+        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((width - cleared) / 190));
       });
 
       it(`${tag} : fosses hors des entrées, portes des locaux, lampadaires, arbres et mobilier`, () => {
@@ -127,16 +128,67 @@ describe('verdure de la rue (streetVerdure)', () => {
         for (const v of rue.filter((v): v is RuePots => v.kind === 'pots')) expect(plan.doors.some((d) => d.x === v.x)).toBe(true);
       });
 
-      // Pas de 48-72 px, centre libre cherché à ± 21 px, jamais deux fosses à moins de PIT_MIN_GAP (34 px) : au moins la
-      // moitié des écarts entre 40 et 90 px (mesuré : 50 % au pire à 720 px, 59 à 81 % ailleurs ; le reste : essai décalé
-      // loin, ou pas sauté devant une suite de portes).
-      it(`${tag} : fosses dans l'ordre, au moins ${PIT_MIN_GAP} px, la moitié des écarts entre 40 et 90 px`, () => {
-        const all = pits.slice(1).map((p, i) => p.x - pits[i]!.x);
-        for (const g of all) expect(g).toBeGreaterThanOrEqual(PIT_MIN_GAP);
-        // Écarts de part et d'autre d'un abord sans arbre (placette de la scène, passage, arrêt) : hors de la règle du pas.
-        const gaps = pits.slice(1).filter((p, i) => !zones.some((z) => z.x - z.half < p.x && z.x + z.half > pits[i]!.x)).map((p) => p.x - pits[pits.indexOf(p) - 1]!.x);
-        const inRange = gaps.filter((g) => g >= 40 && g <= 90).length;
-        expect(inRange).toBeGreaterThanOrEqual(0.5 * gaps.length);
+      // Boulevard (notes §1, variante A) : une place tous les 60 px, centre cherché à ± 12 px, sinon la place reste vide.
+      it(`${tag} : pas constant de ${PIT_PITCH} px (écart = multiple de ${PIT_PITCH} à ± ${2 * PIT_SEARCH} près), chaque fosse à ± ${PIT_SEARCH} px de sa place`, () => {
+        const slots = rueSlots(seed, width);
+        for (let i = 1; i < pits.length; i++) {
+          const g = pits[i]!.x - pits[i - 1]!.x;
+          const n = Math.max(1, Math.round(g / PIT_PITCH));
+          expect(Math.abs(g - n * PIT_PITCH)).toBeLessThanOrEqual(2 * PIT_SEARCH);
+          expect(g).toBeGreaterThanOrEqual(PIT_PITCH - 2 * PIT_SEARCH);
+          expect(pits[i]!.slot).toBeGreaterThan(pits[i - 1]!.slot);
+        }
+        for (const p of pits) expect(Math.abs(p.x - slots[p.slot]!)).toBeLessThanOrEqual(PIT_SEARCH);
+        // Au moins une place sautée dans la rue (portes, lampadaires, abords) : sinon le test des voisins ne prouve rien.
+        if (width >= 1440) expect(pits.length).toBeLessThan(slots.length);
+      });
+
+      it(`${tag} : une place sautée ne décale pas ses voisins (mêmes fosses, mêmes tirages, sans les fosses voisines)`, () => {
+        // Chaque fosse ne dépend que de sa place : retirer une fosse d'une autre place ne change rien (plus de règle d'écart),
+        // et ses tirages (taille, essence, inclinaison) sont ceux de sa place, pas de son rang dans la rue.
+        const wider = cityPaintPlan(width + 600, H, seed).rue.filter((v): v is RuePit => v.kind === 'pit');
+        for (const p of pits) {
+          const same = wider.find((q) => q.slot === p.slot);
+          if (!same) continue;
+          expect([same.h, same.r, same.lean, same.young, same.empty]).toEqual([p.h, p.r, p.lean, p.young, p.empty]);
+        }
+      });
+
+      it(`${tag} : une essence par tronçon (coupé au passage piéton et à l'arrêt de bus), même âge, 1 replantation sur ${PIT_REPLANT} places`, () => {
+        const cuts = rueCuts(width, seed, plan.unit);
+        const bySection = new Map<number, Set<string>>();
+        for (const p of pits) {
+          expect(p.section).toBe(sectionOf(cuts, p.x));
+          bySection.set(p.section, (bySection.get(p.section) ?? new Set()).add(p.species));
+          expect(['platane', 'tilleul', 'robinier', 'frene', 'cerisier']).toContain(p.species);
+          if (p.young) {
+            expect(p.h).toBe(13 * plan.unit);
+            expect(p.r).toBe(4.5 * plan.unit);
+          } else {
+            expect(Math.abs(p.h - 42 * plan.unit)).toBeLessThanOrEqual(3 * plan.unit + 1e-9);
+            expect(Math.abs(p.r - 20 * plan.unit)).toBeLessThanOrEqual(1.5 * plan.unit + 1e-9);
+          }
+          expect(p.young && p.empty).toBe(false);
+          expect(p.finish).toBe(p.empty ? 'terre' : p.young ? 'herbe' : 'grille');
+        }
+        for (const s of bySection.values()) expect(s.size).toBe(1);
+        // Au plus une replantation (jeune ou vide) par dizaine de places consécutives.
+        const again = pits.filter((p) => p.young || p.empty).map((p) => p.slot);
+        for (let i = 1; i < again.length; i++) expect(again[i]! - again[i - 1]!).toBeGreaterThanOrEqual(PIT_REPLANT);
+        expect(new Set(again.map((s) => s % PIT_REPLANT)).size).toBeLessThanOrEqual(1);
+      });
+
+      it(`${tag} : pied du fût au centre du carré de terre (walkY + 0,6 → curb − 0,4)`, () => {
+        for (const p of pits) {
+          expect(p.y).toBeCloseTo(pitFootY(plan.curb, plan.unit), 9);
+          expect(pitTopY(plan.curb, plan.unit)).toBeGreaterThan(m.walkY);
+          expect(p.x0).toBe(p.x - PIT_HALF);
+          expect(p.x1).toBe(p.x + PIT_HALF);
+          expect(p.x0).toBeGreaterThanOrEqual(2);
+          expect(p.x1).toBeLessThanOrEqual(width - 2);
+        }
+        expect(pitFootY(plan.curb, plan.unit)).toBeCloseTo(255.4, 1);
+        expect(pitTopY(plan.curb, plan.unit)).toBeCloseTo(252.6, 6);
       });
 
       it(`${tag} : rien hors de [0, largeur]`, () => {
@@ -171,7 +223,7 @@ describe('verdure de la rue : peinture (paintRueVerdure)', () => {
       const ref = pits.map((v) => JSON.stringify([rueTreeModel(v).trunkBox, rueTreeModel(v).span]));
       // Le modèle hors cache est le même (rien ne dépend de l'ordre des appels).
       const v0 = pits[0]!;
-      const fresh = treeModel('rue' + Math.round(v0.x), v0.species, { x: v0.x, y: v0.y }, v0.h, v0.r * 2, v0.young ? 3 : 4, v0.r * (v0.young ? 0.42 : 0.3), v0.young ? 20 : 60, v0.young ? 0.7 : 1.3 + v0.r * 0.07);
+      const fresh = treeModel('rue' + Math.round(v0.x), RUE_LOOK[v0.species], { x: v0.x, y: v0.y }, v0.h, v0.r * 2, v0.young ? 3 : 4, v0.r * (v0.young ? 0.42 : 0.3), v0.young ? 20 : 60, v0.young ? 0.7 : 1.3 + v0.r * 0.07);
       expect(JSON.stringify([fresh.trunkBox, fresh.span])).toBe(ref[0]);
       for (let doy = 0; doy < 365; doy++) {
         const D = dayOf(doy);
