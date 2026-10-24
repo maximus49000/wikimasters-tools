@@ -420,6 +420,84 @@ describe('calque de la vie derrière les fenêtres', () => {
     expect(seen).toBeGreaterThan(0);
   });
 
+  it('tapis secoué à une lucarne et à une fenêtre : visible et jamais coupé pendant toute la scène (pas de 0,25 s)', () => {
+    const width = 1080;
+    const facades = cityFacades(width, H, SEED);
+    const life = lifeOf(facades);
+    const lucarne = (id: string): boolean => {
+      const d = life.dwellings.find((x) => x.id === id)!;
+      return facades[d.facade]!.homes[d.home]!.level < 0;
+    };
+    // Première scène « tapis » d'une lucarne et d'une fenêtre ordinaire (début à la seconde près).
+    const scenes: { id: string; start: number }[] = [];
+    for (const want of [true, false]) {
+      for (const d of life.dwellings) {
+        if (lucarne(d.id) !== want) continue;
+        const shaking = (t: number): boolean => homeState(d, life.today.get(d.id)!, life.yesterday.get(d.id)!, t).actors.some((a) => a.choreo === 'shake');
+        // Repérée par pas de 15 s (la scène dure 1,5 min), puis à la seconde.
+        let start = -1;
+        for (let t = 10 * 60; t < 13 * 60 && start < 0; t += 0.25) if (shaking(t)) start = t;
+        if (start >= 0) while (shaking(start - 1 / 60)) start -= 1 / 60;
+        if (start >= 0) { scenes.push({ id: d.id, start }); break; }
+      }
+    }
+    expect(scenes.length).toBe(2);
+    const reg = new FigureRegistry('twlr', { perFrame: 400 });
+    let checked = 0;
+    for (const { id, start } of scenes) {
+      const d = life.dwellings.find((x) => x.id === id)!;
+      // Montage à la minute entière, horloge murale avancée jusqu'au début de la scène.
+      const minutes = Math.floor(start);
+      let now = NOW_S * 1000 + Math.round((start - minutes) * 60) * 1000;
+      let perf = 0;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const queue: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queue.push(cb));
+      vi.stubGlobal('cancelAnimationFrame', () => {});
+      const host = document.createElement('div');
+      document.body.append(host);
+      const root = createRoot(host);
+      mounted.push({ root, host });
+      act(() => root.render(<FigureContext.Provider value={reg}><svg><WindowLifeLayer facades={facades} life={life} sky={skyOf(13 * 60)} minutes={minutes} still={false} width={width} /></svg></FigureContext.Provider>));
+      let seen = 0;
+      // Nœuds constants pendant la journée : cherchés une fois (un querySelector par image coûterait 0,1 s dans jsdom).
+      const figs = [...host.querySelectorAll(`[data-wl-fig^="${id}/"]`)];
+      const rug = host.querySelector(`[data-wl-out="${id}"] > [data-wl-held="rug"]`)!;
+      const rugPos = rug.querySelector('[data-wl-pos]')!;
+      const clips = new Map<string, number[]>();
+      for (let f = 0; f < 1.6 * 240; f++) {
+        now += 250;
+        perf += 250;
+        const cbs = queue.splice(0);
+        act(() => { for (const cb of cbs) cb(perf); reg.flush(); });
+        const t = minutes + (now - NOW_S * 1000) / 60000;
+        const a = homeState(d, life.today.get(id)!, life.yesterday.get(id)!, t).actors.find((x) => x.choreo === 'shake');
+        const pose = a ? windowPose(a, d) : null;
+        if (!a || !pose?.props.includes('rug')) continue;
+        // Pantin effectivement montré (pas écarté par la borne des 8 animés).
+        if (!figs.some((g) => g.getAttribute('data-wl-fig') === `${id}/${a.m}` && g.getAttribute('display') !== 'none')) continue;
+        seen++;
+        const at = `${id} à ${t.toFixed(3)} min (${pose.arms})`;
+        expect(rug.getAttribute('display'), `${at} : tapis caché`).toBe('inline');
+        const [hx = NaN, hy = NaN] = rugPos.getAttribute('transform')!.match(/-?[\d.]+/g)!.map(Number);
+        const clip = rug.getAttribute('clip-path');
+        if (clip && clip !== 'none') {
+          if (!clips.has(clip)) {
+            const r = host.querySelector(`[id="${clip.slice(5, -1)}"] rect`)!;
+            clips.set(clip, ['x', 'y', 'width', 'height'].map((k) => Number(r.getAttribute(k))));
+          }
+          const [x = NaN, y = NaN, w = NaN, h = NaN] = clips.get(clip)!;
+          const inside = x <= hx - 1.6 && hx + 1.6 <= x + w && y <= hy && hy + 5 <= y + h;
+          expect(inside, `${at} : tapis [${hx - 1.6}, ${hx + 1.6}] × [${hy}, ${hy + 5}] coupé par ${clip} [${x}, ${x + w}] × [${y}, ${y + h}]`).toBe(true);
+        }
+      }
+      expect(seen, `${id} : scène du tapis jamais vue`).toBeGreaterThan(0);
+      checked += seen;
+      act(() => root.unmount());
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it('pantins toujours en 2D (aucune image 3D demandée)', () => {
     const reg = new FigureRegistry('twl3', { perFrame: 400 });
     const citizen = vi.spyOn(reg, 'citizen');

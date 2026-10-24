@@ -1253,7 +1253,10 @@ export function WindowLifeLayer({ facades, life, sky, minutes, still, width, glo
                 const hx = two ? (an.handR[0] + an.handL[0]) / 2 : an.handR[0];
                 const hy = two ? (an.handR[1] + an.handL[1]) / 2 : an.handR[1];
                 set(h.pos, 'transform', `translate(${n2(x + hx * scale)} ${n2(fy + hy * scale)})`);
-                set(h.g, 'clip-path', pageClip);
+                // Penché : l'accessoire tenu dehors (tapis, arrosoir, cigarette, décor) est par-dessus la façade, jamais
+                // coupé par le cadre du penché (qui ne descend que 0,5 px sous l'appui : le tapis, qui pend sous les mains,
+                // y disparaissait).
+                set(h.g, 'clip-path', pose.where === 'lean' && OUTSIDE_HELD.has(h.kind) ? 'none' : pageClip);
                 set(h.g, 'opacity', op);
                 if (h.puff) {
                   const cyc = ((((a.t * 60) / SMOKE_CYCLE_S + a.slot) % 1) + 1) % 1;
