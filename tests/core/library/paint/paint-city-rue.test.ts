@@ -95,7 +95,6 @@ describe('verdure de la rue (streetVerdure)', () => {
           // Entrée (span ± 4 px) contre la grille réelle de la fosse.
           for (const d of doorSpans) expect(overlap(p.x0, p.x1, d.x0, d.x1)).toBe(false);
           for (const l of lamps) expect(overlap(a, b, l - 9, l + 9)).toBe(false);
-          for (const t of plan.trees) expect(overlap(a, b, t.x - t.r - 6, t.x + t.r + 6)).toBe(false);
           // Porte vitrée ± 4 px contre la grille réelle de la fosse (x0 … x1). Le mobilier, côté façade, ne compte pas ici.
           for (const d of shopDoors) expect(overlap(p.x0, p.x1, d.x - 4, d.x + d.w + 4)).toBe(false);
         }

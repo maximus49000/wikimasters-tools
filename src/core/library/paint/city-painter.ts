@@ -8,8 +8,8 @@ import { paintParisRoof } from './roof-painter';
 import { paintEntrance } from './shop/entrance';
 import { hexRgb, rgba, type Rgb } from './color';
 import { paintFarWall } from './hill-painter';
-import { fondStates, paintFond } from './fond-painter';
-import type { FondHouse } from './fond-plan';
+import { fondStates, fondTile, paintFond } from './fond-painter';
+import { isTree, treeOfItem, type FondHouse } from './fond-plan';
 import { DEFAULT_MOMENT, laundryK, shutterK, slotHours, type FondMoment } from './fond-time';
 import type { PaintCtx } from './paint-ctx';
 import type { RueItem } from './rue-verte-plan';
@@ -20,7 +20,7 @@ import { paintRueVerdure, rueMomentKey, rueSpan } from './rue-verte-painter';
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 14;
+export const PAINT_VERSION = 15;
 
 const LEAVES = ['#2A6A2E', '#52A23C', '#A8DC58'].map(hexRgb);
 const BARK = hexRgb('#9A8468');
@@ -201,81 +201,6 @@ function paintStreet(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number)
   fillRect(ctx, 'rgba(50,40,90,0.3)', a, farSide + 0.8, w, 1.6);
 }
 
-function paintTree(ctx: PaintCtx, plan: CityPaintPlan, t: Tree): void {
-  const rng = rngOf(plan, 'ghibli-tree', t.x);
-  const { x, cy, r, base } = t;
-  const trunkTop = cy + r * 0.3;
-  groundShadow(ctx, x - r * 0.6, base, r * 2 + 30, r * 1.2, 0.28);
-  // Tronc : aplat, ombre à droite, taches d'écorce claires, trait.
-  ctx.beginPath();
-  ctx.moveTo(x - 2.4, base);
-  ctx.lineTo(x - 1.5, trunkTop);
-  ctx.lineTo(x + 1.5, trunkTop);
-  ctx.lineTo(x + 2.6, base);
-  ctx.closePath();
-  ctx.fillStyle = rgba(BARK, 1);
-  ctx.fill();
-  ctx.save();
-  ctx.clip();
-  fillRect(ctx, shade(BARK, 0.4), x + 0.4, trunkTop, 3, base - trunkTop);
-  ctx.fillStyle = rgba(light(BARK, 0.5), 1);
-  for (let i = 0; i < 5; i++) ctx.fillRect(x - 1.6 + rng() * 2, trunkTop + 4 + rng() * Math.max(1, base - trunkTop - 10), 1.4, 2.5);
-  ctx.restore();
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.moveTo(x - 2.4, base);
-  ctx.lineTo(x - 1.5, trunkTop);
-  ctx.lineTo(x + 1.5, trunkTop);
-  ctx.lineTo(x + 2.6, base);
-  ctx.closePath();
-  ctx.stroke();
-  // Branches encrées puis feuillage en masses : trait épais, trois verts du sombre au clair (haut gauche).
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(x, trunkTop + 2);
-  ctx.lineTo(x - r * 0.5, cy - r * 0.2);
-  ctx.moveTo(x, trunkTop);
-  ctx.lineTo(x + r * 0.55, cy - r * 0.3);
-  ctx.stroke();
-  const MASSES: readonly [number, number, number][] = [[0, 0, 0.72], [-0.45, 0.12, 0.45], [0.42, 0.15, 0.46], [-0.18, -0.4, 0.42], [0.25, -0.36, 0.4], [0.05, 0.36, 0.38]];
-  const masses: [number, number, number][] = MASSES.map(([mx, my, ms]) => [x + mx * r, cy + my * r, r * ms]);
-  const clumps: [number, number, number][] = [];
-  for (const [mx, my, mr] of masses) {
-    for (let i = 0; i < 7; i++) {
-      const a = rng() * TAU;
-      const d = Math.sqrt(rng()) * mr * 0.6;
-      const cr = mr * 0.42 + rng() * mr * 0.18;
-      // Tout reste dans la couronne (rayon r autour du centre).
-      const px = mx + Math.cos(a) * d;
-      const py = my + Math.sin(a) * d;
-      const far = Math.hypot(px - x, py - cy) + cr;
-      const k = far > r ? (r - cr) / Math.max(1e-6, far - cr) : 1;
-      clumps.push([x + (px - x) * k, cy + (py - cy) * k, cr]);
-    }
-  }
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.8;
-  ctx.beginPath();
-  for (const [cx, cyy, cr] of clumps) {
-    ctx.moveTo(cx + cr, cyy);
-    ctx.arc(cx, cyy, cr, 0, TAU);
-  }
-  ctx.stroke();
-  for (let tn = 0; tn < 3; tn++) {
-    ctx.fillStyle = rgba(LEAVES[tn]!, 1);
-    ctx.beginPath();
-    for (const [cx, cyy, cr] of clumps) {
-      const rr = cr * (1 - tn * 0.3);
-      const ox = cx - tn * cr * 0.28;
-      const oy = cyy - tn * cr * 0.32;
-      ctx.moveTo(ox + rr, oy);
-      ctx.arc(ox, oy, rr, 0, TAU);
-    }
-    ctx.fill();
-  }
-}
-
 function paintFurniture(ctx: PaintCtx, plan: CityPaintPlan, f: Furniture): void {
   const u = plan.unit;
   const { ground } = plan;
@@ -393,19 +318,68 @@ export function paintPodium(ctx: PaintCtx, plan: CityPaintPlan, p: PaintPodium):
   inkRect(ctx, cx, cy, cw, CORNICE.h, 0.7);
 }
 
-// `moment` : date, météo et heure du fond vivant (poses lentes lues au début de la tranche de 10 min).
-export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number, moment: FondMoment = DEFAULT_MOMENT): void {
+// Partie de la tranche à peindre (PR 3b, colline au vent : les houppiers de la colline sont peints à part pour bouger au vent,
+// le reste est figé dans la tranche) :
+// - 'all' : la tranche complète, flux d'appels identique à celui d'avant la PR (mouvement réduit, graphisme classique) ;
+// - 'base' : tout, sauf le houppier (feuilles sèches, masses, rehauts, neige du feuillage) des arbres des trois groupes de la
+//   colline (fûts, charpentières, rameaux et gui restent : ils ne bougent pas) ;
+// - { canopy: g } : le houppier des arbres du groupe g seul (ni sol, ni maisons, ni ville) ;
+// - { after: g } : ce que 'base' peint APRÈS le dernier élément (arbre ou autre) de la liste du groupe g, dans l'ordre de 'all'
+//   (maisons et rangs suivants, mur du fond, immeubles, rue, verdure de la rue) : l'écran qui recouvre le feuillage de g (seul
+//   l'alpha sert). Limite acceptée : dans un même groupe, un feuillage passe devant les fûts et petits éléments peints après
+//   lui dans la liste (2 px d'écart au plus avec l'ordre exact).
+// Groupes : 0 = arbres de la crête, 1 = arbres du rang de verdure 0, 2 = arbres du rang 1 et des échappées. Les arbres de
+// jardin des maisons (bouquets) sont peints avec leur maison : ils ne bougent pas.
+export type HillPart = 'all' | 'base' | { canopy: 0 | 1 | 2 } | { after: 0 | 1 | 2 };
+
+// Boîte monde (px CSS) des houppiers du groupe `group` dont le dessin touche la tranche : touffes pleines (lobes, rehauts,
+// neige, feuilles sèches : r × 1,4 + 1,6 autour de chaque touffe, la marge de la boîte du modèle), élargie de 3 px de chaque
+// côté et de 2 px en haut et en bas, rognée à la tranche en x ; null si le groupe n'a aucun arbre (à touffes) dans la tranche.
+// Indépendante du jour : un arbre nu l'hiver garde sa boîte (son flux { canopy } est alors vide).
+export function hillCanopyBox(plan: CityPaintPlan, tile: number, group: 0 | 1 | 2): { x: number; y: number; w: number; h: number } | null {
+  const tx0 = tile * TILE;
+  const tx1 = Math.min(plan.width, (tile + 1) * TILE);
+  const it = fondTile(plan, tx0, tx1);
+  const list = group === 0 ? it.crest : group === 1 ? it.rows[0] : [...it.rows[1], ...it.escapes.flatMap((e) => e.verdure)];
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const v of list) {
+    if (!isTree(v)) continue;
+    const tree = treeOfItem(v);
+    if (!tree) continue;
+    for (const tf of tree.m.tufts) {
+      const r = tf.rr * 1.4 + 1.6;
+      x0 = Math.min(x0, tf.x - r);
+      x1 = Math.max(x1, tf.x + r);
+      y0 = Math.min(y0, tf.y - r);
+      y1 = Math.max(y1, tf.y + r);
+    }
+  }
+  if (x0 > x1) return null;
+  const a = Math.max(tx0, x0 - 3);
+  const b = Math.min(tx1, x1 + 3);
+  if (b <= a) return null;
+  return { x: a, y: y0 - 2, w: b - a, h: y1 - y0 + 4 };
+}
+
+// `moment` : date, météo et heure du fond vivant (poses lentes lues au début de la tranche de 10 min) ; `part` : voir HillPart.
+export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number, moment: FondMoment = DEFAULT_MOMENT, part: HillPart = 'all'): void {
   const it = tileItems(plan, tile);
   const x0 = tile * TILE;
   const x1 = Math.min(plan.width, (tile + 1) * TILE);
-  paintFond(ctx, plan, x0, x1, moment, it.landmarks);
+  paintFond(ctx, plan, x0, x1, moment, it.landmarks, part);
+  // Houppiers seuls : rien de la ville.
+  if (typeof part === 'object' && 'canopy' in part) return;
   for (const b of it.buildings) if (b.far) paintBuilding(ctx, plan, b, moment);
   for (const b of it.buildings) if (!b.far) paintBuilding(ctx, plan, b);
   for (const p of it.podiums) paintPodium(ctx, plan, p);
   paintStreet(ctx, plan, x0, x1);
   // Entrées d'immeuble (G4a) : en pierre, sur le trottoir, avant les arbres.
   for (const d of it.doors) paintEntrance(ctx, d.cx, d.base, d.s, d.variant, plan.seed ^ Math.round(d.x * 8));
-  for (const t of it.trees) paintTree(ctx, plan, t);
+  // Plus d'ancien platane peint dans la tranche (2026-10-24, demande de l'utilisateur : il ne ressemblait pas aux arbres de
+  // la rue) : `plan.trees` reste dans le plan (tirages inchangés) mais n'est plus dessiné ; les fosses peuvent s'y planter.
   for (const f of it.furniture) paintFurniture(ctx, plan, f);
   // Verdure de la rue (PR 3) : par-dessus le premier plan ; ses arbres sont dans le calque animé au-dessus des tranches.
   paintRueVerdure(ctx, plan, it.rue, moment, x0, x1);

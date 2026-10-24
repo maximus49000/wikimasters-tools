@@ -96,7 +96,15 @@ let override: PaintedCanvasDriver | null = null;
 const driver = (): PaintedCanvasDriver => override ?? (noCanvas() ? nullDriver : realDriver);
 
 // Cache de module : image décodée par url (LRU), copies étalonnées par (url, étalonnage), urls abandonnées après 3 essais.
+// Deux réserves d'images décodées, chacune son LRU : les grandes images de la toile (tranches, neige) et les petites couches de
+// la colline au vent (hill-wind-layer.tsx : feuillage et écran rognés aux houppiers, jusqu'à 6 par tranche) ; les secondes,
+// nombreuses mais petites, ne chassent jamais les tranches de la première (sinon chaque nouvel arrondi les redécoderait).
+type Pool = { map: Map<string, Source>; max: number };
 const decoded = new Map<string, Source>();
+const tilesPool: Pool = { map: decoded, max: DECODED_MAX };
+// Couches de la colline : deux générations de 8 tranches × 3 groupes × (feuillage + écran).
+const hillPool: Pool = { map: new Map<string, Source>(), max: 96 };
+const inPool = (url: string): boolean => decoded.has(url) || hillPool.map.has(url);
 const decoding = new Map<string, Promise<Source | null>>();
 const graded = new Map<string, Map<string, Source>>();
 const grading = new Map<string, Promise<Source | null>>();
@@ -135,6 +143,7 @@ export function setPaintedCanvasDriverForTests(d: PaintedCanvasDriver | null): v
 }
 export function resetPaintedCanvasForTests(): void {
   decoded.clear();
+  hillPool.map.clear();
   decoding.clear();
   graded.clear();
   grading.clear();
@@ -143,21 +152,21 @@ export function resetPaintedCanvasForTests(): void {
   inUse.clear();
 }
 
-function keepDecoded(url: string, src: Source): void {
-  decoded.delete(url);
-  decoded.set(url, src);
-  while (decoded.size > DECODED_MAX) {
-    const old = decoded.keys().next().value as string;
-    decoded.delete(old);
+function keepDecoded(pool: Pool, url: string, src: Source): void {
+  pool.map.delete(url);
+  pool.map.set(url, src);
+  while (pool.map.size > pool.max) {
+    const old = pool.map.keys().next().value as string;
+    pool.map.delete(old);
     graded.get(old)?.forEach(evictGraded);
     graded.delete(old);
   }
 }
 
-function decodeUrl(d: PaintedCanvasDriver, url: string): Promise<Source | null> {
-  const hit = decoded.get(url);
+function decodeUrl(d: PaintedCanvasDriver, url: string, pool: Pool = tilesPool): Promise<Source | null> {
+  const hit = pool.map.get(url);
   if (hit) {
-    keepDecoded(url, hit);
+    keepDecoded(pool, url, hit);
     return Promise.resolve(hit);
   }
   if (broken.has(url)) return Promise.resolve(null);
@@ -167,7 +176,7 @@ function decodeUrl(d: PaintedCanvasDriver, url: string): Promise<Source | null> 
       for (let i = 0; i < PAINTED_DECODE_TRIES; i++) {
         const src = await d.decode(url).catch(() => null);
         if (src) {
-          keepDecoded(url, src);
+          keepDecoded(pool, url, src);
           return src;
         }
       }
@@ -183,8 +192,8 @@ function decodeUrl(d: PaintedCanvasDriver, url: string): Promise<Source | null> 
 // Image prête à dessiner à l'étalonnage `key` (`grade` null : l'image décodée telle quelle). Étalonnage raté (contexte absent,
 // lecture des pixels refusée) : l'image non étalonnée, pas mise en cache (le prochain changement de liste ou d'arrondi
 // réessaie) ; la place est dessinée plutôt que laissée vide.
-async function sourceFor(d: PaintedCanvasDriver, url: string, grade: Grade | null, key: string): Promise<Source | null> {
-  const src = await decodeUrl(d, url);
+async function sourceFor(d: PaintedCanvasDriver, url: string, grade: Grade | null, key: string, pool: Pool = tilesPool): Promise<Source | null> {
+  const src = await decodeUrl(d, url, pool);
   if (!src || !grade) return src;
   const per = graded.get(url);
   const hit = per?.get(key);
@@ -195,7 +204,7 @@ async function sourceFor(d: PaintedCanvasDriver, url: string, grade: Grade | nul
     p = new Promise<Source | null>((resolve) => resolve(d.grade(src, grade)))
       .catch(() => null)
       .then((g) => {
-        if (g && decoded.has(url)) {
+        if (g && inPool(url)) {
           const m = graded.get(url) ?? new Map<string, Source>();
           const prev = m.get(key);
           m.delete(key);
@@ -218,6 +227,30 @@ async function sourceFor(d: PaintedCanvasDriver, url: string, grade: Grade | nul
   return p;
 }
 
+// Accès partagé avec le calque de la colline au vent (hill-wind-layer.tsx) : mêmes pilote, décodage et copies étalonnées
+// (même `gradeKey` que les tranches : le feuillage a exactement leur teinte), réserve des petites couches.
+// `paintedHillSources` : sources prêtes à dessiner de chaque url (`grade` null : décodée telle quelle), une copie rendue
+// entre-temps refaite (deux essais, comme la toile) ; null = indisponible (url abandonnée : voir `paintedBroken`).
+export async function paintedHillSources(list: readonly { url: string; grade: Grade | null; key: string }[]): Promise<(Source | null)[]> {
+  const d = driver();
+  const get = (): Promise<(Source | null)[]> => Promise.all(list.map((it) => sourceFor(d, it.url, it.grade, it.key, hillPool)));
+  let ready = await get();
+  for (let tries = 0; tries < 2 && ready.some((src) => src && released.has(src as object)); tries++) ready = await get();
+  return ready.map((src) => (src && released.has(src as object) ? null : src));
+}
+export const paintedBroken = (url: string): boolean => broken.has(url);
+// Sources montrées par une toile (+1) ou plus montrées (−1) : une copie étalonnée montrée n'est jamais rendue.
+export const holdPaintedSources = (list: Iterable<CanvasImageSource>, by: 1 | -1): void => use(list, by);
+// Contexte 2D d'une toile par le pilote en vigueur ; `drawable` faux sans canvas (jsdom, pilote nul : rien à dessiner, les
+// images comptent comme posées).
+export function paintedContext(cv: HTMLCanvasElement): { ctx: CanvasRenderingContext2D | null; drawable: boolean } {
+  const d = driver();
+  return { ctx: d.context(cv), drawable: d !== nullDriver };
+}
+
+// Signature d'un étalonnage (celle que `onDrawn` rapporte).
+export const gradeSigOf = (grade: Grade | null): string => (grade ? gradeValues(grade) : 'identite');
+
 const boxId = (i: { x: number; y: number; w: number; h: number }): string => `${i.x},${i.y},${i.w},${i.h}`;
 
 // Échelle du tampon (px par unité) : celle des tranches, plafonnée à MAX_PIXELS.
@@ -230,9 +263,12 @@ function unitScale(box: { w: number; h: number }): number {
 
 type Drawn = { count: number; grade: string; boxes: ReadonlySet<string> };
 
-export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: number; y: number; w: number; h: number }; images: readonly CanvasImage[]; grade: Grade | null; onReady?: (ready: boolean) => void; tag: string }): ReactElement {
+// `onDrawn` : urls des images posées sur la toile et signature de l'étalonnage dessiné (`gradeSigOf`), appelé dans la même tâche
+// que le dessin : le calque de la colline au vent y pose aussitôt le feuillage qui va avec (même image, même teinte),
+// hill-wind-layer.tsx.
+export function PaintedCanvas({ box, images, grade, onReady, onDrawn, tag }: { box: { x: number; y: number; w: number; h: number }; images: readonly CanvasImage[]; grade: Grade | null; onReady?: (ready: boolean) => void; onDrawn?: (urls: readonly string[], gradeSig: string) => void; tag: string }): ReactElement {
   const canvas = useRef<HTMLCanvasElement | null>(null);
-  const gradeSig = grade ? gradeValues(grade) : 'identite';
+  const gradeSig = gradeSigOf(grade);
   const sig = `${boxId(box)}#${gradeSig}#${images.map((i) => `${boxId(i)},${i.url}`).join('|')}`;
   // Dernier dessin : sources posées par place (repli d'une image indécodable), nombre d'images et étalonnage (diagnostic).
   const shown = useRef(new Map<string, Source>());
@@ -240,6 +276,8 @@ export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: 
   // Dernière demande, lue par le dessin asynchrone (la liste et l'étalonnage du rendu qui l'a lancé).
   const want = useRef({ box, images, grade, gradeSig });
   want.current = { box, images, grade, gradeSig };
+  const drawnCb = useRef(onDrawn);
+  drawnCb.current = onDrawn;
   useEffect(() => {
     const d = driver();
     const { box: b, images: list, grade: g, gradeSig: key } = want.current;
@@ -289,6 +327,7 @@ export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: 
       use(shown.current.values(), 1);
       use(before, -1);
       setDrawn({ count: placed.length, grade: key, boxes });
+      drawnCb.current?.(placed.map((p) => p.im.url), key);
     })();
     return () => {
       cancelled = true;

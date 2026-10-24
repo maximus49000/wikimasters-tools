@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useSyncExternalStore } from 'react';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import { DEFAULT_MOMENT, type FondMoment } from '../core/library/paint/fond-time';
-import { paintCityTile, TILE, tileCount, tileKey } from '../core/library/paint/city-painter';
+import { hillCanopyBox, paintCityTile, TILE, tileCount, tileKey } from '../core/library/paint/city-painter';
+import type { PaintCtx } from '../core/library/paint/paint-ctx';
 import { FALL, type LightBlob, type WetStroke } from '../core/library/city/night-light';
 import { alphaTopProfile } from '../core/library/paint/sky-clip';
 import { idle } from './paint-queue';
@@ -96,6 +97,8 @@ export function resetPaintedCacheForTests(): void {
   cache.clear();
   profiles.clear();
   failed.clear();
+  hillCache.clear();
+  hillFailed.clear();
   forgetShownForTests();
 }
 
@@ -193,6 +196,211 @@ export function usePaintedCity(plan: CityPaintPlan | null, moment?: FondMoment):
   const prev = shownProfiles.current;
   if (prev.length !== list.length || prev.some((p, i) => p !== list[i])) shownProfiles.current = list;
   return { ready: tiles.every((t) => t.url !== ''), tiles };
+}
+
+// ───────────── Colline au vent (PR 3b) ─────────────
+// La ville se montre d'abord avec ses tranches COMPLÈTES ('all' ci-dessus : feuillage de la colline immobile, mêmes pixels et
+// même délai qu'avant la PR). Ensuite seulement, en arrière-plan (une fois les arbres de la rue cuits, scene-city.tsx), chaque
+// tranche est repeinte en parties : la tranche SANS les houppiers de la colline ('base') et, par groupe d'arbres qui a quelque
+// chose à peindre (crête, rang 0, rang 1 + échappées), deux images rognées à la boîte des houppiers (`hillCanopyBox`), à la
+// résolution de la tranche : le feuillage (`canopy`) et l'écran (`screen` : ce que la tranche peint APRÈS ce groupe, dont seul
+// l'alpha sert). Le calque `colline-vent` (hill-wind-layer.tsx) les redessine au vent ; une tranche ne passe de 'all' à 'base'
+// qu'une fois toutes ses couches prêtes à dessiner, et son feuillage est posé dans la même image (jamais une 'base' sans
+// feuillage). Cache à part (clé `|v`) : l'image 'all' et l'image 'base' d'une tranche sont deux entrées distinctes.
+// Peinture découpée en petits morceaux, UN par créneau de temps mort (comptage, tranche, son PNG, puis par groupe : feuillage,
+// son PNG, écran, son PNG) : la cuisson des arbres de la rue et le reste de la page ne sont jamais affamés.
+// `box` : rectangle du monde des deux images, calé sur la grille de pixels de la tranche (les pixels se superposent exactement).
+export type HillLayer = { group: 0 | 1 | 2; box: { x: number; y: number; w: number; h: number }; canopy: string; screen: string };
+// Tranche 'base' et ses couches ; `hill` vide : rien à animer (groupes nus l'hiver), la tranche reste en 'all'.
+export type HillTile = { key: string; url: string; hill: HillLayer[] };
+export type HillTilePainter = (plan: CityPaintPlan, tile: number, moment?: FondMoment) => Promise<{ url: string; hill: HillLayer[] } | null>;
+
+const HILL_CACHE_MAX = 20;
+const hillCache = new Map<string, HillTile>();
+const hillFailed = new Set<string>();
+let hillOverride: HillTilePainter | null = null;
+export function setHillPainterForTests(painter: HillTilePainter | null): void {
+  hillOverride = painter;
+}
+function rememberHill(t: HillTile): void {
+  hillCache.delete(t.key);
+  hillCache.set(t.key, t);
+  while (hillCache.size > HILL_CACHE_MAX) hillCache.delete(hillCache.keys().next().value as string);
+}
+function touchHill(key: string): HillTile | null {
+  const hit = hillCache.get(key);
+  if (!hit) return null;
+  hillCache.delete(key);
+  hillCache.set(key, hit);
+  return hit;
+}
+
+// Colline au vent active : canvas disponible et mouvement non réduit (`prefers-reduced-motion`, que le banc force avec
+// `still=1`, comme pour les arbres de la rue) ; forcée par les tests (`setHillWindForTests`).
+const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let hillWindOverride: boolean | null = null;
+export function setHillWindForTests(on: boolean | null): void {
+  hillWindOverride = on;
+}
+export function hillWindEnabled(): boolean {
+  if (hillWindOverride !== null) return hillWindOverride;
+  return !noCanvas() && !reducedMotion();
+}
+// Clé de la tranche 'base' (et de ses couches) : `tileKey` + `|v`, distincte de la tranche complète.
+export const hillTileKey = (plan: CityPaintPlan, tile: number, moment?: FondMoment): string => tileKey(plan, tile, moment) + '|v';
+
+// Contexte qui ne dessine rien et compte les appels de méthode (propriétés acceptées) : dit si un flux de la colline
+// (`{ canopy: g }`) peint quelque chose. Le flux d'un groupe nu (hiver) est vide alors que sa boîte existe (`hillCanopyBox` ne
+// dépend pas du jour) : sans ce test, deux images vides et des dessins inutiles à chaque image de la boucle, par groupe.
+function countingCtx(): { ctx: PaintCtx; calls: () => number } {
+  let n = 0;
+  const props = new Map<PropertyKey, unknown>();
+  const gradient = { addColorStop: () => undefined };
+  const ctx = new Proxy({} as PaintCtx, {
+    get: (_t, k) => {
+      if (props.has(k)) return props.get(k);
+      if (k === 'createLinearGradient' || k === 'createRadialGradient' || k === 'createPattern') return () => gradient;
+      if (k === 'measureText') return () => ({ width: 0 });
+      if (typeof k === 'symbol' || k === 'then') return undefined;
+      return () => void n++;
+    },
+    set: (_t, k, v) => {
+      props.set(k, v);
+      return true;
+    },
+  });
+  return { ctx, calls: () => n };
+}
+
+// Groupes de la colline qui ont un feuillage à peindre dans la tranche (boîte non nulle ET flux `{ canopy: g }` non vide), avec
+// leur boîte : ceux-là, et eux seuls, reçoivent des couches.
+export type HillGroup = { group: 0 | 1 | 2; box: { x: number; y: number; w: number; h: number } };
+export function hillGroups(plan: CityPaintPlan, tile: number, moment?: FondMoment): HillGroup[] {
+  const out: HillGroup[] = [];
+  for (const group of [0, 1, 2] as const) {
+    const box = hillCanopyBox(plan, tile, group);
+    if (!box) continue;
+    const c = countingCtx();
+    paintCityTile(c.ctx, plan, tile, moment, { canopy: group });
+    if (c.calls() > 0) out.push({ group, box });
+  }
+  return out;
+}
+
+// Un créneau de temps mort (échéance du navigateur respectée : un seul morceau par créneau) ; sans requestIdleCallback, 16 ms.
+function hillSlot(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => resolve(), { timeout: 4000 });
+    else window.setTimeout(resolve, 16);
+  });
+}
+
+export const canvasHillPainter: HillTilePainter = async (plan, tile, moment) => {
+  if (noCanvas()) return null;
+  const x0 = tile * TILE;
+  const w = Math.min(TILE, plan.width - x0);
+  if (w <= 0) return null;
+  await hillSlot();
+  const groups = hillGroups(plan, tile, moment);
+  if (!groups.length) return { url: '', hill: [] };
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const canvas = document.createElement('canvas');
+  const crop = document.createElement('canvas');
+  try {
+    canvas.width = Math.ceil(w * dpr);
+    canvas.height = Math.ceil(plan.height * dpr);
+    const ctx = canvas.getContext('2d');
+    const cc = crop.getContext('2d');
+    // Contexte refusé (mémoire) : pas de couches, la tranche reste complète.
+    if (!ctx || !cc) return null;
+    await hillSlot();
+    ctx.setTransform(dpr, 0, 0, dpr, -x0 * dpr, 0);
+    paintCityTile(ctx, plan, tile, moment, 'base');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    await hillSlot();
+    const url = canvas.toDataURL('image/png');
+    canvas.width = 0;
+    canvas.height = 0;
+    const hill: HillLayer[] = [];
+    const H = Math.ceil(plan.height * dpr);
+    const W = Math.ceil(w * dpr);
+    for (const { group, box } of groups) {
+      // Boîte calée sur la grille de pixels de la tranche : mêmes pixels que la tranche, sans rééchantillonnage.
+      const px0 = Math.max(0, Math.floor((box.x - x0) * dpr));
+      const py0 = Math.max(0, Math.floor(box.y * dpr));
+      const px1 = Math.min(W, Math.ceil((box.x + box.w - x0) * dpr));
+      const py1 = Math.min(H, Math.ceil((box.y + box.h) * dpr));
+      if (px1 <= px0 || py1 <= py0) continue;
+      const paint = (part: { canopy: 0 | 1 | 2 } | { after: 0 | 1 | 2 }): void => {
+        crop.width = px1 - px0;
+        crop.height = py1 - py0;
+        cc.setTransform(dpr, 0, 0, dpr, -x0 * dpr - px0, -py0);
+        paintCityTile(cc, plan, tile, moment, part);
+        cc.setTransform(1, 0, 0, 1, 0, 0);
+      };
+      await hillSlot();
+      paint({ canopy: group });
+      await hillSlot();
+      const canopy = crop.toDataURL('image/png');
+      await hillSlot();
+      paint({ after: group });
+      await hillSlot();
+      const screen = crop.toDataURL('image/png');
+      hill.push({ group, box: { x: x0 + px0 / dpr, y: py0 / dpr, w: (px1 - px0) / dpr, h: (py1 - py0) / dpr }, canopy, screen });
+    }
+    return { url, hill };
+  } finally {
+    // Tampons rendus tout de suite (WebView : la mémoire des toiles n'est rendue qu'au ramasse-miettes).
+    canvas.width = 0;
+    canvas.height = 0;
+    crop.width = 0;
+    crop.height = 0;
+  }
+};
+
+// Tranches 'base' prêtes, par place (une tranche à repeindre garde l'ancienne jusqu'à la nouvelle) ; null : la tranche reste
+// complète (pas encore peinte en parties, rien à animer, ou peinture ratée). `enabled` faux : rien n'est peint.
+export function useHillTiles(plan: CityPaintPlan | null, moment: FondMoment | undefined, enabled: boolean): (HillTile | null)[] {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const momentSig = moment ? JSON.stringify(moment) : '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const keys = useMemo(() => (plan ? Array.from({ length: tileCount(plan.width) }, (_, t) => hillTileKey(plan, t, moment)) : []), [plan, momentSig]);
+  const keysSig = keys.join('\n');
+  const last = useRef<{ plan: CityPaintPlan | null; tiles: (HillTile | null)[] }>({ plan: null, tiles: [] });
+  useEffect(() => {
+    if (!plan || !enabled) return;
+    const painter = hillOverride ?? canvasHillPainter;
+    let cancelled = false;
+    const next = (): void => {
+      if (cancelled) return;
+      const t = keys.findIndex((k) => !hillCache.has(k) && !hillFailed.has(k));
+      if (t < 0) return;
+      // Le peintre attend lui-même ses créneaux de temps mort (un morceau par créneau).
+      void painter(plan, t, moment)
+        .catch(() => null)
+        .then((got) => {
+          if (got) rememberHill({ key: keys[t]!, url: got.url, hill: got.hill });
+          else hillFailed.add(keys[t]!);
+          if (!cancelled) {
+            bump();
+            next();
+          }
+        });
+    };
+    next();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, keysSig, enabled]);
+  if (!plan) return [];
+  if (last.current.plan !== plan) last.current = { plan, tiles: [] };
+  return keys.map((k, t) => {
+    const hit = touchHill(k);
+    if (hit) last.current.tiles[t] = hit.url && hit.hill.length ? hit : null;
+    else if (hillFailed.has(k)) last.current.tiles[t] = null;
+    return last.current.tiles[t] ?? null;
+  });
 }
 
 // Profil alpha du haut de la ville peinte (haut opaque de chaque px CSS, toute la largeur), assemblé à partir des tranches

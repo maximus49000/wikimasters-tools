@@ -7,6 +7,7 @@ import { EVERGREEN, TONES, bloomOf, boulesOut, foliageOf, fondRng, fountainOn, h
 import { paintHillHouse, paintLandmark } from './hill-painter';
 import { paintBranches, paintDryLeaves, paintLeaves, paintTrunk, type TreeModel } from './hill-trees';
 import type { PaintCtx } from './paint-ctx';
+import type { HillPart } from './city-painter';
 
 // Fond vivant peint dans les tranches fixes (chantier « fond vivant », PR 2a) : port de `03-fond-peint.js` de la maquette
 // validée. Herbe de saison, échappée (route en lacets, voie et gares du funiculaire sans cabines, escalier, square, marché,
@@ -74,34 +75,48 @@ export function paintFondGround(ctx: PaintCtx, plan: CityPaintPlan, x0: number, 
 }
 
 // ── Arbres ──
-function paintTreeAll(ctx: PaintCtx, m: TreeModel, key: string, species: string, D: FondMoment, hz: number, bark: Rgb, gui: (d: number) => number): void {
+// Partie d'un arbre de la colline (PR 3b, colline au vent) : 'trunk' = ce qui reste immobile (fût, charpentières, rameaux,
+// gui, neige des branches), 'canopy' = ce que le vent fera bouger (feuilles sèches accrochées, masses de feuillage, rehauts,
+// neige posée sur le feuillage), 'all' = les deux, dans l'ordre d'avant la PR (le houppier est la fin du dessin de l'arbre :
+// 'all' est exactement 'trunk' suivi de 'canopy').
+export type TreePart = 'all' | 'trunk' | 'canopy';
+function paintTreeAll(ctx: PaintCtx, m: TreeModel, key: string, species: string, D: FondMoment, hz: number, bark: Rgb, gui: (d: number) => number, part: TreePart = 'all'): void {
   const f = foliageOf(D, key, species);
-  paintTrunk(ctx, m, bark, hz);
-  paintBranches(ctx, m, 'coarse', { hz, snow: D.meteo.snow });
-  paintBranches(ctx, m, 'fine', { hz, d: f.d, veil: 0.24, snow: D.meteo.snow, mistletoe: gui(f.d) });
-  paintDryLeaves(ctx, m, D, hz);
-  paintLeaves(ctx, m, f, D, hz);
+  // Gui tiré AVANT le branchement : le tirage (`rk` de l'appelant) est le même quelle que soit la partie peinte.
+  const mistletoe = gui(f.d);
+  if (part !== 'canopy') {
+    paintTrunk(ctx, m, bark, hz);
+    paintBranches(ctx, m, 'coarse', { hz, snow: D.meteo.snow });
+    paintBranches(ctx, m, 'fine', { hz, d: f.d, veil: 0.24, snow: D.meteo.snow, mistletoe });
+  }
+  if (part !== 'trunk') {
+    paintDryLeaves(ctx, m, D, hz);
+    paintLeaves(ctx, m, f, D, hz);
+  }
 }
 // Bouquet de la colline : modèle à fût court, 2-3 niveaux, ≤ 22 touffes ; gui sur 25 % quand il est nu.
-function paintBouquetModel(ctx: PaintCtx, m: TreeModel, key: string, hz: number, D: FondMoment): void {
+function paintBouquetModel(ctx: PaintCtx, m: TreeModel, key: string, hz: number, D: FondMoment, part: TreePart = 'all'): void {
   const rk = mulberry32(hashString('gui-' + key.slice(1)));
-  paintTreeAll(ctx, m, key, 'bouquet', D, hz, hexRgb('#5A4A40'), (d) => (rk() < 0.25 && d < 0.5 ? 1 : 0));
+  paintTreeAll(ctx, m, key, 'bouquet', D, hz, hexRgb('#5A4A40'), (d) => (rk() < 0.25 && d < 0.5 ? 1 : 0), part);
 }
 
 // ── Verdure (même langage que les bouquets ; brume selon le rang ; saison) ──
-export function paintVerdure(ctx: PaintCtx, v: FondItem, hz0: number, D: FondMoment, T: number): void {
+// `part` : pour un arbre à squelette (`treeOfItem`), la partie peinte (voir TreePart) ; pour tout autre élément (haie, verger,
+// marché, square et son bouquet…), 'canopy' ne peint rien et 'trunk' peint tout : seuls les houppiers des arbres bougent.
+export function paintVerdure(ctx: PaintCtx, v: FondItem, hz0: number, D: FondMoment, T: number, part: TreePart = 'all'): void {
   const hz = v.hz ?? hz0;
   const s = v.s || 0.6;
   const key = itemKey(v);
   const fill = (c: Rgb, a = 1): string => rgba(haze(c, hz), a);
   const tree = treeOfItem(v);
   if (tree) {
-    if (v.kind === 'bouquet') return paintBouquetModel(ctx, tree.m, tree.key, hz, D);
+    if (v.kind === 'bouquet') return paintBouquetModel(ctx, tree.m, tree.key, hz, D, part);
     const cyp = v.kind === 'cypress';
     const rk = mulberry32(hashString('gui-' + tree.key));
     const bark = hexRgb(cyp ? '#4A3A30' : v.kind === 'poplar' ? '#7A6A5A' : '#5A4A40');
-    return paintTreeAll(ctx, tree.m, tree.key, tree.species, D, hz, bark, (d) => (!cyp && rk() < 0.3 && d < 0.5 ? 1 + Math.floor(rk() * 2) : 0));
+    return paintTreeAll(ctx, tree.m, tree.key, tree.species, D, hz, bark, (d) => (!cyp && rk() < 0.3 && d < 0.5 ? 1 + Math.floor(rk() * 2) : 0), part);
   }
+  if (part === 'canopy') return;
   const f = foliageOf(D, key, v.kind === 'hedge' ? 'cypress' : v.kind === 'vineyard' ? 'vigne' : v.kind);
   switch (v.kind) {
     case 'hedge': {
@@ -849,25 +864,49 @@ export function fondTile(plan: CityPaintPlan, x0: number, x1: number): FondTile 
 
 // ── Fond complet d'une tranche [x0, x1] : ordre des calques de la scène de la maquette (sol, arbres de crête, rang de crête,
 // puis pour chaque rang ses maisons et repères, et la verdure du rang devant).
-export function paintFond(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number, D: FondMoment, landmarks: readonly Landmark[]): void {
+// `part` (PR 3b, colline au vent ; voir HillPart dans city-painter.ts) : 'all' = le flux d'avant la PR ; 'base' = tout sauf
+// les houppiers des arbres des trois groupes ; { canopy: g } = les houppiers du groupe g seuls ; { after: g } = ce que 'base'
+// peint après le dernier élément de la liste du groupe g (écran posé sur le feuillage de g). Groupes : 0 = arbres de la crête
+// (`it.crest`), 1 = arbres de `it.rows[0]`, 2 = arbres de `it.rows[1]` et arbres des échappées (peints au rang 1). Un seul
+// parcours : chaque élément est peint, ou non, selon son groupe et l'étape (`stage`) où il tombe dans l'ordre de 'all'.
+export function paintFond(ctx: PaintCtx, plan: CityPaintPlan, x0: number, x1: number, D: FondMoment, landmarks: readonly Landmark[], part: HillPart = 'all'): void {
   const T = slotHours(D.minutes);
   const it = fondTile(plan, x0, x1);
-  paintFondGround(ctx, plan, x0, x1, D);
-  for (const v of it.crest) if (!isTree(v)) paintVerdure(ctx, v, 0, D, T);
-  for (const e of it.escapes) paintEscape(ctx, e, D, T, plan.seed);
-  for (const ch of it.chapels) paintChapel(ctx, ch, D);
-  for (const r of it.reservoirs) paintReservoir(ctx, r, D);
-  for (const v of it.crest) if (isTree(v)) paintVerdure(ctx, v, 0, D, T);
-  for (const h of it.crestHouses) paintFondHouse(ctx, h, D, T, plan.seed);
+  const canopyOf = typeof part === 'object' && 'canopy' in part ? part.canopy : -1;
+  const after = typeof part === 'object' && 'after' in part ? part.after : -1;
+  const treePart: TreePart = part === 'all' ? 'all' : 'trunk';
+  // Étape : 0 avant la fin de la liste du groupe 0, 1 après elle, 2 après la liste du groupe 1, 3 après celle du groupe 2.
+  // { after: g } ne peint que les étapes > g ; sans `after`, toutes (−1).
+  let stage = 0;
+  const show = (): boolean => canopyOf < 0 && stage > after;
+  const item = (v: FondItem, hz: number, g: 0 | 1 | 2): void => {
+    if (canopyOf >= 0) {
+      if (g === canopyOf) paintVerdure(ctx, v, hz, D, T, 'canopy');
+    } else if (stage > after) paintVerdure(ctx, v, hz, D, T, treePart);
+  };
+  if (show()) paintFondGround(ctx, plan, x0, x1, D);
+  for (const v of it.crest) if (!isTree(v)) item(v, 0, 0);
+  if (show()) {
+    for (const e of it.escapes) paintEscape(ctx, e, D, T, plan.seed);
+    for (const ch of it.chapels) paintChapel(ctx, ch, D);
+    for (const r of it.reservoirs) paintReservoir(ctx, r, D);
+  }
+  for (const v of it.crest) if (isTree(v)) item(v, 0, 0);
+  stage = 1;
+  if (show()) for (const h of it.crestHouses) paintFondHouse(ctx, h, D, T, plan.seed);
   for (let row = 0; row < HILL_ROWS.length; row++) {
-    for (const h of it.houses) if (h.row === row) paintFondHouse(ctx, h, D, T, plan.seed);
-    for (const e of it.escapes) for (const h of e.houses) if (h.row === row) paintFondHouse(ctx, h, D, T, plan.seed);
-    for (const l of landmarks) if (Math.abs(l.base - plan.height * HILL_ROWS[row]!.y) < 1e-6) paintLandmark(ctx, l, HILL_ROWS[row]!.haze);
+    if (show()) {
+      for (const h of it.houses) if (h.row === row) paintFondHouse(ctx, h, D, T, plan.seed);
+      for (const e of it.escapes) for (const h of e.houses) if (h.row === row) paintFondHouse(ctx, h, D, T, plan.seed);
+      for (const l of landmarks) if (Math.abs(l.base - plan.height * HILL_ROWS[row]!.y) < 1e-6) paintLandmark(ctx, l, HILL_ROWS[row]!.haze);
+    }
     if (row < 2) {
+      const g = (row + 1) as 1 | 2;
       const list = it.rows[row as 0 | 1];
-      for (const v of list) if (!v.behind) paintVerdure(ctx, v, 0, D, T);
-      for (const v of list) if (v.behind) paintVerdure(ctx, v, 0, D, T);
-      if (row === 1) for (const e of it.escapes) for (const v of e.verdure) if (isTree(v)) paintVerdure(ctx, v, 0.2, D, T);
+      for (const v of list) if (!v.behind) item(v, 0, g);
+      for (const v of list) if (v.behind) item(v, 0, g);
+      if (row === 1) for (const e of it.escapes) for (const v of e.verdure) if (isTree(v)) item(v, 0.2, 2);
+      stage = g + 1;
     }
   }
 }
