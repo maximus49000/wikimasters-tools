@@ -173,6 +173,41 @@ describe('cuisson et apparition des arbres', () => {
   });
 });
 
+describe('particules et oiseau des arbres', () => {
+  const november = fondMoment({ y: 2026, m: 11, d: 10 }, 14 * 60, { cloud: 0.2, precip: 0.3, wind: 1, snow: false });
+  const mountAt = (still: boolean): void =>
+    act(() =>
+      root.render(
+        <svg>
+          <StreetTrees plan={plan} moment={november} daylight={1} twilight={0} gloom={false} dim={0} minutes={14 * 60} still={still} />
+        </svg>,
+      ),
+    );
+  const active = (): Element[] => [...host.querySelectorAll('[data-rue-part]')].filter((n) => n.getAttribute('opacity') !== '0');
+  it('pool fixe de 130 particules et un oiseau ; au vent de novembre, feuilles et gouttes posées, plafonds par genre', async () => {
+    mountAt(false);
+    await settle();
+    expect(host.querySelectorAll('[data-rue-part]')).toHaveLength(130);
+    expect(host.querySelectorAll('[data-rue-oiseau]')).toHaveLength(1);
+    let most = 0;
+    for (let s = 0; s < 40; s++) {
+      tick(1_800_000_000_000 + s * 1500);
+      const on = active();
+      most = Math.max(most, on.length);
+      for (const n of on) expect(n.getAttribute('transform')).toMatch(/^translate\(/);
+      expect(on.filter((n) => n.getAttribute('data-rue-part') === 'feuille').length).toBeLessThanOrEqual(40);
+    }
+    expect(most).toBeGreaterThan(0);
+    expect(host.querySelectorAll('[data-rue-part]')).toHaveLength(130);
+  });
+  it('mouvement réduit : aucune particule, aucun oiseau', async () => {
+    mountAt(true);
+    await settle();
+    expect(active()).toHaveLength(0);
+    expect(host.querySelector('[data-rue-oiseau]')!.getAttribute('opacity')).toBe('0');
+  });
+});
+
 describe('rueTreePose', () => {
   const v = pits[0]!;
   const m = rueTreeModel(v);

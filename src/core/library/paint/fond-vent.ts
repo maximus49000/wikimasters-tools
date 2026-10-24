@@ -13,9 +13,9 @@ export function windOf(meteo: FondMeteo, storm: boolean): Wind {
   return { wind: meteo.wind, dir: 1, wet: meteo.precip > 0 ? Math.min(1, meteo.precip / 0.6) : 0, storm };
 }
 
-type Gust = { k: number; tk: number; A: number; L: number; speed: number; dir: 1 | -1; x0: number };
+export type Gust = { k: number; tk: number; A: number; L: number; speed: number; dir: 1 | -1; x0: number };
 
-function gustsAt(t: number, w: Wind, width: number): Gust[] {
+export function gustsAt(t: number, w: Wind, width: number): Gust[] {
   const P = 9 - 5 * w.wind, speed = 50 + 60 * w.wind, out: Gust[] = [];
   for (let k = Math.floor(t / P) - 5; k <= Math.floor(t / P) + 1; k++) {
     const rk = mulberry32((k * 7919 + 13) >>> 0);

@@ -6,7 +6,24 @@ import { windOf, type Wind } from '../core/library/paint/fond-vent';
 import { gradeFor, type Grade } from '../core/library/paint/grade';
 import type { RuePit } from '../core/library/paint/rue-verte-plan';
 import { rueTreeModel, rueWet } from '../core/library/paint/rue-verte-painter';
-import { gradePixels, paintRueLampWash, paintRueLayer, rueLampWash, rueLayers, rueSpriteBox, rueTreePose, type RueLampWash, type RueLayerName } from '../core/library/paint/rue-sprites';
+import {
+  RUE_CAP_OF,
+  RUE_PARTICLE_KINDS,
+  gradePixels,
+  paintRueLampWash,
+  paintRueLayer,
+  rueBird,
+  rueLampWash,
+  rueLayers,
+  rueParticles,
+  rueSpriteBox,
+  rueTreePose,
+  type RueLampWash,
+  type RueLayerName,
+  type RueParticleKind,
+} from '../core/library/paint/rue-sprites';
+import { gradeHex } from '../core/library/paint/fond-vie';
+import { INK } from '../core/library/paint/cel';
 import type { TreeModel } from '../core/library/paint/hill-trees';
 import { setIfChanged } from './svg-write';
 import { useWallClockLoop } from './use-wallclock-loop';
@@ -32,6 +49,15 @@ let cacheMax = CACHE_MIN;
 export const RUE_BAKE_TRIES = 3;
 // Fondu d'entrée d'un arbre (même durée que le fondu de la ville peinte, scene-city.tsx).
 const TREE_FADE = 'opacity 1s ease';
+// Pool fixe des particules (feuilles, pétales, gouttes, neige, graines) : géométrie et opacité par genre, nœuds constants.
+const PART_SHAPE: Record<RueParticleKind, { x: number; y: number; w: number; h: number; rx?: number; op: string }> = {
+  feuille: { x: -0.9, y: -0.5, w: 1.8, h: 1, op: '1' },
+  petale: { x: -0.9, y: -0.5, w: 1.8, h: 1, op: '1' },
+  goutte: { x: -0.25, y: -1.2, w: 0.5, h: 1.4, op: '0.9' },
+  neige: { x: -0.9, y: -0.9, w: 1.8, h: 1.8, rx: 0.9, op: '0.95' },
+  graine: { x: -0.45, y: -0.45, w: 0.9, h: 0.9, rx: 0.45, op: '0.85' },
+};
+const POOL = RUE_PARTICLE_KINDS.flatMap((kind) => Array.from({ length: RUE_CAP_OF[kind] }, (_, i) => ({ kind, i })));
 // Marge minimale par créneau de temps mort avant d'y cuire une couche de plus (ms).
 const SLOT_MARGIN_MS = 6;
 const q20 = (v: number): number => Math.round(Math.max(0, Math.min(1, v)) * 20) / 20;
@@ -175,7 +201,19 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
   }, [ready, onReady]);
 
   // Pose à 15 Hz : écrit les transformations et opacités des couches mobiles.
-  const els = useRef<{ trees: Tree[] | null; list: { twigs: Element; cs: Element[]; hi: Element; pale: Element }[] }>({ trees: null, list: [] });
+  const els = useRef<{ trees: Tree[] | null; list: { twigs: Element; cs: Element[]; hi: Element; pale: Element }[]; pool: Element[]; bird: Element | null }>({ trees: null, list: [], pool: [], bird: null });
+  const pits = useMemo(() => trees.map((tr) => tr.v), [trees]);
+  // Particules et oiseau : couleurs passées dans l'étalonnage courant (comme fond-life.tsx), mémorisées par teinte.
+  const graded = useMemo(() => {
+    const g = gradeFor(daylight, twilight, gloom);
+    const memo = new Map<string, string>();
+    return (c: string): string => {
+      let v = memo.get(c);
+      if (v === undefined) memo.set(c, (v = gradeHex(c, g)));
+      return v;
+    };
+  }, [daylight, twilight, gloom]);
+  const dark = daylight < 0.45;
   const bare = useMemo(() => trees.map((tr) => foliageOf(D, 'rue' + Math.round(tr.v.x), tr.v.species).d <= 0.1), [trees, D]);
   const wind = useMemo(() => windOf(D.meteo, D.meteo.wind >= 0.8), [D]);
   const place = useMemo(() => {
@@ -192,6 +230,8 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
             const pick = (l: string): Element => g.querySelector(`[data-rue-couche="${l}"]`)!;
             return { twigs: pick('twigs'), cs: Array.from({ length: tr.masses }, (_, k) => pick(`c${k}`)), hi: pick('hi'), pale: pick('pale') };
           }),
+          pool: [...el.querySelectorAll('[data-rue-part]')],
+          bird: el.querySelector('[data-rue-oiseau]'),
         };
         zeroed = false;
       }
@@ -218,8 +258,43 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
         setIfChanged(node.pale, 'opacity', pale);
         if (pale !== '0') setIfChanged(node.pale, 'transform', `translate(${num(p.paleDx)} 0)`);
       });
+      // Particules : chaque genre remplit sa part du pool ; le reste est éteint. Mouvement réduit : rien du tout.
+      const pool = els.current.pool;
+      const ps = still ? [] : rueParticles(pits, D, t, w, plan.width);
+      let base = 0;
+      for (const kind of RUE_PARTICLE_KINDS) {
+        const mine = ps.filter((p) => p.kind === kind);
+        for (let j = 0; j < RUE_CAP_OF[kind]; j++) {
+          const node = pool[base + j];
+          if (!node) continue;
+          const p = mine[j];
+          if (!p) {
+            setIfChanged(node, 'opacity', '0');
+            continue;
+          }
+          setIfChanged(node, 'transform', `translate(${num(p.x)} ${num(p.y)})${p.rot ? ` rotate(${num(p.rot % 360, 0)})` : ''}`);
+          setIfChanged(node, 'fill', graded(p.color));
+          setIfChanged(node, 'opacity', PART_SHAPE[kind].op);
+        }
+        base += RUE_CAP_OF[kind];
+      }
+      // Oiseau : en vol (trait en V), posé (corps et tête) ; éteint sinon.
+      const birdEl = els.current.bird;
+      if (birdEl) {
+        const b = still ? null : rueBird(pits, D, t, dark, plan.width);
+        if (!b) setIfChanged(birdEl, 'opacity', '0');
+        else {
+          const { x, y, flap } = b;
+          const d = b.flying
+            ? `M${num(x - 1.3)} ${num(y - flap)}L${num(x)} ${num(y + 0.3)}L${num(x + 1.3)} ${num(y - flap)}`
+            : `M${num(x - 0.7)} ${num(y - 1.1)}h1.4v1.1h-1.4zM${num(x + 0.15)} ${num(y - 1.3)}a0.45 0.45 0 1 0 0.9 0a0.45 0.45 0 1 0 -0.9 0z`;
+          setIfChanged(birdEl, 'd', d);
+          setIfChanged(birdEl, 'fill', b.flying ? 'none' : INK);
+          setIfChanged(birdEl, 'opacity', '0.85');
+        }
+      }
     };
-  }, [trees, still, at, wind, bare, plan.width]);
+  }, [trees, still, at, wind, bare, plan.width, pits, D, dark, graded]);
   // Mouvement réduit : aucune boucle, la pose nulle est écrite une fois.
   useWallClockLoop(place, [place], { frameMs: FRAME_MS, enabled: !still });
   useEffect(() => {
@@ -246,8 +321,14 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
           ))}
         </g>
       ))}
-      {/* Tâche 7 : pool fixe de particules (feuilles, pétales, gouttes, neige, graines) et oiseaux, nœuds constants ici. */}
-      <g data-arbres-rue-particules="" />
+      {/* Pool fixe de particules (130 nœuds, opacité 0 quand inactifs) et oiseau, par-dessus les houppiers. */}
+      <g data-arbres-rue-particules="">
+        {POOL.map(({ kind, i }) => {
+          const sh = PART_SHAPE[kind];
+          return <rect key={`${kind}${i}`} data-rue-part={kind} x={sh.x} y={sh.y} width={sh.w} height={sh.h} rx={sh.rx} opacity={0} />;
+        })}
+        <path data-rue-oiseau="" d="M0 0" stroke={INK} strokeWidth={0.6} fill="none" opacity={0} />
+      </g>
     </g>
   );
 }

@@ -194,8 +194,8 @@ function SceneActorsView({ scene, width, height, sky, minutes, seed, rainy = fal
       {/* Ville : la population (passants, habitants, circulation) a sa propre couche et sa propre boucle. */}
       {scene === 'city' && city && <CityLifeLayer width={width} height={height} sky={sky} seed={seed} city={city} rainy={rainy} forcedNight={forcedNight} weather={weather} />}
       {/* Sans contexte de ville (pas de population), les lampadaires restent : ils sont dans ce calque pour passer devant les passants. */}
-      {/* Arbres de la rue à la même profondeur que dans le calque de la rue (juste avant les lampadaires), Ghibli seulement. */}
-      {scene === 'city' && !city && art === 'ghibli' && <StreetTreesSlot seed={seed} width={width} height={height} />}
+      {/* Arbres de la rue à la même profondeur que dans le calque de la rue (juste avant les lampadaires) ; rien en classique (aucune scène publiée), fondu de sortie avec la ville peinte. */}
+      {scene === 'city' && !city && <StreetTreesSlot seed={seed} width={width} height={height} />}
       {scene === 'city' && !city && <StreetLamps width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} forcedNight={forcedNight} ghibli={art === 'ghibli'} />}
     </g>
   );

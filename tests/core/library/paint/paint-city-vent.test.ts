@@ -64,3 +64,93 @@ describe('champ de vent', () => {
     expect(massAmp(m, 1)).toBeCloseTo(0.8 + 1.2 + 0.8 * 50 / 50);
   });
 });
+
+// ── Particules et oiseaux des arbres de la rue (tâche 7) ──
+import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
+import { fondMoment, foliageOf, type FondMoment } from '../../../../src/core/library/paint/fond-time';
+import { tuftState } from '../../../../src/core/library/paint/hill-trees';
+import type { RuePit } from '../../../../src/core/library/paint/rue-verte-plan';
+import { rueTreeModel } from '../../../../src/core/library/paint/rue-verte-painter';
+import { RUE_PARTICLE_CAP, rueBird, rueParticles, type RueParticle } from '../../../../src/core/library/paint/rue-sprites';
+
+describe('particules et oiseaux des arbres de la rue', () => {
+  const PW = 1440;
+  const plan = cityPaintPlan(PW, 340, 7);
+  const pits = plan.rue.filter((v): v is RuePit => v.kind === 'pit' && !v.empty);
+  const day = (m: number, d: number, meteo: Partial<FondMoment['meteo']> = {}): FondMoment => fondMoment({ y: 2026, m, d }, 14 * 60, { cloud: 0.2, precip: 0, wind: 1, snow: false, ...meteo });
+  const count = (ps: RueParticle[]) => {
+    const n = { feuille: 0, petale: 0, goutte: 0, neige: 0, graine: 0 };
+    for (const p of ps) n[p.kind]++;
+    return n;
+  };
+  const caps = { feuille: RUE_PARTICLE_CAP.feuilles, petale: RUE_PARTICLE_CAP.petales, goutte: RUE_PARTICLE_CAP.gouttes, neige: RUE_PARTICLE_CAP.neige, graine: RUE_PARTICLE_CAP.graines };
+  it('plafonds { feuilles 40, pétales 30, gouttes 24, neige 16, graines 20 }', () => {
+    expect(RUE_PARTICLE_CAP).toEqual({ feuilles: 40, petales: 30, gouttes: 24, neige: 16, graines: 20 });
+  });
+  for (const [label, D] of [['novembre (feuilles, pluie)', day(11, 10, { precip: 0.3 })], ['avril (pétales)', day(4, 2)], ['mai (graines)', day(5, 20)], ['neige', day(1, 15, { snow: true })]] as const) {
+    it(`${label} : plafonds respectés sur 600 s de vent 1, rien hors de [−5, W + 5]`, () => {
+      const w = windOf(D.meteo, true);
+      let seen = 0;
+      for (let t = 0; t < 600; t += 0.5) {
+        const ps = rueParticles(pits, D, 1000 + t, w, PW);
+        seen += ps.length;
+        const n = count(ps);
+        for (const k of Object.keys(n) as (keyof typeof n)[]) expect(n[k], k).toBeLessThanOrEqual(caps[k]);
+        for (const p of ps) {
+          expect(p.x).toBeGreaterThanOrEqual(-5);
+          expect(p.x).toBeLessThanOrEqual(PW + 5);
+        }
+      }
+      expect(seen).toBeGreaterThan(0);
+    });
+  }
+  it('une feuille naît à une touffe lâche (distance ≤ rayon de la touffe)', () => {
+    const D = day(11, 10);
+    const w = windOf(D.meteo, false);
+    let checked = 0;
+    for (let t = 0; t < 300 && checked < 20; t += 0.25) {
+      for (const p of rueParticles(pits, D, 1000 + t, w, PW)) {
+        if (p.kind !== 'feuille' || !p.born) continue;
+        const near = pits.some((v) => {
+          const m = rueTreeModel(v);
+          const f = foliageOf(D, 'rue' + Math.round(v.x), v.species);
+          return m.tufts.some((tf) => tuftState(tf, f, D, v.species).loose && Math.hypot(p.born!.x - tf.x, p.born!.y - tf.y) <= tf.rr);
+        });
+        expect(near).toBe(true);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+  it('calme : aucune particule', () => {
+    const D = day(11, 10, { wind: 0, precip: 0 });
+    for (let t = 0; t < 60; t += 1) expect(rueParticles(pits, D, 1000 + t, windOf(D.meteo, false), PW)).toEqual([]);
+  });
+  it('oiseau : jamais la nuit ni sous forte pluie ; entre et sort par un bord', () => {
+    const D = day(6, 10, { wind: 0.3 });
+    const rainy = day(6, 10, { wind: 0.3, precip: 0.5 });
+    const visits: { x: number }[][] = [];
+    let cur: { x: number }[] = [];
+    for (let t = 0; t < 1200; t += 0.05) {
+      expect(rueBird(pits, D, 1000 + t, true, PW)).toBeNull();
+      expect(rueBird(pits, rainy, 1000 + t, false, PW)).toBeNull();
+      const b = rueBird(pits, D, 1000 + t, false, PW);
+      // Visite en cours au début de la fenêtre : ignorée.
+      if (b && t === 0) cur = [{ x: NaN }];
+      if (b) cur.push(b);
+      else if (cur.length) {
+        visits.push(cur);
+        cur = [];
+      }
+    }
+    expect(visits.length).toBeGreaterThan(0);
+    for (const v of visits.filter((vv) => !Number.isNaN(vv[0]!.x))) {
+      // Jamais de saut : l'oiseau vole d'un point à l'autre.
+      for (let i = 1; i < v.length; i++) expect(Math.abs(v[i]!.x - v[i - 1]!.x)).toBeLessThan(30);
+      const a = v[0]!.x;
+      const z = v.at(-1)!.x;
+      expect(a < 0 || a > PW).toBe(true);
+      expect(z < 0 || z > PW).toBe(true);
+    }
+  });
+});

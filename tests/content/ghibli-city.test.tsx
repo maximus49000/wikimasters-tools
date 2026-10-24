@@ -250,7 +250,7 @@ describe('ville peinte', () => {
       expect((q('[data-painted-city]') as HTMLElement).style.opacity).toBe('1');
       expect((q('[data-arbres-rue-scene]') as HTMLElement).style.opacity).toBe('1');
     });
-    it('sans population : même profondeur (juste avant les lampadaires) ; classique : aucun arbre', async () => {
+    it('sans population : même profondeur (juste avant les lampadaires) ; passage au classique : fondu puis aucun arbre', async () => {
       localStorage.setItem(ART_KEY, 'ghibli');
       paintAll();
       await render(12 * 60);
@@ -258,8 +258,15 @@ describe('ville peinte', () => {
       expect(trees.length).toBeGreaterThan(0);
       expect(before(q('[data-scene-body]')!, trees[0]!)).toBe(true);
       expect(before(trees.at(-1)!, q('[data-street-lamps]')!)).toBe(true);
+      // Passage au classique : les arbres s'effacent avec la ville peinte (fondu de 1 s), puis disparaissent avec elle.
       localStorage.removeItem(ART_KEY);
       await render(12 * 60);
+      expect((q('[data-painted-city]') as HTMLElement).style.opacity).toBe('0');
+      expect(qa('[data-rue-arbre]').length).toBeGreaterThan(0);
+      expect((q('[data-arbres-rue-scene]') as HTMLElement).style.opacity).toBe('0');
+      await act(async () => new Promise((r) => setTimeout(r, 1100)));
+      await settle();
+      expect(q('[data-painted-city]')).toBeNull();
       expect(qa('[data-rue-arbre]').length).toBe(0);
     });
     it('masqués tant que la ville peinte ne se montre pas', async () => {
