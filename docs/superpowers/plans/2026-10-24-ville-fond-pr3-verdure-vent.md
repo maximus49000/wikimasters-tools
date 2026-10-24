@@ -319,3 +319,19 @@ Test : fichier de test existant de install-layer / install.
 - [ ] Correction : la durée de roulage = distance / vitesse (constante nommée, ≈ 25 px/s, accélération et freinage doux) ; le
   reste de l'étape, le camion attend à l'arrêt à sa place (équipe en cabine) ; aucune autre étape ne change de durée.
 - [ ] Vert (`npm run test:famille -- scene-evenements`), commit `fix(ville): le camion élévateur roule à une vitesse normale entre deux lampadaires`.
+
+### Task 1e: Les autres véhicules et équipes de montage avancent au ralenti (suite du bogue du 2026-10-24)
+
+Constat (rapport de la Task 1d) : la camionnette, le vélo porteur et le camion plateau roulent à 90-120 px par MINUTE
+(`TRANSPORT_SPEED`, `src/core/library/city/van.ts`), soit ≈ 2 px/s ; les équipes à l'échelle et à la main étalent leur marche
+sur toute l'étape `arrive` / `leave` (même interpolation que le camion élévateur avant 1d).
+
+**Files:** `src/core/library/city/van.ts`, `src/content/install-layer.tsx` (équipes `ladder` / `hand`, véhicules `van`,
+`cargo-bike`, `truck`) ; Test : fichiers de test existants de van / install-layer.
+
+- [ ] Test rouge : en route, camionnette et camion plateau 15-40 px/s, vélo porteur 8-20 px/s ; une équipe à pied marche à
+  l'allure des passants de la rue (lire leur vitesse dans le code des passants, ±25 %), puis attend ou travaille sur place ;
+  arrivée et départ par un bord ou une porte, jamais de saut.
+- [ ] Correction sur le modèle de la Task 1d (vitesse en px/s × unit, accélération et freinage doux, transition à la durée
+  réelle du trajet, puis attente), sans changer la durée des étapes.
+- [ ] Vert (`npm run test:famille -- scene-evenements scene-commerces`), commit `fix(ville): véhicules et équipes de montage à allure normale`.
