@@ -128,3 +128,46 @@ export function hillLaundry(T: number, D: FondMoment, key: string, seed: number)
   if (D.meteo.precip === 0 && D.meteo.wind < 0.7 && rl() < part && T >= 9 + rl() && T < 17 + rl()) return rl;
   return null;
 }
+
+// ── Calendrier de la rue (notes.md §3 ter) : parterres des jardiniers et feuilles mortes au sol.
+// Parterres replantés par les jardiniers de la ville : bulbes 15 mars → 31 mai (fleurs 1er avril → 10 mai, fanées ensuite),
+// géraniums et lavande 5 juin → 5 octobre (fanées à partir du 20 septembre), chrysanthèmes 10 octobre → 30 novembre (fanées à
+// partir du 20 novembre), bruyères et paillage 5 décembre → 10 mars ; sol nu les quelques jours de replantation.
+export type BedState = { kind: Season | 'bare'; bloom: number; faded: number; shoots?: number };
+export function bedState(D: Pick<FondMoment, 'doy'>): BedState {
+  const doy = D.doy;
+  if (doy >= 73 && doy < 151) return { kind: 'spring', shoots: 1 - sat((doy - 80) / 12), bloom: sat((doy - 91) / 10), faded: sat((doy - 130) / 20) };
+  if (doy >= 151 && doy < 156) return { kind: 'bare', faded: 0, bloom: 0 };
+  if (doy >= 156 && doy < 279) return { kind: 'summer', bloom: sat((doy - 156) / 12), faded: sat((doy - 263) / 16) };
+  if (doy >= 279 && doy < 283) return { kind: 'bare', faded: 0, bloom: 0 };
+  if (doy >= 283 && doy < 335) return { kind: 'autumn', bloom: sat((doy - 283) / 8), faded: sat((doy - 324) / 11) };
+  if (doy >= 335 && doy < 340) return { kind: 'bare', faded: 0, bloom: 0 };
+  return { kind: 'winter', bloom: 1, faded: 0 };
+}
+// Un matin sur trois environ (35 %), la ville balaie la rue à 7 h 30 : tirage par graine et par date (AAAA-MM-JJ).
+const sweepsOn = (seed: number, ds: string): boolean => fondRng(seed, 'balayage', ds)() < 0.35;
+// Feuilles mortes au sol (0..~0,7) : chute nominale cumulée depuis le dernier balayage, en moyenne sur les essences.
+export function leavesOnGround(D: Pick<FondMoment, 'y' | 'month' | 'day'>, T: number, seed: number): number {
+  const rate = (doy: number): number => {
+    let s = 0;
+    for (const lead of [-10, -6, -2, 2]) s += doy >= 293 + lead && doy < 329 + lead ? 1 / 36 : 0;
+    return s / 4;
+  };
+  let amount = 0;
+  for (let k = 0; k < 30; k++) {
+    const t = new Date(Date.UTC(D.y, D.month - 1, D.day - k));
+    const ds = t.toISOString().slice(0, 10);
+    const doy = doyOf(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+    if (sweepsOn(seed, ds) && (k > 0 || T >= 7.5)) {
+      if (k === 0) return 0;
+      break;
+    }
+    amount += rate(doy) * (k === 0 ? sat(T / 24) : 1);
+  }
+  return amount;
+}
+// Part de la clé des tranches : 'b' une fois la rue balayée aujourd'hui (après 7 h 30), sinon vide.
+export function sweptKey(D: Pick<FondMoment, 'y' | 'month' | 'day'>, T: number, seed: number): string {
+  const ds = new Date(Date.UTC(D.y, D.month - 1, D.day)).toISOString().slice(0, 10);
+  return T >= 7.5 && sweepsOn(seed, ds) ? 'b' : '';
+}
