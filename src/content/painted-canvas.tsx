@@ -260,7 +260,9 @@ function unitScale(box: { w: number; h: number }): number {
 
 type Drawn = { count: number; grade: string; boxes: ReadonlySet<string> };
 
-export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: number; y: number; w: number; h: number }; images: readonly CanvasImage[]; grade: Grade | null; onReady?: (ready: boolean) => void; tag: string }): ReactElement {
+// `onDrawn` : urls des images posées sur la toile, à chaque dessin (le calque de la colline au vent attend que la tranche
+// repeinte soit dessinée avant de montrer son nouveau feuillage, scene-city.tsx).
+export function PaintedCanvas({ box, images, grade, onReady, onDrawn, tag }: { box: { x: number; y: number; w: number; h: number }; images: readonly CanvasImage[]; grade: Grade | null; onReady?: (ready: boolean) => void; onDrawn?: (urls: readonly string[]) => void; tag: string }): ReactElement {
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const gradeSig = grade ? gradeValues(grade) : 'identite';
   const sig = `${boxId(box)}#${gradeSig}#${images.map((i) => `${boxId(i)},${i.url}`).join('|')}`;
@@ -270,6 +272,8 @@ export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: 
   // Dernière demande, lue par le dessin asynchrone (la liste et l'étalonnage du rendu qui l'a lancé).
   const want = useRef({ box, images, grade, gradeSig });
   want.current = { box, images, grade, gradeSig };
+  const drawnCb = useRef(onDrawn);
+  drawnCb.current = onDrawn;
   useEffect(() => {
     const d = driver();
     const { box: b, images: list, grade: g, gradeSig: key } = want.current;
@@ -319,6 +323,7 @@ export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: 
       use(shown.current.values(), 1);
       use(before, -1);
       setDrawn({ count: placed.length, grade: key, boxes });
+      drawnCb.current?.(placed.map((p) => p.im.url));
     })();
     return () => {
       cancelled = true;

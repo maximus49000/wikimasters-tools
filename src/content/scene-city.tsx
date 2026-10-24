@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
@@ -20,7 +20,7 @@ import { lampBlobs, patchBox } from '../core/library/city/night-light';
 import { layerBox } from './shop/shop-host';
 import { shopLookOf, shopOrigin, type GlowLamp } from './shop/ghibli-shop-front';
 import { hillWindEnabled, usePaintedCity } from './painted-city';
-import { HillWindLayer } from './hill-wind-layer';
+import { HillWindLayer, useTilesDrawn } from './hill-wind-layer';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { fondMoment, type FondMoment } from '../core/library/paint/fond-time';
 import { PaintedCanvas, gradeKey, type CanvasImage } from './painted-canvas';
@@ -132,6 +132,10 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
   // Colline au vent (PR 3b) : tranches peintes sans houppiers, feuillage sur son calque ; la ville attend aussi ce calque.
   const hillOn = hillWindEnabled();
   const [hillReady, setHillReady] = useState(false);
+  // Tranches dessinées sur leur toile : le calque ne passe au feuillage d'une tranche repeinte qu'une fois elle posée.
+  const [drawnUrls, setDrawnUrls] = useState<ReadonlySet<string>>(() => new Set());
+  const onTilesDrawn = useCallback((urls: readonly string[]) => setDrawnUrls((prev) => (prev.size === urls.length && urls.every((u) => prev.has(u)) ? prev : new Set(urls))), []);
+  const hillTiles = useTilesDrawn(painted.tiles, drawnUrls);
   const paintedReady = usePaintedReady(painted.ready && canvasReady && (!hillOn || hillReady), useStreetTreesReady(treesKey), plan);
   const showPainted = ghibli && paintedReady;
   const fade = reducedMotion() ? 'none' : FADE;
@@ -304,9 +308,9 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         {entrances}
       </g>
       <g data-painted-city="" data-ready={paintedReady ? 'true' : 'false'} style={{ opacity: showPainted ? 1 : 0, transition: fade }}>
-        <PaintedCanvas box={{ x: 0, y: 0, w: width, h: height }} images={tileImages} grade={grade} onReady={setCanvasReady} tag="ville" />
+        <PaintedCanvas box={{ x: 0, y: 0, w: width, h: height }} images={tileImages} grade={grade} onReady={setCanvasReady} onDrawn={hillOn ? onTilesDrawn : undefined} tag="ville" />
         {/* Feuillage de la colline au vent (PR 3b) : juste au-dessus des tranches (peintes sans houppiers), sous la vie du fond. */}
-        {plan && hillOn && <HillWindLayer plan={plan} tiles={painted.tiles} moment={moment} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} onReady={setHillReady} />}
+        {plan && hillOn && <HillWindLayer plan={plan} tiles={hillTiles} moment={moment} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} onReady={setHillReady} />}
         {/* Vie animée du fond (PR 2b) : colline et mur du fond, au-dessus des tranches, sous la lumière de nuit et les fenêtres. */}
         {plan && <FondLife plan={plan} moment={moment} minutes={minutes} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} dim={dim} forcedNight={forcedNight} day={city?.day} fog={fog} />}
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}

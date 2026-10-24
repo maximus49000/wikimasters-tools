@@ -127,6 +127,24 @@ describe('toile des images peintes', () => {
     expect(fo().getAttribute('data-grade')).toBe('identite');
   });
 
+  it('onDrawn : urls posées, annoncées seulement après le dessin', async () => {
+    const f = fakeDriver();
+    setPaintedCanvasDriverForTests(f.drv);
+    const seen: (readonly string[])[] = [];
+    const show = (images: CanvasImage[]) => act(() => root.render(<svg><PaintedCanvas box={BOX} images={images} grade={null} onDrawn={(u) => seen.push(u)} tag="ville" /></svg>));
+    show([tile(0, 'a'), tile(360, 'b')]);
+    await f.release('a');
+    await f.release('b');
+    await settle();
+    expect(seen).toEqual([['a', 'b']]);
+    show([tile(0, 'a'), tile(360, 'c')]);
+    await settle();
+    expect(seen).toHaveLength(1);
+    await f.release('c');
+    await settle();
+    expect(seen.at(-1)).toEqual(['a', 'c']);
+  });
+
   it('tranche remplacée : l\'ancienne image reste dessinée jusqu\'au décodage de la nouvelle, la toile reste prête', async () => {
     const f = fakeDriver();
     setPaintedCanvasDriverForTests(f.drv);

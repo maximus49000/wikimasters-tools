@@ -52,6 +52,15 @@ function layerNo(l: HillLayer): number {
   if (n === undefined) LAYER_NOS.set(l, (n = ++layerSeq));
   return n;
 }
+// Numéro d'un plan : la préparation, le dessin et le signal de prêt portent le plan pour lequel ils valent (après un changement
+// de plan, cache chaud compris, rien de l'ancien plan n'est dessiné ni compté comme prêt).
+const PLAN_NOS = new WeakMap<CityPaintPlan, number>();
+let planSeq = 0;
+function planNo(p: CityPaintPlan): number {
+  let n = PLAN_NOS.get(p);
+  if (n === undefined) PLAN_NOS.set(p, (n = ++planSeq));
+  return n;
+}
 type Placed = { layer: Layer; canopy: CanvasImageSource; screen: CanvasImageSource | null };
 
 // Une image redessinée de la boucle (bancs d'essai et tests) : bandes dessinées par groupe.
@@ -87,6 +96,24 @@ type Props = {
   onReady?: (ready: boolean) => void;
 };
 
+// Tranches à donner au calque : pour chaque place, la tranche que la toile des tranches a DESSINÉE (`drawn` : urls posées, remontées
+// par `PaintedCanvas.onDrawn`). Une tranche repeinte garde ses anciennes couches tant que sa nouvelle image (sans houppiers) n'est
+// pas sur la toile : le nouveau feuillage n'apparaît jamais avant sa tranche. Une place jamais dessinée : sans image.
+export function useTilesDrawn(tiles: readonly PaintedTile[], drawn: ReadonlySet<string>): PaintedTile[] {
+  const held = useRef<PaintedTile[]>([]);
+  return useMemo(() => {
+    const out = tiles.map((t, i) => {
+      if (t.url && drawn.has(t.url)) return t;
+      const prev = held.current[i];
+      return prev && prev.x === t.x && prev.url && drawn.has(prev.url) ? prev : { ...t, url: '', hill: NONE as HillLayer[] };
+    });
+    // Même liste qu'avant (mêmes tranches) : même référence.
+    const same = out.length === held.current.length && out.every((t, i) => t === held.current[i] || (t.url === '' && held.current[i]?.url === '' && t.x === held.current[i]?.x));
+    if (!same) held.current = out;
+    return held.current;
+  }, [tiles, drawn]);
+}
+
 export function HillWindLayer(props: Props): ReactElement | null {
   if (!hillWindEnabled()) return null;
   return <HillWindCanvas {...props} />;
@@ -118,12 +145,12 @@ function HillWindCanvas({ plan, tiles, moment, daylight, twilight, gloom, onRead
   }
   const layers = prevHills.current.layers;
   const gk = gradeKey(daylight, twilight, gloom);
-  const sig = `${gk.key}#${layers.map((l) => `${l.id}:${layerNo(l.from)}`).join('|')}`;
+  const sig = `${planNo(plan)}#${gk.key}#${layers.map((l) => `${l.id}:${layerNo(l.from)}`).join('|')}`;
   const wind = useMemo(() => windOf(moment.meteo, moment.meteo.wind >= 0.8), [moment]);
   const slice = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent) ? HILL_SLICE_ANDROID : HILL_SLICE_DESKTOP;
 
   // Couches prêtes à dessiner (sources décodées et étalonnées) et version de cette préparation (signature du dessin).
-  const shown = useRef<{ placed: Placed[]; version: number }>({ placed: [], version: 0 });
+  const shown = useRef<{ plan: CityPaintPlan | null; placed: Placed[]; version: number }>({ plan: null, placed: [], version: 0 });
   // Toile : échelle du tampon (0 = à relever), signature de la dernière image, images depuis le dernier relevé, contextes.
   const surface = useRef<{ k: number; sig: number[]; frames: number; ctx: CanvasRenderingContext2D | null | undefined; work: HTMLCanvasElement | null; wctx: CanvasRenderingContext2D | null }>({
     k: 0,
@@ -134,9 +161,9 @@ function HillWindCanvas({ plan, tiles, moment, daylight, twilight, gloom, onRead
     wctx: null,
   });
   const next = useRef<number[]>([]);
-  const [prepared, setPrepared] = useState<{ count: number; grade: string; ids: ReadonlySet<string> } | null>(null);
-  const [readyOnce, setReadyOnce] = useState(false);
-  useEffect(() => setReadyOnce(false), [plan]);
+  const [prepared, setPrepared] = useState<{ plan: CityPaintPlan; count: number; grade: string; ids: ReadonlySet<string> } | null>(null);
+  // Plan pour lequel le signal de prêt est acquis.
+  const [readyFor, setReadyFor] = useState<CityPaintPlan | null>(null);
 
   // Une image de la boucle : bandes de chaque groupe qui a des couches ; redessin seulement si une valeur a changé.
   const place = useMemo(() => {
@@ -144,8 +171,17 @@ function HillWindCanvas({ plan, tiles, moment, daylight, twilight, gloom, onRead
       const { placed, version } = shown.current;
       const sf = surface.current;
       const cv = canvas.current;
-      // Rien de préparé encore : la toile (vide) n'est pas touchée.
+      // Rien de préparé encore pour ce plan : la toile n'est pas touchée (jamais le feuillage d'un autre plan).
       if (!cv || version === 0) return false;
+      if (shown.current.plan !== planNow.current || plan !== planNow.current) {
+        // Feuillage d'un autre plan encore sur la toile : effacé une fois.
+        if (sf.sig.length && sf.ctx) {
+          sf.ctx.setTransform(1, 0, 0, 1, 0, 0);
+          sf.ctx.clearRect(0, 0, cv.width, cv.height);
+          sf.sig = [];
+        }
+        return false;
+      }
       if (sf.ctx === undefined) sf.ctx = paintedContext(cv).ctx;
       // Relevé de la taille affichée : au premier dessin, après un redimensionnement, et toutes les RESIZE_EVERY images (zoom).
       if (!JSDOM && (sf.k === 0 || ++sf.frames % RESIZE_EVERY === 0)) sf.k = fitCanvas(cv, area);
@@ -216,13 +252,16 @@ function HillWindCanvas({ plan, tiles, moment, daylight, twilight, gloom, onRead
     };
   }, [plan, area, slice, wind]);
   const placeNow = useRef(place);
+  // Plan du dernier rendu : une image de boucle en retard (ancienne fermeture) ne dessine jamais un autre plan.
+  const planNow = useRef(plan);
+  planNow.current = plan;
   placeNow.current = place;
 
   // Préparation hors écran de toutes les couches (feuillage étalonné, écran tel quel), puis dessin d'un coup.
-  const want = useRef({ layers, grade: gk.grade, key: gk.key });
-  want.current = { layers, grade: gk.grade, key: gk.key };
+  const want = useRef({ plan, layers, grade: gk.grade, key: gk.key });
+  want.current = { plan, layers, grade: gk.grade, key: gk.key };
   useEffect(() => {
-    const { layers: list, grade, key } = want.current;
+    const { plan: forPlan, layers: list, grade, key } = want.current;
     let cancelled = false;
     void (async () => {
       // Deux sources par couche (feuillage étalonné, écran tel quel) ; une url vide n'est pas demandée.
@@ -236,7 +275,8 @@ function HillWindCanvas({ plan, tiles, moment, daylight, twilight, gloom, onRead
       let n = 0;
       const got = items.map((it) => (it.url !== '' ? (ready[n++] ?? null) : null));
       const before = shown.current.placed;
-      const old = new Map(before.map((p) => [p.layer.id, p]));
+      // Repli sur l'ancienne couche de la même place : seulement dans le même plan.
+      const old = new Map(shown.current.plan === forPlan ? before.map((p) => [p.layer.id, p]) : []);
       const placed: Placed[] = [];
       const ids = new Set<string>();
       list.forEach((layer, i) => {
@@ -252,26 +292,27 @@ function HillWindCanvas({ plan, tiles, moment, daylight, twilight, gloom, onRead
       const sources = (ps: readonly Placed[]): CanvasImageSource[] => ps.flatMap((p) => (p.screen ? [p.canopy, p.screen] : [p.canopy]));
       holdPaintedSources(sources(placed), 1);
       holdPaintedSources(sources(before), -1);
-      shown.current = { placed, version: shown.current.version + 1 };
+      shown.current = { plan: forPlan, placed, version: shown.current.version + 1 };
       // Dessin tout de suite (sans attendre l'image suivante de la boucle). Vraie toile sans contexte 2D : rien n'est noté comme
       // dessiné (la ville ne serait jamais montrée sans son feuillage) ; le prochain changement réessaie.
       const cv = canvas.current;
       const drawable = cv ? paintedContext(cv).drawable : false;
       const ok = placeNow.current(Date.now() / 1000);
       if (drawable && !ok) return;
-      setPrepared({ count: placed.length, grade: key, ids });
+      setPrepared({ plan: forPlan, count: placed.length, grade: key, ids });
     })();
     return () => {
       cancelled = true;
     };
   }, [sig]);
-  const ready = useMemo(() => prepared !== null && layers.every((l) => prepared.ids.has(l.id)), [prepared, layers]);
+  const ready = useMemo(() => prepared !== null && prepared.plan === plan && layers.every((l) => prepared.ids.has(l.id)), [prepared, plan, layers]);
   // Le signal ne reste acquis qu'une fois TOUTES les tranches peintes et leurs couches dessinées (une tranche peinte après coup
   // apporte des couches que la ville doit attendre).
   const complete = tiles.length > 0 && tiles.every((t) => t.url !== '');
   useEffect(() => {
-    if (ready && complete) setReadyOnce(true);
-  }, [ready, complete]);
+    if (ready && complete) setReadyFor(plan);
+  }, [ready, complete, plan]);
+  const readyOnce = readyFor === plan;
   useEffect(() => {
     onReady?.(ready || readyOnce);
   }, [ready, readyOnce, onReady]);
@@ -307,7 +348,7 @@ function HillWindCanvas({ plan, tiles, moment, daylight, twilight, gloom, onRead
       sf.ctx = undefined;
       const ps = shown.current.placed;
       holdPaintedSources(ps.flatMap((p) => (p.screen ? [p.canopy, p.screen] : [p.canopy])), -1);
-      shown.current = { placed: [], version: shown.current.version + 1 };
+      shown.current = { plan: null, placed: [], version: shown.current.version + 1 };
     };
   }, []);
   // Une toile 2D dans le <svg> : le vent n'écrit rien dans le SVG de la scène (attributs posés seulement à la préparation).

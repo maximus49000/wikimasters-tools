@@ -198,12 +198,16 @@ export const canvasTilePainter: TilePainter = async (plan, tile, moment) => {
   canvas.height = Math.ceil(plan.height * dpr);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
-  const wind = hillWindEnabled();
+  // Canvas de rognage des couches de la colline, demandé AVANT de peindre : sans lui (contexte refusé, mémoire), la tranche est
+  // peinte complète ('all', sans couches) plutôt qu'en 'base' sans feuillage (les houppiers disparaîtraient).
+  const crop = hillWindEnabled() ? document.createElement('canvas') : null;
+  const cc = crop ? crop.getContext('2d') : null;
+  const wind = cc !== null;
   ctx.setTransform(dpr, 0, 0, dpr, -x0 * dpr, 0);
   // Cellulo : aplats francs, pas de grain de papier. Au vent : la tranche sans les houppiers de la colline.
   paintCityTile(ctx, plan, tile, moment, wind ? 'base' : 'all');
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  if (!wind) {
+  if (!wind || !crop) {
     // Haut opaque de chaque px CSS (le contexte est en lecture fréquente) : découpe des nuages au pixel.
     const profile = safeAlphaProfile(ctx, canvas.width, canvas.height, dpr);
     return { url: canvas.toDataURL('image/png'), profile };
@@ -211,9 +215,7 @@ export const canvasTilePainter: TilePainter = async (plan, tile, moment) => {
   // Image de la tranche prise AVANT d'y poser les feuillages (posés ensuite pour le seul profil des nuages).
   const url = canvas.toDataURL('image/png');
   const hill: HillLayer[] = [];
-  const crop = document.createElement('canvas');
-  const cc = crop.getContext('2d');
-  for (const { group, box } of cc ? hillGroups(plan, tile, moment) : []) {
+  for (const { group, box } of hillGroups(plan, tile, moment)) {
     // Un groupe par créneau de temps mort (son écran repeint presque toute la tranche) : jamais une image bloquée.
     await idleSlot();
     // Boîte calée sur la grille de pixels de la tranche : mêmes pixels que la tranche, sans rééchantillonnage.

@@ -8,7 +8,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY } from '../../src/content/art-setting';
-import { HillWindLayer, setHillFrameSinkForTests, type HillDraw } from '../../src/content/hill-wind-layer';
+import { HillWindLayer, setHillFrameSinkForTests, useTilesDrawn, type HillDraw } from '../../src/content/hill-wind-layer';
 import { resetPaintedCanvasForTests, setPaintedCanvasDriverForTests, type PaintedCanvasDriver } from '../../src/content/painted-canvas';
 import {
   hillGroups,
@@ -321,6 +321,62 @@ describe('colline au vent : calque `colline-vent`', () => {
     act(() => root.render(<svg />));
     expect(cv.width).toBe(0);
     expect(cv.height).toBe(0);
+  });
+
+  it("changement de plan (cache chaud) : ni prêt ni feuillage de l'ancien plan avant la préparation du nouveau", async () => {
+    setHillWindForTests(true);
+    const f = fakeDriver((u) => u.endsWith('b'));
+    setPaintedCanvasDriverForTests(f.drv);
+    const ready: boolean[] = [];
+    const other = cityPaintPlan(1440, H, 42);
+    const show = (p: CityPaintPlan, tag: string) =>
+      act(async () => root.render(<svg><HillWindLayer plan={p} tiles={tilesOf(p, tag)} moment={JULY} daylight={1} twilight={0} gloom={false} onReady={(r) => ready.push(r)} /></svg>));
+    await show(plan, 'a');
+    await settle();
+    expect(ready.at(-1)).toBe(true);
+    // Les places (tranche, groupe) se recouvrent d'un plan à l'autre : sans le plan dans l'état, elles compteraient comme prêtes.
+    const ids = (p: CityPaintPlan) => new Set(tilesOf(p).flatMap((t, i) => t.hill.map((l) => `${i}|${l.group}`)));
+    expect([...ids(other)].some((id) => ids(plan).has(id))).toBe(true);
+    ready.length = 0;
+    f.log.length = 0;
+    await show(other, 'b');
+    for (let i = 1; i <= 5; i++) tick(2_000_000 + i * 67);
+    await settle();
+    expect(ready).not.toContain(true);
+    expect(f.log.filter((l) => l.includes('draw feuillage'))).toEqual([]);
+    await f.release(() => true);
+    await settle();
+    expect(ready.at(-1)).toBe(true);
+    const draws = f.log.filter((l) => l.includes('draw feuillage'));
+    expect(draws.length).toBeGreaterThan(0);
+    expect(draws.every((l) => l.includes('b@') || l.endsWith('b'))).toBe(true);
+  });
+});
+
+describe('colline au vent : tranche et feuillage changent ensemble', () => {
+  const plan = cityPaintPlan(720, H, 7);
+  function Probe({ tiles, drawn, out }: { tiles: PaintedTile[]; drawn: ReadonlySet<string>; out: PaintedTile[][] }): null {
+    out.push(useTilesDrawn(tiles, drawn));
+    return null;
+  }
+  it("le nouveau feuillage d'une tranche repeinte n'est donné au calque qu'une fois la nouvelle tranche dessinée", async () => {
+    const a = tilesOf(plan, 'a');
+    const b = tilesOf(plan, 'b');
+    const out: PaintedTile[][] = [];
+    const show = (tiles: PaintedTile[], drawn: string[]) => act(async () => root.render(<Probe tiles={tiles} drawn={new Set(drawn)} out={out} />));
+    // Rien de dessiné : aucune tranche (ni couche) pour le calque.
+    await show(a, []);
+    expect(out.at(-1)!.every((t) => t.url === '' && t.hill.length === 0)).toBe(true);
+    await show(a, [a[0]!.url, a[1]!.url]);
+    expect(out.at(-1)).toEqual(a);
+    // Tranche 1 repeinte, pas encore dessinée : l'ancienne (et ses couches) reste.
+    const repainted = [a[0]!, b[1]!];
+    await show(repainted, [a[0]!.url, a[1]!.url]);
+    expect(out.at(-1)![1]).toBe(a[1]);
+    expect(out.at(-1)![0]).toBe(a[0]);
+    // Dessinée : la nouvelle tranche et son feuillage.
+    await show(repainted, [a[0]!.url, b[1]!.url]);
+    expect(out.at(-1)![1]).toBe(b[1]);
   });
 });
 
