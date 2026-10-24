@@ -32,6 +32,7 @@ canvas{display:block;background:transparent}
 <h2>Tour du meuble <span class="tag">le même volume 3D sous 4 angles · aplats, ombre nette, encre</span></h2>
 <div class="row" id="tour-chair"></div>
 <div class="row" id="tour-sofa"></div>
+<div class="row" id="tour-plants"></div>
 <div class="row"><div class="card"><canvas id="turn" width="260" height="260"></canvas>Plateau tournant : les 8 angles de l'appli, pas après pas</div></div>
 
 <h2>Trois styles sur le même canapé <span class="tag">scandinave · bohème · steampunk</span></h2>
@@ -59,13 +60,14 @@ function superEll(a,b,c,e1,e2,nu=14,nv=24,deform){
  for(let i=0;i<nu;i++)for(let j=0;j<nv;j++){const a0=i*(nv+1)+j,b0=a0+1,c0=a0+nv+1,d0=c0+1;m.t.push([a0,c0,b0],[b0,c0,d0]);}
  return finish(m,[0,0,0]);
 }
-function lathe(prof,nv=20,deform){ // prof: [[r,y],...] de bas en haut
+function lathe(prof,nv=20,deform,opt={}){ // prof: [[r,y],...] de bas en haut ; opt.caps=false pour une surface ouverte
  const m=mk();const rings=[];
  prof.forEach(([r,y])=>{const ring=[];for(let j=0;j<=nv;j++){const a=2*Math.PI*j/nv;let p=[r*Math.cos(a),y,r*Math.sin(a)];if(deform)p=deform(...p);ring.push(m.v.length);m.v.push(p)}rings.push(ring)});
  for(let i=0;i<rings.length-1;i++)for(let j=0;j<nv;j++){m.t.push([rings[i][j],rings[i+1][j],rings[i][j+1]],[rings[i][j+1],rings[i+1][j],rings[i+1][j+1]])}
- if(prof[0][0]>0){const c=m.v.length;m.v.push([0,prof[0][1],0]);for(let j=0;j<nv;j++)m.t.push([c,rings[0][j],rings[0][j+1]])}
- const L=prof.length-1;if(prof[L][0]>0){const c=m.v.length;m.v.push([0,prof[L][1],0]);for(let j=0;j<nv;j++)m.t.push([c,rings[L][j+1],rings[L][j]])}
- const ys=prof.map(p=>p[1]);return finish(m,[0,(Math.min(...ys)+Math.max(...ys))/2,0]);
+ if(opt.caps!==false){
+  if(prof[0][0]>0){const c=m.v.length;m.v.push([0,prof[0][1],0]);for(let j=0;j<nv;j++)m.t.push([c,rings[0][j],rings[0][j+1]])}
+  const L=prof.length-1;if(prof[L][0]>0){const c=m.v.length;m.v.push([0,prof[L][1],0]);for(let j=0;j<nv;j++)m.t.push([c,rings[L][j+1],rings[L][j]])}}
+ const ys=prof.map(p=>p[1]);return finish(m,opt.center||[0,(Math.min(...ys)+Math.max(...ys))/2,0]);
 }
 function tube(pts,r,nv=10){
  pts=smooth(pts,3);const m=mk();const rings=[];let N=null;
@@ -78,14 +80,13 @@ function tube(pts,r,nv=10){
  [[0,-1],[rings.length-1,1]].forEach(([k,s])=>{const T=norm(sub(pts[Math.min(k+1,pts.length-1)],pts[Math.max(k-1,0)]));const c=m.v.length;m.v.push(pts[k]);m.n.push(scale(T,s));for(let j=0;j<nv;j++){const a=rings[k][j],b=rings[k][j+1];m.t.push(s<0?[c,b,a]:[c,a,b])}});
  return m;
 }
-function leaf(outline,th=.5,deform){ // outline: [[x,z],...] plan y=0, double face
- const m=mk();const n=outline.length;const cx=0,cz=0;
+function leaf(outline,th=.5,deform,center=[0,0]){ // outline: [[x,z],...] plan y=0, double face, étoilé autour de center
+ const m=mk();const n=outline.length;const [cx,cz]=center;
  const push=(x,y,z,ny)=>{let p=[x,y,z];if(deform)p=deform(...p);m.v.push(p);m.n.push([0,ny,0]);return m.v.length-1};
  const top=outline.map(([x,z])=>push(x,th/2,z,1)),ct=push(cx,th/2,cz,1);
  const bot=outline.map(([x,z])=>push(x,-th/2,z,-1)),cb=push(cx,-th/2,cz,-1);
  for(let i=0;i<n;i++){const j=(i+1)%n;m.t.push([ct,top[i],top[j]],[cb,bot[j],bot[i]]);m.t.push([top[i],bot[i],top[j]],[top[j],bot[i],bot[j]])}
- if(deform){ // recalcul des normales après déformation
-  const nn=m.v.map(()=>[0,0,0]);m.t.forEach(([a,b,c])=>{const N=cross(sub(m.v[b],m.v[a]),sub(m.v[c],m.v[a]));[a,b,c].forEach(i=>nn[i]=add(nn[i],N))});
+ if(deform){const nn=m.v.map(()=>[0,0,0]);m.t.forEach(([a,b,c])=>{const N=cross(sub(m.v[b],m.v[a]),sub(m.v[c],m.v[a]));[a,b,c].forEach(i=>nn[i]=add(nn[i],N))});
   m.n=nn.map((v,i)=>{const l=Math.hypot(...v);return l?scale(v,1/l):m.n[i]})}
  return m;
 }
@@ -176,36 +177,50 @@ const STYLES={
  steampunk:{wood:tone('#5A3A28'),fabric:tone('#6E3F2B'),cushion:tone('#6E3F2B'),accent:tone('#9A2E2E'),leg:tone('#3C3A42'),arm:null,variant:'steampunk',brass:tone('#C9A66B')},
 };
 const PINK=tone('#E8A0A0'),DARK=tone('#2E2228'),GINGER=tone('#E39A4C'),CREAM=tone('#F7EEDC'),GREEN=tone('#6FA85A'),GREEN2=tone('#4E8A46'),POT=tone('#C98B66'),SOIL=tone('#5A4030');
-const WHITE=tone('#F4F1EA'),MARBLE=tone('#EDE9E0'),BRASS=tone('#C9A66B'),GREY=tone('#6E7A86'),WARM={base:'#FFE9B0',shade:'#FFE9B0',hi:'#FFF6D0'},PAPER=tone('#FBE9B5',{s:.14}),SISAL=tone('#D9C08B'),FELT=tone('#A9BFC6');
+const WHITE=tone('#F4F1EA'),MARBLE=tone('#EDE9E0'),BRASS=tone('#C9A66B'),GREY=tone('#6E7A86'),WARM={base:'#FFE9B0',shade:'#FFE9B0',hi:'#FFF6D0'},PAPER={base:'#FBE4A6',shade:'#EACB8A',hi:'#FFF2C8'},SISAL=tone('#D9C08B'),FELT=tone('#A9BFC6');
 const deg=a=>a*Math.PI/180;
 
 /* ---------- le chat ---------- */
-function cat(o={}){ // pose 'sit' | 'walk', phase (marche), t, ry
- const P=[];const T=p=>place(p,{ry:o.ry||0,t:o.t||[0,0,0]});const push=(m,c,x)=>P.push(part(T(m),c,{crease:false,...x}));
- if(o.pose==='walk'){const ph=o.phase||0;
-  push(place(superEll(14,6.5,6.5,.7,.8,12,20),{t:[0,14,0]}),GINGER);
-  push(place(superEll(4,3.5,3.5,.8,.8,8,12),{t:[8,12,0]}),CREAM); // poitrail
-  push(place(superEll(6,5.5,6,.75,.75,12,16),{t:[13,20,0]}),GINGER);
-  [[-1],[1]].forEach(([s])=>push(place(lathe([[2.4,0],[.3,4.5]],8),{rz:0,rx:s*.35,t:[14,24,s*3.5]}),GINGER));
-  [[-1],[1]].forEach(([s])=>push(place(superEll(.9,.8,.5,1,1,6,8),{t:[18.5,20.5,s*2.4]}),DARK,{flat:true}));
-  push(place(superEll(.9,.7,.6,1,1,6,8),{t:[19.3,18.6,0]}),PINK,{flat:true});
-  // pattes : pivot à la hanche (y=13), balancement opposé des diagonales
-  [[9,1],[9,-1],[-8,1],[-8,-1]].forEach(([x,s],k)=>{const sw=Math.sin(ph+(k<2?0:Math.PI)+(s>0?0:Math.PI))*.5;push(place(lathe([[1.5,-13],[1.7,0]],8),{rz:sw,t:[x,13,s*3.2]}),GINGER)});
-  push(tube([[-13,15,0],[-18,20,1],[-19,27,2],[-16,31,3]],1.4,8),GINGER);
- }else{
-  push(place(superEll(8,10.5,9,.7,.7,14,20),{rx:-.25,t:[0,10.5,-2]}),GINGER);
-  push(place(superEll(6,6.5,5.5,.75,.75,12,16),{t:[0,13,4.5]}),CREAM);
-  push(place(superEll(6.5,6,6.5,.75,.75,12,18),{t:[0,22.5,4.5]}),GINGER);
-  [[-1],[1]].forEach(([s])=>push(place(lathe([[2.6,0],[.3,4.8]],8),{rz:-s*.3,t:[s*4,27,3.5]}),GINGER));
-  [[-1],[1]].forEach(([s])=>push(place(superEll(1.1,.9,.5,1,1,6,8),{t:[s*2.6,23,10.6]}),DARK,{flat:true}));
-  push(place(superEll(.9,.7,.6,1,1,6,8),{t:[0,21.2,11]}),PINK,{flat:true});
-  [[-1],[1]].forEach(([s])=>push(place(lathe([[1.7,0],[1.6,11]],8),{t:[s*3.4,0,7.5]}),GINGER));
-  [[-1],[1]].forEach(([s])=>push(place(superEll(2,1.2,2.6,.6,.6,6,10),{t:[s*3.4,1,8.5]}),CREAM));
-  push(tube([[6,2,-7],[13,1.8,-3],[15,2,4],[12,2.4,9]],1.5,8),GINGER);
+function cat(o={}){ // pose 'walk' (phase) | 'leap' (u 0→1, incl) | 'rest' (u : 0 assis → 1 enroulé) ; ry, t ; échelle réelle ~45 cm
+ const P=[];const S=1.35;const T=p=>place(p,{s:S,ry:o.ry||0,t:o.t||[0,0,0]});const push=(m,c,x)=>P.push(part(T(m),c,{crease:false,...x}));
+ const face=(hx,hy,hz,fwd)=>{ // yeux + nez, fwd = direction du museau (unitaire, plan xz)
+  const [fx,fz]=fwd;const side=[-fz,fx];
+  [[-1],[1]].forEach(([s])=>push(place(superEll(.9,.8,.5,1,1,6,8),{ry:Math.atan2(fx,fz),t:[hx+fx*5.2+side[0]*s*2.5,hy+.6,hz+fz*5.2+side[1]*s*2.5]}),DARK,{flat:true,noshadow:true}));
+  push(place(superEll(.8,.6,.6,1,1,6,8),{t:[hx+fx*6.2,hy-1.4,hz+fz*6.2]}),PINK,{flat:true,noshadow:true})};
+ const ears=(hx,hy,hz,fwd,tilt=0)=>{const [fx,fz]=fwd;const side=[-fz,fx];[[-1],[1]].forEach(([s])=>push(place(lathe([[2.5,0],[1.6,2.2],[.3,4.8]],8),{rz:-s*.28+tilt,ry:Math.atan2(fx,fz),t:[hx+side[0]*s*3.8-fx*.5,hy+4.2,hz+side[1]*s*3.8-fz*.5]}),GINGER))};
+ const tailTube=(pts,r=1.5)=>push(tube(pts,r,8),GINGER);
+ if(o.pose==='walk'){const ph=o.phase||0,bob=.5*Math.abs(Math.sin(ph));
+  push(place(superEll(13,6,6,.75,.85,12,20),{t:[0,14+bob,0]}),GINGER);
+  push(place(superEll(4.5,3.6,3.6,.8,.8,8,12),{t:[9,12.5+bob,0]}),CREAM);
+  push(place(superEll(5.6,5.2,5.6,.75,.75,12,16),{t:[14,19.5+bob,0]}),GINGER);
+  ears(14,19.5+bob,0,[1,0]);face(14,19.5+bob,0,[1,0]);
+  // pattes articulées : cuisse 7 + jambe 6, pivot hanche/épaule, diagonales opposées
+  [[8.5,1,0],[8.5,-1,Math.PI],[-8.5,1,Math.PI],[-8.5,-1,0]].forEach(([x,s,off])=>{const a=Math.sin(ph+off)*.55;const bend=.35+.55*Math.max(0,Math.sin(ph+off+1.2));
+   const hip=[x,13.5+bob,s*3.2];push(place(lathe([[1.5,-7],[1.8,0]],8),{rz:a,t:hip}),GINGER);
+   const knee=[hip[0]+Math.sin(a)*7,hip[1]-Math.cos(a)*7,hip[2]];const a2=a-bend*(x>0?1:-1)*(Math.sin(ph+off)>0?1:.3);
+   push(place(lathe([[1.3,-6.5],[1.5,0]],8),{rz:a2,t:knee}),GINGER);
+   const paw=[knee[0]+Math.sin(a2)*6.5,knee[1]-Math.cos(a2)*6.5,knee[2]];push(place(superEll(2,1.1,1.6,.6,.6,6,8),{t:[paw[0]+.5,Math.max(0,paw[1])+.6,paw[2]]}),CREAM)});
+  const w=Math.sin(ph*.5);tailTube([[-12,15+bob,0],[-18,19+bob,w*1.5],[-21,25+bob,w*3],[-19,30+bob,w*4],[-15,32+bob,w*4.5]]);
+ }else if(o.pose==='leap'){const u=o.u||0,incl=o.incl||0; // élan : corps étiré, pattes avant tendues, arrière en extension
+  const B=p=>rotZ(p,incl);const put=(m,c,pos,x)=>push(place(m,{rz:incl,t:add(B(pos),[0,0,0])}),c,x);
+  put(superEll(16,5.6,5.6,.8,.85,12,20),GINGER,[0,16,0]);
+  put(superEll(5.4,5,5.4,.75,.75,12,16),GINGER,[16,20,0]);
+  const hp=B([16,20,0]);ears(hp[0],hp[1],hp[2],[Math.cos(incl),0],incl*.5);face(hp[0],hp[1],hp[2],[Math.cos(incl),0]);
+  [[1],[-1]].forEach(([s])=>{const sh=B([13,13,s*3]);push(place(lathe([[1.4,-12],[1.7,0]],8),{rz:incl-1.15,t:sh}),GINGER)});
+  [[1],[-1]].forEach(([s])=>{const hp2=B([-12,14,s*3.2]);push(place(lathe([[1.5,-12.5],[1.9,0]],8),{rz:incl+1.05+.3*u,t:hp2}),GINGER)});
+  tailTube([B([-15,16,0]),B([-23,17,1]),B([-30,16,2]),B([-35,13,2])]);
+ }else{ // rest : u=0 assis, u=1 enroulé
+  const u=o.u||0,L=(a,b)=>a+(b-a)*u;
+  push(place(superEll(L(8,12.5),L(10.5,5.8),L(9,10.5),.7,.7,14,22),{rx:L(-.25,0),t:[0,L(10.5,5.8),L(-2,0)]}),GINGER);
+  push(place(superEll(L(6,4),L(6.5,3.5),L(5.5,4),.75,.75,12,16),{t:[L(0,-6),L(13,5),L(4.5,7)]}),CREAM);
+  const hp=[L(0,-6),L(22.5,9.5),L(4.5,8)];push(place(superEll(6.3,5.8,6.3,.75,.75,12,18),{t:hp}),GINGER);
+  const fwd=[Math.sin(L(0,-.9)),Math.cos(L(0,-.9))];ears(hp[0],hp[1],hp[2],fwd);face(hp[0],hp[1],hp[2],fwd);
+  if(u<.98){[[-1],[1]].forEach(([s])=>{push(place(lathe([[1.6,0],[1.5,L(11,3)]],8),{t:[s*3.4,0,L(7.5,6)]}),GINGER);push(place(superEll(2,1.2,2.6,.6,.6,6,10),{t:[s*3.4,1,L(8.5,7)]}),CREAM)})}
+  const tailS=[[6,2,-7],[13,1.8,-3],[15,2,4],[12,2.4,9]],tailC=[[10,2,-6],[14,2,2],[10,2.2,9],[2,2.4,11],[-4,2.6,10]];
+  tailTube(tailS.map((p,i)=>p.map((v,k)=>L(v,tailC[i<tailC.length?i:tailC.length-1][k]))).concat(u>.5?[tailC[4].map((v,k)=>L(tailS[3][k],v))]:[]));
  }
  return P;
 }
-
 /* ---------- rocking-chair ---------- */
 const RUN_R=95;
 function chair(st=STYLES.scandinave,o={}){
@@ -219,7 +234,7 @@ function chair(st=STYLES.scandinave,o={}){
  P.push(part(place(superEll(24,1.7,1.5,.3,.3,6,16),{t:[0,53,-19.6]}),W,{crease:false}));
  for(let i=-2;i<=2;i++)P.push(part(place(superEll(2,23,.9,.3,.3,10,10),{rx:-.075,t:[i*8.5,77.5,-22.4]}),W,{crease:false}));
  for(const sx of[-1,1]){P.push(part(tube([[sx*24.2,72,-21.5],[sx*25.6,71,0],[sx*26.2,70,16]],1.9,10),W,{crease:false}));P.push(part(place(lathe([[1.6,0],[1.6,27]],10),{t:[sx*26.2,43,14]}),W,{crease:false}))}
- if(o.cat)P.push(...cat({pose:'sit',ry:.25,t:[0,49.5,3]}));
+ if(o.cat!=null&&o.cat!==false)P.push(...cat({pose:'rest',u:o.cat===true?0:o.cat,ry:.25,t:[0,49.5,3]}));
  return P;
 }
 
@@ -261,12 +276,17 @@ function sofa(st=STYLES.scandinave){
 
 /* ---------- autres meubles de la pièce ---------- */
 function arcLamp(){const P=[];
- P.push(part(lathe([[16,0],[16,3.2],[0,3.2]],28),MARBLE));
- const pts=[[0,3,0],[0,70,0],[0,130,0],[-14,172,0],[-50,194,0],[-88,190,0],[-108,172,0],[-113,158,0]];
- P.push(part(tube(pts,1.7,10),BRASS,{crease:false}));
- const end=pts[pts.length-1];
- P.push(part(place(lathe([[4.5,0],[12,-15],[13,-17],[0,-17]],24),{rz:.25,t:[end[0]-1,end[1]+1,0]}),GREY));
- P.push(part(place(lathe([[0,0],[11.4,0]],24),{rz:.25,t:[end[0]-1,end[1]-15.6,0]}),WARM,{flat:true,noshadow:true}));
+ // socle : disque de marbre épais à chanfrein + collier laiton
+ P.push(part(lathe([[0,0],[17.5,0],[18.5,1.2],[18.5,5.5],[17.5,6.8],[4.5,6.8],[4.5,7.2],[0,7.2]],32),MARBLE,{creaseThr:.75}));
+ P.push(part(lathe([[3.6,6.8],[3.6,10],[2.9,10.8]],14),BRASS,{crease:false}));
+ // fût : vraie épaisseur (≈5 cm), arc continu
+ const pts=[[0,8,0],[0,70,0],[0,128,0],[-12,170,0],[-46,192,0],[-84,189,0],[-106,172,0],[-113,158,0]];
+ P.push(part(tube(pts,2.6,12),BRASS,{crease:false}));
+ const end=pts[pts.length-1];const at={rz:.4,rx:-.62,t:[end[0]-1,end[1]+1,0]};
+ // abat-jour ouvert : extérieur gris-bleu, intérieur chaud visible, ampoule
+ P.push(part(place(lathe([[14,-17],[13.6,-15.5],[5.5,0],[0,0]],28,null,{caps:false,center:[0,-4,0]}),at),GREY));
+ P.push(part(place(lathe([[13.2,-16.6],[5,-1.2]],28,null,{caps:false,center:[0,-30,0]}),at),WARM,{flat:true,noshadow:true}));
+ P.push(part(place(lathe([[0,-11],[3,-10],[3.4,-7],[2.2,-4],[0,-4]],12),at),tone('#FFF4C8',{s:.08}),{crease:false,noshadow:true}));
  return P}
 function gueridon(){const P=[];
  P.push(part(lathe([[0,56],[20,56],[21,58],[20,59],[0,59]],28),STYLES.scandinave.wood));
@@ -278,22 +298,49 @@ function gueridon(){const P=[];
 function palm(){const P=[];
  P.push(part(lathe([[13,0],[14,2],[15.5,22],[16.5,24],[15,24.5],[14.5,24.6]],24),POT));
  P.push(part(lathe([[0,24],[13.8,24]],24),SOIL,{flat:true,noshadow:true}));
- P.push(part(tube([[0,24,0],[1,60,0],[-2,100,0],[-4,138,1]],2.2,8),tone('#B5915E'),{crease:false}));
- const out=[];for(let i=0;i<=20;i++){const z=i*3;const w=6.5*Math.sin(Math.PI*z/60)*(1-.3*z/60)+.4;out.push([w+(i%2?1.5:0),z])}for(let i=20;i>=0;i--){const z=i*3;const w=6.5*Math.sin(Math.PI*z/60)*(1-.3*z/60)+.4;out.push([-(w+(i%2?1.5:0)),z])}
- for(let k=0;k<8;k++){const a=k*2*Math.PI/8+.3,drop=.3+.45*((k*7)%3)/2;P.push(part(place(leaf(out,.6,(x,y,z)=>[x,y-.011*z*z,z]),{rx:-(.55-drop),ry:a,t:[-4,138,1]}),k%2?GREEN:GREEN2))}
+ P.push(part(tube([[0,24,0],[1,60,0],[-2,100,0],[-3,136,1]],2.3,8),tone('#B5915E'),{crease:false}));
+ const top=[-3,136,1];
+ for(let k=0;k<9;k++){const a=k*2*Math.PI/9+.25,rise=.55+.3*((k*5)%3)/2,len=78+10*((k*7)%3);
+  // rachis : monte, s'arque puis retombe (dans le plan local x-y, puis tourné de a)
+  const N=20;const loc=[];for(let i=0;i<=N;i++){const s=i/N;loc.push([len*s*(1-.15*s),28*Math.sin(Math.PI*s*.9)*rise-62*s*s*s,0])}
+  const world=loc.map(p=>add(rotY(p,a),top));P.push(part(tube(world,.75,6),GREEN2,{crease:false}));
+  // folioles fines et souples des deux côtés, de plus en plus courtes vers la pointe
+  for(let i=3;i<loc.length;i++){for(let f=0;f<1;f++){const s=i/N;const p0=loc[i-1],p1=loc[i];const pm=[p0[0]+(p1[0]-p0[0])*f*.5,p0[1]+(p1[1]-p0[1])*f*.5,0];
+   const tilt=Math.atan2(p1[1]-p0[1],p1[0]-p0[0]);const Lf=(34-18*s)*(.92+.16*((i*3)%2));
+   for(const sd of[-1,1]){const droop=.95+.3*(((i*7+(sd>0?1:0))%4)/3)+.3*s;
+    const out=[[0,0],[1.1,Lf*.2],[1.35,Lf*.45],[1,Lf*.75],[0,Lf],[-1,Lf*.75],[-1.35,Lf*.45],[-1.1,Lf*.2]];
+    let m=leaf(out,.35,(x,y,z)=>[x,y-.009*z*z,z]);m=place(m,{s:[1,1,sd],rx:sd*droop});m=place(m,{rz:tilt*.35,ry:a,t:add(rotY(pm,a),top)});
+    P.push(part(m,(i+sd)%2?GREEN:GREEN2,{crease:false}))}}}}
  return P}
-function beanbag(){return[part(lathe([[0,0],[22,0],[30,7],[32,17],[28,28],[18,36],[9,37.5],[3,35.5],[0,35]],28,(x,y,z)=>[x+(y>20?(y-20)*.12:0),y,z]),STYLES.scandinave.cushion)]}
+function beanbag(){ // sac de billes affaissé : base large, plis verticaux, creux au sommet, légère bascule
+ const prof=[[0,0],[27,0],[35,4],[38,12],[36,22],[29,31],[20,37],[12,40],[7,38.5],[3,35],[0,34]];
+ const def=(x,y,z)=>{const a=Math.atan2(z,x),r=Math.hypot(x,z);const fold=1+(.085*(Math.abs(Math.sin(2.5*a+.6))-.5)+.03*Math.sin(7*a-1.1))*(y<28?1:Math.max(0,(40-y)/12));
+  const rr=r*fold;const lean=y>18?(y-18)*.09:0;return[rr*Math.cos(a)-lean,y-(r<8&&y>30?.8:0),rr*Math.sin(a)]};
+ return[part(lathe(prof,36,def),STYLES.scandinave.cushion,{creaseThr:.8})]}
 function monstera(){const P=[];
  P.push(part(lathe([[11,0],[12,2],[13,20],[14,21.5],[12.5,22]],24),POT));P.push(part(lathe([[0,21.5],[12,21.5]],24),SOIL,{flat:true,noshadow:true}));
- const out=[[0,0],[-7,-3],[-12,-9],[-13,-15],[-8,-14],[-15,-22],[-16,-30],[-12,-36],[-6,-33],[-4,-40],[0,-43],[4,-40],[6,-33],[12,-36],[16,-30],[15,-22],[8,-14],[13,-15],[12,-9],[7,-3]].map(([x,z])=>[x*.9,-z*.9]);
- const leaves=[[0,.55,.7],[1.3,.9,.6],[-1.4,.85,.55],[2.9,.45,.45],[-2.9,.55,.75],[.7,.7,.5]];
- leaves.forEach(([a,s,drop],k)=>{P.push(part(tube([[0,21,0],[Math.sin(a)*8,38,Math.cos(a)*8],[Math.sin(a)*14,30+30*s,Math.cos(a)*14]],1.1,6),GREEN2,{crease:false}));
-  P.push(part(place(leaf(out,.6),{s:s*1.7,rx:-(1.3-drop*.5),ry:a,t:[Math.sin(a)*14,30+30*s,Math.cos(a)*14]}),k%2?GREEN:GREEN2))});
+ // feuille en cœur fendue : contour étoilé autour de (0,L/2), fentes profondes depuis le bord
+ const L=46,W=36;const w=z=>{const t=z/L;return W/2*Math.sin(Math.PI*Math.pow(t,.8))*(t<.3?.75+.25*t/.3:1)};
+ const side=(sgn)=>{const pts=[];const zs=[];for(let i=0;i<=14;i++)zs.push(L*(1-i/14));
+  zs.forEach((z,i)=>{if(i===0||i===14)return;const x=w(z)*sgn;pts.push([x,z]);
+   if([3,6,9,12].includes(i)){const d=.55+.1*(i%2);pts.push([x*(1-d)+(sgn*1.2)*0,z-1.5]);pts.push([x*(1-d),z-1.6]);pts.push([x,z-3])}});
+  return pts};
+ const out=[[0,L],...side(1),[2.5,-1],[0,3.5],[-2.5,-1],...side(-1).reverse()];
+ const blade=(sc)=>leaf(out,.5,(x,y,z)=>[x,y-.006*(z-L/2)*(z-L/2)-.004*x*x,z],[0,L*.5]);
+ const stems=[[0,.8,1.15,.85],[1.25,.95,1.05,1],[-1.3,.9,1.1,.95],[2.7,.6,.95,.8],[-2.6,.7,1.2,.9],[.6,1,.9,1.1]];
+ stems.forEach(([a,h,tip,sc],k)=>{const r1=10,r2=20;const p1=[Math.sin(a)*r1,21+22*h,Math.cos(a)*r1],p2=[Math.sin(a)*r2,21+40*h,Math.cos(a)*r2];
+  P.push(part(tube([[0,21,0],p1,p2],1.2,6),GREEN2,{crease:false}));
+  // la feuille part du bout de la tige, pend vers l'extérieur et vers le bas (pointe en bas)
+  P.push(part(place(blade(sc),{s:sc,rx:tip,ry:a,t:p2}),k%2?GREEN:GREEN2))});
  return P}
-function lantern(){const P=[];
- P.push(part(lathe([[0,4],[11,4.5],[20,10],[25,20],[25.5,30],[22,38],[13,43],[0,44]],28),PAPER,{creaseThr:.93}));
- P.push(part(lathe([[6,42],[6,47],[0,47]],16),DARK,{crease:false}));P.push(part(lathe([[0,2.5],[8,2.5],[8,5]],16),DARK,{crease:false}));
- for(let k=0;k<3;k++){const a=k*2.1;P.push(part(place(lathe([[2,0],[2,3]],8),{t:[Math.cos(a)*9,0,Math.sin(a)*9]}),DARK,{crease:false}))}
+function lantern(){const P=[]; // chōchin : fuseau à côtes horizontales, anneaux de bois, cordon, lueur chaude
+ const prof=[[0,6],[6,6],[11,7.5]];for(let y=9;y<=47;y+=3.2){const t=(y-6)/41;const r=22.5*Math.sin(Math.PI*Math.pow(t,.9))*(.78+.22*(1-t))+6;prof.push([r+.7,y],[r-.5,y+1.4])}
+ prof.push([9,50.5],[5,51.5],[0,51.5]);
+ P.push(part(lathe(prof,32),PAPER,{creaseThr:.9}));
+ P.push(part(lathe([[5.5,51],[7.2,51.5],[7.4,54],[5.5,54.5]],16),tone('#4A3A2E'),{crease:false}));
+ P.push(part(lathe([[0,4.2],[7.6,4.2],[7.8,6.6],[6.4,6.8]],16),tone('#4A3A2E'),{crease:false}));
+ P.push(part(tube([[-4,54,0],[-3,60,1],[0,63,2],[3,60,1],[4,54,0]],.6,6),tone('#8A6A4A'),{crease:false,noshadow:true}));
+ for(let k=0;k<3;k++){const a=k*2.1+.5;P.push(part(place(lathe([[2.2,0],[2.4,2.6],[1.6,4.4]],8),{t:[Math.cos(a)*7,0,Math.sin(a)*7]}),tone('#4A3A2E'),{crease:false}))}
  return P}
 function catTree(){const P=[];const BOX=STYLES.scandinave.cushion;
  P.push(part(place(superEll(30,1.6,22,.2,.2,6,20),{t:[0,1.6,0]}),FELT));
@@ -313,7 +360,8 @@ function drawBackground(ctx,t){
  ctx.save();
  // mur du fond + léger relief en aplats
  ctx.fillStyle=WALL;ctx.fillRect(0,0,1100,FL);
- ctx.fillStyle=li(WALL,.16);[[140,40,260,120],[460,20,220,90],[560,150,160,70],[940,60,160,110],[300,200,120,50]].forEach(([x,y,w,h])=>{rrect(ctx,x,y,w,h,30);ctx.fill()});
+ for(let k=0;k<12;k++){ctx.fillStyle=mix(sh(WALL,.05),li(WALL,.16),k/11);ctx.fillRect(70+k*86,0,88,FL)}
+ ctx.fillStyle='rgba(42,26,24,.035)';for(let k=0;k<70;k++){const x=90+((k*197)%1000),y=20+((k*131)%330);ctx.fillRect(x,y,2+(k%3),1)}
  // cimaise
  ctx.fillStyle='#E2CFA9';ctx.fillRect(70,252,1030,7);ctx.fillStyle=sh('#E2CFA9');ctx.fillRect(70,259,1030,3);ink(ctx,[[70,252],[1100,252]],1.2);ink(ctx,[[70,262],[1100,262]],1);
  // pan de mur gauche (coin)
@@ -338,6 +386,7 @@ function drawBackground(ctx,t){
  ctx.beginPath();ctx.moveTo(543,FL+112);ctx.lineTo(772,FL+112);ctx.lineTo(767,FL+120);ctx.lineTo(538,FL+120);ctx.closePath();ctx.fill();
  // flaque du lampadaire (deux tons nets, pas de flou)
  ctx.fillStyle='rgba(255,246,208,.42)';ctx.beginPath();ctx.ellipse(132,506,78,20,0,0,7);ctx.fill();ctx.fillStyle='rgba(255,246,208,.45)';ctx.beginPath();ctx.ellipse(132,506,46,11,0,0,7);ctx.fill();
+ ctx.fillStyle='rgba(255,233,176,.5)';ctx.beginPath();ctx.ellipse(957,524,52,13,0,0,7);ctx.fill();ctx.fillStyle='rgba(255,233,176,.5)';ctx.beginPath();ctx.ellipse(957,524,30,7,0,0,7);ctx.fill();
  // fenêtre
  const wx=690,wy=92,ww=180,wh=208;
  ctx.fillStyle=sh(WALL,.25);ctx.fillRect(wx-12,wy-12,ww+24,wh+24); // embrasure
@@ -397,37 +446,41 @@ function buildRoom(){
  FURN.push(sprite(catTree(),1040,448,{w:260,h:260,ox:150,oy:240,yaw:-.25}));
 }
 const CHAIR_X=130,CHAIR_Y=506,CHAIR_YAW=.22;
-function chairSprite(angle,withCat){
+function chairSprite(angle,catU){
  const pre=p=>{const q=[p[0],p[1]-RUN_R,p[2]];const r=rotX(q,angle);return[r[0],r[1]+RUN_R,r[2]]};const preN=n=>rotX(n,angle);
- return sprite(chair(STYLES.scandinave,{cat:withCat}),CHAIR_X,CHAIR_Y,{w:360,h:300,ox:240,oy:270,yaw:CHAIR_YAW,pre,preN});
+ return sprite(chair(STYLES.scandinave,{cat:catU}),CHAIR_X,CHAIR_Y,{w:360,h:300,ox:240,oy:270,yaw:CHAIR_YAW,pre,preN});
 }
 let catSitSprite=null;const catWalkSprites={};
-function catWalk(ph,dir){const k=Math.round(ph*8)/8+'|'+dir;if(!catWalkSprites[k])catWalkSprites[k]=render(cat({pose:'walk',phase:ph,ry:dir>0?deg(10):deg(190)}),{...ROOM,w:140,h:100,ox:70,oy:85});return catWalkSprites[k]}
+function catWalk(ph,dir){const k=Math.round(ph*6)/6+'|'+dir;if(!catWalkSprites[k])catWalkSprites[k]=render(cat({pose:'walk',phase:ph,ry:dir>0?deg(12):deg(192)}),{...ROOM,w:160,h:110,ox:80,oy:95});return catWalkSprites[k]}
 
 /* ---------- chronologie (13 s) ---------- */
-const T=13;
-function timeline(t){ // renvoie l'état : chairAngle, cat {mode,x,y,ph,dir}
- let ang=0,c=null;
+const T=14.5;
+function timeline(t){ // renvoie l'état : chairAngle, cat {mode,x,y,ph,dir,u,incl}
+ let ang=0,c=null;const ease=u=>u*u*(3-2*u);
  const rock=(t0,A)=>{const u=t-t0;return u>0?deg(A)*Math.exp(-.55*u)*Math.sin(2*Math.PI*u/1.75):0};
- if(t<1.9){const u=t/1.9;c={mode:'walk',x:-70+(55+70)*u,y:518,ph:u*14,dir:1}}
- else if(t<2.5){const u=(t-1.9)/.6;const ease=u*u;c={mode:'jump',x:55+(128-55)*ease,y:518+(418-518)*u-60*Math.sin(Math.PI*u),dir:1}}
- else if(t<9.2){c={mode:'sit'};ang=rock(2.45,6.5)}
- else if(t<9.75){const u=(t-9.2)/.55;c={mode:'jump',x:128+(38-128)*u,y:418+(518-418)*u*u-34*Math.sin(Math.PI*u),dir:-1};ang=rock(9.2,2.2)}
- else if(t<11.9){const u=(t-9.75)/2.15;c={mode:'walk',x:38-(38+80)*u,y:518,ph:u*16,dir:-1};ang=rock(9.2,2.2)}
+ if(t<2.1){const u=t/2.1;c={mode:'walk',x:-80+(52+80)*u,y:518,ph:u*15,dir:1}}
+ else if(t<2.7){const u=(t-2.1)/.6;c={mode:'leap',x:52+(130-52)*ease(u),y:518+(418-518)*u-62*Math.sin(Math.PI*u),dir:1,u,incl:(.6-1.3*u)}}
+ else if(t<5.6){c={mode:'rest',u:0};ang=rock(2.65,6.5)}
+ else if(t<6.6){c={mode:'rest',u:ease((t-5.6)/1)};ang=rock(2.65,6.5)}
+ else if(t<9.9){c={mode:'rest',u:1};ang=rock(2.65,6.5)}
+ else if(t<10.5){c={mode:'rest',u:1-ease((t-9.9)/.6)}}
+ else if(t<11.05){const u=(t-10.5)/.55;c={mode:'leap',x:130+(34-130)*u,y:418+(518-418)*u*u-30*Math.sin(Math.PI*u),dir:-1,u,incl:(-.3-.9*u)};ang=rock(10.5,2.4)}
+ else if(t<13.4){const u=(t-11.05)/2.35;c={mode:'walk',x:34-(34+90)*u,y:518,ph:u*17,dir:-1};ang=rock(10.5,2.4)}
  return{ang,cat:c};
 }
 let chairCache={key:null,sp:null};
 function drawScene(ctx,t){
  drawBackground(ctx,t);
  const st=timeline(t%T);
- const key=st.ang.toFixed(3)+'|'+(st.cat&&st.cat.mode==='sit');
- if(chairCache.key!==key){chairCache={key,sp:chairSprite(st.ang,st.cat&&st.cat.mode==='sit')}}
+ const catU=st.cat&&st.cat.mode==='rest'?Math.round(st.cat.u*40)/40:null;
+ const key=st.ang.toFixed(3)+'|'+catU;
+ if(chairCache.key!==key){chairCache={key,sp:chairSprite(st.ang,catU)}}
  const all=[...FURN,chairCache.sp].sort((a,b)=>(a.y+a.c.height)-(b.y+b.c.height)); // le plus bas devant
  // ordre réel : par ligne de sol
  const order=[{s:chairCache.sp,g:CHAIR_Y},{s:FURN[0],g:526},{s:FURN[1],g:480},{s:FURN[2],g:480},{s:FURN[3],g:517},{s:FURN[4],g:424},{s:FURN[5],g:458},{s:FURN[6],g:522},{s:FURN[7],g:448}].sort((a,b)=>a.g-b.g);
  order.forEach(({s})=>ctx.drawImage(s.c,s.x,s.y));
  if(st.cat&&st.cat.mode==='walk'){const c=catWalk(st.cat.ph,st.cat.dir);ctx.drawImage(c,st.cat.x-70,st.cat.y-85)}
- if(st.cat&&st.cat.mode==='jump'){if(!catSitSprite)catSitSprite=render(cat({pose:'sit',ry:.25}),{...ROOM,w:120,h:100,ox:60,oy:85,shadow:false});ctx.drawImage(catSitSprite,st.cat.x-60,st.cat.y-85)}
+ if(st.cat&&st.cat.mode==='leap'){const c=render(cat({pose:'leap',u:st.cat.u,incl:st.cat.incl*st.cat.dir,ry:st.cat.dir>0?deg(12):deg(192)}),{...ROOM,w:180,h:130,ox:90,oy:100,shadow:false});ctx.drawImage(c,st.cat.x-90,st.cat.y-100)}
 }
 
 /* ---------- tour du meuble / plateau / styles ---------- */
@@ -441,10 +494,11 @@ buildRoom();
 const sc=document.getElementById('scene').getContext('2d');
 tour('tour-chair',()=>chair(),'Rocking-chair',{scale:1.55,oy:200});
 tour('tour-sofa',()=>sofa(),'Canapé',{scale:1.05,oy:190});
+const tp=document.getElementById('tour-plants');[[0,'face (0°)'],[45,'trois-quarts (45°)'],[90,'profil (90°)']].forEach(([a,l])=>card(tp,render(palm(),{...TOUR,w:230,h:230,ox:115,oy:215,scale:1.05,yaw:deg(a)}),'Palmier — '+l));[[0,'face (0°)'],[45,'trois-quarts (45°)'],[90,'profil (90°)']].forEach(([a,l])=>card(tp,render(monstera(),{...TOUR,w:230,h:230,ox:115,oy:215,scale:1.6,yaw:deg(a)}),'Monstera — '+l));
 const stylesRow=document.getElementById('styles');
 [['scandinave','Scandinave : hêtre clair, lin, coussin bleu-gris'],['boheme','Bohème : rotin, terracotta, plaid à franges, motifs'],['steampunk','Steampunk : cuir capitonné, rivets laiton, pieds fonte']].forEach(([k,l])=>{const c=render(sofa(STYLES[k]),{...TOUR,w:340,h:230,ox:170,oy:190,scale:1.2,yaw:deg(28)});card(stylesRow,c,l)});
 const turn=document.getElementById('turn').getContext('2d');let turnStep=-1;
-function drawTurn(t){const s=Math.floor(t/1.1)%8;if(s===turnStep)return;turnStep=s;turn.clearRect(0,0,260,260);turn.drawImage(render(chair(STYLES.scandinave,{cat:true}),{...TOUR,w:260,h:260,ox:130,oy:220,scale:1.5,yaw:deg(45*s)}),0,0)}
+function drawTurn(t){const s=Math.floor(t/1.1)%8;if(s===turnStep)return;turnStep=s;turn.clearRect(0,0,260,260);turn.drawImage(render(chair(STYLES.scandinave,{cat:1}),{...TOUR,w:260,h:260,ox:130,oy:220,scale:1.5,yaw:deg(45*s)}),0,0)}
 if(fixedT!=null){drawScene(sc,fixedT);drawTurn(fixedT);document.getElementById('mini').getContext('2d').drawImage(document.getElementById('scene'),0,0)}
 else{drawScene(sc,5.2);document.getElementById('mini').getContext('2d').drawImage(document.getElementById('scene'),0,0);
  const t0=performance.now();(function loop(){const t=(performance.now()-t0)/1000;drawScene(sc,t);drawTurn(t);requestAnimationFrame(loop)})()}
