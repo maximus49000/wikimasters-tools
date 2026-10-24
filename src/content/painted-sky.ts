@@ -3,7 +3,7 @@ import { TILE, tileCount, tileKey } from '../core/library/paint/city-painter';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import {
   CLOUD_KINDS, FOG_W, MOON_SIZE, SKY_TEXTURE, SUN_SIZE,
-  cloudPalette, cloudShape, paintCloud, paintFogBand, paintMoon, paintSkyTexture, paintSun, stepKey,
+  cloudPaletteFor, cloudShape, paintCloud, paintFogBand, paintMoon, paintSkyTexture, paintSun, stepKey,
   type CloudShape, type CloudStep,
 } from '../core/library/paint/sky-painter';
 import { SNOW_VERSION, paintSnowTile } from '../core/library/paint/snow-painter';
@@ -28,7 +28,7 @@ export function skyJobs(seed: number): PaintJob[] {
 }
 
 export function cloudJobs(seed: number, step: CloudStep): PaintJob[] {
-  const palette = cloudPalette(step.daylight, step.twilight, step.dark);
+  const palette = cloudPaletteFor(step);
   return Array.from({ length: CLOUD_KINDS }, (_, k) => {
     const shape = cloudShape(seed, k);
     return { key: `${base(seed)}|cloud|${stepKey(step)}|${k}`, x: 0, w: shape.w, h: shape.h, res: res() * CLOUD_RES, grain: seed ^ (k + 1), paint: (ctx) => paintCloud(ctx, shape, palette, seed + k) };

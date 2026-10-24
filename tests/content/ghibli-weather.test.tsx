@@ -12,7 +12,7 @@ import { createWeatherClock, lightningAt, steadySource } from '../../src/core/li
 import { gradeFor, gradeValues } from '../../src/core/library/paint/grade';
 import { TILE, tileCount } from '../../src/core/library/paint/city-painter';
 import { cityPaintPlan, type CityPaintPlan } from '../../src/core/library/paint/city-plan';
-import { animatedTops, skylinePath, skylinePathFromProfile } from '../../src/core/library/paint/sky-clip';
+import { ScenePanorama } from '../../src/content/scene-panorama';
 import { resetPaintedCacheForTests, setTilePainterForTests, usePaintedCity } from '../../src/content/painted-city';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -269,43 +269,54 @@ describe('relecture finale', () => {
 });
 
 describe('captures du banc', () => {
-  it('Ghibli Ville : les nuages défilent derrière les toits (découpe fixe selon la silhouette)', async () => {
+  it('Ghibli Ville, couche seule (pas d’emplacement dans une scène) : nuages dans la couche météo, sans découpe', async () => {
     writeArt('ghibli');
     mount(clockOf('cloudy'));
     await flush(5);
     const drift = container.querySelector('[data-wx="clouds-drift"]')!;
-    const clip = drift.parentElement!;
-    expect(clip.getAttribute('data-wx-clip')).toBe('sky');
-    const ref = /^url\(#(.+)\)$/.exec(clip.getAttribute('clip-path') ?? '')![1]!;
-    const path = container.querySelector(`clipPath[id="${ref}"] path`)!;
-    expect(path.getAttribute('d')).toBe(skylinePath(cityPaintPlan(720, 216, 1)));
-    // La découpe ne bouge pas : seul le groupe intérieur est translaté.
-    expect(clip.getAttribute('transform')).toBeNull();
+    expect(drift.closest('[data-weather]')).not.toBeNull();
+    expect(drift.closest('[clip-path]')).toBeNull();
+    expect(container.querySelector('[data-wx-clip]')).toBeNull();
   });
 
-  it('Ghibli Ville : tranches peintes avec profil → découpe au pixel (plus de boîtes du fond)', async () => {
+  // Nuages derrière la ville (captures du téléphone du 2026-10-24 : la découpe en hauteur laissait une boîte de ciel sans
+  // nuages sous les arbres de la crête) : ciel → nuages → ville peinte → acteurs → voiles, pluie, brouillard, neige.
+  it('Ghibli Ville avec la scène : nuages dans l’emplacement, entre le ciel et la ville, sans découpe ; la boucle les fait défiler', async () => {
     writeArt('ghibli');
-    resetPaintedCacheForTests();
-    setTilePainterForTests(async (plan, t) => ({ url: `data:fake-${t}`, profile: new Float32Array(Math.min(TILE, plan.width - t * TILE)).fill(120 - t) }));
-    const City = ({ plan }: { plan: CityPaintPlan }): null => {
-      usePaintedCity(plan);
-      return null;
-    };
-    const cityPlan = cityPaintPlan(720, 216, 1);
-    try {
-      act(() => root.render(<svg><City plan={cityPlan} /><WeatherLayer scene="city" width={720} height={216} seed={1} sky={SKY} clock={clockOf('cloudy')} /></svg>));
-      await flush(10);
-      const clip = container.querySelector('[data-wx-clip="sky"]')!;
-      const ref = /^url\(#(.+)\)$/.exec(clip.getAttribute('clip-path') ?? '')![1]!;
-      const d = container.querySelector(`clipPath[id="${ref}"] path`)!.getAttribute('d');
-      const profile = new Float32Array(720);
-      for (let x = 0; x < 720; x++) profile[x] = 120 - Math.floor(x / TILE);
-      expect(d).toBe(skylinePathFromProfile(cityPlan, profile, animatedTops(cityPlan)));
-      expect(d).not.toBe(skylinePath(cityPlan));
-    } finally {
-      setTilePainterForTests(null);
-      resetPaintedCacheForTests();
-    }
+    const clock = clockOf('rain');
+    act(() =>
+      root.render(
+        <svg>
+          <ScenePanorama scene="city" width={720} height={216} sky={SKY} minutes={14 * 60} seed={1} />
+          <WeatherLayer scene="city" width={720} height={216} seed={1} sky={SKY} clock={clock} />
+        </svg>,
+      ),
+    );
+    await flush(5);
+    const slot = container.querySelector('[data-clouds-slot]')!;
+    const drift = container.querySelector('[data-wx="clouds-drift"]')!;
+    expect(slot.contains(drift)).toBe(true);
+    expect(drift.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(container.querySelectorAll('[data-wx="clouds-drift"]')).toHaveLength(1);
+    expect(drift.closest('[clip-path]')).toBeNull();
+    expect(container.querySelector('[data-wx-clip]')).toBeNull();
+    const before = (a: Element, b: Element): boolean => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(container.querySelector('[data-celestial]')!, slot)).toBe(true);
+    expect(before(slot, container.querySelector('[data-scene-body]')!)).toBe(true);
+    expect(before(slot, container.querySelector('[data-painted-city]')!)).toBe(true);
+    // Les copies de la bande pointent sur les defs de la couche météo.
+    const strip = container.querySelector('[data-weather] defs [data-wx="clouds"]')!;
+    for (const u of drift.querySelectorAll('use')) expect(u.getAttribute('href')).toBe(`#${strip.id}`);
+    // La grue et les ailes des moulins restent dans vie-fond (devant les nuages, dans la ville peinte).
+    expect(container.querySelector('[data-vie-fond] [data-vie="grue-0"]')).not.toBeNull();
+    expect(container.querySelector('[data-weather] [data-vie]')).toBeNull();
+    // La boucle retrouve le groupe dans l'emplacement et le fait défiler.
+    const x = (): number => Number(/translate\(([-\d.]+)/.exec(drift.getAttribute('transform') ?? '')![1]);
+    const x0 = x();
+    await flush(50);
+    expect(x()).not.toBe(x0);
+    // Sous la pluie, les nuages sont sous le voile du ciel : le cran signalé le compense (clé `-v…`).
+    expect(asked.some((k) => /\|cloud\|\d+-\d+-\d+-v\d+-\d+\|/.test(k))).toBe(true);
   });
 
   it('classique : pas de découpe des nuages', async () => {

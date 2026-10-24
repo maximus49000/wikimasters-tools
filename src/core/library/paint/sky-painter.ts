@@ -81,13 +81,46 @@ export function cloudPalette(daylight: number, twilight: number, dark: number): 
   return mixPal(night, wet, d);
 }
 
-export type CloudStep = { daylight: number; twilight: number; dark: number };
+// `veil` / `veilDark` (Ghibli Ville, absents sans voile) : opacité et obscurité du voile du ciel de la couche météo
+// (`data-wx="tint"`), qui passe désormais DEVANT les nuages (nuages derrière la ville, clouds-slot.tsx).
+export type CloudStep = { daylight: number; twilight: number; dark: number; veil?: number; veilDark?: number };
 export const STEPS = 12;
 const q = (v: number): number => Math.round(clamp01(v) * STEPS) / STEPS;
 
 // Cran de couleur des nuages : un jeu de 12 nuages est peint par cran.
-export const cloudStep = (daylight: number, twilight: number, dark: number): CloudStep => ({ daylight: q(daylight), twilight: q(twilight), dark: q(dark) });
-export const stepKey = (s: CloudStep): string => `${Math.round(s.daylight * STEPS)}-${Math.round(s.twilight * STEPS)}-${Math.round(s.dark * STEPS)}`;
+export const cloudStep = (daylight: number, twilight: number, dark: number, veil = 0, veilDark = 0): CloudStep => {
+  const s: CloudStep = { daylight: q(daylight), twilight: q(twilight), dark: q(dark) };
+  if (q(veil) > 0) {
+    s.veil = q(veil);
+    s.veilDark = q(veilDark);
+  }
+  return s;
+};
+const n12 = (v: number): number => Math.round(v * STEPS);
+export const stepKey = (s: CloudStep): string => `${n12(s.daylight)}-${n12(s.twilight)}-${n12(s.dark)}${s.veil ? `-v${n12(s.veil)}-${n12(s.veilDark ?? 0)}` : ''}`;
+
+// ───── Nuages sous le voile du ciel ─────
+// Avant, le voile du ciel (jusqu'à 92 % d'opacité sous la pluie, plus fort en haut) était dessiné SOUS les nuages : il
+// assombrissait le ciel et la ville, pas les nuages. Les nuages sont maintenant derrière la ville, donc sous ce voile (posé
+// par-dessus toute la scène). Pour garder leur teinte, la palette est « dé-voilée » : p' = (p − voile × a) / (1 − a), de sorte
+// que p' sous le voile redonne p (exact aussi sur les bords translucides des touches : le ciel derrière est voilé comme
+// avant). `a` = opacité du voile à la hauteur moyenne des nuages (dégradé : 1 en haut, 0,45 en bas ; nuages entre 5 % et
+// 42 % de la hauteur, centre vers 23 %, facteur 0,87). Bornée à 0..255 : par très forte pluie de jour, le haut des nuages
+// clairs ne peut pas être tout à fait rendu (un peu plus sombre qu'avant).
+export const CLOUD_VEIL_AT = 1 - 0.55 * 0.235;
+// Couleur du voile (même formule que la couche météo, scene-weather.tsx) : nuit, jour gris clair, jour de pluie gris sombre.
+export const veilRgb = (daylight: number, veilDark: number): Rgb => mixRgb(hexRgb('#1A1E2B'), mixRgb(hexRgb('#9AA4B2'), hexRgb('#4E5663'), veilDark), daylight);
+export function unveilPalette(p: CloudPalette, veil: Rgb, a: number): CloudPalette {
+  if (a <= 0) return p;
+  const k = Math.min(a, 0.95);
+  const un = (c: Rgb): Rgb => [0, 1, 2].map((i) => Math.max(0, Math.min(255, Math.round((c[i]! - veil[i]! * k) / (1 - k))))) as unknown as Rgb;
+  return [un(p[0]), un(p[1]), un(p[2])];
+}
+// Palette d'un cran (voile compris).
+export function cloudPaletteFor(step: CloudStep): CloudPalette {
+  const p = cloudPalette(step.daylight, step.twilight, step.dark);
+  return step.veil ? unveilPalette(p, veilRgb(step.daylight, step.veilDark ?? 0), step.veil * CLOUD_VEIL_AT) : p;
+}
 
 // Cumulus : bulles peintes du haut vers le bas, chaque touche éclairée selon sa place dans sa bulle (lumière en haut à
 // gauche), contraste plus faible vers la base, liseré clair sur les bulles hautes, ventre ombré. Coordonnées du cadre.
