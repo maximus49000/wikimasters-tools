@@ -2,8 +2,11 @@ import type { KeyValueStore } from '../cache/store';
 import { applyCopyDeltas, mergeCards, type CollectionState, type KnownCard } from './collection-book';
 
 const KEY = 'collection';
+// Heure (ms) de la dernière carte partie (vente, mise en vente, échange) : la liste du site se décale, un parcours complet
+// en cours a pu sauter une carte et doit recommencer (voir `collection-scan`).
+export const DEPARTED_KEY = 'collectionDepartedAt';
 
-export function createCollectionRepo(store: KeyValueStore) {
+export function createCollectionRepo(store: KeyValueStore, now: () => number = () => Date.now()) {
   // Lecture-fusion-écriture sérialisées : deux observations simultanées ne s'écrasent pas.
   let tail: Promise<unknown> = Promise.resolve();
   const listeners = new Set<() => void>();
@@ -28,6 +31,8 @@ export function createCollectionRepo(store: KeyValueStore) {
     // Une carte au nombre inconnu (obtenue depuis le dernier parcours) part sur une vente ou un échange (voir `applyCopyDeltas`).
     adjustCopies(deltas: Record<string, number>): Promise<void> {
       const run = tail.then(async () => {
+        // Même une carte inconnue d'ici a quitté la liste du site : le décalage compte.
+        if (Object.values(deltas).some((delta) => delta < 0)) await store.set(DEPARTED_KEY, now());
         const state = (await store.get<CollectionState>(KEY)) ?? {};
         const next = applyCopyDeltas(state, deltas);
         if (next === state) return;
