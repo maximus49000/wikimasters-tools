@@ -8,8 +8,8 @@ import type { CityPaintPlan } from './city-plan';
 import { fondRng } from './fond-time';
 
 // Verdure de la rue principale (port de la maquette fond-ville, `03b-rue-verte.js` `streetVerdure`) : alignement d'arbres en
-// fosse à grille en fonte à la bordure (platanes, tilleuls, marronniers, cerisiers ; un arbre tous les 70-110 px, décision du
-// 2026-10-20 ; quelques jeunes au tuteur, quelques fosses vides), bacs de trottoir devant une vitrine, parterre au pied d'un
+// fosse à grille en fonte à la bordure (platanes, tilleuls, marronniers, cerisiers ; un arbre tous les 48-72 px, densifié le
+// 2026-10-24 à la demande de l'utilisateur, au lieu de 70-110 ; quelques jeunes au tuteur, quelques fosses vides), bacs de trottoir devant une vitrine, parterre au pied d'un
 // immeuble sans commerce, grimpante sur l'arête d'une façade, pots devant une porte, herbe entre les pavés.
 // Emplacements interdits : scènes de la Fête de la musique, passage piéton et arrêt de bus du trottoir des immeubles (fosses
 // seulement, voir PIT_*_CLEAR), entrées d'immeuble (± DOOR_MARGIN, + 2 ; fosses : ± DOOR_MARGIN contre la grille), porte vitrée de chaque local (± 4 ; celle que peint la
@@ -40,6 +40,11 @@ export const SHOP_DOOR_MARGIN = 4;
 export const PIT_HALF = 5;
 // Recherche d'un centre libre autour de chaque pas des arbres (au pixel, de part et d'autre).
 export const PIT_SEARCH = 21;
+// Écart minimal entre deux fosses voisines (centre à centre) : deux fûts jamais collés quand la recherche décale un pas.
+export const PIT_MIN_GAP = 34;
+// Pas de l'alignement : PIT_STEP + rng() × PIT_STEP_SPREAD px.
+export const PIT_STEP = 48;
+export const PIT_STEP_SPREAD = 24;
 // Abords sans arbre (unités, de part et d'autre du centre ; la grille de la fosse, ± PIT_HALF, reste dehors) : emprise d'une
 // scène de la Fête de la musique (plancher ± STAGE_HALF, + 4 de marge : placette fixe, rien ne disparaît le jour J), passage
 // piéton et poteau du feu (± CROSS_HALF + 3 pour le poteau, + 3), arrêt de bus du trottoir des immeubles (voyageurs à ± 23).
@@ -94,15 +99,16 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     clear.some((c) => Math.abs(px - c.x) < c.half + PIT_HALF) ||
     busy(px - 6, px + 6, ['lamp', 'tree']) ||
     busy(px - PIT_HALF, px + PIT_HALF, ['shopdoor']) ||
-    doors.some((d) => px + PIT_HALF > d.x0 && px - PIT_HALF < d.x1);
+    doors.some((d) => px + PIT_HALF > d.x0 && px - PIT_HALF < d.x1) ||
+    out.some((v) => v.kind === 'pit' && Math.abs(v.x - px) < PIT_MIN_GAP);
   const rng = fondRng(seed, 'rue-arbres');
-  for (let x = 30 + rng() * 50; x < width - 20; x += 70 + rng() * 40) {
+  for (let x = 30 + rng() * 50; x < width - 20; x += PIT_STEP + rng() * PIT_STEP_SPREAD) {
     for (let k = 0; k <= 2 * PIT_SEARCH; k++) {
       const px = x + (k % 2 ? -1 : 1) * Math.ceil(k / 2);
       if (pitBusy(px)) continue;
       const roll = rng();
-      const young = roll < 0.14;
-      const empty = roll >= 0.14 && roll < 0.22;
+      const young = roll < 0.12;
+      const empty = roll >= 0.12 && roll < 0.16;
       const species = SPECIES[Math.floor(rng() * SPECIES.length)]!;
       const h = (young ? 13 : 34 + rng() * 18) * u;
       const r = (young ? 4 + rng() * 1.5 : 16 + rng() * 8) * u;
