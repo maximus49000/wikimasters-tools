@@ -1,12 +1,13 @@
-import { hillTopY, type CityPaintPlan, type TopBox } from './city-plan';
+import { hillTopY, type CityPaintPlan } from './city-plan';
 import { roofCuts, roofLineY, roofSpan } from './snow-painter';
-import { craneK, vieDay } from './fond-vie';
-import { DEFAULT_MOMENT, type FondMoment } from './fond-time';
 
 // Découpe des nuages peints (vague Ghibli, G2) : le ciel au-dessus de la silhouette de la ville peinte, pour que les cumulus
 // passent DERRIÈRE les toits et la colline du fond (décor cellulo). Ligne brisée qui suit, de gauche à droite, le plus haut
 // de la ligne de toit des immeubles qui couvrent x et du haut du fond (crête, maisons, repères), avec une marche verticale
 // à chaque mur.
+// PLUS UTILISÉE pour les nuages (2026-10-24) : une découpe en hauteur laissait une boîte de ciel sans nuages sous les
+// arbres de la crête (transparents entre les troncs) ; les nuages sont maintenant dessinés DERRIÈRE la ville
+// (clouds-slot.tsx). Gardée pour le profil alpha des tranches (`alphaTopProfile`, painted-city.ts).
 
 const STEP = 4; // pas d'échantillonnage (px), en plus des cassures exactes des toits et des maisons
 
@@ -78,8 +79,8 @@ export function skylinePath(plan: Plan): string {
 
 // ───────────── Découpe au pixel (bogue du 2026-10-24 : rectangles bleu ciel dans les nuages au-dessus de la crête) ─────────────
 // Les boîtes `hill.tops` couvrent tout un arbre ou une maison : le ciel y était coupé alors que la tranche peinte y est
-// transparente. La découpe suit maintenant la vraie silhouette des tranches (profil alpha), les lignes de toit analytiques du
-// premier plan et les boîtes de ce qui bouge au-dessus de la crête sans être dans les tranches (calque vie-fond).
+// transparente. La découpe suit maintenant la vraie silhouette des tranches (profil alpha) et les lignes de toit analytiques du
+// premier plan (plus de boîtes pour la grue et les ailes des moulins).
 
 // Haut opaque de chaque colonne de px CSS d'une image `w` × `h` px peinte à l'échelle `dpr` : le plus petit y CSS où un pixel
 // des colonnes de pixels qu'elle couvre a un alpha > 0 ; `h / dpr` si la colonne est vide.
@@ -107,45 +108,11 @@ export function alphaTopProfile(data: Uint8ClampedArray, w: number, h: number, d
   return out;
 }
 
-// Boîtes [x0, x1, haut] des éléments du calque vie-fond qui dépassent la crête et ne sont pas peints dans les tranches, à
-// l'instant `moment` (celui des tranches affichées) : ailes des moulins (disque de rayon 9 s + 2 autour du moyeu, en escalier de
-// MILL_SLABS bandes) et grue (mât, flèche à son plus haut, contre-flèche, feu) seulement quand le calque la montre (craneK > 0
-// maintenant ou dans la minute : la découpe n'est relue qu'une fois par minute).
-const MILL_SLABS = 8;
-export function animatedTops(plan: Pick<CityPaintPlan, 'fond'>, moment: FondMoment = DEFAULT_MOMENT): TopBox[] {
-  const out: TopBox[] = [];
-  const D = vieDay(moment);
-  const T = moment.minutes / 60;
-  for (const e of plan.fond.escapes) {
-    if (e.mill) {
-      const { x, y, s } = e.mill;
-      const r = 9 * s + 2;
-      const hx = x - 0.5 * s;
-      const hy = y - 13 * s;
-      for (let i = 0; i < MILL_SLABS; i++) {
-        const a = hx - r + (2 * r * i) / MILL_SLABS;
-        const b = hx - r + (2 * r * (i + 1)) / MILL_SLABS;
-        // Plus haut du disque sur la bande : au point de la bande le plus proche du moyeu.
-        const d = a <= hx && hx <= b ? 0 : Math.min(Math.abs(a - hx), Math.abs(b - hx));
-        out.push([a, b, hy - Math.sqrt(Math.max(0, r * r - d * d))]);
-      }
-    }
-    if (craneK(e, T, D) > 0 || craneK(e, T + 1 / 60, D) > 0) {
-      const c = e.crane;
-      // Flèche : angle de −1,05 à 0,05 rad, y = haut du mât + sin(angle) × flèche × 0,25 ; haubans depuis haut du mât − 3.
-      const ty = c.base - c.mast;
-      out.push([c.x - c.boom - 1, c.x + c.boom + 1, Math.min(ty - 3, ty - 0.25 * c.boom) - 1]);
-    }
-  }
-  return out;
-}
-
 // Découpe d'après le profil `profile` (haut opaque de chaque px CSS de la ville peinte, toute la largeur) : même forme que
-// `skylinePath`. Un sommet à chaque px CSS (et aux cassures des toits du premier plan et des boîtes `extra`) ; en x, le haut
-// vaut le plus haut du profil des colonnes qui touchent x, des lignes de toit des immeubles du premier plan qui couvrent x et
-// des boîtes `extra`. Entre deux sommets, le segment reste dans une colonne dont il ne descend pas sous le haut. Sans
+// `skylinePath`. Un sommet à chaque px CSS (et aux cassures des toits du premier plan) ; en x, le haut vaut le plus haut du
+// profil des colonnes qui touchent x et des lignes de toit des immeubles du premier plan qui couvrent x. Entre deux sommets, le segment reste dans une colonne dont il ne descend pas sous le haut. Sans
 // profil (tranches pas encore peintes, peintre de test) : la découpe des boîtes, `skylinePath`.
-export function skylinePathFromProfile(plan: Plan, profile: Float32Array | null, extra: readonly TopBox[] = []): string {
+export function skylinePathFromProfile(plan: Plan, profile: Float32Array | null): string {
   if (!profile) return skylinePath(plan);
   const { width } = plan;
   const front = plan.buildings.filter((b) => !b.far).map((b) => ({ b, s: roofSpan(b) }));
@@ -153,17 +120,12 @@ export function skylinePathFromProfile(plan: Plan, profile: Float32Array | null,
   for (let x = 0; x <= Math.ceil(width); x++) cuts.add(Math.min(x, width));
   const add = (k: number): void => void (k > 0 && k < width && cuts.add(k));
   for (const { b } of front) for (const k of roofCuts(b)) add(k);
-  for (const [x0, x1] of extra) {
-    add(x0);
-    add(x1);
-  }
   const xs = [...cuts].sort((a, c) => a - c);
   const col = (i: number): number => (i >= 0 && i < profile.length ? profile[i]! : plan.height);
   const topAt = (x: number): number => {
     const i = Math.floor(x);
     let y = Math.min(plan.ground, col(i), x === i ? col(i - 1) : Infinity);
     for (const { b, s } of front) if (x >= s.x0 && x <= s.x1) y = Math.min(y, roofLineY(b, x));
-    for (const [x0, x1, t] of extra) if (x >= x0 && x <= x1) y = Math.min(y, t);
     return y;
   };
   const pts = xs.map((x): [number, number] => [x, topAt(x)]);

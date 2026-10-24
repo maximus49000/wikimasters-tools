@@ -1,4 +1,5 @@
 import { memo, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import type { SceneId } from '../core/library/library-types';
 import { CITY_GROUND } from '../core/library/city/metrics';
 import { mulberry32 } from '../core/library/scene-world';
@@ -8,13 +9,12 @@ import { CLOUD_BLOBS, godRayTarget, rayWindow, sunCoverage, type CloudSpot } fro
 import { smooth, type Weather } from '../core/library/weather/weather-types';
 import { CLOUD_KINDS, FOG_W, cloudBlobs, cloudShape, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
-import { animatedTops, skylinePathFromProfile } from '../core/library/paint/sky-clip';
 import { PaintedCanvas, gradeKey, type CanvasImage } from './painted-canvas';
 import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
 import { fadeStyle, useShownAfterMount } from './ghibli-sky';
 import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
-import { usePaintedMoment, usePaintedSkyline } from './painted-city';
+import { cloudsSig, useCloudsHost } from './clouds-slot';
 import { moonPlace, sunPlace } from './sky-place';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
@@ -115,7 +115,9 @@ function PatternDefs({ id, seed, ghibli }: { id: string; seed: number; ghibli: b
 }
 
 // `cover` : nuages pris pour la couverture du soleil (forme peinte quand les nuages peints sont montrés), relus à chaque relevé.
-type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; cover: RefObject<readonly CloudSpot[]>; sky: RefObject<Sky>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string };
+type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; cover: RefObject<readonly CloudSpot[]>; sky: RefObject<Sky>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string;
+  // Emplacement des nuages dans la scène (Ghibli Ville, clouds-slot.tsx) : le groupe qui défile y est, sous le voile du ciel.
+  cloudsHost: SVGGElement | null };
 
 // Positions intégrées des nuages, de la neige et de la brume : gardées d'une relance de la boucle à l'autre (pas de saut).
 type Motion = { drift: number; snowFarX: number; snowNearX: number; fogX: number };
@@ -129,6 +131,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   const skyRef = input.sky;
   const onStepRef = input.onStep;
   const coverRef = input.cover;
+  const cloudsHost = input.cloudsHost;
   const motionRef = useRef<Motion | null>(null);
   useLayoutEffect(() => {
     const el = sky.current;
@@ -137,7 +140,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     const q = (name: string): SVGElement | null => el.querySelector<SVGElement>(`[data-wx="${name}"]`) ?? floor?.querySelector<SVGElement>(`[data-wx="${name}"]`) ?? null;
     const pat = (name: string): SVGElement | null => el.querySelector<SVGElement>(`[data-wx-pattern="${name}"]`);
     const nodes = {
-      tint: q('tint'), overcast: q('overcast'), clouds: q('clouds'), drift: q('clouds-drift'), fog: q('fog'), snowFar: q('snow-far'), snowNear: q('snow-near'),
+      tint: q('tint'), overcast: q('overcast'), clouds: q('clouds'), drift: cloudsHost?.querySelector<SVGElement>('[data-wx="clouds-drift"]') ?? q('clouds-drift'), fog: q('fog'), snowFar: q('snow-far'), snowNear: q('snow-near'),
       puddles: q('puddles'), snowCover: q('snow-cover'), flash: q('flash'), bolt: q('bolt'), rainbow: q('rainbow'), godrays: q('godrays'), rays: el.querySelector<SVGElement>('[data-wx-rays]'),
     };
     const patterns = { snowFar: pat('snow-far'), snowNear: pat('snow-near'), fog: pat('fog') };
@@ -198,17 +201,18 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       const cloudDark = Math.max(dark, 0.5 * smoothstep(0.7, 1, w.cloud));
       // Cran de couleur des nuages peints : signalé à React seulement quand il change (rare), et seulement en Ghibli Ville
       // (ailleurs, pas de signal donc pas de re-rendu ; le passage en Ghibli relance la boucle, qui signale alors le cran).
+      // Le voile par-dessus le décor ne dépend que de la pluie : les immeubles restent bien visibles quand il ne pleut pas.
+      const thick = w.cloud * (0.3 + 0.7 * rainDark);
       const signal = onStepRef.current;
       if (signal) {
-        const step = cloudStep(daylight, skyRef.current.twilight, cloudDark);
+        // Nuages derrière la ville (emplacement de la scène) : sous le voile du ciel, leur palette le compense (sky-painter.ts).
+        const step = cloudStep(daylight, skyRef.current.twilight, cloudDark, cloudsHost ? 0.92 * thick : 0, dark);
         const stepText = stepKey(step);
         if (stepText !== lastStep) {
           lastStep = stepText;
           signal(step);
         }
       }
-      // Le voile par-dessus le décor ne dépend que de la pluie : les immeubles restent bien visibles quand il ne pleut pas.
-      const thick = w.cloud * (0.3 + 0.7 * rainDark);
       // Couleurs recalculées seulement quand l'obscurité ou le jour bougent d'un cran (1/64) : pas de chaînes neuves à chaque image.
       const key = `${Math.round(dark * 64)}|${Math.round(rainDark * 64)}|${Math.round(cloudDark * 64)}|${Math.round(daylight * 64)}`;
       if (key !== colorKey) {
@@ -363,7 +367,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       svg?.style.removeProperty('--wmt-celestial');
       svg?.style.removeProperty('--wmt-haze');
     };
-  }, [sky, ground, clock, seed, width, height, pool, coverRef, skyRef, layout]);
+  }, [sky, ground, clock, seed, width, height, pool, coverRef, skyRef, layout, cloudsHost]);
   return placeRef;
 }
 
@@ -415,19 +419,13 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const snowGrade = useMemo(() => snowGk.grade, [snowGk.key]);
   const snowImages = useMemo<CanvasImage[]>(() => snow.tiles.map((t) => ({ x: t.x, y: 0, w: t.w, h: height, url: t.url })), [snow.tiles, height]);
-  // Découpe FIXE des nuages : le ciel au-dessus de la silhouette des tranches peintes affichées (profil alpha au pixel), des toits
-  // du premier plan et des ailes des moulins et de la grue (calque vie-fond, à l'instant des tranches affichées : la grue
-  // seulement quand elle est montée) ; boîtes du fond tant que le profil manque. La
-  // neige posée est peinte sous les toits et sous la crête (snow-painter.ts) : rien à ajouter. Seul le groupe intérieur défile.
-  const cityTop = usePaintedSkyline(cityPlan);
-  const cityMoment = usePaintedMoment(cityPlan);
-  const skyline = useMemo(
-    () => (cityPlan ? skylinePathFromProfile(cityPlan, cityTop, cityTop ? animatedTops(cityPlan, cityMoment ?? undefined) : []) : ''),
-    [cityPlan, cityTop, cityMoment],
-  );
+  // Nuages peints DERRIÈRE la ville (clouds-slot.tsx) : la scène monte un emplacement entre le ciel et la ville, le groupe qui
+  // défile y est rendu par un portail ; plus de découpe par la silhouette de la ville (elle laissait une boîte de ciel sans
+  // nuages sous chaque groupe d'arbres de la crête, transparents entre les troncs : captures du téléphone du 2026-10-24).
+  const cloudsHost = useCloudsHost(ghibli ? cloudsSig(seed, width, height) : null);
   // La boucle met ses nœuds en cache : elle repart quand la neige posée ou la brume changent de nœud.
   const layout = `${ghibli}|${snow.ready}|${fogUrl !== ''}`;
-  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onStep: onStepRef, layout });
+  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onStep: onStepRef, layout, cloudsHost });
   // Mouvement réduit : pas de boucle, mais le ciel (chaque minute) relance un placement pour suivre la météo.
   useLayoutEffect(() => {
     if (still) placeRef.current?.();
@@ -460,6 +458,13 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
     };
     return { points: `${sun.x.toFixed(1)},${sun.y.toFixed(1)} ${end(a - RAY_HALF)} ${end(a + RAY_HALF)}`, opacity: 0.25 + 0.25 * (((i * 3) % RAY_COUNT) / (RAY_COUNT - 1)) };
   });
+
+  const drift = (
+    <g data-wx="clouds-drift">
+      <use href={`#${uid}-strip`} />
+      <use href={`#${uid}-strip`} x={-width} />
+    </g>
+  );
 
   return (
     <>
@@ -517,22 +522,8 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
           <div data-wx-fill="tint" style={{ width: '100%', height: '100%', willChange: 'transform', background: 'linear-gradient(to bottom, #9AA4B2ff 0%, #9AA4B273 100%)' }} />
         </foreignObject>
         {/* Nuages : une bande translatée d'un bloc, avec sa copie une largeur plus à gauche pour boucler. */}
-        {ghibli ? (
-          <g data-wx-clip="sky" clipPath={`url(#${uid}-skyline)`}>
-            <clipPath id={`${uid}-skyline`}>
-              <path d={skyline} />
-            </clipPath>
-            <g data-wx="clouds-drift">
-              <use href={`#${uid}-strip`} />
-              <use href={`#${uid}-strip`} x={-width} />
-            </g>
-          </g>
-        ) : (
-          <g data-wx="clouds-drift">
-            <use href={`#${uid}-strip`} />
-            <use href={`#${uid}-strip`} x={-width} />
-          </g>
-        )}
+        {/* Ghibli Ville : dans l'emplacement de la scène, derrière la ville et sous ce voile (bande gardée ici, dans les defs). */}
+        {cloudsHost ? createPortal(drift, cloudsHost) : drift}
         {/* Voile en calque à part : un `<rect>` à dégradé SVG était redessiné à chaque zoom et Chrome Android le laissait parfois disparaître
             un instant (saut de lumière mesuré sur S26). Le `<div>` en `will-change: transform` est un calque que le compositeur étire. */}
         <foreignObject data-wx="overcast" x={0} y={0} width={width} height={height} opacity={0} style={{ pointerEvents: 'none' }}>
