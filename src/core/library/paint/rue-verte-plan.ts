@@ -12,7 +12,7 @@ import { fondRng } from './fond-time';
 // Emplacements interdits : entrées d'immeuble (± DOOR_MARGIN, + 2 ; fosses : ± DOOR_MARGIN contre la grille), porte vitrée de chaque local (± 4 ; celle que peint la
 // façade, `shopFrame`) — une fosse peut donc se trouver devant une vitrine, jamais devant une porte —, lampadaires (± 9,
 // `lampsFor`), arbres du plan (± r + 6), mobilier (± 3, seulement pour les bacs et parterres, collés à la façade comme lui),
-// les autres éléments posés (± 3), hors de l'image.
+// les autres éléments posés (± 3 ; les fosses, à la bordure, ne gênent pas les parterres, contre la façade), hors de l'image.
 // Le couloir des passants (doorY → walkY) reste libre : fosses à la bordure (curb − 1,4), bacs et parterres collés à la
 // façade, posés debout contre le mur : leur bas (face avant) est à `doorY − 0,1`, la ligne des pieds des habitants, clients et
 // équipes qui longent la façade (seule leur ombre portée, peinture au sol, déborde dans le couloir).
@@ -27,6 +27,8 @@ export type RueGrass = { kind: 'herbe'; x: number; y: number; n: number };
 export type RueItem = RuePit | RueBox | RueClimber | RuePots | RueGrass;
 
 const SPECIES: readonly RueSpecies[] = ['platane', 'platane', 'tilleul', 'marronnier', 'tilleul', 'cerisier'];
+// Largeur minimale d'un parterre (rétréci pour tenir entre le bord de la façade et l'entrée).
+export const PARTERRE_MIN = 8;
 // Écart entre le bas d'un bac ou d'un parterre et la ligne des pieds le long des façades (doorY).
 export const BOX_CLEARANCE = 0.1;
 // Dégagement de part et d'autre de la porte vitrée d'un local.
@@ -54,7 +56,8 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     const d = shopFrame(s, ground).door;
     return { x0: d.x - SHOP_DOOR_MARGIN, x1: d.x + d.w + SHOP_DOOR_MARGIN };
   });
-  const busy = (x0: number, x1: number, kinds: readonly Kind[]): boolean =>
+  // `wall` : élément posé contre la façade (parterre) ; les fosses, à la bordure, ne le gênent pas.
+  const busy = (x0: number, x1: number, kinds: readonly Kind[], wall = false): boolean =>
     x0 < 0 ||
     x1 > width ||
     (kinds.includes('door') && doors.some((d) => x1 > d.x0 - 2 && x0 < d.x1 + 2)) ||
@@ -62,7 +65,7 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     (kinds.includes('tree') && plan.trees.some((t) => x1 > t.x - t.r - 6 && x0 < t.x + t.r + 6)) ||
     (kinds.includes('furn') && plan.furniture.some((f) => x1 > f.x - 3 && x0 < f.x + f.w + 3)) ||
     (kinds.includes('shopdoor') && shopDoors.some((d) => x1 > d.x0 && x0 < d.x1)) ||
-    out.some((v) => 'x0' in v && x1 > v.x0 - 3 && x0 < v.x1 + 3);
+    out.some((v) => 'x0' in v && !(wall && v.kind === 'pit') && x1 > v.x0 - 3 && x0 < v.x1 + 3);
 
   // 1. Alignement d'arbres en fosse à la bordure : autour de chaque pas, le centre libre le plus proche à ± PIT_SEARCH px
   // près, au pixel (gauche puis droite à distance égale ; la maquette n'essayait que 7 positions à ± 7 px, trop peu dans
@@ -106,14 +109,43 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
       out.push({ kind: 'bac', x0: bx, x1: bx + w, y: wallFoot - h, w, h, tall: rb() < 0.3, flowerSeed: rb() * 1000 });
     }
   }
-  // 3. Parterre au pied d'un immeuble sans commerce (50 %), haie basse ou fleurs.
+  // 3. Parterre au pied d'un immeuble sans commerce (50 %), haie basse ou fleurs. Le bout opposé à l'entrée de l'immeuble
+  // d'abord, puis l'autre ; si l'entrée, un mobilier ou un arbre gêne encore, le parterre rétrécit au pixel jusqu'à
+  // PARTERRE_MIN px pour tenir entre le bord de la façade et l'obstacle (entrée ± sa marge) (la maquette, à largeur fixe de 12-22 px,
+  // ne trouvait jamais la place : l'entrée occupe le milieu des immeubles étroits). Tirages de la maquette (50 %, côté, fleurs,
+  // haie), mais par immeuble ; le côté tiré ne sert plus qu'à départager un immeuble sans entrée.
   for (const b of near) {
     if (b.x < 0 || b.x + b.w > width) continue;
     const inShop = plan.blocked.some((s) => s.x1 - s.x0 > 20 && b.x + b.w / 2 > s.x0 && b.x + b.w / 2 < s.x1);
-    if (inShop || rb() > 0.5) continue;
-    const w = Math.min(22, b.w * 0.45);
-    const bx = b.x + (rb() < 0.5 ? 2 : b.w - w - 2);
-    if (!busy(bx, bx + w, ['door', 'furn', 'tree'])) out.push({ kind: 'parterre', x0: bx, x1: bx + w, y: wallFoot - 3.5, w, h: 3.5, flowerSeed: rb() * 1000, hedge: rb() < 0.5 });
+    // Tirages propres à l'immeuble (sa position) : agrandir la pièce, qui change les locaux et donc les tirages des bacs, ne
+    // déplace pas les parterres des premières tranches.
+    const rq = fondRng(seed, 'rue-parterre', String(Math.round(b.x * 8)));
+    if (inShop || rq() > 0.5) continue;
+    const w0 = Math.min(22, b.w * 0.45);
+    const leftFirst = rq() < 0.5;
+    const door = plan.doors.find((d) => d.x + DOOR_WIDTH / 2 > b.x && d.x + DOOR_WIDTH / 2 < b.x + b.w);
+    // Entrée dans la moitié gauche → le bout droit d'abord, et inversement.
+    const ends: readonly boolean[] = door ? (door.x + DOOR_WIDTH / 2 < b.x + b.w / 2 ? [false, true] : [true, false]) : leftFirst ? [true, false] : [false, true];
+    const widths: number[] = [];
+    for (let w = w0; w > PARTERRE_MIN; w--) widths.push(w);
+    if (w0 >= PARTERRE_MIN) widths.push(PARTERRE_MIN);
+    // Pleine largeur : à 2 px du bord, entrée ± (marge + 2) comme la maquette ; rétréci : contre le bord de la façade, et
+    // contre l'entrée ± sa marge seulement.
+    const fits = (bx: number, w: number, full: boolean): boolean =>
+      full ? !busy(bx, bx + w, ['door', 'furn', 'tree'], true) : !busy(bx, bx + w, ['furn', 'tree'], true) && !doors.some((d) => bx + w > d.x0 && bx < d.x1);
+    let spot: { bx: number; w: number } | null = null;
+    for (const left of ends) {
+      for (const w of widths) {
+        const full = w === w0;
+        const inset = full ? 2 : 0;
+        const bx = left ? b.x + inset : b.x + b.w - w - inset;
+        if (!fits(bx, w, full)) continue;
+        spot = { bx, w };
+        break;
+      }
+      if (spot) break;
+    }
+    if (spot) out.push({ kind: 'parterre', x0: spot.bx, x1: spot.bx + spot.w, y: wallFoot - 3.5, w: spot.w, h: 3.5, flowerSeed: rq() * 1000, hedge: rq() < 0.5 });
   }
 
   // 4. Grimpantes sur l'arête d'une façade (15 %), du sol à 6-36 px au-dessus du rez-de-chaussée.

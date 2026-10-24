@@ -27,6 +27,26 @@ describe('verdure de la rue (streetVerdure)', () => {
     ]);
   });
 
+  it('parterres : en moyenne au moins 25 % des immeubles sans commerce (graines 1-20, 2 880 px), jamais sur une entrée ni un mobilier', () => {
+    let free = 0;
+    let beds = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const plan = cityPaintPlan(2880, H, seed);
+      free += plan.buildings.filter((b) => !b.far && b.x >= 0 && b.x + b.w <= 2880 && !plan.blocked.some((s) => s.x1 - s.x0 > 20 && b.x + b.w / 2 > s.x0 && b.x + b.w / 2 < s.x1)).length;
+      const parterres = plan.rue.filter((v): v is RueBox => v.kind === 'parterre');
+      beds += parterres.length;
+      for (const v of parterres) {
+        expect(v.w).toBeGreaterThanOrEqual(8);
+        expect(v.w).toBeLessThanOrEqual(22);
+        // Entrée (span ± DOOR_MARGIN ; + 2 de dégagement à pleine largeur), mobilier ± 3.
+        const pad = v.w === Math.min(22, plan.buildings.find((b) => !b.far && v.x0 >= b.x && v.x1 <= b.x + b.w)!.w * 0.45) ? 2 : 0;
+        for (const d of plan.doors) expect(overlap(v.x0, v.x1, d.x - 4 - pad, d.x + 16 + pad)).toBe(false);
+        for (const f of plan.furniture) expect(overlap(v.x0, v.x1, f.x - 3, f.x + f.w + 3)).toBe(false);
+      }
+    }
+    expect(beds).toBeGreaterThanOrEqual(0.25 * free);
+  });
+
   for (const seed of [1, 7, 42]) {
     for (const width of [720, 1440, 2880]) {
       const plan = cityPaintPlan(width, H, seed);
