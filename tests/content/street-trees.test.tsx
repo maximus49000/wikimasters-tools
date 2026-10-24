@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StreetTrees, resetStreetTreesForTests, setRueSpritePainterForTests, type RueBakeJob } from '../../src/content/street-trees';
+import { RUE_BAKE_TRIES, StreetTrees, resetStreetTreesForTests, setRueSpritePainterForTests, type RueBakeJob, type RueSprites } from '../../src/content/street-trees';
 import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
 import { fondMoment } from '../../src/core/library/paint/fond-time';
 import { windOf } from '../../src/core/library/paint/fond-vent';
@@ -48,11 +48,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 const settle = () => act(async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0)); });
-const render = (minutes: number, opts: { still?: boolean; daylight?: number } = {}): void =>
+const render = (minutes: number, opts: { still?: boolean; daylight?: number; onReady?: (r: boolean) => void; hourly?: boolean } = {}): void =>
   act(() =>
     root.render(
       <svg>
-        <StreetTrees plan={plan} moment={windy} daylight={opts.daylight ?? 1} twilight={0} gloom={false} dim={0} minutes={minutes} still={opts.still} />
+        <StreetTrees
+          plan={plan}
+          moment={opts.hourly ? fondMoment({ y: 2026, m: 7, d: 7 }, minutes, windy.meteo) : windy}
+          daylight={opts.daylight ?? 1}
+          twilight={0}
+          gloom={false}
+          dim={0}
+          minutes={minutes}
+          still={opts.still}
+          onReady={opts.onReady}
+        />
       </svg>,
     ),
   );
@@ -71,7 +81,7 @@ describe('calque arbres-rue', () => {
   it('un groupe par fosse plantée, couches dans l\'ordre, même nombre de nœuds à 0 h, 8 h, 15 h, 23 h', async () => {
     const counts: number[] = [];
     for (const h of [0, 8, 15, 23]) {
-      render(h * 60, { daylight: h === 0 || h === 23 ? 0.1 : 1 });
+      render(h * 60, { daylight: h === 0 || h === 23 ? 0.1 : 1, hourly: true });
       await settle();
       counts.push(host.querySelectorAll('*').length);
     }
@@ -109,6 +119,57 @@ describe('calque arbres-rue', () => {
     expect(transforms()).toEqual(a);
     expect(a.filter((v) => v !== null).length).toBeGreaterThan(pits.length);
     expect(a.every((v) => v === null || /^(translate\(0 0\)|matrix\(1 0 0 1 0 0\))$/.test(v))).toBe(true);
+  });
+});
+
+describe('cuisson et apparition des arbres', () => {
+  const sprite = (job: RueBakeJob): RueSprites => Object.fromEntries(job.layers.map((l) => [l, `data:${job.key}|${l}`]));
+  const opacities = (): string[] => [...host.querySelectorAll<SVGGElement>('[data-rue-arbre]')].map((g) => g.style.opacity);
+  it("onReady attend que toutes les fosses aient leur image ; avant, chaque arbre est à opacité 0 (fondu à l'entrée)", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    setRueSpritePainterForTests(async (job) => {
+      if (job.pit === pits.at(-1)) await gate;
+      return sprite(job);
+    });
+    const ready = vi.fn();
+    render(15 * 60, { onReady: ready });
+    await settle();
+    expect(ready).toHaveBeenLastCalledWith(false);
+    expect(opacities().slice(0, -1).every((o) => o === '1')).toBe(true);
+    expect(opacities().at(-1)).toBe('0');
+    const g = host.querySelectorAll<SVGGElement>('[data-rue-arbre]');
+    expect(g[g.length - 1]!.style.transition).toContain('opacity');
+    release();
+    await settle();
+    expect(ready).toHaveBeenLastCalledWith(true);
+    expect(opacities().every((o) => o === '1')).toBe(true);
+  });
+  it('une cuisson ratée est retentée ; épuisée, la fosse est marquée et ne bloque pas la ville', async () => {
+    const tries = new Map<string, number>();
+    setRueSpritePainterForTests(async (job) => {
+      const n = (tries.get(job.key) ?? 0) + 1;
+      tries.set(job.key, n);
+      if (job.pit === pits[0]) return n < 3 ? null : sprite(job);
+      if (job.pit === pits[1]) throw new Error('boom');
+      return sprite(job);
+    });
+    const ready = vi.fn();
+    render(15 * 60, { onReady: ready });
+    await settle();
+    const keyOf = (v: RuePit): string => [...tries.keys()].find((k) => k.includes(`|${Math.round(v.x * 10)}|`))!;
+    expect(tries.get(keyOf(pits[0]!))).toBe(3);
+    expect(tries.get(keyOf(pits[1]!))).toBe(RUE_BAKE_TRIES);
+    const g = host.querySelectorAll('[data-rue-arbre]');
+    expect(g[0]!.querySelector('image')!.getAttribute('href')).toMatch(/^data:/);
+    expect(g[0]!.hasAttribute('data-rue-echec')).toBe(false);
+    expect(g[1]!.hasAttribute('data-rue-echec')).toBe(true);
+    expect(ready).toHaveBeenLastCalledWith(true);
+  });
+  it("mouvement réduit : aucune boucle de l'horloge murale", async () => {
+    render(15 * 60, { still: true });
+    await settle();
+    expect(frames).toHaveLength(0);
   });
 });
 

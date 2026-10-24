@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ART_KEY } from '../../src/content/art-setting';
 import { resetPaintedCacheForTests, setTilePainterForTests } from '../../src/content/painted-city';
 import { ScenePanorama } from '../../src/content/scene-panorama';
+import { resetStreetTreesForTests, setRueSpritePainterForTests, type RueBakeJob } from '../../src/content/street-trees';
 import { cityFacades } from '../../src/core/library/city/facades';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 
@@ -36,13 +37,16 @@ beforeEach(() => {
   vi.stubGlobal('requestIdleCallback', (fn: () => void) => { fn(); return 1; });
   vi.stubGlobal('cancelIdleCallback', () => undefined);
   resetPaintedCacheForTests();
+  resetStreetTreesForTests();
   setTilePainterForTests(null);
+  setRueSpritePainterForTests(null);
 });
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
   localStorage.removeItem(ART_KEY);
   setTilePainterForTests(null);
+  setRueSpritePainterForTests(null);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -142,5 +146,61 @@ describe('ville peinte', () => {
     await render(12 * 60);
     expect(qa('[data-painted-tile]').length).toBe(1);
     expect(q('[data-painted-city]')?.getAttribute('data-ready')).toBe('false');
+  });
+
+  describe('arbres de la rue : partie du décor', () => {
+    const sprite = (job: RueBakeJob) => Object.fromEntries(job.layers.map((l) => [l, `data:${job.key}|${l}`]));
+    const city = () => q('[data-painted-city]') as HTMLElement;
+    it('la ville peinte attend les arbres cuits, puis entre en fondu avec eux', async () => {
+      localStorage.setItem(ART_KEY, 'ghibli');
+      setTilePainterForTests(async (_p, t) => `data:fake-${t}`);
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((r) => (release = r));
+      setRueSpritePainterForTests(async (job) => {
+        await gate;
+        return sprite(job);
+      });
+      await render(12 * 60);
+      expect(qa('[data-painted-tile]').length).toBe(2);
+      expect(qa('[data-rue-arbre]').length).toBeGreaterThan(0);
+      expect(city().getAttribute('data-ready')).toBe('false');
+      expect(city().style.opacity).toBe('0');
+      expect((q('[data-classic-city]') as HTMLElement).style.opacity).toBe('1');
+      release();
+      await settle();
+      expect(city().getAttribute('data-ready')).toBe('true');
+      expect(city().style.opacity).toBe('1');
+      expect(([...qa('[data-rue-arbre]')] as SVGGElement[]).every((g) => g.style.opacity === '1')).toBe(true);
+    });
+    it('filet de sécurité : 8 s après les tranches, la ville est montrée et les arbres en retard entrent en fondu', async () => {
+      localStorage.setItem(ART_KEY, 'ghibli');
+      setTilePainterForTests(async (_p, t) => `data:fake-${t}`);
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((r) => (release = r));
+      setRueSpritePainterForTests(async (job) => {
+        await gate;
+        return sprite(job);
+      });
+      const real = window.setTimeout.bind(window);
+      const caps: (() => void)[] = [];
+      vi.spyOn(window, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+        if (ms === 8000) {
+          caps.push(fn);
+          return 0;
+        }
+        return real(fn, ms);
+      }) as typeof window.setTimeout);
+      await render(12 * 60);
+      expect(city().getAttribute('data-ready')).toBe('false');
+      expect(caps.length).toBeGreaterThan(0);
+      await act(async () => caps.at(-1)!());
+      expect(city().getAttribute('data-ready')).toBe('true');
+      expect(city().style.opacity).toBe('1');
+      const trees = ([...qa('[data-rue-arbre]')] as SVGGElement[]);
+      expect(trees.every((g) => g.style.opacity === '0' && g.style.transition.includes('opacity'))).toBe(true);
+      release();
+      await settle();
+      expect(trees.every((g) => g.style.opacity === '1')).toBe(true);
+    });
   });
 });
