@@ -5,7 +5,7 @@ import { shopFrame, shopSlotsFor } from '../../../../src/core/library/city/shops
 import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
 import { stageXs } from '../../../../src/core/library/city/install';
 import { createTraffic, streetFixtures } from '../../../../src/core/library/city/traffic/engine';
-import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_STAGE_CLEAR, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
+import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_MIN_GAP, PIT_STAGE_CLEAR, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
 import { hashString } from '../../../../src/core/library/scene-world';
 import { TILE, tileCount, tileItems } from '../../../../src/core/library/paint/city-painter';
 import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
@@ -79,10 +79,10 @@ describe('verdure de la rue (streetVerdure)', () => {
         const { rue: _omit, ...rest } = plan;
         expect(streetVerdure(rest, width)).toEqual(streetVerdure(rest, width));
         expect(streetVerdure(rest, width)).toEqual(rue);
-        // Un arbre tous les 70-110 px (décision du 2026-10-20) sur la rue hors des abords sans arbre, moins les pas sautés
-        // devant les portes et les lampadaires : plancher 0,75 × longueur libre / 90 fosses (vides comprises), arrondi à
-        // l'entier inférieur (à 720 px, un pas tombé au bord d'un abord pèse : 4 fosses mesurées pour 4,27 et 4,53).
-        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((0.75 * (width - cleared)) / 90));
+        // Un arbre tous les 48-72 px (densifié le 2026-10-24, au lieu de 70-110) sur la rue hors des abords sans arbre, moins
+        // les pas sautés devant les portes et les lampadaires : plancher d'une fosse (vides comprises) par 85 px de longueur
+        // libre, arrondi à l'entier inférieur (mesuré : une par 76 à 103 px ; l'ancien pas donnait une par 115 à 180 px).
+        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((width - cleared) / 85));
       });
 
       it(`${tag} : fosses hors des entrées, portes des locaux, lampadaires, arbres et mobilier`, () => {
@@ -128,15 +128,16 @@ describe('verdure de la rue (streetVerdure)', () => {
         for (const v of rue.filter((v): v is RuePots => v.kind === 'pots')) expect(plan.doors.some((d) => d.x === v.x)).toBe(true);
       });
 
-      // Pas de 70-110 px, centre libre cherché à ± 21 px : jamais moins de 70 − 2 × 21 = 28 px entre deux fosses ; au
-      // moins 65 % des écarts entre 56 et 124 px (mesuré : 67 % au pire) (le reste : essai décalé loin, ou pas sauté devant une suite de portes).
-      it(`${tag} : fosses dans l'ordre, au moins 28 px, 65 % des écarts entre 56 et 124 px`, () => {
+      // Pas de 48-72 px, centre libre cherché à ± 21 px, jamais deux fosses à moins de PIT_MIN_GAP (34 px) : au moins la
+      // moitié des écarts entre 40 et 90 px (mesuré : 50 % au pire à 720 px, 59 à 81 % ailleurs ; le reste : essai décalé
+      // loin, ou pas sauté devant une suite de portes).
+      it(`${tag} : fosses dans l'ordre, au moins ${PIT_MIN_GAP} px, la moitié des écarts entre 40 et 90 px`, () => {
         const all = pits.slice(1).map((p, i) => p.x - pits[i]!.x);
-        for (const g of all) expect(g).toBeGreaterThanOrEqual(28);
+        for (const g of all) expect(g).toBeGreaterThanOrEqual(PIT_MIN_GAP);
         // Écarts de part et d'autre d'un abord sans arbre (placette de la scène, passage, arrêt) : hors de la règle du pas.
         const gaps = pits.slice(1).filter((p, i) => !zones.some((z) => z.x - z.half < p.x && z.x + z.half > pits[i]!.x)).map((p) => p.x - pits[pits.indexOf(p) - 1]!.x);
-        const inRange = gaps.filter((g) => g >= 56 && g <= 124).length;
-        expect(inRange).toBeGreaterThanOrEqual(0.65 * gaps.length);
+        const inRange = gaps.filter((g) => g >= 40 && g <= 90).length;
+        expect(inRange).toBeGreaterThanOrEqual(0.5 * gaps.length);
       });
 
       it(`${tag} : rien hors de [0, largeur]`, () => {
