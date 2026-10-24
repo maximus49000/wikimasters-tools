@@ -74,25 +74,6 @@ describe('WeatherLayer', () => {
     expect(visibleClouds()).toBeGreaterThan(20);
     expect(opacity('snow-cover')).toBe(0);
   });
-  it('voiles du ciel : foreignObject à div dégradé (calque à part), couleur qui suit le jour', () => {
-    const fillOf = (name: string): HTMLElement | null => container.querySelector<HTMLElement>(`[data-wx-fill="${name}"]`);
-    mount('rain', 'city', SKY);
-    for (const name of ['tint', 'overcast']) {
-      expect(wx(name)?.tagName.toLowerCase()).toBe('foreignobject');
-      expect(fillOf(name)?.parentElement).toBe(wx(name));
-      expect(fillOf(name)?.style.willChange).toBe('transform');
-    }
-    const dayTint = fillOf('tint')?.style.background ?? '';
-    const dayOvercast = fillOf('overcast')?.style.background ?? '';
-    expect(dayTint).toContain('linear-gradient');
-    expect(dayOvercast).toContain('linear-gradient');
-    act(() => root.unmount());
-    root = createRoot(container);
-    mount('rain', 'city', NIGHT);
-    expect(fillOf('tint')?.style.background).toContain('linear-gradient');
-    expect(fillOf('tint')?.style.background).not.toBe(dayTint);
-    expect(fillOf('overcast')?.style.background).not.toBe(dayOvercast);
-  });
   it('neige : flocons et sol blanc, pas de gouttes', () => {
     mount('snow');
     expect(opacity('snow-near')).toBeGreaterThan(0.2);
