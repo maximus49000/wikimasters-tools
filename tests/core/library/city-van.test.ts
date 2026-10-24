@@ -6,7 +6,7 @@ import { TRANSPORT_SPEED, VAN_TIMING, vanAt, vanCrewAt, vanSchedule, vanVisit } 
 
 const W = 1300;
 const OFF = 60;
-const SPEED = 120;
+const SPEED = 25; // px/s
 const visit = (park: number, first = 1000, last = 1100) => vanVisit({ park, width: W, offstage: OFF, first, last, speed: SPEED, door: 20 });
 
 describe('camionnette : arrive, se gare, repart en roulant', () => {
@@ -34,7 +34,7 @@ describe('camionnette : arrive, se gare, repart en roulant', () => {
       let last: number | null = null;
       for (let t = 900; t < 1200; t += dt) {
         const s = vanAt(v, t);
-        if (s && prev) expect(Math.abs(s.x - prev.x), `${park} @${t}`).toBeLessThanOrEqual(SPEED * dt + 1e-6);
+        if (s && prev) expect(Math.abs(s.x - prev.x), `${park} @${t}`).toBeLessThanOrEqual(SPEED * 60 * dt + 1e-6);
         if (s && !prev) {
           expect(seen, `${park} : une seule apparition`).toBe(0);
           first = s.x;
@@ -58,7 +58,7 @@ describe('camionnette : arrive, se gare, repart en roulant', () => {
       if (!s) continue;
       if (s.phase === 'parked') expect(s.lane).toBe(0);
       if (Math.abs(s.x - 400) >= 70) expect(s.lane).toBe(1);
-      if (prev >= 0) expect(Math.abs(s.lane - prev)).toBeLessThanOrEqual((SPEED * 0.25) / 70 + 1e-9);
+      if (prev >= 0) expect(Math.abs(s.lane - prev)).toBeLessThanOrEqual((SPEED * 60 * 0.25) / 70 + 1e-9);
       prev = s.lane;
     }
   });
@@ -137,7 +137,7 @@ describe('véhicules de transport : vélo porteur et camion plateau', () => {
         let last: number | null = null;
         for (let t = 800; t < 1400; t += dt) {
           const s = vanAt(v, t);
-          if (s && prev) expect(Math.abs(s.x - prev.x), `${kind} ${park} @${t}`).toBeLessThanOrEqual(speed * dt + 1e-6);
+          if (s && prev) expect(Math.abs(s.x - prev.x), `${kind} ${park} @${t}`).toBeLessThanOrEqual(speed * 60 * dt + 1e-6);
           if (s && !prev) first = s.x;
           if (!s && prev) last = prev.x;
           prev = s;
@@ -194,5 +194,31 @@ describe('véhicules de transport : vélo porteur et camion plateau', () => {
     }
     // À l'échelle (vélo porteur) : entreposé tant que le créneau n'a pas commencé.
     for (const item of doors.items) expect(inVehicle(doors, item, setWindow(doors, false).from - 1)).toBe(true);
+  });
+});
+
+// Bogue du 2026-10-24 : à 90-120 px par minute, les véhicules des équipes roulaient au pas.
+describe('véhicules de transport : vitesse en route (px/s)', () => {
+  it('camionnette et camion plateau 15-40 px/s, vélo porteur 8-20 px/s ; démarrage et arrêt doux, puis garé', () => {
+    const range = { van: [15, 40], truck: [15, 40], 'cargo-bike': [8, 20] } as const;
+    for (const kind of ['van', 'truck', 'cargo-bike'] as const) {
+      const v = vanVisit({ park: 400, width: W, offstage: OFF, first: 1000, last: 1060, speed: TRANSPORT_SPEED[kind], door: 20 });
+      let top = 0;
+      let prev = vanAt(v, 900)?.x ?? null;
+      for (let t = 900; t < 1200; t += 1 / 60) {
+        const x = vanAt(v, t)?.x ?? null;
+        if (x !== null && prev !== null) {
+          const speed = Math.abs(x - prev); // px/s
+          expect(speed, `${kind} @${t.toFixed(3)}`).toBeLessThanOrEqual(range[kind][1]);
+          top = Math.max(top, speed);
+        }
+        prev = x;
+      }
+      expect(top, kind).toBeGreaterThanOrEqual(range[kind][0]);
+      // Garée dès l'arrivée, jusqu'au départ.
+      const s = vanSchedule(v);
+      expect(vanAt(v, s.parked)?.x).toBe(400);
+      expect(s.driveIn * 60, `${kind} : trajet en secondes`).toBeLessThan(60);
+    }
   });
 });

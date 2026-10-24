@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import type { YMD } from '../core/library/city/calendar';
 import { COUNTER_HALF, STAND_DEPTH } from '../core/library/city/beer';
 import { FLAG_CYCLE_S, FLAG_FRAMES } from '../core/library/paint/props/install';
@@ -8,9 +8,9 @@ import {
   LAMP_KINDS, LIFT_FETCH, absMinute, beerStandsFor, crewAt, crewStepWindow, decorSetsFor, footWindow, inVehicle, itemEquipment, itemPhase, itemShown,
   setWindow, type DecorItem, type DecorSet, type Transport,
 } from '../core/library/city/install';
-import { TRANSPORT_SPEED, vanAt, vanCrewAt, vanVisit, type VanVisit, type VehicleKind } from '../core/library/city/van';
+import { TRANSPORT_SPEED, VAN_TIMING, driveEnd, driveOf, driveS, vanAt, vanCrewAt, vanDrives, vanVisit, type Drive, type VanState, type VanVisit, type VehicleKind } from '../core/library/city/van';
 import { lampLit, lampsFor, type Lamp } from '../core/library/city/lamps';
-import { STREET_SCALE, type CityMetrics } from '../core/library/city/metrics';
+import { STREET_SCALE, WALK_PACE, type CityMetrics } from '../core/library/city/metrics';
 import { outfitFor, type Outfit } from '../core/library/city/people';
 import { pathAt, pathDir, pathLength } from '../core/library/city/walk-path';
 import { DARK } from '../core/library/city/events';
@@ -76,6 +76,33 @@ const VAN_MOVE = 'transform 60s linear';
 const liftOff = (u: number): number => Math.max(70, 40 * u + 20);
 const lerp = (a: number, b: number, p: number): number => a + (b - a) * p;
 const sgn = (d: number, fallback: 1 | -1 = 1): 1 | -1 => (d > 0 ? 1 : d < 0 ? -1 : fallback);
+
+// ---------- Trajets joués à leur vraie durée ----------
+// Le calque est rendu à la minute : un trajet (véhicule, équipe à pied) qui touche la minute affichée est joué par une animation
+// CSS dont les images clés sont échantillonnées toutes les CLIP_STEP_S secondes sur le modèle exact (mise en vitesse, freinage,
+// virages, rangement contre le trottoir) ; l'élément reste ensuite à sa place (`both`). Un trajet à cheval sur deux minutes est
+// repris au rendu suivant par une nouvelle animation au délai négatif : même position au même instant. Pendant l'animation, pas
+// de transition (elle l'emporterait sur l'animation).
+const CLIP_STEP_S = 0.5;
+type Clip = { css: string; animation: string; delay: number; dur: number };
+// Instants d'échantillonnage (minutes absolues) d'un trajet [t0, t1].
+function clipTimes(t0: number, t1: number): number[] {
+  const n = Math.max(2, Math.ceil(((t1 - t0) * 60) / CLIP_STEP_S));
+  return Array.from({ length: n + 1 }, (_, i) => t0 + ((t1 - t0) * i) / n);
+}
+// Le trajet [t0, t1] touche-t-il la minute affichée `abs` ?
+const inMinute = (t0: number, t1: number, abs: number): boolean => t1 > t0 && t0 < abs + 1 && t1 > abs;
+// Animation d'un élément : `frames`, ses transformations aux instants clipTimes(t0, t1).
+function clipOf(id: string, t0: number, t1: number, abs: number, frames: readonly string[]): Clip {
+  const name = `wm-${id.replace(/[^A-Za-z0-9_-]/g, '-')}-${Math.round(abs * 60)}`;
+  const n = frames.length - 1;
+  const keys = frames.map((f, i) => `${((i / n) * 100).toFixed(2)}%{transform:${f}}`).join('');
+  const dur = (t1 - t0) * 60;
+  const delay = (t0 - abs) * 60;
+  return { css: `@keyframes ${name}{${keys}}`, animation: `${name} ${dur.toFixed(2)}s linear ${delay.toFixed(2)}s both`, delay, dur };
+}
+// Transition de roues (Ghibli) qui suit un trajet animé : même délai, même durée.
+const clipMove = (c: Clip): string => `transform ${c.dur.toFixed(2)}s ease-in-out ${c.delay.toFixed(2)}s`;
 
 // Ordre d'intervention (même tri que le moteur : u ou removeU, puis id).
 const orderOf = (set: DecorSet, removing: boolean): DecorItem[] => {
@@ -341,15 +368,27 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
         // Portière (hayon) ouverte : à la descente et à la remontée, et quand un ouvrier sort ou range un objet à l'arrière.
         const open = st.door || (!!inp && inp.removing === removing && st.phase === 'parked' && atVan(inp));
         // Rangé (ou presque) : sous les camions élévateurs et les barrières ; dans la file : devant eux.
-        const y = lerp(vanBaseY(metrics, row), metrics.laneY.far, st.lane);
+        const yOf = (s: VanState): number => lerp(vanBaseY(metrics, row), metrics.laneY.far, s.lane);
+        // Trajet (arrivée, départ) qui touche la minute affichée : joué par une animation à sa vraie durée (elle l'emporte sur la
+        // position du rendu, `st`, et finit à `end`, data-to-x) ; roues Ghibli : transition vers `end`.
+        const dv = vanDrives(v);
+        const drive = [dv.arrive, dv.leave].find((d) => inMinute(d.t0, driveEnd(d), abs));
+        const end = drive ? vanAt(v, driveEnd(drive))! : st;
+        const clip = drive
+          ? clipOf(`${set.id}-van-${removing ? 'out' : 'in'}`, drive.t0, driveEnd(drive), abs, clipTimes(drive.t0, driveEnd(drive)).map((t) => {
+            const s = vanAt(v, t)!;
+            return `translate(${s.x.toFixed(1)}px, ${yOf(s).toFixed(1)}px)`;
+          }))
+          : null;
+        const y = yOf(st);
         const ids = stored.map((i) => `${set.id}/${i.id}`);
         // Vélo porteur : l'ouvrier est en selle tant qu'il n'en est pas descendu.
         const rider = vc.phase === 'inside' ? outfits.get(set.id)![0]! : null;
         // Ghibli (V5) : camionnette et camion plateau peints, roues tournées par la transition du véhicule ; conducteur à
         // bord tant que l'équipe n'est pas descendue.
-        const gh = ghibli && kind !== 'cargo-bike' ? { rainy, dir: st.dir, k, worldX: st.x, move: VAN_MOVE, occupied: vc.phase === 'inside', still } : undefined;
+        const gh = ghibli && kind !== 'cargo-bike' ? { rainy, dir: st.dir, k, worldX: end.x, move: clip ? clipMove(clip) : VAN_MOVE, occupied: vc.phase === 'inside', still } : undefined;
         const art = kind === 'cargo-bike'
-          ? <CargoBike sky={sky} lights={lights} ladder={ladderOnRoof} flags={ids} rider={rider} ghibli={ghibli ? { rainy, dir: st.dir, phase: crankPhase(Math.abs(st.x) / k) } : undefined} />
+          ? <CargoBike sky={sky} lights={lights} ladder={ladderOnRoof} flags={ids} rider={rider} ghibli={ghibli ? { rainy, dir: st.dir, phase: crankPhase(Math.abs(end.x) / k) } : undefined} />
           : kind === 'truck'
             ? <Flatbed sky={sky} lights={lights} open={open} ladder={ladderOnRoof} load={stored.map((i) => ({ id: `${set.id}/${i.id}`, kind: i.kind }))} ghibli={gh} />
             : <Van sky={sky} lights={lights} ladder={ladderOnRoof} open={open} stored={ids} ghibli={gh} />;
@@ -367,8 +406,10 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
               data-van-phase={st.phase}
               data-van-lane={st.lane.toFixed(2)}
               data-van-row={row}
-              style={{ transform: `translate(${st.x.toFixed(1)}px, ${y.toFixed(1)}px)`, transition: VAN_MOVE }}
+              data-to-x={clip ? end.x.toFixed(1) : undefined}
+              style={{ transform: `translate(${st.x.toFixed(1)}px, ${y.toFixed(1)}px)`, transition: clip ? 'none' : VAN_MOVE, animation: clip?.animation }}
             >
+              {clip && <style>{clip.css}</style>}
               {gh ? art : <g transform={`scale(${(st.dir * k).toFixed(3)} ${k.toFixed(3)})`}>{art}</g>}
             </g>
           ),
@@ -598,21 +639,41 @@ function route(inp: Pick<CrewInput, 'set' | 'item' | 'removing'>, anchor: (i: De
 // de la camionnette (ou l'échelle descendue de la galerie) pendant la première part FETCH du trajet ; au retour, il y est rangé
 // pendant la dernière part. `withLoad` : l'objet voyage dans ce sens. `k` : 0 = dans la camionnette, 1 = dans les mains ;
 // `q` : avancée (0 à 1) sur le chemin à pied.
-type Stage = { atVan: boolean; k: number; q: number };
-function tripStage(step: string, p: number, withLoad: boolean): Stage {
-  if (step === 'arrive') {
-    if (withLoad && p < FETCH) return { atVan: true, k: p / FETCH, q: 0 };
-    return { atVan: false, k: 1, q: withLoad ? (p - FETCH) / (1 - FETCH) : p };
+// Allure des équipes à pied : celle des passants de la rue (people.ts : 18 à 26 px/s × WALK_PACE, en moyenne 22), en px du monde
+// par seconde à l'échelle 1 (multiplier par `unit`). Bogue du 2026-10-24 : la marche était étalée sur toute l'étape.
+export const CREW_WALK_SPEED = 22 * WALK_PACE;
+// `walk` : la marche de l'étape (city/van.ts, Drive : mise en vitesse et arrêt doux), null pour l'équipe qui descend du véhicule
+// ou y remonte (étape sans durée : vanCrewNode).
+type Stage = { atVan: boolean; k: number; q: number; walk: Drive | null };
+type TripInput = Pick<CrewInput, 'set' | 'step' | 'progress' | 'abs' | 'stepFrom' | 'stepTo' | 'metrics'>;
+// Marche de l'étape, `len` px : à l'aller, juste après avoir sorti l'objet du véhicule (ou franchi la porte) ; au retour, dès le
+// début, avant de ranger l'objet (ou de rentrer). Le reste de l'étape, l'équipe attend sur place ; l'étape garde sa durée.
+function walkOf(inp: TripInput, withLoad: boolean, len: number): Drive | null {
+  const span = inp.stepTo - inp.stepFrom;
+  if (!(span > 0)) return null;
+  const still = Math.max(withLoad ? FETCH : 0, byDoor(inp.set) ? DOOR_FADE : 0);
+  const arrive = inp.step === 'arrive';
+  const from = inp.stepFrom + (arrive ? still * span : 0);
+  const to = inp.stepTo - (arrive ? 0 : still * span);
+  return driveOf(len, CREW_WALK_SPEED * inp.metrics.unit, from, (to - from) * 60);
+}
+function tripStage(inp: TripInput, withLoad: boolean, len: number): Stage {
+  const p = inp.progress;
+  const walk = walkOf(inp, withLoad, len);
+  const walked = (fallback: number): number => (walk ? (walk.dist > 0 ? driveS(walk, inp.abs) / walk.dist : 1) : fallback);
+  if (inp.step === 'arrive') {
+    if (withLoad && p < FETCH) return { atVan: true, k: p / FETCH, q: 0, walk };
+    return { atVan: false, k: 1, q: walked(withLoad ? (p - FETCH) / (1 - FETCH) : p), walk };
   }
-  if (withLoad && p > 1 - FETCH) return { atVan: true, k: (1 - p) / FETCH, q: 1 };
-  return { atVan: false, k: 1, q: withLoad ? p / (1 - FETCH) : p };
+  if (withLoad && p > 1 - FETCH) return { atVan: true, k: (1 - p) / FETCH, q: 1, walk };
+  return { atVan: false, k: 1, q: walked(withLoad ? p / (1 - FETCH) : p), walk };
 }
 // L'équipe est-elle à l'arrière de la camionnette, à y prendre ou y ranger un objet (portière ouverte) ?
 function atVan(inp: CrewInput): boolean {
   const eq = itemEquipment(inp.set, inp.item);
   if (eq === 'lift' || (inp.step !== 'arrive' && inp.step !== 'leave')) return false;
   const withLoad = eq === 'ladder' || (inp.step === 'arrive' ? !inp.removing : inp.removing);
-  return tripStage(inp.step, inp.progress, withLoad).atVan;
+  return tripStage(inp, withLoad, 0).atVan;
 }
 // Chemin à pied de la camionnette au point de travail. Sur la chaussée : on descend du trottoir jusqu'au couloir AISLE (devant
 // les camionnettes et les comptoirs), on le longe, puis on rejoint sa place.
@@ -624,6 +685,7 @@ function footPath(inp: CrewInput, work: Pt, startX = inp.home.x): Pt[] {
   const aisle = inp.metrics.curb + AISLE * inp.metrics.unit;
   return [start, { x: startX, y: aisle }, { x: work.x, y: aisle }, work];
 }
+const footLen = (path: readonly Pt[]): number => pathLength(path.map((p) => ({ x: p.x, d: p.y })), 1);
 function walkAt(path: readonly Pt[], q: number, fallback: 1 | -1): Pt & { dir: 1 | -1 } {
   const pts = path.map((p) => ({ x: p.x, d: p.y }));
   const dist = Math.min(1, Math.max(0, q)) * pathLength(pts, 1);
@@ -636,7 +698,8 @@ const streetDepth = (item: DecorItem): number => Math.max(AISLE, item.lane ? LAN
 // Équipe à pied : les deux ouvriers (un seul pour le vélo porteur : `b` null), plus ce qui est dessiné derrière eux (échelle)
 // et devant eux (charge portée). Même structure pour l'équipe qui descend du véhicule : React garde les mêmes nœuds et la
 // transition les fait glisser.
-type FootCrew = { back: ReactNode; a: Worker; b: Worker | null; front: ReactNode };
+// `walk` : marche de l'étape en cours (aller ou retour), s'il y en a une.
+type FootCrew = { back: ReactNode; a: Worker; b: Worker | null; front: ReactNode; walk?: Drive | null };
 
 function crewNodes(inp: CrewInput): Drawn[] {
   const eq = itemEquipment(inp.set, inp.item);
@@ -650,15 +713,59 @@ function crewNodes(inp: CrewInput): Drawn[] {
     'data-at-van': atVan(inp) ? 'true' : undefined,
   };
   if (eq === 'lift') return [{ part: 'front', node: <g key={`${inp.set.id}-crew`} {...attrs}>{liftCrew(inp)}</g> }];
-  const c = eq === 'ladder' ? ladderCrew(inp) : handCrew(inp);
+  const crewOf = (i: CrewInput): FootCrew => (eq === 'ladder' ? ladderCrew(i) : handCrew(i));
+  const { crew: c, css } = walkClip(crewOf(inp), crewOf, inp);
   // Halloween : l'habitant sort de l'immeuble et y rentre par la porte (fondu à l'encadrement, au début et à la fin du trajet).
   const fade = byDoor(inp.set) ? (inp.step === 'arrive' ? Math.min(1, inp.progress / DOOR_FADE) : inp.step === 'leave' ? Math.min(1, (1 - inp.progress) / DOOR_FADE) : 1) : 1;
   const node = (
     <g key={`${inp.set.id}-crew`} {...attrs} {...(byDoor(inp.set) ? { 'data-door-resident': '', opacity: fade.toFixed(2) } : {})}>
+      {css && <style>{css}</style>}
       {footNodes(c, inp)}
     </g>
   );
   return [inp.street ? { part: 'street', depth: streetDepth(inp.item), node } : { part: 'crew', node }];
+}
+
+// Marche de l'équipe qui touche la minute affichée : chaque élément (ouvriers, échelle, charge) la fait par une animation
+// échantillonnée sur `at` (géométrie de l'équipe à un instant de l'étape), qui l'emporte sur sa position au rendu (celle de la
+// minute affichée) ; au rendu suivant, il y est déjà. `css` : les images clés (null sans marche).
+type FootAt = (i: CrewInput) => FootCrew;
+function walkClip(now: FootCrew, at: FootAt, inp: CrewInput): { crew: FootCrew; css: string | null } {
+  const w = now.walk;
+  const span = inp.stepTo - inp.stepFrom;
+  if (!w || !(span > 0) || !inMinute(w.t0, driveEnd(w), inp.abs)) return { crew: now, css: null };
+  const t1 = driveEnd(w);
+  const crewAtT = (t: number): FootCrew => at({ ...inp, abs: t, progress: (t - inp.stepFrom) / span });
+  const frames = clipTimes(w.t0, t1).map(crewAtT);
+  const css: string[] = [];
+  const id = `${inp.set.id}-${inp.item.id}`;
+  const clip = (key: string, list: readonly (string | undefined)[]): Clip | null => {
+    if (list.some((f) => f === undefined)) return null;
+    const c = clipOf(`${id}-${key}`, w.t0, t1, inp.abs, list as string[]);
+    css.push(c.css);
+    return c;
+  };
+  const worker = (key: string, wk: Worker | null, pick: (f: FootCrew) => Worker | null): Worker | null => {
+    if (!wk) return null;
+    const c = clip(key, frames.map((f) => { const o = pick(f); return o ? workerTransform(o) : undefined; }));
+    return c ? { ...wk, anim: { animation: c.animation, delay: c.delay, dur: c.dur, dist: w.dist } } : wk;
+  };
+  const styleOf = (n: ReactNode): CSSProperties | undefined => (isValidElement(n) ? (n.props as { style?: CSSProperties }).style : undefined);
+  const part = (key: string, n: ReactNode, pick: (f: FootCrew) => ReactNode): ReactNode => {
+    if (!isValidElement(n) || !styleOf(n)?.transform) return n;
+    const c = clip(key, frames.map((f) => styleOf(pick(f))?.transform as string | undefined));
+    return c ? cloneElement(n as ReactElement<{ style?: CSSProperties }>, { style: { ...styleOf(n), transition: 'none', animation: c.animation } }) : n;
+  };
+  return {
+    crew: {
+      ...now,
+      a: worker('a', now.a, (f) => f.a)!,
+      b: worker('b', now.b, (f) => f.b),
+      back: part('back', now.back, (f) => f.back),
+      front: part('front', now.front, (f) => f.front),
+    },
+    css: css.join(''),
+  };
 }
 
 // Part du premier (dernier) trajet de l'habitant passée dans l'encadrement de la porte.
@@ -742,20 +849,30 @@ function vanCrewNode(b: BoardInput): Drawn | null {
   const eq = itemEquipment(b.set, item);
   const edge = eq === 'ladder' ? ladderCrew(inp) : handCrew(inp);
   const center = b.van ? b.visit.park + b.visit.dir * SPEC[b.van.kind].cab * b.van.k : b.visit.park;
-  // Ils passent la plus grande part de la descente (de la remontée) cachés dans la carrosserie, puis gagnent l'arrière.
-  const k = b.boarding ? Math.min(1, b.q / 0.6) : Math.max(0, (b.q - 0.4) / 0.6);
-  const move = (w: Worker): Worker => {
+  // Ils attendent cachés dans la carrosserie, puis gagnent l'arrière à l'allure des passants, juste avant le premier créneau
+  // (la remontée : dès la fin du dernier, puis ils attendent dans la cabine).
+  const dist = Math.max(...[edge.a, edge.b].filter((w): w is Worker => !!w).map((w) => Math.hypot(w.x - center, w.y - vanY(b.metrics))));
+  const walk0 = driveOf(dist, CREW_WALK_SPEED * b.metrics.unit, 0);
+  const walk: Drive = { ...walk0, t0: b.boarding ? b.visit.last : b.visit.first - walk0.dur / 60 };
+  const kAt = (t: number): number => (dist > 0 ? driveS(walk, t) / dist : 1);
+  const move = (w: Worker, k: number): Worker => {
     const x = b.boarding ? lerp(w.x, center, k) : lerp(center, w.x, k);
     const y = b.boarding ? lerp(w.y, vanY(b.metrics), k) : lerp(vanY(b.metrics), w.y, k);
     const dir = sgn(b.boarding ? center - w.x : w.x - center, w.dir);
     return { x, y, dir, pose: 'walk' };
   };
+  const at = (i: CrewInput): FootCrew => ({ back: null, a: move(edge.a, kAt(i.abs)), b: edge.b && move(edge.b, kAt(i.abs)), front: null, walk });
+  // Même animation que la marche d'une étape (walkClip), sur la durée de la descente (de la remontée).
+  const span = { stepFrom: b.boarding ? b.visit.last : b.visit.first - VAN_TIMING.alight, stepTo: b.boarding ? b.visit.last + VAN_TIMING.board : b.visit.first };
+  const { crew, css } = walkClip(at({ ...inp, ...span }), at, { ...inp, ...span });
   const attrs = { 'data-crew': b.set.id, 'data-van-crew': b.boarding ? 'board' : 'alight', 'data-removing': b.removing ? 'true' : 'false' };
-  return { part: 'crew', node: <g key={`${b.set.id}-crew`} {...attrs}>{footNodes({ back: null, a: move(edge.a), b: edge.b && move(edge.b), front: null }, b)}</g> };
+  return { part: 'crew', node: <g key={`${b.set.id}-crew`} {...attrs}>{css && <style>{css}</style>}{footNodes(crew, b)}</g> };
 }
 
 // `held` : objet tenu (repère du passant en classique, du sprite à la main droite en Ghibli) ; `ladder` : sur l'échelle.
-type Worker = { x: number; y: number; dir: 1 | -1; pose: CrewPose; held?: ReactNode; ladder?: boolean };
+// `anim` : marche jouée par une animation CSS dans la minute affichée (walkClip) ; `dist` : sa longueur (px).
+type Worker = { x: number; y: number; dir: 1 | -1; pose: CrewPose; held?: ReactNode; ladder?: boolean; anim?: { animation: string; delay: number; dur: number; dist: number } };
+const workerTransform = (w: Pick<Worker, 'x' | 'y'>): string => `translate(${w.x.toFixed(1)}px, ${w.y.toFixed(1)}px)`;
 
 // Ghibli : allure et bras du pantin pour la pose du classique. Marche, port, poussée et traction de profil dans le sens de
 // marche ; sur l'échelle de dos (escalade, objet posé bras au-dessus de la tête) ; debout de trois quarts. Jamais de miroir.
@@ -788,20 +905,25 @@ function useWorkerMove(w: Worker, k: number, ghibli: boolean): WorkerMove | null
   const xs = w.x.toFixed(1);
   const ys = w.y.toFixed(1);
   const look = crewLook(w);
-  const prev = useRef<{ x: number; y: number; yaw: number } | null>(null);
+  const prev = useRef<{ x: number; y: number; yaw: number; anim: boolean } | null>(null);
   const step = useMemo(
     () => {
       const p = prev.current;
-      return { since: Date.now() / 1000, dist: p ? Math.hypot(w.x - p.x, w.y - p.y) : 0, turnFrom: p && p.yaw !== look.yaw ? p.yaw : undefined };
+      // Après une marche animée, la position du rendu la rejoint : rien à marcher de plus.
+      return { since: Date.now() / 1000, dist: p && !p.anim ? Math.hypot(w.x - p.x, w.y - p.y) : 0, turnFrom: p && p.yaw !== look.yaw ? p.yaw : undefined };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [xs, ys, look.yaw],
+    [xs, ys, look.yaw, w.anim?.animation],
   );
   useLayoutEffect(() => {
-    prev.current = { x: w.x, y: w.y, yaw: look.yaw };
+    prev.current = { x: w.x, y: w.y, yaw: look.yaw, anim: !!w.anim };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [xs, ys, look.yaw]);
-  return ghibli ? { look, since: step.since, dist: step.dist, k, ...(step.turnFrom !== undefined ? { turnFrom: step.turnFrom } : {}) } : null;
+  }, [xs, ys, look.yaw, w.anim?.animation]);
+  if (!ghibli) return null;
+  const turn = step.turnFrom !== undefined ? { turnFrom: step.turnFrom } : {};
+  // Marche animée (walkClip) : la phase des pas suit la marche entière, de son départ (délai) à son arrivée.
+  if (w.anim) return { look, since: step.since, dist: w.anim.dist, k, delay: w.anim.delay, dur: w.anim.dur, ...turn };
+  return { look, since: step.since, dist: step.dist, k, ...turn };
 }
 
 function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp: Pick<CrewInput, 'sky' | 'rainy' | 'ghibli'> & Partial<Pick<CrewInput, 'set'>>; k: number; id?: string }): ReactElement {
@@ -812,7 +934,7 @@ function WorkerNode({ w, outfit, inp, k, id }: { w: Worker; outfit: Outfit; inp:
       data-worker-k={id}
       data-pose={w.pose}
       {...(move ? { 'data-move': JSON.stringify(move), ...(CITIZENS_3D ? { 'data-wx': w.x.toFixed(2), 'data-wy': w.y.toFixed(2), 'data-ref': `${move.look.yaw}|${move.look.arms}` } : {}) } : {})}
-      style={{ transform: `translate(${w.x.toFixed(1)}px, ${w.y.toFixed(1)}px)`, transition: MOVE }}
+      style={{ transform: workerTransform(w), transition: w.anim ? 'none' : MOVE, animation: w.anim?.animation }}
     >
       {move ? (
         <g transform={`scale(${k.toFixed(3)})`}>
@@ -929,6 +1051,7 @@ function ladderCrew(inp: CrewInput): FootCrew {
   let a: Worker;
   let b: Worker | null;
   let ladder: ReactElement;
+  let walk: Drive | null = null;
   // Échelle couchée sur l'épaule : de `ax` (devant) vers l'arrière, à la hauteur `ly`.
   // Même structure de transformation (CSS, avec la transition des ouvriers) portée, dressée ou couchée : l'échelle glisse avec
   // ceux qui la tiennent d'un rendu à la minute au suivant.
@@ -950,7 +1073,6 @@ function ladderCrew(inp: CrewInput): FootCrew {
     case 'arrive':
     case 'leave': {
       const arrive = inp.step === 'arrive';
-      const st = tripStage(inp.step, p, true);
       const work = { x: lx, y: foot };
       const dirW = arrive ? toward : ((-toward) as 1 | -1);
       // L'échelle portée s'étend derrière celui de devant (seul : de part et d'autre de lui) : si l'équipe s'éloigne du véhicule,
@@ -959,6 +1081,8 @@ function ladderCrew(inp: CrewInput): FootCrew {
       const behind = solo ? h / 2 : h - 3 * u;
       const startX = inp.home.x + (dirW === away ? away * behind : 0);
       const path = arrive ? footPath(inp, work, startX) : footPath(inp, work, startX).reverse();
+      const st = tripStage(inp, true, footLen(path));
+      walk = st.walk;
       const pos = walkAt(path, st.q, dirW);
       // Le drapeau (la toile) part avec l'équipe à la pose, revient avec elle à la dépose.
       const withObject = arrive ? !inp.removing : inp.removing;
@@ -1003,7 +1127,7 @@ function ladderCrew(inp: CrewInput): FootCrew {
       ladder = standing(0);
     }
   }
-  return { back: ladder, a, b, front: null };
+  return { back: ladder, a, b, front: null, walk };
 }
 
 // À la main : deux porteurs tiennent l'objet (barrière, élément de plancher, comptoir) par ses extrémités, bras vers l'avant et
@@ -1062,14 +1186,16 @@ function handCrew(inp: CrewInput): FootCrew {
   let a: Worker;
   let b: Worker;
   let carried: ReactElement | null = null;
+  let walk: Drive | null = null;
   if (inp.step === 'arrive' || inp.step === 'leave') {
     const arrive = inp.step === 'arrive';
     const loaded = arrive ? !inp.removing : inp.removing;
-    const st = tripStage(inp.step, p, loaded);
     // Départ : la charge (et ses deux porteurs) entièrement derrière l'arrière de la camionnette.
     const away = inp.van ? ((-inp.van.dir) as 1 | -1) : toward;
     const startX = inp.home.x + away * off;
     const path = arrive ? footPath(inp, work, startX) : footPath(inp, work, startX).reverse();
+    const st = tripStage(inp, loaded, footLen(path));
+    walk = st.walk;
     const pos = walkAt(path, st.q, arrive ? toward : ((-toward) as 1 | -1));
     // Chargés : derrière pousse (bras vers l'avant), devant tire (bras vers l'arrière). À vide : ils marchent.
     a = loaded ? grip(0, pos.x + pos.dir * half, pos.y, pos.dir, 'tow') : { x: pos.x + pos.dir * off, y: pos.y, dir: pos.dir, pose: 'walk' };
@@ -1092,7 +1218,7 @@ function handCrew(inp: CrewInput): FootCrew {
     const down = inp.removing ? 1 - p : p;
     carried = load(placedX, lerp(workY + carryDy(a, b), placedY, down), lane ? down : 0, 'hands');
   }
-  return { back: null, a, b, front: carried };
+  return { back: null, a, b, front: carried, walk };
 }
 
 // ---------- Camion élévateur ----------
@@ -1120,30 +1246,14 @@ function liftPark(item: DecorItem, dir: 1 | -1, m: CityMetrics): number {
 }
 
 // Roulage du camion élévateur : vitesse de croisière (px du monde par seconde à l'échelle 1 : multiplier par `unit`), celle
-// d'un véhicule qui avance prudemment dans la rue, et durée de la mise en vitesse au départ comme du freinage à l'arrivée (s).
+// d'un véhicule qui avance prudemment dans la rue ; mise en vitesse et freinage doux (city/van.ts, driveOf).
 export const LIFT_SPEED = 25;
-const LIFT_EASE_S = 1.5;
 // Un trajet tient dans une minute de rendu (une seule transition CSS) : au-delà, très large scène, il roule un peu plus vite.
 const LIFT_MAX_S = 55;
-// Trajet : de `from` à `to` (px du monde), parti à la minute absolue `t0`, en `dur` s ; vitesse de croisière `v` (px/s), mise en
-// vitesse et freinage en `ease` s chacun (accélération constante).
-type Drive = { from: number; to: number; t0: number; dur: number; v: number; ease: number };
-function liftDrive(from: number, to: number, unit: number): Omit<Drive, 't0'> {
-  const dist = Math.abs(to - from);
-  const v = LIFT_SPEED * unit;
-  const ease = Math.min(LIFT_EASE_S, dist / v);
-  const dur = dist / v + ease;
-  if (dur <= LIFT_MAX_S) return { from, to, dur, v, ease };
-  return { from, to, dur: LIFT_MAX_S, v: dist / (LIFT_MAX_S - LIFT_EASE_S), ease: LIFT_EASE_S };
-}
-function driveX(d: Drive, abs: number): number {
-  const t = (abs - d.t0) * 60;
-  if (t <= 0 || d.dur <= 0) return t <= 0 ? d.from : d.to;
-  if (t >= d.dur) return d.to;
-  const { v, ease } = d;
-  const s = t < ease ? (v * t * t) / (2 * ease) : t < d.dur - ease ? (v * ease) / 2 + v * (t - ease) : Math.abs(d.to - d.from) - (v * (d.dur - t) ** 2) / (2 * ease);
-  return d.from + Math.sign(d.to - d.from) * s;
-}
+// Trajet du camion élévateur : de `from` à `to` (px du monde).
+type LiftDrive = Drive & { from: number; to: number };
+const liftDrive = (from: number, to: number, unit: number, t0: number): LiftDrive => ({ ...driveOf(Math.abs(to - from), LIFT_SPEED * unit, t0, LIFT_MAX_S), from, to });
+const driveX = (d: LiftDrive, abs: number): number => d.from + Math.sign(d.to - d.from) * driveS(d, abs);
 
 type LiftGeom = { dir: 1 | -1; here: number; tx: number; target: number; move: string; ty: number; outrigger: number; lift: number; inside: boolean; inBucket: boolean };
 type LiftInput = Pick<CrewInput, 'set' | 'item' | 'step' | 'progress' | 'removing' | 'width' | 'metrics' | 'abs' | 'stepFrom' | 'stepTo'>;
@@ -1168,14 +1278,12 @@ function liftPlan(inp: LiftInput): LiftGeom {
   // l'étape, le camion attend garé, l'équipe en cabine. Depuis le bord du monde : il reste hors champ la première minute de son
   // arrivée (rendu à la minute : il n'est jamais posé dans le champ) ; vers le bord : il a quitté le champ dès l'avant-dernière
   // minute de son départ (il n'est jamais ôté dans le champ).
-  let drive: Drive | null = null;
+  let drive: LiftDrive | null = null;
   if (inp.step === 'arrive') {
-    const d = liftDrive(from, here, u);
-    const t0 = fromHome ? Math.max(inp.stepFrom, Math.min(Math.ceil(inp.stepFrom) + 1, inp.stepTo - d.dur / 60)) : Math.floor(inp.stepFrom);
-    drive = { ...d, t0 };
+    const dur = liftDrive(from, here, u, 0).dur;
+    drive = liftDrive(from, here, u, fromHome ? Math.max(inp.stepFrom, Math.min(Math.ceil(inp.stepFrom) + 1, inp.stepTo - dur / 60)) : Math.floor(inp.stepFrom));
   } else if (inp.step === 'leave') {
-    const d = liftDrive(here, to, u);
-    drive = { ...d, t0: toHome ? Math.max(inp.stepFrom, Math.ceil(inp.stepTo) - 2) : Math.floor(inp.stepTo) };
+    drive = liftDrive(here, to, u, toHome ? Math.max(inp.stepFrom, Math.ceil(inp.stepTo) - 2) : Math.floor(inp.stepTo));
   }
   const p = inp.progress;
   let tx = here;

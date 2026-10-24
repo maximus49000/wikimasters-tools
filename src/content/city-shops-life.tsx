@@ -420,13 +420,16 @@ const WORKER_S = 30;
 // Pose à l'instant t d'un ouvrier qui s'est déplacé de `dist` px depuis `since` (vitesse = dist / WORKER_S) : la phase suit
 // la distance parcourue ; la marche finie, debout ; sur l'échelle, la dernière prise est gardée. `turnFrom` : orientation
 // précédente ; pendant les TURN_S premières secondes, petits pas sur place de l'une à l'autre (jamais de demi-tour d'un coup).
-export type WorkerMove = { look: CrewLook; since: number; dist: number; k: number; turnFrom?: number };
+// `delay` / `dur` (s) : déplacement joué par une animation (départ `delay` s après `since`, durée `dur`) au lieu de la transition
+// de WORKER_S ; avant le départ, debout.
+export type WorkerMove = { look: CrewLook; since: number; dist: number; k: number; turnFrom?: number; delay?: number; dur?: number };
 export function workerPose(w: WorkerMove, t: number): PoseIn {
   const dt = t - w.since;
   if (w.turnFrom !== undefined && w.turnFrom !== w.look.yaw && dt < TURN_S) return { yaw: turnYaw(w.turnFrom, w.look.yaw, Math.max(0, dt) / TURN_S), gait: 'step', phase: 0, head: 0, arms: w.look.arms };
-  const p = w.dist > 0.01 ? Math.min(1, Math.max(0, (t - w.since) / WORKER_S)) : 1;
+  const into = dt - (w.delay ?? 0);
+  const p = w.dist > 0.01 ? Math.min(1, Math.max(0, into / (w.dur ?? WORKER_S))) : 1;
   const { yaw, gait, arms } = w.look;
-  if (gait === 'walk' && (p >= 1 || w.dist <= 0.01)) return { yaw, gait: 'stand', phase: 0, head: 0, arms };
+  if (gait === 'walk' && (p >= 1 || w.dist <= 0.01 || into < 0)) return { yaw, gait: 'stand', phase: 0, head: 0, arms };
   return { yaw, gait, phase: phaseIndexOf((p * w.dist) / w.k), head: 0, arms };
 }
 

@@ -15,10 +15,10 @@ import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { DARK } from '../../src/core/library/city/events';
 import { BARRIER, STAGE } from '../../src/content/install-sprites';
 import { PropContext, PropRegistry, propKey } from '../../src/content/prop/prop-host';
-import { FLAG_PHASE_PX, barrierK, collectFlags, liftTruckAt, placeFlags } from '../../src/content/install-layer';
+import { CREW_WALK_SPEED, FLAG_PHASE_PX, barrierK, collectFlags, liftTruckAt, placeFlags } from '../../src/content/install-layer';
 import { FLAG_CYCLE_S, FLAG_FRAMES } from '../../src/core/library/paint/props/install';
 import { MUSICIANS, musicianAt } from '../../src/content/stage-band';
-import { VAN_SPEED } from '../../src/core/library/city/van';
+import { TRANSPORT_SPEED } from '../../src/core/library/city/van';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: { root: Root; host: HTMLDivElement }[] = [];
@@ -243,7 +243,7 @@ describe('calque des équipes d’installation', () => {
 });
 
 describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur place', () => {
-  type Snap = { van: { x: number; half: number; door: number; phase: string } | null; workers: Map<string, { x: number; y: number }>; opacity: number; step: string | null };
+  type Snap = { van: { x: number; shown: number; half: number; door: number; phase: string } | null; workers: Map<string, { x: number; y: number }>; opacity: number; step: string | null };
   const xy = (e: Element): { x: number; y: number } => {
     const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec((e as HTMLElement).style.transform)!;
     return { x: Number(m[1]), y: Number(m[2]) };
@@ -259,7 +259,7 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
     // Fondu d'un humain : une opacité sur l'ouvrier lui-même ou sur le groupe de l'équipe (pas le détail du dessin).
     const faded = (e: Element): boolean => e.hasAttribute('opacity') || /opacity/.test((e as HTMLElement).style?.cssText ?? '');
     const out: Snap = {
-      van: v ? { x: Number(v.getAttribute('data-x')), half: Number(v.getAttribute('data-half')), door: Number(v.getAttribute('data-door-x')), phase: v.getAttribute('data-van-phase')! } : null,
+      van: v ? { x: Number(v.getAttribute('data-x')), shown: Number(v.getAttribute('data-to-x') ?? v.getAttribute('data-x')), half: Number(v.getAttribute('data-half')), door: Number(v.getAttribute('data-door-x')), phase: v.getAttribute('data-van-phase')! } : null,
       workers,
       opacity: crew ? [crew, ...crew.querySelectorAll('[data-worker]'), ...[...crew.querySelectorAll('[data-worker]')].map((w) => w.firstElementChild!)].filter(faded).length : 0,
       step: crew?.getAttribute('data-step') ?? null,
@@ -291,7 +291,8 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
         expect(s.van.x + s.van.half < 0 || s.van.x - s.van.half > W, `${tag} : la camionnette arrive hors champ (${s.van.x})`).toBe(true);
       }
       if (!s.van && prev?.van) expect(prev.van.x + prev.van.half < 0 || prev.van.x - prev.van.half > W, `${tag} : repartie hors champ (${prev.van.x})`).toBe(true);
-      if (s.van && prev?.van) expect(Math.abs(s.van.x - prev.van.x), `${tag} : saut de la camionnette`).toBeLessThanOrEqual(VAN_SPEED * u + 1e-6);
+      // Jamais de saut : un déplacement d'une minute à l'autre a été annoncé par l'animation du rendu précédent (dessiné à son terme).
+      if (s.van && prev?.van) expect(Math.min(Math.abs(s.van.x - prev.van.x), Math.abs(s.van.x - prev.van.shown)), `${tag} : saut de la camionnette`).toBeLessThanOrEqual(1);
       for (const [k, w] of s.workers) {
         const before = prev?.workers.get(k);
         if (before) expect(Math.abs(w.x - before.x), `${tag} : ouvrier ${k} téléporté`).toBeLessThanOrEqual(WALK);
@@ -367,7 +368,7 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
       expect(trips).toBe(arrives ? 1 : 0);
       if (leaves) expect(prev).toBeNull();
     };
-    // Début et fin de journée (le reste du trajet est continu : d'un lampadaire au milieu du chemin vers le suivant).
+    // Début et fin de journée (le reste du trajet est continu : de la place d'un lampadaire à celle du suivant).
     scan(D13, 'lamps-bastille', 535, 600, true, false);
     scan(D13, 'lamps-bastille', 950, 1030, false, true);
     scan(MUSIC, 'stage-music-0', 670, 740, true, false);
@@ -656,7 +657,9 @@ describe('véhicules des équipes en Ghibli (V5)', () => {
     expect(van.querySelector('[data-scripted-car][data-sid="crew-van"]')).not.toBeNull();
     expect(van.querySelectorAll('[data-stored-item]').length).toBeGreaterThan(0);
     expect(van.querySelector('[data-seat]')).not.toBeNull();
-    expect(van.querySelector<SVGGElement>('[data-wheel-spin]')!.style.transition).toBe('transform 60s linear');
+    // Roues : même délai et même durée que le trajet animé de la minute (ou la transition d'une minute à l'arrêt).
+    const anim = /^\S+ ([\d.]+)s linear (-?[\d.]+)s both$/.exec((van as HTMLElement).style.animation);
+    expect(van.querySelector<SVGGElement>('[data-wheel-spin]')!.style.transition).toBe(anim ? `transform ${anim[1]}s ease-in-out ${anim[2]}s` : 'transform 60s linear');
     const parked = find(D14, 360, 540, (c) => !!c.querySelector('[data-install-van][data-transport="van"][data-van-phase="parked"]') && c.querySelectorAll('[data-crew] [data-worker]').length > 0);
     expect(parked).not.toBeNull();
     expect(parked!.querySelector('[data-install-van] [data-seat]')).toBeNull();
@@ -917,6 +920,8 @@ describe('camion élévateur : vitesse de roulage normale entre deux lampadaires
     let last: number | null = null;
     let fast = 0;
     let slow = 0;
+    // Secondes lentes du trajet en cours (mise en vitesse et freinage), remises à zéro à chaque arrêt.
+    let tripSlow = 0;
     for (let m = from; m < to; m++) {
       const a = liftTruckAt(set, base + m, W, metrics);
       const b = liftTruckAt(set, base + m + 1, W, metrics);
@@ -935,7 +940,12 @@ describe('camion élévateur : vitesse de roulage normale entre deux lampadaires
           const v = Math.abs(now.x - prev.x); // px/s (échelle 1)
           expect(v, `${tag} : vitesse ${v.toFixed(1)} px/s`).toBeLessThanOrEqual(40);
           if (v >= 15) fast++;
-          else if (v > 0.01) slow++;
+          else if (v > 0.01) {
+            slow++;
+            tripSlow++;
+            // Accélération constante sur 1,5 s : au plus deux secondes lentes au départ et deux à l'arrivée.
+            expect(tripSlow, `${tag} : secondes lentes du trajet`).toBeLessThanOrEqual(4);
+          } else tripSlow = 0;
         }
         // Le camion atteint sa place avant la fin de l'arrivée et y attend à l'arrêt.
         if (now && now.step === 'arrive') {
@@ -955,13 +965,20 @@ describe('camion élévateur : vitesse de roulage normale entre deux lampadaires
     drives(D13, 'lamps-bastille', 530, 1030);
     drives(D15, 'lamps-bastille', 530, 1030);
   }, 120000);
+  // Le bogue a été vu à Halloween : citrouilles et chauves-souris posées le samedi 24/10, retirées le mardi 3/11, de 9 h à 17 h.
+  it('Halloween : pose (24/10) et dépose (3/11) des décors de lampadaires', () => {
+    drives({ y: 2026, m: 10, d: 24 }, 'lamps-halloween', 530, 1030);
+    drives({ y: 2026, m: 11, d: 3 }, 'lamps-halloween', 530, 1030);
+  }, 120000);
   it('rendu à la minute : la transition CSS du camion le fait rouler à la même vitesse', () => {
     const set = decorSetsFor(D13, W, H, SEED).find((s) => s.id === 'lamps-bastille')!;
     const base = absMinute(dayNumber(D13), 0);
     let trips = 0;
+    let tripMinute = -1;
     for (let m = 540; m < 1020; m++) {
       const t = liftTruckAt(set, base + m, W, metrics);
       if (!t || Math.abs(t.target - t.x) < 1) continue;
+      tripMinute = m;
       const css = /^transform ([\d.]+)s ease-in-out ([\d.]+)s$/.exec(t.move);
       expect(css, `${m} : transition ${t.move}`).not.toBeNull();
       const dur = Number(css![1]);
@@ -973,13 +990,125 @@ describe('camion élévateur : vitesse de roulage normale entre deux lampadaires
       trips++;
     }
     expect(trips).toBeGreaterThan(2);
-    // Le rendu porte la même cible et la même transition.
-    const c = layer(D13, 600);
+    // Le rendu d'une minute de trajet porte la même cible et la même transition.
+    const c = layer(D13, tripMinute);
     const truck = c.querySelector('[data-crew="lamps-bastille"] [data-lift-truck]') as HTMLElement | null;
-    const t = liftTruckAt(set, base + 600, W, metrics);
-    if (truck && t) {
-      expect(truck.style.transform).toContain(`translate(${t.target.toFixed(1)}px`);
-      expect(truck.getAttribute('data-x')).toBe(t.x.toFixed(1));
-    }
+    const t = liftTruckAt(set, base + tripMinute, W, metrics)!;
+    expect(truck, `camion à l'œuvre à ${tripMinute}`).not.toBeNull();
+    expect(truck!.style.transform).toContain(`translate(${t.target.toFixed(1)}px`);
+    expect(truck!.style.transition).toBe(t.move);
+    expect(truck!.getAttribute('data-x')).toBe(t.x.toFixed(1));
   });
+});
+
+// Suite du bogue du 2026-10-24 : camionnette, vélo porteur et camion plateau roulaient à ≈ 2 px/s, les équipes à pied étalaient
+// leur marche sur toute l'étape. Rendu à la minute : chaque trajet est joué par une animation CSS à sa vraie durée.
+describe('véhicules et équipes de montage : allure normale', () => {
+  type Anim = { dur: number; delay: number; pts: { x: number; y: number }[] };
+  // Animation d'un élément rendu : durée et délai (s), positions de ses images clés (lues dans le <style> du calque).
+  const animOf = (el: Element): Anim | null => {
+    const a = /^(\S+) ([\d.]+)s linear (-?[\d.]+)s both$/.exec((el as HTMLElement).style.animation ?? '');
+    if (!a) return null;
+    const css = [...el.ownerDocument.querySelectorAll('style')].map((st) => st.textContent ?? '').join('');
+    const body = new RegExp(`@keyframes ${a[1]}\\{(.*?)\\}\\}`).exec(css);
+    expect(body, `images clés de ${a[1]}`).not.toBeNull();
+    const pts = [...body![1]!.matchAll(/\{transform:translate\(([-\d.]+)px, ([-\d.]+)px\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
+    return { dur: Number(a[2]), delay: Number(a[3]), pts };
+  };
+  // Vitesse de croisière (px/s) : la plus grande entre deux images clés.
+  const cruise = (a: Anim): number => {
+    const dt = a.dur / (a.pts.length - 1);
+    return Math.max(...a.pts.slice(1).map((p, i) => Math.hypot(p.x - a.pts[i]!.x, p.y - a.pts[i]!.y) / dt));
+  };
+  const u = metrics.unit;
+  const xyOf = (e: Element): { x: number; y: number } => {
+    const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec((e as HTMLElement).style.transform)!;
+    return { x: Number(m[1]), y: Number(m[2]) };
+  };
+  const unmount = (): void => {
+    for (const { root, host } of mounted.splice(0)) {
+      act(() => root.unmount());
+      host.remove();
+    }
+  };
+
+  it('en route : camionnette et camion plateau à 15-40 px/s, vélo porteur à 8-20 px/s', () => {
+    const range: Record<string, [number, number]> = { van: [15, 40], truck: [15, 40], 'cargo-bike': [8, 20] };
+    for (const [k, [lo, hi]] of Object.entries(range)) {
+      expect(TRANSPORT_SPEED[k as keyof typeof TRANSPORT_SPEED]).toBeGreaterThanOrEqual(lo);
+      expect(TRANSPORT_SPEED[k as keyof typeof TRANSPORT_SPEED]).toBeLessThanOrEqual(hi);
+    }
+    const trips: Record<string, number> = { van: 0, truck: 0, 'cargo-bike': 0 };
+    const scan = (date: YMD, from: number, to: number): void => {
+      for (let m = from; m < to; m++) {
+        const c = layer(date, m);
+        for (const v of c.querySelectorAll('[data-install-van]')) {
+          const a = animOf(v);
+          if (!a) continue;
+          const kind = v.getAttribute('data-transport')!;
+          const speed = cruise(a) / u;
+          expect(speed, `${kind} ${date.d}/${date.m} ${m} : ${speed.toFixed(1)} px/s`).toBeGreaterThanOrEqual(range[kind]![0]);
+          expect(speed, `${kind} ${date.d}/${date.m} ${m} : ${speed.toFixed(1)} px/s`).toBeLessThanOrEqual(range[kind]![1]);
+          // L'animation finit là où le rendu suivant le pose (data-to-x) et part de sa position au rendu s'il n'est pas déjà en route.
+          expect(Math.abs(Number(v.getAttribute('data-to-x')) - a.pts[a.pts.length - 1]!.x), `${kind} ${m} : terme`).toBeLessThan(0.15);
+          if (a.delay >= 0) expect(Math.abs(xyOf(v).x - a.pts[0]!.x), `${kind} ${m} : départ`).toBeLessThan(0.15);
+          trips[kind]!++;
+        }
+        unmount();
+      }
+    };
+    scan(D14, 405, 425);
+    scan(D14, 480, 500);
+    scan(D13, 520, 545);
+    scan(D13, 1015, 1040);
+    scan(MUSIC, 520, 545);
+    for (const k of Object.keys(trips)) expect(trips[k], k).toBeGreaterThan(0);
+  }, 120000);
+
+  // Équipe à pied d'un jeu : chaque marche (aller, retour) est animée à l'allure des passants (people.ts : 18 à 26 px/s
+  // × WALK_PACE, en moyenne 22 × WALK_PACE ; ±25 %) ; hors de la marche, l'ouvrier de tête ne bouge pas pendant l'étape.
+  const walks = (date: YMD, setId: string, from: number, to: number): number => {
+    let n = 0;
+    let prev: { item: string; step: string; a: { x: number; y: number }; anim: boolean } | null = null;
+    for (let m = from; m < to; m++) {
+      const c = layer(date, m);
+      const crew = c.querySelector(`[data-crew="${setId}"]:not([data-van-crew])`);
+      const step = crew?.getAttribute('data-step') ?? '';
+      const item = crew?.getAttribute('data-crew-item') ?? '';
+      const a = crew?.querySelector(':scope > [data-worker-k="a"]') ?? null;
+      const tag = `${setId} ${date.d}/${date.m} ${m} ${item} ${step}`;
+      let anim = false;
+      for (const w of crew?.querySelectorAll(':scope > [data-worker]') ?? []) {
+        const an = animOf(w);
+        if (!an) continue;
+        anim = true;
+        const speed = cruise(an) / u;
+        expect(speed, `${tag} : marche à ${speed.toFixed(1)} px/s`).toBeGreaterThanOrEqual(CREW_WALK_SPEED * 0.75);
+        expect(speed, `${tag} : marche à ${speed.toFixed(1)} px/s`).toBeLessThanOrEqual(CREW_WALK_SPEED * 1.25);
+        n++;
+      }
+      const pos = a ? xyOf(a) : null;
+      // Pendant l'aller ou le retour, hors de la minute de la marche : il attend sur place (ou sort l'objet du véhicule).
+      if (pos && prev && prev.item === item && prev.step === step && (step === 'arrive' || step === 'leave') && !prev.anim && !anim) {
+        expect(Math.hypot(pos.x - prev.a.x, pos.y - prev.a.y), `${tag} : attend sur place`).toBeLessThan(0.5);
+      }
+      prev = pos ? { item, step, a: pos, anim } : null;
+      unmount();
+    }
+    return n;
+  };
+  it('équipe à l’échelle venue en vélo porteur (13/7) : allure des passants, puis attente ou travail sur place', () => {
+    expect(walks(D13, 'doors-bastille', 540, 700)).toBeGreaterThan(0);
+  }, 120000);
+  it('porteurs de barrières (14/7, trottoir) et de la rue privatisée (21/6, chaussée)', () => {
+    expect(walks(D14, 'barriers-bastille', 418, 482)).toBeGreaterThan(0);
+    expect(walks(MUSIC, 'barriers-music', 778, 842)).toBeGreaterThan(0);
+  }, 120000);
+  it('Halloween : l’habitant sort de chez lui et marche à l’allure des passants', () => {
+    const oct31 = { y: 2026, m: 10, d: 31 };
+    const set = decorSetsFor(oct31, W, H, SEED).find((s) => s.id.startsWith('halloween-'))!;
+    const day = new Date((set.day + set.install.dayOffset) * 86_400_000);
+    const date = { y: day.getUTCFullYear(), m: day.getUTCMonth() + 1, d: day.getUTCDate() };
+    expect(walks(date, set.id, set.install.from - 1, set.install.to + 1)).toBeGreaterThan(0);
+  }, 60000);
 });
