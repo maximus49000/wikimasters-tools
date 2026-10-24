@@ -36,7 +36,7 @@ const fo = () => host.querySelector('[data-painted-canvas="ville"]')!;
 // Pilote factice : chaque décodage attend qu'on le libère (`release(url)`, ou `fail(url)` pour un échec) ; la source est un
 // objet nommé par l'url (étalonnée : nommée `url@grade`) ; le faux contexte enregistre effacements et dessins.
 type Src = { name: string };
-function fakeDriver(opts: { gradeGate?: boolean } = {}) {
+function fakeDriver(opts: { gradeGate?: boolean; gradeAs?: (name: string) => CanvasImageSource | null; noContext?: boolean } = {}) {
   const waiting = new Map<string, { ok: (s: Src) => void; ko: (e: Error) => void }[]>();
   const gradeWaiting: (() => void)[] = [];
   const log: string[] = [];
@@ -44,7 +44,7 @@ function fakeDriver(opts: { gradeGate?: boolean } = {}) {
   const ctx = {
     setTransform: () => undefined,
     clearRect: () => void log.push('clear'),
-    drawImage: (s: Src, x: number) => void log.push(`draw ${s.name} @${x}`),
+    drawImage: (s: Src, x: number) => void log.push(`draw ${s.name ?? (s as unknown as HTMLElement).dataset?.name} @${x}`),
     globalAlpha: 1,
   };
   const drv: PaintedCanvasDriver = {
@@ -54,11 +54,12 @@ function fakeDriver(opts: { gradeGate?: boolean } = {}) {
         waiting.set(url, [...(waiting.get(url) ?? []), { ok: ok as (s: Src) => void, ko }]);
       }) as never,
     grade: (src, g) => {
-      const out = { name: `${(src as unknown as Src).name}@${g[0]!.toFixed(2)}` } as unknown as CanvasImageSource;
+      const name = `${(src as unknown as Src).name}@${g[0]!.toFixed(2)}`;
+      const out = opts.gradeAs ? opts.gradeAs(name) : ({ name } as unknown as CanvasImageSource);
       if (!opts.gradeGate) return out;
       return new Promise((ok) => gradeWaiting.push(() => ok(out)));
     },
-    context: () => ctx as unknown as CanvasRenderingContext2D,
+    context: () => (opts.noContext ? null : (ctx as unknown as CanvasRenderingContext2D)),
   };
   const pop = (url: string) => {
     const w = waiting.get(url) ?? [];
@@ -186,5 +187,69 @@ describe('toile des images peintes', () => {
     await settle();
     expect(f.decodes.filter((u) => u === 'x')).toHaveLength(PAINTED_DECODE_TRIES);
     expect(f.log).toEqual(['clear', 'draw a @0', 'draw b @360']);
+  });
+
+  it('démontage : le tampon de la toile est rendu (largeur et hauteur 0)', async () => {
+    const f = fakeDriver();
+    setPaintedCanvasDriverForTests(f.drv);
+    render([tile(0, 'a'), tile(360, 'b')]);
+    await f.release('a');
+    await f.release('b');
+    await settle();
+    const cv = fo().querySelector('canvas')!;
+    expect(cv.width).toBe(720);
+    act(() => root.render(<svg />));
+    expect(cv.width).toBe(0);
+    expect(cv.height).toBe(0);
+  });
+
+  it('copie étalonnée sortie du cache et montrée nulle part : son tampon est rendu ; la copie montrée est gardée', async () => {
+    const made = new Map<string, HTMLCanvasElement>();
+    const f = fakeDriver({
+      gradeAs: (name) => {
+        const c = document.createElement('canvas');
+        c.width = 5;
+        c.height = 5;
+        c.dataset.name = name;
+        made.set(name, c);
+        return c;
+      },
+    });
+    setPaintedCanvasDriverForTests(f.drv);
+    const steps = [0.1, 0.3, 0.6].map((d) => gradeFor(d, 0, false));
+    render([tile(0, 'a')], steps[0]!);
+    await f.release('a');
+    await settle();
+    render([tile(0, 'a')], steps[1]!);
+    await settle();
+    render([tile(0, 'a')], steps[2]!);
+    await settle();
+    const of = (g: Grade) => made.get(`a@${g[0]!.toFixed(2)}`)!;
+    // Au plus 2 copies par image : la première est sortie du cache et n'est plus montrée.
+    expect(of(steps[0]!).width).toBe(0);
+    expect(of(steps[1]!).width).toBe(5);
+    expect(of(steps[2]!).width).toBe(5);
+  });
+
+  it("étalonnage raté : l'image non étalonnée est dessinée, la place compte comme réglée", async () => {
+    const f = fakeDriver({ gradeAs: () => null });
+    setPaintedCanvasDriverForTests(f.drv);
+    const ready: boolean[] = [];
+    render([tile(0, 'a')], gradeFor(0.1, 0, false), (r) => ready.push(r));
+    await f.release('a');
+    await settle();
+    expect(f.log).toEqual(['clear', 'draw a @0']);
+    expect(ready.at(-1)).toBe(true);
+  });
+
+  it("vraie toile sans contexte 2D : rien n'est noté comme dessiné, la toile n'est pas prête", async () => {
+    const f = fakeDriver({ noContext: true });
+    setPaintedCanvasDriverForTests(f.drv);
+    const ready: boolean[] = [];
+    render([tile(0, 'a')], null, (r) => ready.push(r));
+    await f.release('a');
+    await settle();
+    expect(ready.at(-1)).toBe(false);
+    expect(fo().getAttribute('data-images')).toBe('0');
   });
 });

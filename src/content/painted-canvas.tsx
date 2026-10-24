@@ -101,6 +101,34 @@ const decoding = new Map<string, Promise<Source | null>>();
 const graded = new Map<string, Map<string, Source>>();
 const grading = new Map<string, Promise<Source | null>>();
 const broken = new Set<string>();
+// Copies étalonnées encore en cache, et nombre de toiles visibles qui les montrent : une copie (une toile hors écran de la taille
+// d'une tranche) sortie du cache et montrée nulle part rend son tampon tout de suite (WebView : la mémoire des toiles n'est
+// rendue qu'au ramasse-miettes, bien trop tard sur Android). Une copie rendue n'est plus jamais dessinée (`released`).
+const cachedGraded = new Set<Source>();
+const inUse = new Map<Source, number>();
+const released = new WeakSet<object>();
+function releaseIfIdle(src: Source): void {
+  if (cachedGraded.has(src) || inUse.has(src)) return;
+  if (typeof HTMLCanvasElement !== 'undefined' && src instanceof HTMLCanvasElement) {
+    src.width = 0;
+    src.height = 0;
+    released.add(src);
+  }
+}
+function evictGraded(src: Source): void {
+  cachedGraded.delete(src);
+  releaseIfIdle(src);
+}
+function use(list: Iterable<Source>, by: 1 | -1): void {
+  for (const src of list) {
+    const n = (inUse.get(src) ?? 0) + by;
+    if (n > 0) inUse.set(src, n);
+    else {
+      inUse.delete(src);
+      releaseIfIdle(src);
+    }
+  }
+}
 
 export function setPaintedCanvasDriverForTests(d: PaintedCanvasDriver | null): void {
   override = d;
@@ -111,6 +139,8 @@ export function resetPaintedCanvasForTests(): void {
   graded.clear();
   grading.clear();
   broken.clear();
+  cachedGraded.clear();
+  inUse.clear();
 }
 
 function keepDecoded(url: string, src: Source): void {
@@ -119,6 +149,7 @@ function keepDecoded(url: string, src: Source): void {
   while (decoded.size > DECODED_MAX) {
     const old = decoded.keys().next().value as string;
     decoded.delete(old);
+    graded.get(old)?.forEach(evictGraded);
     graded.delete(old);
   }
 }
@@ -149,7 +180,9 @@ function decodeUrl(d: PaintedCanvasDriver, url: string): Promise<Source | null> 
   return p;
 }
 
-// Image prête à dessiner à l'étalonnage `key` (`grade` null : l'image décodée telle quelle).
+// Image prête à dessiner à l'étalonnage `key` (`grade` null : l'image décodée telle quelle). Étalonnage raté (contexte absent,
+// lecture des pixels refusée) : l'image non étalonnée, pas mise en cache (le prochain changement de liste ou d'arrondi
+// réessaie) ; la place est dessinée plutôt que laissée vide.
 async function sourceFor(d: PaintedCanvasDriver, url: string, grade: Grade | null, key: string): Promise<Source | null> {
   const src = await decodeUrl(d, url);
   if (!src || !grade) return src;
@@ -159,17 +192,25 @@ async function sourceFor(d: PaintedCanvasDriver, url: string, grade: Grade | nul
   const gk = `${key}\n${url}`;
   let p = grading.get(gk);
   if (!p) {
-    p = Promise.resolve(d.grade(src, grade))
+    p = new Promise<Source | null>((resolve) => resolve(d.grade(src, grade)))
       .catch(() => null)
       .then((g) => {
         if (g && decoded.has(url)) {
           const m = graded.get(url) ?? new Map<string, Source>();
+          const prev = m.get(key);
           m.delete(key);
           m.set(key, g);
-          while (m.size > GRADED_PER_URL) m.delete(m.keys().next().value as string);
+          cachedGraded.add(g);
+          if (prev && prev !== g) evictGraded(prev);
+          while (m.size > GRADED_PER_URL) {
+            const old = m.keys().next().value as string;
+            const src = m.get(old)!;
+            m.delete(old);
+            evictGraded(src);
+          }
           graded.set(url, m);
         }
-        return g;
+        return g ?? src;
       })
       .finally(() => grading.delete(gk));
     grading.set(gk, p);
@@ -204,8 +245,10 @@ export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: 
     const { box: b, images: list, grade: g, gradeSig: key } = want.current;
     let cancelled = false;
     void (async () => {
-      // Préparation hors écran : toutes les images de la liste (décodées, étalonnées) avant de toucher à la toile.
-      const ready = await Promise.all(list.map((im) => sourceFor(d, im.url, g, key)));
+      // Préparation hors écran : toutes les images de la liste (décodées, étalonnées) avant de toucher à la toile. Une copie
+      // rendue entre-temps (sortie du cache par une autre toile) est refaite.
+      let ready = await Promise.all(list.map((im) => sourceFor(d, im.url, g, key)));
+      for (let tries = 0; tries < 2 && ready.some((src) => src && released.has(src as object)); tries++) ready = await Promise.all(list.map((im) => sourceFor(d, im.url, g, key)));
       if (cancelled) return;
       const placed: { im: CanvasImage; src: Source }[] = [];
       const boxes = new Set<string>();
@@ -214,11 +257,15 @@ export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: 
         const src = ready[i] ?? shown.current.get(id) ?? null;
         // Image abandonnée sans ancienne image à sa place : la place compte comme réglée (sinon la ville resterait masquée).
         if (src || broken.has(im.url)) boxes.add(id);
-        if (src) placed.push({ im, src });
+        if (src && !released.has(src as object)) placed.push({ im, src });
       });
       const cv = canvas.current;
-      const ctx = cv ? d.context(cv) : null;
-      if (cv && ctx) {
+      if (!cv) return;
+      // Sans canvas (jsdom, pilote nul) : rien à dessiner, les images comptent comme posées. Vraie toile sans contexte 2D :
+      // rien n'est noté comme dessiné (la ville ne serait jamais montrée sur une toile vide) ; le prochain changement réessaie.
+      const ctx = d.context(cv);
+      if (!ctx && d !== nullDriver) return;
+      if (ctx) {
         const k = unitScale(b);
         const w = Math.max(1, Math.round(b.w * k));
         const h = Math.max(1, Math.round(b.h * k));
@@ -237,13 +284,29 @@ export function PaintedCanvas({ box, images, grade, onReady, tag }: { box: { x: 
           ctx.drawImage(src, x0, y0, x1 - x0, y1 - y0);
         }
       }
+      const before = [...shown.current.values()];
       shown.current = new Map(placed.map((p) => [boxId(p.im), p.src]));
+      use(shown.current.values(), 1);
+      use(before, -1);
       setDrawn({ count: placed.length, grade: key, boxes });
     })();
     return () => {
       cancelled = true;
     };
   }, [sig]);
+  // Démontage : tampon de la toile rendu tout de suite (WebView : mémoire, comme la pluie), copies montrées libérées.
+  // (La toile est lue au montage : React vide la référence avant le nettoyage.)
+  useEffect(() => {
+    const cv = canvas.current;
+    return () => {
+      if (cv) {
+        cv.width = 0;
+        cv.height = 0;
+      }
+      use(shown.current.values(), -1);
+      shown.current = new Map();
+    };
+  }, []);
   // Prête : chaque place de la liste a une image dessinée (la précédente compte tant que la nouvelle se prépare : une tranche
   // repeinte ou un nouvel arrondi ne masque jamais la ville).
   const ready = useMemo(() => drawn !== null && images.every((im) => drawn.boxes.has(boxId(im))), [drawn, images]);
