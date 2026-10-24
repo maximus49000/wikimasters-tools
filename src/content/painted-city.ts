@@ -36,7 +36,7 @@ function remember(key: string, url: string, profile: Float32Array | null): void 
 
 // Profils des tranches AFFICHÉES, par ville (graine, largeur, hauteur : le plan en découle), et instant du fond vivant
 // qu'elles montrent : publiés par usePaintedCity après chaque rendu, lus par usePaintedSkyline et usePaintedMoment (découpe
-// des nuages, scene-weather.tsx) via un petit magasin de module (useSyncExternalStore : un abonné monté après la
+// des nuages, plus utilisée depuis que les nuages sont derrière la ville : clouds-slot.tsx) via un petit magasin de module (useSyncExternalStore : un abonné monté après la
 // publication relit l'état courant, rien n'est manqué).
 const shown = new Map<string, readonly (Float32Array | null)[]>();
 const shownMoment = new Map<string, FondMoment>();
@@ -202,7 +202,7 @@ export function usePaintedSkyline(plan: CityPaintPlan | null): Float32Array | nu
   return useSyncExternalStore(subscribe, read, read);
 }
 
-// Instant du fond vivant des tranches affichées pour cette ville (plus utilisé par la découpe des nuages : la grue et les ailes sont devant eux) ; null avant la
+// Instant du fond vivant des tranches affichées pour cette ville (grue montée ou non, découpe des nuages) ; null avant la
 // première publication.
 export function usePaintedMoment(plan: CityPaintPlan | null): FondMoment | null {
   const read = useCallback(() => (plan ? (shownMoment.get(citySig(plan)) ?? null) : null), [plan]);

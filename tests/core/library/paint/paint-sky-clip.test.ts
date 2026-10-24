@@ -96,7 +96,7 @@ describe('découpe des nuages au pixel', () => {
     }
   });
 
-  // Grue et ailes des moulins : dessinées devant les nuages (fond-sky-slot.tsx), plus de boîte retirée du ciel autour d'elles
+  // Grue et ailes des moulins : devant les nuages (nuages derrière la ville), plus de boîte retirée du ciel autour d'elles
   // (trous dans les nuages, capture de l'utilisateur du 2026-10-24) : au-dessus d'elles, la découpe est le profil seul.
   it('grue et moulins : aucune boîte, la découpe reste le profil (hors toits du premier plan)', () => {
     const profile = new Float32Array(1440).fill(100);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CLOUD_DAY, CLOUD_DUSK, CLOUD_GREY, CLOUD_KINDS, CLOUD_MARGIN, CLOUD_NIGHT, CLOUD_STORM,
-  cloudPalette, cloudShape, cloudStep, stepKey,
+  CLOUD_VEIL_AT, cloudPalette, cloudPaletteFor, cloudShape, cloudStep, stepKey, unveilPalette, veilRgb,
 } from '../../../../src/core/library/paint/sky-painter';
 
 describe('formes des nuages', () => {
@@ -54,5 +54,27 @@ describe('palette des nuages', () => {
     expect(cloudStep(0.51, 0.04, 2)).toEqual({ daylight: 6 / 12, twilight: 0, dark: 1 });
     expect(stepKey(cloudStep(0.5, 0, 0.3))).toBe(stepKey(cloudStep(0.52, 0.01, 0.31)));
     expect(stepKey(cloudStep(0.5, 0, 0.3))).not.toBe(stepKey(cloudStep(0.6, 0, 0.3)));
+  });
+
+  // Nuages derrière la ville, sous le voile du ciel de la couche météo : palette compensée (sky-painter.ts).
+  it('voile : sans voile, cran et clé inchangés ; avec voile, clé distincte', () => {
+    expect(cloudStep(0.5, 0, 0.3, 0.02, 0.5)).toEqual(cloudStep(0.5, 0, 0.3));
+    expect(stepKey(cloudStep(0.5, 0, 0.3, 0, 0))).toBe('6-0-4');
+    expect(stepKey(cloudStep(0.5, 0, 0.3, 0.8, 0.5))).toBe('6-0-4-v10-6');
+    expect(cloudPaletteFor(cloudStep(0.5, 0, 0.3))).toEqual(cloudPalette(0.5, 0, 4 / 12));
+  });
+
+  it('voile : la palette compensée, sous le voile, redonne la palette d’origine (nuit de pluie)', () => {
+    // Pluie modérée : exact (à l'arrondi près) ; très forte pluie : le reflet du haut des nuages sature (borne 255), à peine
+    // plus sombre qu'avant.
+    for (const [veil, tol] of [[0.6, 1], [0.84, 5]] as const) {
+      const step = cloudStep(0, 0, 0.9, veil, 0.9);
+      const a = step.veil! * CLOUD_VEIL_AT;
+      const v = veilRgb(step.daylight, step.veilDark!);
+      const want = cloudPalette(0, 0, step.dark);
+      const under = cloudPaletteFor(step).map((c) => c.map((x, i) => x * (1 - a) + v[i]! * a));
+      under.forEach((c, j) => c.forEach((x, i) => expect(Math.abs(x - want[j]![i]!)).toBeLessThanOrEqual(tol)));
+      expect(cloudPaletteFor(step)).toEqual(unveilPalette(want, v, a));
+    }
   });
 });

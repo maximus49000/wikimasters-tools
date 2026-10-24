@@ -5,6 +5,9 @@ import { roofCuts, roofLineY, roofSpan } from './snow-painter';
 // passent DERRIÈRE les toits et la colline du fond (décor cellulo). Ligne brisée qui suit, de gauche à droite, le plus haut
 // de la ligne de toit des immeubles qui couvrent x et du haut du fond (crête, maisons, repères), avec une marche verticale
 // à chaque mur.
+// PLUS UTILISÉE pour les nuages (2026-10-24) : une découpe en hauteur laissait une boîte de ciel sans nuages sous les
+// arbres de la crête (transparents entre les troncs) ; les nuages sont maintenant dessinés DERRIÈRE la ville
+// (clouds-slot.tsx). Gardée pour le profil alpha des tranches (`alphaTopProfile`, painted-city.ts).
 
 const STEP = 4; // pas d'échantillonnage (px), en plus des cassures exactes des toits et des maisons
 
@@ -77,8 +80,7 @@ export function skylinePath(plan: Plan): string {
 // ───────────── Découpe au pixel (bogue du 2026-10-24 : rectangles bleu ciel dans les nuages au-dessus de la crête) ─────────────
 // Les boîtes `hill.tops` couvrent tout un arbre ou une maison : le ciel y était coupé alors que la tranche peinte y est
 // transparente. La découpe suit maintenant la vraie silhouette des tranches (profil alpha) et les lignes de toit analytiques du
-// premier plan. Ce qui bouge au-dessus de la crête (grue, ailes des moulins) est dessiné DEVANT les nuages (fond-sky-slot.tsx) :
-// plus de boîte retirée du ciel pour eux (trous dans les nuages, capture de l'utilisateur du 2026-10-24).
+// premier plan (plus de boîtes pour la grue et les ailes des moulins).
 
 // Haut opaque de chaque colonne de px CSS d'une image `w` × `h` px peinte à l'échelle `dpr` : le plus petit y CSS où un pixel
 // des colonnes de pixels qu'elle couvre a un alpha > 0 ; `h / dpr` si la colonne est vide.

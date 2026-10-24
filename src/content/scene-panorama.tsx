@@ -9,6 +9,7 @@ import type { Weather } from '../core/library/weather/weather-types';
 import { useArtStyle } from './art-setting';
 import { CityLifeLayer, StreetLamps } from './city-life';
 import { StreetTreesSlot } from './street-trees-slot';
+import { CloudsSlot, cloudsSig } from './clouds-slot';
 import { FIGURE_SPRITES_MAX, FigureContext, FigureRegistry } from './figure/figure-host';
 import { ShopContext, ShopRegistry } from './shop/shop-host';
 import { CarContext, CarRegistry } from './vehicle/car-host';
@@ -149,6 +150,8 @@ function ScenePanoramaStaticView({ scene, width, height, sky, minutes, seed, glo
     <g data-panorama="" data-scene={scene}>
       {terrestrial && <SkyAndStars {...props} painted={skyArt} shown={shown} still={still} />}
       {terrestrial && <Celestial {...props} painted={skyArt} shown={shown} still={still} />}
+      {/* Ville : nuages peints de la couche météo (Ghibli) derrière la ville, devant le ciel, le soleil et la lune (clouds-slot.tsx). */}
+      {scene === 'city' && <CloudsSlot sig={cloudsSig(seed, width, height)} />}
       {scene === 'city' && <CityScene {...props} />}
       {scene === 'countryside' && <CountrysideScene {...props} />}
       {scene === 'mountain' && <MountainScene {...props} />}
