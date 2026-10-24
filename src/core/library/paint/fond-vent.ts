@@ -19,10 +19,22 @@ export type Gust = { k: number; tk: number; A: number; L: number; speed: number;
 export const gustPeriod = (w: Wind): number => 9 - 5 * w.wind;
 // Rafale n° k (tirée par graine : la même pour tout le monde). Fonction pure, mémorisée pour (force, sens, largeur) : les
 // boucles à 15 images/s la demandent des dizaines de fois par image (arbres de la rue, particules, colline).
-let gustMemo: { wind: number; dir: number; width: number; byK: Map<number, Gust>; win: { k0: number; list: readonly Gust[] } | null } = { wind: NaN, dir: 0, width: NaN, byK: new Map(), win: null };
-function memoFor(w: Wind, width: number): typeof gustMemo {
-  if (gustMemo.wind !== w.wind || gustMemo.dir !== w.dir || gustMemo.width !== width) gustMemo = { wind: w.wind, dir: w.dir, width, byK: new Map(), win: null };
-  return gustMemo;
+// Deux mémos (le plus récent d'abord) : vent courant et vent de naissance des particules quand la météo vient de changer.
+type GustMemo = { wind: number; dir: number; width: number; byK: Map<number, Gust>; win: { k0: number; list: readonly Gust[] } | null };
+const gustMemos: GustMemo[] = [];
+function memoFor(w: Wind, width: number): GustMemo {
+  const a = gustMemos[0];
+  if (a && a.wind === w.wind && a.dir === w.dir && a.width === width) return a;
+  const b = gustMemos[1];
+  if (b && b.wind === w.wind && b.dir === w.dir && b.width === width) {
+    gustMemos[0] = b;
+    gustMemos[1] = a!;
+    return b;
+  }
+  const m: GustMemo = { wind: w.wind, dir: w.dir, width, byK: new Map(), win: null };
+  gustMemos.unshift(m);
+  gustMemos.length = Math.min(gustMemos.length, 2);
+  return m;
 }
 export function gustOf(k: number, w: Wind, width: number): Gust {
   const memo = memoFor(w, width);

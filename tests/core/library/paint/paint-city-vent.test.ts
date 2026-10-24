@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bendOf, massAmp, windAt, windOf, type Wind } from '../../../../src/core/library/paint/fond-vent';
+import { bendOf, gustOf, massAmp, windAt, windOf, type Wind } from '../../../../src/core/library/paint/fond-vent';
 import type { TreeModel } from '../../../../src/core/library/paint/hill-trees';
 
 const W = 1600;
@@ -7,6 +7,20 @@ const BORNE = 3.5; // base ≤ 0,9 + rafales (≤ 1,5 chacune) qui peuvent se ch
 const wind = (w: number, over: Partial<Wind> = {}): Wind => ({ wind: w, dir: 1, wet: 0, storm: false, ...over });
 
 describe('champ de vent', () => {
+  it('rafales mémorisées : deux vents en alternance (courant et de naissance) gardent chacun leurs rafales', () => {
+    const a: Wind = { wind: 0.2, dir: 1, wet: 0, storm: false };
+    const b: Wind = { wind: 0.7, dir: 1, wet: 0, storm: false };
+    const first = [gustOf(3, a, 1440), gustOf(3, b, 1440)];
+    for (let i = 0; i < 5; i++) {
+      expect(gustOf(3, a, 1440)).toBe(first[0]);
+      expect(gustOf(3, b, 1440)).toBe(first[1]);
+    }
+    expect(first[0]!.speed).not.toBe(first[1]!.speed);
+    // Un troisième vent chasse le plus ancien ; valeurs identiques une fois recalculées.
+    gustOf(3, { ...a, wind: 0.9 }, 1440);
+    gustOf(3, b, 1440);
+    expect(gustOf(3, a, 1440)).toEqual(first[0]);
+  });
   it('est déterministe', () => {
     expect(windAt(300, 12.5, wind(0.6), W)).toBe(windAt(300, 12.5, wind(0.6), W));
   });

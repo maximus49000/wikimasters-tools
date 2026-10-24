@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, type ReactElement } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactElement } from 'react';
 import { lampsFor } from '../core/library/city/lamps';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import { foliageOf, type FondMoment } from '../core/library/paint/fond-time';
@@ -158,9 +158,22 @@ export function setRueFrameSinkForTests(sink: ((ops: readonly RueDraw[]) => void
 }
 
 // Images décodées des sprites (une par couche), gardées tant que leur jeu de sprites l'est (cache ou arbre affiché).
+// Un jeu dont une image ne se décode pas est jeté comme une cuisson ratée (retentée, puis `data-rue-echec`).
 const JSDOM = typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
 const IMAGES = new WeakMap<RueSprites, Partial<Record<RueLayerName, HTMLImageElement>>>();
+const BROKEN = new WeakSet<RueSprites>();
 const decodedListeners = new Set<() => void>();
+const brokenListeners = new Set<() => void>();
+function breakSet(s: RueSprites): void {
+  if (BROKEN.has(s)) return;
+  BROKEN.add(s);
+  for (const [key, v] of cache)
+    if (v === s) {
+      cache.delete(key);
+      failed.set(key, (failed.get(key) ?? 0) + 1);
+    }
+  brokenListeners.forEach((f) => f());
+}
 function imagesOf(s: RueSprites): Partial<Record<RueLayerName, HTMLImageElement>> {
   let imgs = IMAGES.get(s);
   if (!imgs) {
@@ -170,6 +183,7 @@ function imagesOf(s: RueSprites): Partial<Record<RueLayerName, HTMLImageElement>
       const img = new Image();
       img.decoding = 'async';
       img.onload = () => decodedListeners.forEach((f) => f());
+      img.onerror = () => breakSet(s);
       img.src = url;
       imgs[l] = img;
     }
@@ -188,11 +202,14 @@ function setId(s: RueSprites): number {
 // Image de la boucle en tampon plat réutilisé (aucun objet par image) : des enregistrements de STRIDE nombres,
 //   couche : [0, arbre, rang de la couche, c, e, f, alpha] (matrice 1 0 c 1 e f) ;
 //   particule : [1, genre, x, y, rotation, couleur, alpha] ; oiseau : [2, x, y, en vol, battement, sens, 0] ;
-//   jeu de sprites dessiné : [3, arbre, numéro du jeu, 0, 0, 0, 0] (une nouvelle cuisson change l'image).
+//   arbre : [3, arbre, numéro du jeu, fondu, 0, 0, 0] avant ses couches (une nouvelle cuisson change l'image) ; les couches
+//   portent leur seule opacité (rehauts), le fondu s'applique à l'arbre entier.
 // Le même tampon sert de signature : une image identique à la précédente n'est pas redessinée.
 const STRIDE = 7;
 const KINDS: readonly RueParticleKind[] = ['feuille', 'petale', 'goutte', 'neige', 'graine'];
 const KIND_ID: Record<RueParticleKind, number> = { feuille: 0, petale: 1, goutte: 2, neige: 3, graine: 4 };
+// Couleurs étalonnées des particules, numérotées (vidées au-delà de MAX_COLORS : l'étalonnage suit le jour en continu).
+const MAX_COLORS = 2048;
 const COLORS: string[] = [];
 const COLOR_IDS = new Map<string, number>();
 const colorId = (c: string): number => {
@@ -208,12 +225,14 @@ function sameFrame(a: readonly number[], b: readonly number[]): boolean {
 // Ordres de dessin lisibles (tests et bancs d'essai seulement).
 function opsOf(F: readonly number[], trees: readonly Tree[], sets: readonly (RueSprites | undefined)[]): RueDraw[] {
   const ops: RueDraw[] = [];
+  let fade = 1;
   for (let o = 0; o < F.length; o += STRIDE) {
     const kind = F[o];
-    if (kind === 0) {
+    if (kind === 3) fade = F[o + 3]!;
+    else if (kind === 0) {
       const i = F[o + 1]!;
       const layer = trees[i]!.layers[F[o + 2]!]!;
-      ops.push({ op: 'layer', tree: i, layer, href: sets[i]?.[layer] ?? '', m: [1, 0, F[o + 3]!, 1, F[o + 4]!, F[o + 5]!], alpha: F[o + 6]! });
+      ops.push({ op: 'layer', tree: i, layer, href: sets[i]?.[layer] ?? '', m: [1, 0, F[o + 3]!, 1, F[o + 4]!, F[o + 5]!], alpha: rnd(fade * F[o + 6]!, 3) });
     } else if (kind === 1) ops.push({ op: 'part', kind: KINDS[F[o + 1]!]!, x: F[o + 2]!, y: F[o + 3]!, rot: F[o + 4]!, color: COLORS[F[o + 5]!]!, alpha: F[o + 6]! });
     else if (kind === 2) ops.push({ op: 'bird', x: F[o + 1]!, y: F[o + 2]!, flying: F[o + 3] === 1, flap: F[o + 4]!, dir: F[o + 5]! < 0 ? -1 : 1 });
   }
@@ -221,14 +240,37 @@ function opsOf(F: readonly number[], trees: readonly Tree[], sets: readonly (Rue
 }
 // Toutes les couches d'un jeu de sprites sont prêtes à dessiner (jsdom : rien à décoder).
 function decoded(s: RueSprites): boolean {
+  if (BROKEN.has(s)) return false;
   if (JSDOM) return true;
   const imgs = imagesOf(s);
   return (Object.keys(s) as RueLayerName[]).every((l) => !s[l] || (imgs[l]?.complete === true && imgs[l]!.naturalWidth > 0));
 }
 
-// Toile des arbres : tampon = taille affichée × dpr, au plus 2 px par unité de monde (résolution des sprites) et 4 Mpx.
+// Courbe CSS `ease` (cubic-bezier(.25, .1, .25, 1)) : y pour x ∈ [0, 1] (Newton puis dichotomie).
+function cssEase(x: number): number {
+  const bx = (t: number): number => 3 * (1 - t) * (1 - t) * t * 0.25 + 3 * (1 - t) * t * t * 0.25 + t * t * t;
+  const by = (t: number): number => 3 * (1 - t) * (1 - t) * t * 0.1 + 3 * (1 - t) * t * t + t * t * t;
+  let lo = 0;
+  let hi = 1;
+  let t = x;
+  for (let i = 0; i < 20; i++) {
+    const v = bx(t) - x;
+    if (Math.abs(v) < 1e-5) break;
+    if (v > 0) hi = t;
+    else lo = t;
+    t = (lo + hi) / 2;
+  }
+  return by(t);
+}
+
+// Toile des arbres : tampon = taille affichée × dpr, au plus 2 px par unité de monde (résolution des sprites, donc aussi en
+// vue zoomée ×4) et 2,5 Mpx (10 Mo) : une scène de 2 880 unités (bande des arbres ≈ 185 unités de haut) tient à 2 px/unité
+// (≈ 2,1 Mpx, 8,5 Mo) ; au-delà, la résolution baisse.
 const MAX_UNIT_SCALE = 2;
-const MAX_PIXELS = 4_000_000;
+const MAX_PIXELS = 2_500_000;
+// Images de la boucle entre deux relevés de la taille affichée (le zoom de la caméra est une transformation : ni `resize` ni
+// ResizeObserver), comme la pluie (rain-canvas.tsx).
+const RESIZE_EVERY = 30;
 type Area = { x: number; y: number; w: number; h: number };
 function fitCanvas(cv: HTMLCanvasElement, area: Area): number {
   const r = cv.getBoundingClientRect();
@@ -245,15 +287,54 @@ function fitCanvas(cv: HTMLCanvasElement, area: Area): number {
 }
 
 // Dessine une image de la boucle (efface tout, puis les enregistrements dans l'ordre : arbres, particules, oiseau).
-function paintFrame(ctx: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: number, area: Area, F: readonly number[], trees: readonly Tree[], imgs: readonly (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[]): void {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalAlpha = 1;
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  const ox = -area.x * k;
-  const oy = -area.y * k;
+// Marge (unités) autour de la boîte d'un arbre sur la toile de travail du fondu (cisaillement des rameaux, grappes).
+const FADE_PAD = 12;
+let scratch: HTMLCanvasElement | null = null;
+function paintFrame(main: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: number, area: Area, F: readonly number[], trees: readonly Tree[], imgs: readonly (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[]): void {
+  main.setTransform(1, 0, 0, 1, 0, 0);
+  main.globalAlpha = 1;
+  main.clearRect(0, 0, cv.width, cv.height);
+  let ctx = main;
+  let ox = -area.x * k;
+  let oy = -area.y * k;
+  // Arbre en fondu : ses couches sont composées à part, puis posées d'un seul coup à l'opacité du fondu (comme l'opacité d'un
+  // groupe SVG : le fût ne transparaît pas à travers les masses).
+  let fading: { fade: number; x: number; y: number; w: number; h: number } | null = null;
+  const flush = (): void => {
+    if (!fading || !scratch) return;
+    main.setTransform(1, 0, 0, 1, 0, 0);
+    main.globalAlpha = fading.fade;
+    main.drawImage(scratch, 0, 0, fading.w, fading.h, Math.round((fading.x - area.x) * k), Math.round((fading.y - area.y) * k), fading.w, fading.h);
+    fading = null;
+    ctx = main;
+    ox = -area.x * k;
+    oy = -area.y * k;
+  };
   for (let o = 0; o < F.length; o += STRIDE) {
     const kind = F[o];
-    if (kind === 0) {
+    if (kind !== 0) flush();
+    if (kind === 3) {
+      const fade = F[o + 3]!;
+      if (fade >= 1) continue;
+      const b = trees[F[o + 1]!]!.box;
+      const x = b.x - FADE_PAD;
+      const y = b.y - FADE_PAD;
+      const w = Math.ceil((b.w + 2 * FADE_PAD) * k);
+      const h = Math.ceil((b.h + 2 * FADE_PAD) * k);
+      scratch ??= document.createElement('canvas');
+      if (scratch.width < w) scratch.width = w;
+      if (scratch.height < h) scratch.height = h;
+      const sc = scratch.getContext('2d');
+      if (!sc) continue;
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+      sc.globalAlpha = 1;
+      sc.clearRect(0, 0, w, h);
+      fading = { fade, x, y, w, h };
+      ctx = sc;
+      // Origine de la toile de travail au pixel près de la toile principale (aucun décalage au moment de poser l'arbre).
+      ox = -area.x * k - Math.round((x - area.x) * k);
+      oy = -area.y * k - Math.round((y - area.y) * k);
+    } else if (kind === 0) {
       const tr = trees[F[o + 1]!]!;
       const img = imgs[F[o + 1]!]?.[tr.layers[F[o + 2]!]!];
       if (!img) continue;
@@ -291,16 +372,19 @@ function paintFrame(ctx: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: num
         ctx.lineWidth = 0.6;
         ctx.stroke();
       } else {
+        // Corps et tête en un seul tracé (un seul remplissage : pas de recouvrement plus foncé).
         const hx = x + F[o + 5]! * 0.6 - 0.45;
         ctx.fillStyle = INK;
-        ctx.fillRect(x - 0.7, y - 1.1, 1.4, 1.1);
         ctx.beginPath();
+        ctx.rect(x - 0.7, y - 1.1, 1.4, 1.1);
+        ctx.moveTo(hx + 0.9, y - 1.3);
         ctx.arc(hx + 0.45, y - 1.3, 0.45, 0, Math.PI * 2);
         ctx.fill();
       }
     }
   }
-  ctx.globalAlpha = 1;
+  flush();
+  main.globalAlpha = 1;
 }
 
 type Props = {
@@ -387,7 +471,7 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
   // Par fosse : jeu de sprites dessiné (l'ancien reste tant que le nouveau n'est pas décodé) et début de son fondu d'entrée.
   const shownRef = useRef(new Map<string, { s: RueSprites; since: number }>());
   // Toile : échelle du tampon (0 = à recalculer) et signature de la dernière image dessinée (image identique : rien à faire).
-  const surface = useRef<{ k: number; sig: number[]; fresh: boolean; ctx: CanvasRenderingContext2D | null | undefined }>({ k: 0, sig: [], fresh: true, ctx: undefined });
+  const surface = useRef<{ k: number; sig: number[]; fresh: boolean; frames: number; ctx: CanvasRenderingContext2D | null | undefined }>({ k: 0, sig: [], fresh: true, frames: 0, ctx: undefined });
   // Tampons réutilisés d'une image à l'autre : image en cours, images décodées et jeux dessinés par fosse.
   const work = useRef<{ F: number[]; imgs: (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[]; sets: (RueSprites | undefined)[] }>({ F: [], imgs: [], sets: [] });
   const ids = useMemo(() => trees.map((tr) => `${tr.v.x}|${tr.v.y}`), [trees]);
@@ -401,6 +485,12 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
       const shown = shownRef.current;
       const { F, imgs, sets } = work.current;
       F.length = 0;
+      const sf = surface.current;
+      if (COLORS.length > MAX_COLORS) {
+        COLORS.length = 0;
+        COLOR_IDS.clear();
+        sf.fresh = true;
+      }
       for (let i = 0; i < trees.length; i++) {
         const tr = trees[i]!;
         const id = ids[i]!;
@@ -411,12 +501,12 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
         imgs[i] = undefined;
         sets[i] = on?.s;
         if (!on) continue;
-        // Fondu d'entrée (1 s, « ease ») : un arbre cuit après coup n'apparaît jamais sur place.
+        // Fondu d'entrée (1 s, courbe CSS `ease`, sur l'arbre entier) : un arbre cuit après coup n'apparaît jamais sur place.
         const f = Math.max(0, Math.min(1, (nowMs - on.since) / 1000));
-        const fade = f >= 1 ? 1 : rnd(f * f * (3 - 2 * f), 3);
+        const fade = f >= 1 ? 1 : rnd(cssEase(f), 3);
         if (fade <= 0) continue;
         imgs[i] = imagesOf(on.s);
-        F.push(3, i, setId(on.s), 0, 0, 0, 0);
+        F.push(3, i, setId(on.s), fade, 0, 0, 0);
         const p = rueTreePose(tr.v, tr.m, t, w, plan.width);
         const sh = rnd(p.twigShear, 4);
         const off = bare[i];
@@ -428,10 +518,10 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
           let c = 0;
           let e = 0;
           let g = 0;
-          let a = fade;
+          let a = 1;
           if (l === 'twigs') ((c = sh), (e = rnd(-sh * tr.m.rootY)));
-          else if (l === 'hi') ((a = fade * hi), (e = rnd(p.hiDx)));
-          else if (l === 'pale') ((a = fade * pale), (e = rnd(p.paleDx)));
+          else if (l === 'hi') ((a = hi), (e = rnd(p.hiDx)));
+          else if (l === 'pale') ((a = pale), (e = rnd(p.paleDx)));
           else if (l[0] === 'c') {
             const mv = p.masses[k++];
             if (mv) ((e = rnd(mv.dx)), (g = rnd(mv.dy)));
@@ -462,9 +552,12 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
       if (b) F.push(2, rnd(b.x), rnd(b.y), b.flying ? 1 : 0, rnd(b.flap), b.dir, 0);
       if (frameSink) frameSink(opsOf(F, trees, sets));
       const cv = canvas.current;
-      const sf = surface.current;
       if (!cv || JSDOM) return;
-      if (sf.k === 0) ((sf.k = fitCanvas(cv, area)), (sf.fresh = true));
+      // Relevé de la taille affichée : au premier dessin, après un redimensionnement, et toutes les RESIZE_EVERY images (zoom).
+      if (sf.k === 0 || ++sf.frames % RESIZE_EVERY === 0) {
+        const k = fitCanvas(cv, area);
+        if (k !== sf.k) ((sf.k = k), (sf.fresh = true));
+      }
       // Image identique à la précédente (vent calme, aucune particule) : la toile garde son dessin.
       if (!sf.fresh && sameFrame(F, sf.sig)) return;
       if (sf.ctx === undefined) {
@@ -486,6 +579,11 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
   useEffect(() => {
     surface.current.k = 0;
   }, [area]);
+  // Fosses disparues (autre largeur de scène) : leurs jeux de sprites et images décodées ne sont plus retenus.
+  useEffect(() => {
+    const keep = new Set(ids);
+    for (const id of [...shownRef.current.keys()]) if (!keep.has(id)) shownRef.current.delete(id);
+  }, [ids]);
   // Mouvement réduit : aucune boucle ; une image à chaque cuisson, à chaque image décodée et à chaque redimensionnement.
   useWallClockLoop(place, [place], { frameMs: FRAME_MS, enabled: !still });
   useEffect(() => {
@@ -503,12 +601,18 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
     window.addEventListener('resize', resized);
     const ro = typeof ResizeObserver === 'function' && canvas.current ? new ResizeObserver(resized) : null;
     if (ro && canvas.current) ro.observe(canvas.current);
+    // Mouvement réduit (pas de boucle) : relevé de la taille affichée toutes les 2 s (zoom de la caméra), redessin s'il change.
+    const zoom = still && !JSDOM ? window.setInterval(() => {
+      const cv = canvas.current;
+      if (cv && surface.current.k !== 0 && fitCanvas(cv, area) !== surface.current.k) resized();
+    }, 2000) : 0;
     return () => {
       decodedListeners.delete(redraw);
       window.removeEventListener('resize', resized);
       ro?.disconnect();
+      if (zoom) window.clearInterval(zoom);
     };
-  }, [still, place]);
+  }, [still, place, area]);
 
   // Une toile 2D dans le <svg> (foreignObject, comme la pluie de rain-canvas.tsx) : le vent n'écrit plus rien dans le SVG de la
   // scène. Chaque écriture d'attribut y coûtait une repeinture et une stratification (Layerize) de TOUTE la scène (≈ 4 000
@@ -531,6 +635,13 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
 // garde son image précédente jusqu'à la nouvelle. `lost` : fosse sans image après RUE_BAKE_TRIES essais.
 function useRueSprites(jobs: readonly RueBakeJob[]): { sprites: (RueSprites | undefined)[]; lost: boolean[] } {
   const [, bump] = useReducer((n: number) => n + 1, 0);
+  // Une image de sprite indécodable relance les cuissons (le jeu a été retiré du cache, l'essai compté).
+  const [broken, setBroken] = useState(0);
+  useEffect(() => {
+    const on = (): void => setBroken((n) => n + 1);
+    brokenListeners.add(on);
+    return () => void brokenListeners.delete(on);
+  }, []);
   const signature = jobs.map((j) => j.key).join('\n');
   useEffect(() => {
     const painter = override ?? canvasRueSpritePainter;
@@ -565,8 +676,13 @@ function useRueSprites(jobs: readonly RueBakeJob[]): { sprites: (RueSprites | un
       cancelled = true;
     };
     // La signature résume les travaux : mêmes clés, mêmes travaux.
-  }, [signature]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [signature, broken]); // eslint-disable-line react-hooks/exhaustive-deps
   const last = useRef<Map<string, RueSprites>>(new Map());
+  // Fosses disparues (autre largeur de scène) : plus retenues.
+  if (last.current.size > jobs.length) {
+    const keep = new Set(jobs.map((j) => `${j.pit.x}|${j.pit.y}`));
+    for (const id of [...last.current.keys()]) if (!keep.has(id)) last.current.delete(id);
+  }
   const sprites = jobs.map((j) => {
     const id = `${j.pit.x}|${j.pit.y}`;
     const fresh = cache.get(j.key);
@@ -577,7 +693,8 @@ function useRueSprites(jobs: readonly RueBakeJob[]): { sprites: (RueSprites | un
       last.current.set(id, fresh);
       return fresh;
     }
-    return last.current.get(id);
+    const prev = last.current.get(id);
+    return prev && !BROKEN.has(prev) ? prev : undefined;
   });
   return { sprites, lost: jobs.map((j) => (failed.get(j.key) ?? 0) >= RUE_BAKE_TRIES) };
 }
