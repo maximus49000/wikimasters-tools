@@ -14,7 +14,7 @@ import { fondRng } from './fond-time';
 // Emplacements interdits : scènes de la Fête de la musique, passage piéton et arrêt de bus du trottoir des immeubles (fosses
 // seulement, voir PIT_*_CLEAR), entrées d'immeuble (± DOOR_MARGIN, + 2 ; fosses : ± DOOR_MARGIN contre la grille), porte vitrée de chaque local (± 4 ; celle que peint la
 // façade, `shopFrame`) — une fosse peut donc se trouver devant une vitrine, jamais devant une porte —, lampadaires (± 9,
-// `lampsFor`), arbres du plan (± r + 6), mobilier (± 3, seulement pour les bacs et parterres, collés à la façade comme lui),
+// `lampsFor`), mobilier (± 3, seulement pour les bacs et parterres, collés à la façade comme lui),
 // les autres éléments posés (± 3 ; les fosses, à la bordure, ne gênent pas les parterres, contre la façade), hors de l'image.
 // Le couloir des passants (doorY → walkY) reste libre : fosses à la bordure (curb − 1,4), bacs et parterres collés à la
 // façade, posés debout contre le mur : leur bas (face avant) est à `doorY − 0,1`, la ligne des pieds des habitants, clients et
@@ -51,7 +51,7 @@ export const PIT_STEP_SPREAD = 24;
 export const PIT_STAGE_CLEAR = STAGE_HALF + 4;
 export const PIT_CROSSING_CLEAR = CROSS_HALF + 6;
 export const PIT_BUS_STOP_CLEAR = 26;
-type Kind = 'door' | 'lamp' | 'tree' | 'furn' | 'shopdoor';
+type Kind = 'door' | 'lamp' | 'furn' | 'shopdoor';
 
 export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): RueItem[] {
   const { seed, curb, ground, unit: u } = plan;
@@ -76,7 +76,6 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     x1 > width ||
     (kinds.includes('door') && doors.some((d) => x1 > d.x0 - 2 && x0 < d.x1 + 2)) ||
     (kinds.includes('lamp') && lamps.some((l) => x1 > l - 9 && x0 < l + 9)) ||
-    (kinds.includes('tree') && plan.trees.some((t) => x1 > t.x - t.r - 6 && x0 < t.x + t.r + 6)) ||
     (kinds.includes('furn') && plan.furniture.some((f) => x1 > f.x - 3 && x0 < f.x + f.w + 3)) ||
     (kinds.includes('shopdoor') && shopDoors.some((d) => x1 > d.x0 && x0 < d.x1)) ||
     out.some((v) => 'x0' in v && !(wall && v.kind === 'pit') && x1 > v.x0 - 3 && x0 < v.x1 + 3);
@@ -84,7 +83,7 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
   // 1. Alignement d'arbres en fosse à la bordure : autour de chaque pas, le centre libre le plus proche à ± PIT_SEARCH px
   // près, au pixel (gauche puis droite à distance égale ; la maquette n'essayait que 7 positions à ± 7 px, trop peu dans
   // une rue pleine d'entrées). Entrées et portes de local mesurées sur la grille réelle (± PIT_HALF) contre leur span
-  // élargi de 4 px ; lampadaires et arbres du plan sur ± 6. Pas de règle du mobilier pour les fosses : bancs, boîtes aux
+  // élargi de 4 px ; lampadaires sur ± 6. Pas de règle du mobilier pour les fosses : bancs, boîtes aux
   // lettres, vélos et pigeons ont le pied entre ground et ground + 7 u, affiches au mur (paintFurniture), tous côté façade,
   // loin de la bordure où sont les fosses.
   // Scènes, passage piéton et arrêt de bus du trottoir des immeubles : emplacements fixes (même tirage que la fête et le
@@ -97,7 +96,7 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
   ];
   const pitBusy = (px: number): boolean =>
     clear.some((c) => Math.abs(px - c.x) < c.half + PIT_HALF) ||
-    busy(px - 6, px + 6, ['lamp', 'tree']) ||
+    busy(px - 6, px + 6, ['lamp']) ||
     busy(px - PIT_HALF, px + PIT_HALF, ['shopdoor']) ||
     doors.some((d) => px + PIT_HALF > d.x0 && px - PIT_HALF < d.x1) ||
     out.some((v) => v.kind === 'pit' && Math.abs(v.x - px) < PIT_MIN_GAP);
@@ -156,7 +155,7 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     // Pleine largeur : à 2 px du bord, entrée ± (marge + 2) comme la maquette ; rétréci : contre le bord de la façade, et
     // contre l'entrée ± sa marge seulement.
     const fits = (bx: number, w: number, full: boolean): boolean =>
-      full ? !busy(bx, bx + w, ['door', 'furn', 'tree'], true) : !busy(bx, bx + w, ['furn', 'tree'], true) && !doors.some((d) => bx + w > d.x0 && bx < d.x1);
+      full ? !busy(bx, bx + w, ['door', 'furn'], true) : !busy(bx, bx + w, ['furn'], true) && !doors.some((d) => bx + w > d.x0 && bx < d.x1);
     let spot: { bx: number; w: number } | null = null;
     for (const left of ends) {
       for (const w of widths) {
