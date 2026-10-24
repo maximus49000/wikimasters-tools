@@ -1,7 +1,7 @@
 // tests/core/library/paint/paint-sky-clip.test.ts
 import { describe, expect, it } from 'vitest';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
-import { cityTopY, skylinePath, skylinePoints } from '../../../../src/core/library/paint/sky-clip';
+import { alphaTopProfile, animatedTops, cityTopY, skylinePath, skylinePathFromProfile, skylinePoints } from '../../../../src/core/library/paint/sky-clip';
 import { roofLineY, roofSpan } from '../../../../src/core/library/paint/snow-painter';
 
 // y de la ligne brisée en x (dernier segment qui contient x : les marches verticales prennent la valeur de droite).
@@ -41,5 +41,82 @@ describe('silhouette du ciel (découpe des nuages peints)', () => {
     const d = skylinePath(cityPaintPlan(720, 340, 1));
     expect(d.startsWith('M0 0L0 ')).toBe(true);
     expect(d.endsWith('L720 0Z')).toBe(true);
+  });
+});
+
+// Sommets [x, y] d'un chemin `M0 0L…Z`.
+const vertices = (d: string): [number, number][] =>
+  [...d.matchAll(/L(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+
+describe('profil alpha du haut des tranches', () => {
+  it('plus petit y CSS où un pixel est opaque, h / dpr si la colonne est vide', () => {
+    const w = 4;
+    const h = 6;
+    const data = new Uint8ClampedArray(w * h * 4);
+    // Colonne CSS 0 (pixels 0 et 1) : alpha 10 au pixel (1, 5) ; colonne CSS 1 (pixels 2 et 3) : vide.
+    data[(5 * w + 1) * 4 + 3] = 10;
+    expect([...alphaTopProfile(data, w, h, 2)]).toEqual([2.5, 3]);
+    data[(0 * w + 0) * 4 + 3] = 255;
+    expect(alphaTopProfile(data, w, h, 2)[0]).toBe(0);
+  });
+});
+
+describe('découpe des nuages au pixel', () => {
+  const plan = cityPaintPlan(1440, 340, 7);
+  const front = plan.buildings.filter((b) => !b.far);
+  const underFront = (x: number): boolean => front.some((b) => x >= roofSpan(b).x0 - 1 && x <= roofSpan(b).x1 + 1);
+
+  it('sans profil : exactement la découpe des boîtes (repli)', () => {
+    expect(skylinePathFromProfile(plan, null)).toBe(skylinePath(plan));
+  });
+
+  it('suit le profil des tranches, plus aucune boîte du fond', () => {
+    expect(plan.hill.tops.length).toBeGreaterThan(0);
+    const profile = new Float32Array(1440).fill(100);
+    profile.fill(40, 600, 620);
+    const d = skylinePathFromProfile(plan, profile);
+    expect(d.startsWith('M0 0L0 ')).toBe(true);
+    expect(d.endsWith('L1440 0Z')).toBe(true);
+    const pts = vertices(d);
+    for (const [x, y] of pts) {
+      if (x > 600 && x < 620) expect(y).toBeLessThanOrEqual(40);
+      else if ((x < 599 || x > 621) && !underFront(x)) expect(y).toBeGreaterThanOrEqual(99.9);
+    }
+    // Jamais sous le profil (chaque segment reste dans des colonnes dont il ne descend pas sous le haut).
+    for (let x = 0.25; x < 1440; x += 0.5) expect(at(pts, x)).toBeLessThanOrEqual(profile[Math.floor(x)]! + 0.1);
+  });
+
+  it('un immeuble du premier plan garde sa ligne de toit analytique', () => {
+    const profile = new Float32Array(1440).fill(340);
+    const pts = vertices(skylinePathFromProfile(plan, profile));
+    expect(front.length).toBeGreaterThan(0);
+    for (const b of front) {
+      const s = roofSpan(b);
+      for (let x = Math.max(0.3, s.x0 + 0.3); x < Math.min(1440, s.x1); x += 0.7) expect(at(pts, x)).toBeLessThanOrEqual(roofLineY(b, x) + 0.1);
+    }
+  });
+
+  it('boîtes en plus (ailes du moulin) : le ciel s’arrête au-dessus', () => {
+    const profile = new Float32Array(1440).fill(100);
+    const pts = vertices(skylinePathFromProfile(plan, profile, [[300, 320, 20]]));
+    const inside = pts.filter(([x]) => x >= 300 && x <= 320);
+    expect(inside.length).toBeGreaterThan(0);
+    for (const [, y] of inside) expect(y).toBeLessThanOrEqual(20);
+  });
+
+  // Neige posée : snow-painter.ts la peint SOUS la ligne de toit (touches centrées dessous, trait des maisons du fond décalé de
+  // sa demi-épaisseur, bande de crête sous la crête) : le profil des tranches de la ville et `roofLineY` la couvrent déjà.
+  it('éléments animés du fond : ailes des moulins et grue au-dessus de la crête', () => {
+    const tops = animatedTops(plan);
+    for (const e of plan.fond.escapes) {
+      if (e.mill) {
+        const r = 9 * e.mill.s + 2;
+        const hx = e.mill.x - 0.5 * e.mill.s;
+        const hy = e.mill.y - 13 * e.mill.s;
+        expect(tops.some(([x0, x1, y]) => x0 <= hx - r && x1 >= hx + r && y <= hy - r)).toBe(true);
+      }
+      const c = e.crane;
+      expect(tops.some(([x0, x1, y]) => x0 <= c.x - c.boom && x1 >= c.x + c.boom && y <= c.base - c.mast - 3)).toBe(true);
+    }
   });
 });

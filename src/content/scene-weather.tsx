@@ -8,12 +8,13 @@ import { CLOUD_BLOBS, godRayTarget, rayWindow, sunCoverage, type CloudSpot } fro
 import { smooth, type Weather } from '../core/library/weather/weather-types';
 import { CLOUD_KINDS, FOG_W, cloudBlobs, cloudShape, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
-import { skylinePath } from '../core/library/paint/sky-clip';
+import { animatedTops, skylinePathFromProfile } from '../core/library/paint/sky-clip';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
 import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
 import { fadeStyle, useShownAfterMount } from './ghibli-sky';
 import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
+import { usePaintedSkyline } from './painted-city';
 import { moonPlace, sunPlace } from './sky-place';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
@@ -402,8 +403,11 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const fogUrl = usePaintedFog(seed, fogH, ghibli && need.current.fog);
   const cityPlan = useMemo(() => (ghibli ? cityPaintPlan(width, height, seed) : null), [ghibli, width, height, seed]);
   const snow = usePaintedSnow(needSnow ? cityPlan : null);
-  // Découpe FIXE des nuages : le ciel au-dessus des toits peints (seul le groupe intérieur défile).
-  const skyline = useMemo(() => (cityPlan ? skylinePath(cityPlan) : ''), [cityPlan]);
+  // Découpe FIXE des nuages : le ciel au-dessus de la silhouette des tranches peintes affichées (profil alpha au pixel), des toits
+  // du premier plan et des ailes des moulins et de la grue (calque vie-fond) ; boîtes du fond tant que le profil manque. La
+  // neige posée est peinte sous les toits et sous la crête (snow-painter.ts) : rien à ajouter. Seul le groupe intérieur défile.
+  const cityTop = usePaintedSkyline(cityPlan);
+  const skyline = useMemo(() => (cityPlan ? skylinePathFromProfile(cityPlan, cityTop, animatedTops(cityPlan)) : ''), [cityPlan, cityTop]);
   // La boucle met ses nœuds en cache : elle repart quand la neige posée ou la brume changent de nœud.
   const layout = `${ghibli}|${snow.ready}|${fogUrl !== ''}`;
   const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onStep: onStepRef, layout });
