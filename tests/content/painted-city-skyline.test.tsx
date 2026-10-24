@@ -2,7 +2,8 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetPaintedCacheForTests, setTilePainterForTests, usePaintedCity, usePaintedSkyline } from '../../src/content/painted-city';
+import { forgetShownForTests, resetPaintedCacheForTests, safeAlphaProfile, setTilePainterForTests, usePaintedCity, usePaintedSkyline } from '../../src/content/painted-city';
+import { skylinePath, skylinePathFromProfile } from '../../src/core/library/paint/sky-clip';
 import { TILE, tileCount } from '../../src/core/library/paint/city-painter';
 import { cityPaintPlan, type CityPaintPlan } from '../../src/core/library/paint/city-plan';
 
@@ -71,5 +72,63 @@ describe('profil du haut de la ville peinte', () => {
     await act(async () => root.render(<><City plan={a} /><Sky plan={a} /></>));
     await settle();
     expect(seen.at(-1)).toBeNull();
+  });
+
+  // Peintre de test : profil = 50 + n° de tranche, sur toute la largeur de la tranche (w + 1 colonnes au bord d'un dpr non
+  // entier : le surplus est rogné à l'assemblage).
+  const profiled = (extra = 0) => async (plan: CityPaintPlan, t: number) => ({ url: `data:fake-${t}`, profile: new Float32Array(Math.min(TILE, plan.width - t * TILE) + extra).fill(50 + t) });
+
+  it('cache chaud : un abonné monté après la publication lit le profil sans attendre de repeinte', async () => {
+    setTilePainterForTests(profiled());
+    const a = cityPaintPlan(W, 340, 7);
+    await act(async () => root.render(<City plan={a} />));
+    await settle();
+    // Cache des tranches chaud, plus rien de publié : la ville (avant le ciel dans l'arbre) publie dans son effet, avant que
+    // le ciel ne s'abonne.
+    forgetShownForTests();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await act(async () => root.render(<><City plan={a} /><Sky plan={cityPaintPlan(W, 340, 7)} /></>));
+    await settle();
+    expect(seen.at(-1)).not.toBeNull();
+    expect(seen.at(-1)!.length).toBe(W);
+  });
+
+  for (const width of [300, 2880]) {
+    it(`largeur ${width} px : chaque colonne mesurée, chemin continu d'un bord à l'autre`, async () => {
+      setTilePainterForTests(profiled(1));
+      const a = cityPaintPlan(width, 340, 7);
+      await act(async () => root.render(<><City plan={a} /><Sky plan={a} /></>));
+      await settle();
+      const p = seen.at(-1)!;
+      expect(p).not.toBeNull();
+      expect(p.length).toBe(width);
+      for (let x = 0; x < width; x++) expect(p[x]).toBe(50 + Math.floor(x / TILE));
+      const d = skylinePathFromProfile(a, p);
+      expect(d.startsWith('M0 0L0 ')).toBe(true);
+      expect(d.endsWith(`L${width} 0Z`)).toBe(true);
+      const xs = [...d.matchAll(/L(-?[\d.]+) /g)].map((m) => Number(m[1]));
+      for (let i = 1; i < xs.length; i++) expect(xs[i]!).toBeGreaterThanOrEqual(xs[i - 1]!);
+      expect(xs.at(-2)).toBe(width);
+    });
+  }
+
+  it('une tranche en échec parmi plusieurs : null, toute la découpe retombe sur les boîtes (jamais sans découpe)', async () => {
+    const good = profiled();
+    setTilePainterForTests(async (plan, t) => (t === 1 ? null : good(plan, t)));
+    const a = cityPaintPlan(W, 340, 7);
+    await act(async () => root.render(<><City plan={a} /><Sky plan={a} /></>));
+    await settle();
+    expect(seen.at(-1)).toBeNull();
+    const d = skylinePathFromProfile(a, seen.at(-1)!);
+    expect(d).toBe(skylinePath(a));
+    expect(d.length).toBeGreaterThan(20);
+  });
+
+  it('lecture des pixels en échec : profil null, la tranche reste affichable', () => {
+    const boom = { getImageData: () => { throw new DOMException('mémoire', 'SecurityError'); } } as unknown as CanvasRenderingContext2D;
+    expect(safeAlphaProfile(boom, 4, 6, 2)).toBeNull();
+    const ok = { getImageData: () => ({ data: new Uint8ClampedArray(4 * 6 * 4) }) } as unknown as CanvasRenderingContext2D;
+    expect([...safeAlphaProfile(ok, 4, 6, 2)!]).toEqual([3, 3]);
   });
 });

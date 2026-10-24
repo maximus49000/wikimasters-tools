@@ -10,12 +10,10 @@ import type { SceneId } from '../../src/core/library/library-types';
 import type { Sky } from '../../src/core/library/sky';
 import { createWeatherClock, lightningAt, steadySource } from '../../src/core/library/weather/weather-clock';
 import { gradeFor, gradeValues } from '../../src/core/library/paint/grade';
-import { tileCount } from '../../src/core/library/paint/city-painter';
-import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
+import { TILE, tileCount } from '../../src/core/library/paint/city-painter';
+import { cityPaintPlan, type CityPaintPlan } from '../../src/core/library/paint/city-plan';
 import { animatedTops, skylinePath, skylinePathFromProfile } from '../../src/core/library/paint/sky-clip';
 import { resetPaintedCacheForTests, setTilePainterForTests, usePaintedCity } from '../../src/content/painted-city';
-import { TILE } from '../../src/core/library/paint/city-painter';
-import type { CityPaintPlan } from '../../src/core/library/paint/city-plan';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const SKY: Sky = { phase: 'day', daylight: 1, twilight: 0, sunFrac: 0.5, moonFrac: null, stars: 0, top: '#6FB1E8', bottom: '#BFE0F5' };

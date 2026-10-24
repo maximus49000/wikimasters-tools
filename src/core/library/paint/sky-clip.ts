@@ -1,5 +1,7 @@
 import { hillTopY, type CityPaintPlan, type TopBox } from './city-plan';
 import { roofCuts, roofLineY, roofSpan } from './snow-painter';
+import { craneK, vieDay } from './fond-vie';
+import { DEFAULT_MOMENT, type FondMoment } from './fond-time';
 
 // Découpe des nuages peints (vague Ghibli, G2) : le ciel au-dessus de la silhouette de la ville peinte, pour que les cumulus
 // passent DERRIÈRE les toits et la colline du fond (décor cellulo). Ligne brisée qui suit, de gauche à droite, le plus haut
@@ -105,22 +107,35 @@ export function alphaTopProfile(data: Uint8ClampedArray, w: number, h: number, d
   return out;
 }
 
-// Boîtes [x0, x1, haut] des éléments du calque vie-fond qui dépassent la crête et ne sont pas peints dans les tranches :
-// ailes des moulins (disque de rayon 9 s + 2 autour du moyeu) et grue (mât, flèche à son plus haut, contre-flèche, feu).
-export function animatedTops(plan: Pick<CityPaintPlan, 'fond'>): TopBox[] {
+// Boîtes [x0, x1, haut] des éléments du calque vie-fond qui dépassent la crête et ne sont pas peints dans les tranches, à
+// l'instant `moment` (celui des tranches affichées) : ailes des moulins (disque de rayon 9 s + 2 autour du moyeu, en escalier de
+// MILL_SLABS bandes) et grue (mât, flèche à son plus haut, contre-flèche, feu) seulement quand le calque la montre (craneK > 0
+// maintenant ou dans la minute : la découpe n'est relue qu'une fois par minute).
+const MILL_SLABS = 8;
+export function animatedTops(plan: Pick<CityPaintPlan, 'fond'>, moment: FondMoment = DEFAULT_MOMENT): TopBox[] {
   const out: TopBox[] = [];
+  const D = vieDay(moment);
+  const T = moment.minutes / 60;
   for (const e of plan.fond.escapes) {
     if (e.mill) {
       const { x, y, s } = e.mill;
       const r = 9 * s + 2;
       const hx = x - 0.5 * s;
       const hy = y - 13 * s;
-      out.push([hx - r, hx + r, hy - r]);
+      for (let i = 0; i < MILL_SLABS; i++) {
+        const a = hx - r + (2 * r * i) / MILL_SLABS;
+        const b = hx - r + (2 * r * (i + 1)) / MILL_SLABS;
+        // Plus haut du disque sur la bande : au point de la bande le plus proche du moyeu.
+        const d = a <= hx && hx <= b ? 0 : Math.min(Math.abs(a - hx), Math.abs(b - hx));
+        out.push([a, b, hy - Math.sqrt(Math.max(0, r * r - d * d))]);
+      }
     }
-    const c = e.crane;
-    // Flèche : angle de −1,05 à 0,05 rad, y = haut du mât + sin(angle) × flèche × 0,25 ; haubans depuis haut du mât − 3.
-    const ty = c.base - c.mast;
-    out.push([c.x - c.boom - 1, c.x + c.boom + 1, Math.min(ty - 3, ty - 0.25 * c.boom) - 1]);
+    if (craneK(e, T, D) > 0 || craneK(e, T + 1 / 60, D) > 0) {
+      const c = e.crane;
+      // Flèche : angle de −1,05 à 0,05 rad, y = haut du mât + sin(angle) × flèche × 0,25 ; haubans depuis haut du mât − 3.
+      const ty = c.base - c.mast;
+      out.push([c.x - c.boom - 1, c.x + c.boom + 1, Math.min(ty - 3, ty - 0.25 * c.boom) - 1]);
+    }
   }
   return out;
 }

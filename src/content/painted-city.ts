@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useSyncExternalStore } from 'react';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
-import type { FondMoment } from '../core/library/paint/fond-time';
+import { DEFAULT_MOMENT, type FondMoment } from '../core/library/paint/fond-time';
 import { paintCityTile, TILE, tileCount, tileKey } from '../core/library/paint/city-painter';
 import { FALL, type LightBlob, type WetStroke } from '../core/library/city/night-light';
 import { alphaTopProfile } from '../core/library/paint/sky-clip';
@@ -34,18 +34,30 @@ function remember(key: string, url: string, profile: Float32Array | null): void 
   }
 }
 
-// Profils des tranches AFFICHÉES, par ville (graine, largeur, hauteur : le plan en découle) : publiés par usePaintedCity après
-// chaque rendu, lus par usePaintedSkyline (découpe des nuages, scene-weather.tsx) via un petit émetteur de module.
+// Profils des tranches AFFICHÉES, par ville (graine, largeur, hauteur : le plan en découle), et instant du fond vivant
+// qu'elles montrent : publiés par usePaintedCity après chaque rendu, lus par usePaintedSkyline et usePaintedMoment (découpe
+// des nuages, scene-weather.tsx) via un petit magasin de module (useSyncExternalStore : un abonné monté après la
+// publication relit l'état courant, rien n'est manqué).
 const shown = new Map<string, readonly (Float32Array | null)[]>();
+const shownMoment = new Map<string, FondMoment>();
 const assembled = new Map<string, Float32Array | null>();
 const listeners = new Set<() => void>();
 const citySig = (plan: CityPaintPlan): string => `${plan.seed}|${plan.width}|${plan.height}`;
+const subscribe = (l: () => void): (() => void) => {
+  listeners.add(l);
+  return () => void listeners.delete(l);
+};
 
-function publishShown(sig: string, list: readonly (Float32Array | null)[]): void {
+function publishShown(sig: string, list: readonly (Float32Array | null)[], moment: FondMoment): void {
   const prev = shown.get(sig);
-  if (prev && prev.length === list.length && prev.every((p, i) => p === list[i])) return;
-  shown.set(sig, list);
-  assembled.delete(sig);
+  const sameList = !!prev && prev.length === list.length && prev.every((p, i) => p === list[i]);
+  const sameMoment = shownMoment.get(sig) === moment;
+  if (sameList && sameMoment) return;
+  if (!sameList) {
+    shown.set(sig, list);
+    assembled.delete(sig);
+  }
+  shownMoment.set(sig, moment);
   for (const l of [...listeners]) l();
 }
 
@@ -84,8 +96,24 @@ export function resetPaintedCacheForTests(): void {
   cache.clear();
   profiles.clear();
   failed.clear();
+  forgetShownForTests();
+}
+
+// Oublie les tranches publiées comme affichées (les images et les profils restent en cache) : cache chaud, rien de publié.
+export function forgetShownForTests(): void {
   shown.clear();
+  shownMoment.clear();
   assembled.clear();
+}
+
+// Profil alpha d'un canvas de tranche ; null si la lecture des pixels échoue (mémoire, canvas protégé) : la tranche reste
+// affichée, la découpe des nuages retombe sur les boîtes.
+export function safeAlphaProfile(ctx: Pick<CanvasRenderingContext2D, 'getImageData'>, w: number, h: number, dpr: number): Float32Array | null {
+  try {
+    return alphaTopProfile(ctx.getImageData(0, 0, w, h).data, w, h, dpr);
+  } catch {
+    return null;
+  }
 }
 
 export const canvasTilePainter: TilePainter = async (plan, tile, moment) => {
@@ -104,7 +132,7 @@ export const canvasTilePainter: TilePainter = async (plan, tile, moment) => {
   paintCityTile(ctx, plan, tile, moment);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   // Haut opaque de chaque px CSS (le contexte est en lecture fréquente) : découpe des nuages au pixel.
-  const profile = alphaTopProfile(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, dpr);
+  const profile = safeAlphaProfile(ctx, canvas.width, canvas.height, dpr);
   return { url: canvas.toDataURL('image/png'), profile };
 };
 
@@ -149,7 +177,7 @@ export function usePaintedCity(plan: CityPaintPlan | null, moment?: FondMoment):
   // Profils des tranches affichées (celui de l'image précédente tant qu'une tranche à repeindre la garde), publiés après le rendu.
   const shownProfiles = useRef<(Float32Array | null)[]>([]);
   useEffect(() => {
-    if (plan) publishShown(citySig(plan), shownProfiles.current);
+    if (plan) publishShown(citySig(plan), shownProfiles.current, moment ?? DEFAULT_MOMENT);
   });
   if (!plan) return { ready: false, tiles: [] };
   if (last.current.plan !== plan) last.current = { plan, urls: [], profiles: [] };
@@ -170,12 +198,15 @@ export function usePaintedCity(plan: CityPaintPlan | null, moment?: FondMoment):
 // Profil alpha du haut de la ville peinte (haut opaque de chaque px CSS, toute la largeur), assemblé à partir des tranches
 // affichées par usePaintedCity pour la même ville ; null tant qu'une tranche manque ou n'a pas de profil (peintre de test).
 export function usePaintedSkyline(plan: CityPaintPlan | null): Float32Array | null {
-  const [, bump] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => {
-    listeners.add(bump);
-    return () => void listeners.delete(bump);
-  }, []);
-  return plan ? assemble(plan) : null;
+  const read = useCallback(() => (plan ? assemble(plan) : null), [plan]);
+  return useSyncExternalStore(subscribe, read, read);
+}
+
+// Instant du fond vivant des tranches affichées pour cette ville (grue montée ou non, découpe des nuages) ; null avant la
+// première publication.
+export function usePaintedMoment(plan: CityPaintPlan | null): FondMoment | null {
+  const read = useCallback(() => (plan ? (shownMoment.get(citySig(plan)) ?? null) : null), [plan]);
+  return useSyncExternalStore(subscribe, read, read);
 }
 
 // ───────────── Lumière de nuit « deux peintures » (G5, notes §5) ─────────────

@@ -14,7 +14,7 @@ import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
 import { fadeStyle, useShownAfterMount } from './ghibli-sky';
 import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
-import { usePaintedSkyline } from './painted-city';
+import { usePaintedMoment, usePaintedSkyline } from './painted-city';
 import { moonPlace, sunPlace } from './sky-place';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
@@ -404,10 +404,15 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const cityPlan = useMemo(() => (ghibli ? cityPaintPlan(width, height, seed) : null), [ghibli, width, height, seed]);
   const snow = usePaintedSnow(needSnow ? cityPlan : null);
   // Découpe FIXE des nuages : le ciel au-dessus de la silhouette des tranches peintes affichées (profil alpha au pixel), des toits
-  // du premier plan et des ailes des moulins et de la grue (calque vie-fond) ; boîtes du fond tant que le profil manque. La
+  // du premier plan et des ailes des moulins et de la grue (calque vie-fond, à l'instant des tranches affichées : la grue
+  // seulement quand elle est montée) ; boîtes du fond tant que le profil manque. La
   // neige posée est peinte sous les toits et sous la crête (snow-painter.ts) : rien à ajouter. Seul le groupe intérieur défile.
   const cityTop = usePaintedSkyline(cityPlan);
-  const skyline = useMemo(() => (cityPlan ? skylinePathFromProfile(cityPlan, cityTop, animatedTops(cityPlan)) : ''), [cityPlan, cityTop]);
+  const cityMoment = usePaintedMoment(cityPlan);
+  const skyline = useMemo(
+    () => (cityPlan ? skylinePathFromProfile(cityPlan, cityTop, cityTop ? animatedTops(cityPlan, cityMoment ?? undefined) : []) : ''),
+    [cityPlan, cityTop, cityMoment],
+  );
   // La boucle met ses nœuds en cache : elle repart quand la neige posée ou la brume changent de nœud.
   const layout = `${ghibli}|${snow.ready}|${fogUrl !== ''}`;
   const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onStep: onStepRef, layout });
