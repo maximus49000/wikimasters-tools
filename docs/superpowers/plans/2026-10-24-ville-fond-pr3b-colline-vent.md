@@ -123,42 +123,51 @@ calques `T0k T0c Hc H0 T1k T1c H1 T2k T2c H2`), `src/05-scene.js` l. 74-75.
 
 ### Task 3 : tranches en parties et calque `colline-vent`
 
+**Contexte nouveau (PR #359, fusionnée dans la branche) :** les tranches ne sont plus des `<image>` sous un filtre SVG ; elles
+sont dessinées par `PaintedCanvas` (`src/content/painted-canvas.tsx`) sur une toile dans un `<foreignObject>`, étalonnage
+appliqué aux pixels (`gradeKey`, `gradePixels`, arrondi au vingtième). Le calque de la colline suit EXACTEMENT ce modèle.
+
 **Files :**
-- Modify : `src/content/painted-city.ts` (peintre de tranche, cache, publication des couches affichées)
+- Modify : `src/content/painted-city.ts` (peintre de tranche, cache, couches de la colline publiées avec l'image affichée)
 - Create : `src/content/hill-wind-layer.tsx`
-- Modify : `src/content/scene-city.tsx` (calque juste après le `<g filter>` des tranches, avant `FondLife`)
-- Test : `tests/content/hill-wind-layer.test.tsx` (nouveau ; ajouter son motif à la famille `scene-ville` dans `tests/familles.ts`)
+- Modify : `src/content/scene-city.tsx` (calque juste après la `PaintedCanvas` des tranches, avant `FondLife` ; prêt de la
+  ville peinte = tranches ET toile des tranches ET calque de la colline, comme les arbres de la rue)
+- Test : `tests/content/hill-wind-layer.test.tsx` (nouveau ; motif ajouté à la famille `scene-ville` dans `tests/familles.ts`)
 
 **Interfaces :**
-- Consumes : `paintCityTile(…, part)`, `hillCanopyBox` (Task 1) ; `hillSlices`, `HILL_SLICE_*` (Task 2) ; `gradeFor`,
-  `gradePixels` (`rue-sprites.ts`), `useWallClockLoop`, `windOf` ; le modèle de `street-trees.tsx` (toile dans
-  `<foreignObject>`, remesure au zoom toutes les 30 images, mouvement réduit, `data-*` de diagnostic).
+- Consumes : `paintCityTile(…, part)`, `hillCanopyBox` (Task 1) ; `hillSlices`, `HILL_SLICE_*` (Task 2) ; `gradeKey`, le cache
+  décodé / étalonné et le pilote de test de `painted-canvas.tsx` ; `gradePixels` ; `useWallClockLoop` ; `windOf` ; le modèle de
+  `street-trees.tsx` (remesure au zoom toutes les 30 images, mouvement réduit, `data-*` de diagnostic, tampons rendus au démontage).
 - Produces :
-  - `export type HillLayer = { group: 0 | 1 | 2; box: { x: number; y: number; w: number; h: number }; canopy: HTMLCanvasElement; screen: HTMLCanvasElement };`
-  - `PaintedImage` gagne `hill?: HillLayer[]` ; `PaintedTile` gagne `hill: HillLayer[]` (vide sans vent ou en mouvement réduit).
+  - `export type HillLayer = { group: 0 | 1 | 2; box: { x: number; y: number; w: number; h: number }; canopy: string; screen: string };`
+    (data URL PNG, comme les tranches ; décodées et étalonnées par le cache de `painted-canvas.tsx`).
+  - `PaintedImage` gagne `hill?: HillLayer[]` ; `PaintedTile` gagne `hill: HillLayer[]` (vide sans vent / mouvement réduit).
   - `export function hillWindEnabled(): boolean` (faux si mouvement réduit, `still`, ou sans canvas).
-  - `HillWindLayer({ plan, tiles, moment, minutes, daylight, twilight, gloom }): ReactElement | null`.
+  - `HillWindLayer({ plan, tiles, moment, daylight, twilight, gloom, onReady }): ReactElement | null`.
 - Règles :
-  - Clé de tranche : `tileKey` + `|v` quand `hillWindEnabled()` (les deux rendus ne partagent jamais une entrée du cache).
-  - Peintre (`canvasTilePainter`) avec vent : tranche = `'base'` ; pour g = 0..2 avec `hillCanopyBox` non nul : deux canvas à
-    la résolution de la tranche, rognés à la boîte : `{canopy: g}` et `{after: g}` ; **profil** des nuages calculé APRÈS avoir
-    dessiné les 3 feuillages sur le canvas de la tranche (le `toDataURL` est pris avant) : la crête compte dans la découpe.
-  - Cache : les couches suivent la tranche (même clé, même éviction, `CACHE_MAX`).
-  - `usePaintedCity` renvoie les couches de l'image AFFICHÉE (celle de `last.current` tant que la nouvelle n'est pas prête).
-  - Calque : toile couvrant [0, largeur] × [haut des boîtes, bas des boîtes] de la scène ; à 15 Hz : pour g = 0, 1, 2 :
-    toile de travail du groupe effacée, bandes dessinées (clip `x0 − 6 … x1 + 6`, transformation `(1, 0, s, 1, −s·pivot + dx, 0)`)
-    depuis les feuillages ÉTALONNÉS des tranches qui touchent la bande, puis les écrans du groupe en `destination-out`, puis
-    la toile de travail sur la toile visible. Pas de redessin si toutes les bandes gardent `dx`, `s` au centième et que
-    l'étalonnage et les couches n'ont pas changé.
-  - Étalonnage : copie étalonnée par (couche, `gradeFor` arrondi au vingtième), refaite seulement à un changement d'arrondi ;
-    `null` (jour) = copie d'origine.
-  - Mouvement réduit / sans canvas : `null` (et les tranches sont complètes : rien ne manque).
-- [ ] **Step 1 : tests rouges** (jsdom, peintre de test via `setTilePainterForTests`, toile simulée comme dans
-  `tests/content/street-trees.test.tsx`) :
-  - avec vent, la clé de tranche finit par `|v` et le peintre reçoit des couches ; sans (mouvement réduit), clé sans `|v`,
-    `hill` vide, `HillWindLayer` rend `null` ;
-  - le calque est placé après le `<g filter>` des tranches et avant le calque `vie-fond` dans `scene-city` ;
-  - tranche repeinte : tant que la nouvelle image n'est pas prête, le calque garde les couches de l'ancienne (même objet) ;
+  - Clé de tranche : `tileKey` + `|v` quand `hillWindEnabled()`.
+  - Peintre avec vent : tranche = `'base'` ; pour chaque groupe dont le flux `{canopy: g}` dessine quelque chose (relecture de
+    la tâche 1 : en hiver un groupe nu n'a rien à dessiner → aucune couche), deux images rognées à `hillCanopyBox`, à la
+    résolution de la tranche : `{canopy: g}` et `{after: g}` ; **profil** des nuages calculé APRÈS avoir dessiné les feuillages
+    sur le canvas de la tranche (le `toDataURL` de la tranche est pris avant) : la crête compte dans la découpe.
+  - Cache : les couches suivent la tranche (même clé, même éviction) ; `usePaintedCity` renvoie les couches de l'image
+    AFFICHÉE (celles de l'ancienne tant que la nouvelle n'est pas prête).
+  - Calque : UNE toile couvrant [0, largeur] × [haut des boîtes, bas des boîtes] ; à 15 Hz, pour g = 0, 1, 2 : toile de
+    travail du groupe effacée, bandes dessinées (clip `x0 − 6 … x1 + 6`, transformation `(1, 0, s, 1, −s·pivot + dx, 0)`)
+    depuis les feuillages ÉTALONNÉS (même `gradeKey` que les tranches) des tranches qui touchent la bande, puis les écrans du
+    groupe en `destination-out`, puis la toile de travail sur la toile visible. Pas de redessin si toutes les bandes gardent
+    `dx`, `s` au centième et que l'étalonnage et les couches n'ont pas changé. Préparation (décodage, étalonnage) hors écran,
+    jamais une toile à moitié vide ; tampons rendus au démontage.
+  - `onReady(true)` quand toutes les couches de la liste sont dessinées ; la ville peinte attend ce signal (sinon des tranches
+    sans houppiers seraient montrées sans leur feuillage).
+  - Mouvement réduit / sans canvas : `null` et tranches complètes ('all') : rien ne manque.
+- [ ] **Step 1 : tests rouges** (jsdom, peintre de test via `setTilePainterForTests`, pilote de toile de test comme
+  `tests/content/painted-canvas.test.tsx`) :
+  - avec vent, clé `|v` et couches reçues ; sans (mouvement réduit), clé sans `|v`, `hill` vide, calque `null` ;
+  - groupe sans feuillage (hiver) : aucune couche pour ce groupe ;
+  - le calque est après la toile des tranches et avant `vie-fond` dans `scene-city` ;
+  - tranche repeinte : le calque garde les couches de l'ancienne image jusqu'à la nouvelle ;
+  - la ville peinte n'est prête qu'après `onReady(true)` du calque ;
   - aucune écriture d'attribut dans le SVG de la scène pendant 30 images de boucle (MutationObserver sur le `<svg>`) ;
   - par vent calme, aucune image redessinée après la première.
 - [ ] **Step 2-4 :** rouge, implémentation, vert ; `npm run test:famille -- scene-ville scene-meteo`.
