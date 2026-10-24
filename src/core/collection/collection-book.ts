@@ -70,14 +70,16 @@ export function mergeCards(state: CollectionState, cards: KnownCard[], addCopies
   return next;
 }
 
-// Renvoie `state` lui-même quand rien ne change. Un nombre d'exemplaires inconnu reste inconnu ; à zéro (ou moins) la carte disparaît.
+// Renvoie `state` lui-même quand rien ne change. À zéro (ou moins) la carte disparaît.
+// Un nombre inconnu est celui d'une carte obtenue (pack, enchère gagnée) depuis le dernier parcours : elle part si elle est vendue
+// ou échangée (sinon elle resterait jusqu'au prochain parcours complet, qui la remettra si un exemplaire restait), un retour ne lui invente pas de nombre.
 export function applyCopyDeltas(state: CollectionState, deltas: Record<string, number>): CollectionState {
   let next = state;
   for (const [slug, delta] of Object.entries(deltas)) {
     const known = next[slug];
-    if (!known || known.copies === undefined || delta === 0) continue;
+    if (!known || delta === 0 || (known.copies === undefined && delta > 0)) continue;
     if (next === state) next = { ...state };
-    const copies = known.copies + delta;
+    const copies = (known.copies ?? 1) + delta;
     if (copies <= 0) delete next[slug];
     else next[slug] = { ...known, copies };
   }
