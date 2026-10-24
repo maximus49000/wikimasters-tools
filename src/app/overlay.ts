@@ -248,10 +248,19 @@ export async function startOverlay(store: KeyValueStore, spotify?: SpotifyEnv): 
       })
       .catch((error) => console.warn(LOG, 'mes enchères non relues :', error));
   };
+  // Un échange accepté par l'autre joueur (ou fait sur un autre appareil) ne passe par aucune requête d'ici : la Collection se recompte
+  // au retour dans l'application, pas seulement au premier passage sur la page Collection (l'application Android reste chargée des jours).
+  // Le scan choisit son parcours : complet si le dernier date de plus d'une heure (il retire alors les cartes parties), sinon incrémental.
+  const refreshCollection = (): void => {
+    scanner.run().catch((error) => console.warn(LOG, 'scan de la Collection interrompu :', error));
+  };
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refreshMine();
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - mineReadAt >= MINE_REFRESH_MS) refreshCollection();
+    refreshMine();
   });
   refreshMine();
+  refreshCollection();
   // Mise en vente (ou autre écriture sur le marché) : la carte quitte la Collection tout de suite, sans attendre un retour dans l'application.
   window.addEventListener('message', (event) => {
     const data = event.data as { type?: unknown } | null;
