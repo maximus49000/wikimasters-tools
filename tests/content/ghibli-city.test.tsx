@@ -241,7 +241,13 @@ describe('ville peinte', () => {
       }
       // Habitants et passants : dans le trottoir des immeubles, donc dessous.
       for (const n of qa('[data-resident], [data-city-sidewalk] [data-works]')) expect(before(n, first)).toBe(true);
-      const over = ['[data-street-lamps]', '[data-traffic-lane]'];
+      // 21 juin : la scène de la Fête de la musique (pied au bord de la chaussée, devant la ligne des fosses) est devant les
+      // arbres ; les équipes des façades (partie `crew`, dans le trottoir des immeubles) restent dessous.
+      const stage = q('[data-install-part="stage"]')!;
+      expect(stage.closest('[data-city-curb]')).not.toBeNull();
+      expect(stage.children.length).toBeGreaterThan(0);
+      for (const n of qa('[data-install-part="crew"]')) expect(n.querySelector('[data-concert-light], [data-stage-band]')).toBeNull();
+      const over = ['[data-city-curb]', '[data-street-lamps]', '[data-traffic-lane]'];
       for (const sel of over) {
         const nodes = [...qa(sel)];
         expect(nodes.length, sel).toBeGreaterThan(0);

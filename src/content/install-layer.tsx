@@ -59,8 +59,10 @@ import { LadderSprite } from './shop-sprites';
 // (échelle dressée, tenue en bas), `van` | `bike` | `truck` | `lift` (encore à moitié dans le véhicule).
 // Les travailleurs portent `data-worker` : le plafond global des figurants (shopSpriteBudget) les compte.
 
-export type InstallPart = 'back' | 'crew' | 'front' | 'street' | 'all';
-type Layer = 'back' | 'crew' | 'front' | 'street';
+// `stage` : scènes de la Fête de la musique (plancher, ossature, projecteurs, faisceaux, musiciens et leurs équipes de
+// montage), au bord de la chaussée : devant les arbres de la rue, alors que `crew` (équipes des façades) reste derrière eux.
+export type InstallPart = 'back' | 'crew' | 'stage' | 'front' | 'street' | 'all';
+type Layer = 'back' | 'crew' | 'stage' | 'front' | 'street';
 // `ghibli` : graphisme Ghibli (musiciens, serveurs, clients et foule de la Fête de la musique au pantin).
 type Props = { width: number; height: number; seed: number; sky: Sky; still: boolean; date: YMD; minutes: number; metrics: CityMetrics; rainy: boolean; lights?: boolean; part?: InstallPart; ghibli?: boolean };
 
@@ -324,7 +326,13 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
   // Élément que des porteurs soulèvent (dépose à la main) : dessiné dans leurs mains, plus à sa place.
   const lifted = new Set(crews.filter((c) => c.removing && c.step === 'place' && itemEquipment(c.set, c.item) === 'hand').map((c) => `${c.set.id}/${c.item.id}`));
 
+  // Scène de la Fête de la musique : tout ce que son jeu met dans `crew` passe dans `stage` (devant les arbres de la rue).
+  const onStage = (set: DecorSet, from: number): void => {
+    if (!set.id.startsWith('stage-music')) return;
+    for (let i = from; i < drawn.length; i++) if (drawn[i]!.part === 'crew') drawn[i] = { ...drawn[i]!, part: 'stage' };
+  };
   for (const set of sets) {
+    const from = drawn.length;
     // Décors posés.
     for (const item of set.items) {
       const ph = itemPhase(set, item, abs, set.day);
@@ -338,6 +346,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
       if (d) drawn.push(d);
     }
     if (set.id.startsWith('stage-music')) drawn.push(...stageShow(set, abs, dark, bandOutfits.get(set.id)!, metrics, sky, rainy, still, width, ghibli, plan, seed));
+    onStage(set, from);
     if (still) continue;
     // Véhicule de transport de l'équipe à pied (camionnette, vélo porteur, camion plateau) : il arrive chargé en roulant, se
     // gare au bord de la rue avant le premier créneau et repart en roulant après le dernier (city/van.ts), une fois tout rangé.
@@ -421,6 +430,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
     // Équipe à l'œuvre, ou qui descend de la camionnette / y remonte (même clé : elle glisse d'un état à l'autre).
     if (inp) drawn.push(...crewNodes(inp, itemEquipment(inp.set, inp.item) === 'lift' ? null : inputAt(set, abs - 1)));
     if (boarding) drawn.push(boarding);
+    onStage(set, from);
   }
 
   // Les camionnettes d'abord : un camion élévateur passe toujours devant elles.
@@ -431,6 +441,7 @@ export function InstallLayer({ width, height, seed, sky, still, date, minutes, m
     <>
       {want('back') && <g data-install-part="back">{pick('back')}</g>}
       {want('crew') && <g data-install-part="crew">{pick('crew')}</g>}
+      {want('stage') && <g data-install-part="stage">{pick('stage')}</g>}
       {want('front') && <g data-install-part="front">{pick('front')}</g>}
       {want('street') && (
         <g data-install-part="street">

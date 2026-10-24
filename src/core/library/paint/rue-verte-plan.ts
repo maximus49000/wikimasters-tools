@@ -1,7 +1,9 @@
 import { DOOR_MARGIN, DOOR_WIDTH } from '../city/doors';
+import { STAGE_HALF, stageXs } from '../city/install';
 import { cityMetrics } from '../city/metrics';
 import { lampsFor } from '../city/lamps';
 import { shopFrame, shopSlotsFor } from '../city/shops/slots';
+import { CROSS_HALF, streetFixtures } from '../city/traffic/engine';
 import type { CityPaintPlan } from './city-plan';
 import { fondRng } from './fond-time';
 
@@ -9,7 +11,8 @@ import { fondRng } from './fond-time';
 // fosse à grille en fonte à la bordure (platanes, tilleuls, marronniers, cerisiers ; un arbre tous les 70-110 px, décision du
 // 2026-10-20 ; quelques jeunes au tuteur, quelques fosses vides), bacs de trottoir devant une vitrine, parterre au pied d'un
 // immeuble sans commerce, grimpante sur l'arête d'une façade, pots devant une porte, herbe entre les pavés.
-// Emplacements interdits : entrées d'immeuble (± DOOR_MARGIN, + 2 ; fosses : ± DOOR_MARGIN contre la grille), porte vitrée de chaque local (± 4 ; celle que peint la
+// Emplacements interdits : scènes de la Fête de la musique, passage piéton et arrêt de bus du trottoir des immeubles (fosses
+// seulement, voir PIT_*_CLEAR), entrées d'immeuble (± DOOR_MARGIN, + 2 ; fosses : ± DOOR_MARGIN contre la grille), porte vitrée de chaque local (± 4 ; celle que peint la
 // façade, `shopFrame`) — une fosse peut donc se trouver devant une vitrine, jamais devant une porte —, lampadaires (± 9,
 // `lampsFor`), arbres du plan (± r + 6), mobilier (± 3, seulement pour les bacs et parterres, collés à la façade comme lui),
 // les autres éléments posés (± 3 ; les fosses, à la bordure, ne gênent pas les parterres, contre la façade), hors de l'image.
@@ -37,6 +40,12 @@ export const SHOP_DOOR_MARGIN = 4;
 export const PIT_HALF = 5;
 // Recherche d'un centre libre autour de chaque pas des arbres (au pixel, de part et d'autre).
 export const PIT_SEARCH = 21;
+// Abords sans arbre (unités, de part et d'autre du centre ; la grille de la fosse, ± PIT_HALF, reste dehors) : emprise d'une
+// scène de la Fête de la musique (plancher ± STAGE_HALF, + 4 de marge : placette fixe, rien ne disparaît le jour J), passage
+// piéton et poteau du feu (± CROSS_HALF + 3 pour le poteau, + 3), arrêt de bus du trottoir des immeubles (voyageurs à ± 23).
+export const PIT_STAGE_CLEAR = STAGE_HALF + 4;
+export const PIT_CROSSING_CLEAR = CROSS_HALF + 6;
+export const PIT_BUS_STOP_CLEAR = 26;
 type Kind = 'door' | 'lamp' | 'tree' | 'furn' | 'shopdoor';
 
 export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): RueItem[] {
@@ -73,7 +82,16 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
   // élargi de 4 px ; lampadaires et arbres du plan sur ± 6. Pas de règle du mobilier pour les fosses : bancs, boîtes aux
   // lettres, vélos et pigeons ont le pied entre ground et ground + 7 u, affiches au mur (paintFurniture), tous côté façade,
   // loin de la bordure où sont les fosses.
+  // Scènes, passage piéton et arrêt de bus du trottoir des immeubles : emplacements fixes (même tirage que la fête et le
+  // trafic), dessinés devant les arbres ; aucun fût ni houppier centré dans leur emprise.
+  const fixtures = streetFixtures(width, seed, u);
+  const clear: readonly { x: number; half: number }[] = [
+    ...stageXs(width, seed).map((x) => ({ x, half: PIT_STAGE_CLEAR * u })),
+    { x: fixtures.lightX, half: PIT_CROSSING_CLEAR * u },
+    { x: fixtures.busStop.far, half: PIT_BUS_STOP_CLEAR * u },
+  ];
   const pitBusy = (px: number): boolean =>
+    clear.some((c) => Math.abs(px - c.x) < c.half + PIT_HALF) ||
     busy(px - 6, px + 6, ['lamp', 'tree']) ||
     busy(px - PIT_HALF, px + PIT_HALF, ['shopdoor']) ||
     doors.some((d) => px + PIT_HALF > d.x0 && px - PIT_HALF < d.x1);

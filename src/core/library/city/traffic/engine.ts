@@ -159,8 +159,29 @@ const upstreamGreen = (track: Track, t: number): boolean => {
   const off = (hashString(`up-${track}`) % 1000) / 1000;
   return ((t / UPSTREAM.cycle + off) % 1) * UPSTREAM.cycle < UPSTREAM.green;
 };
+// Emplacements fixes de la rue (pur, déterministe) : x du feu et du passage piéton, x des deux arrêts de bus. Lu aussi par le
+// plan de la verdure (rue-verte-plan.ts), qui garde ces abords sans arbre.
+export function streetFixtures(width: number, seed: number, unit: number): { lightX: number; busStop: Record<'near' | 'far', number> } {
+  const r = mulberry32(seed ^ hashString('traffic'));
+  const busStop = { near: width * lerp(0.25, 0.75, r()), far: width * lerp(0.25, 0.75, r()) };
+  // Feu à bouton-poussoir et passage piéton dans toutes les pièces, vers le milieu de la rue.
+  const lightX = width * lerp(0.4, 0.6, r());
+  // Arrêts de bus à l'écart du passage piéton (poteaux, voyageurs, bus arrêté et sa file ne se mêlent pas au feu) : au moins
+  // 170 unités (230 pour celui d'en face, pour que les deux poteaux ne s'alignent pas), du côté tiré s'il reste dans le monde,
+  // sinon de l'autre.
+  for (const side of ['near', 'far'] as const) {
+    const gap = (side === 'near' ? 230 : 170) * unit;
+    const d = busStop[side] - lightX;
+    if (Math.abs(d) >= gap) continue;
+    const pref = d >= 0 ? 1 : -1;
+    const x = lightX + pref * gap;
+    busStop[side] = x > 40 * unit && x < width - 40 * unit ? x : lightX - pref * gap;
+  }
+  return { lightX, busStop };
+}
+
 export function createTraffic(o: { width: number; seed: number; unit: number; startS: number }): TrafficWorld {
-  const r = mulberry32(o.seed ^ hashString('traffic'));
+  const fixtures = streetFixtures(o.width, o.seed, o.unit);
   const w: TrafficWorld = {
     width: o.width,
     seed: o.seed,
@@ -171,9 +192,9 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     spawnAt: { near: 0, far: 0, bike: 0 },
     rngs: { near: mulberry32(o.seed ^ hashString('tr-near')), far: mulberry32(o.seed ^ hashString('tr-far')), bike: mulberry32(o.seed ^ hashString('tr-bike')) },
     spawned: new Set(),
-    busStop: { near: o.width * lerp(0.25, 0.75, r()), far: o.width * lerp(0.25, 0.75, r()) },
-    // Feu à bouton-poussoir et passage piéton dans toutes les pièces, vers le milieu de la rue ; vert au départ.
-    light: { x: o.width * lerp(0.4, 0.6, r()), color: 'green', since: 0, pressedAt: null, log: [] },
+    busStop: fixtures.busStop,
+    // Feu à bouton-poussoir et passage piéton (streetFixtures) ; vert au départ.
+    light: { x: fixtures.lightX, color: 'green', since: 0, pressedAt: null, log: [] },
     walkers: [],
     walkerSerial: 0,
     walkerAt: 0,
@@ -192,17 +213,6 @@ export function createTraffic(o: { width: number; seed: number; unit: number; st
     hornClock: new Map(),
   };
   setLines(w, undefined);
-  // Arrêts de bus à l'écart du passage piéton (poteaux, voyageurs, bus arrêté et sa file ne se mêlent pas au feu) : au moins
-  // 170 unités (230 pour celui d'en face, pour que les deux poteaux ne s'alignent pas), du côté tiré s'il reste dans le monde,
-  // sinon de l'autre.
-  for (const side of ['near', 'far'] as const) {
-    const gap = (side === 'near' ? 230 : 170) * o.unit;
-    const d = w.busStop[side] - w.light.x;
-    if (Math.abs(d) >= gap) continue;
-    const pref = d >= 0 ? 1 : -1;
-    const x = w.light.x + pref * gap;
-    w.busStop[side] = x > 40 * o.unit && x < o.width - 40 * o.unit ? x : w.light.x - pref * gap;
-  }
   w.light.since = w.t - 60;
   w.light.log.push({ t: w.t - 60, color: 'green' });
   w.walkerAt = w.t;

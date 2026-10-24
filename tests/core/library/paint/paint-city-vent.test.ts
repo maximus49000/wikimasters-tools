@@ -30,7 +30,7 @@ describe('champ de vent', () => {
     expect(windAt(300, 12.5, wind(0), W)).toBe(0);
   });
 
-  it('|windAt| ≤ 2,5 × wind', () => {
+  it('|windAt| ≤ 3,5 × wind', () => {
     for (const w of [0.3, 0.8, 1]) for (let t = 0; t < 120; t += 0.7) for (let x = 0; x <= W; x += 37) expect(Math.abs(windAt(x, t, wind(w), W))).toBeLessThanOrEqual(BORNE * w);
   });
 
@@ -85,7 +85,7 @@ import { fondMoment, foliageOf, type FondMoment } from '../../../../src/core/lib
 import { tuftState } from '../../../../src/core/library/paint/hill-trees';
 import type { RuePit } from '../../../../src/core/library/paint/rue-verte-plan';
 import { rueTreeModel } from '../../../../src/core/library/paint/rue-verte-painter';
-import { RUE_CAP_OF, RUE_PARTICLE_CAP, rueBird, rueParticles, type RueParticle, type RueWeather } from '../../../../src/core/library/paint/rue-sprites';
+import { BIRD_CYCLE, RUE_CAP_OF, RUE_PARTICLE_CAP, birdAway, nextBirdAway, rueBird, rueParticles, type RueParticle, type RueWeather } from '../../../../src/core/library/paint/rue-sprites';
 
 describe('particules et oiseaux des arbres de la rue', () => {
   const PW = 1440;
@@ -146,9 +146,9 @@ describe('particules et oiseaux des arbres de la rue', () => {
     const visits: { x: number }[][] = [];
     let cur: { x: number }[] = [];
     for (let t = 0; t < 1200; t += 0.05) {
-      expect(rueBird(pits, D, 1000 + t, true, PW)).toBeNull();
-      expect(rueBird(pits, rainy, 1000 + t, false, PW)).toBeNull();
-      const b = rueBird(pits, D, 1000 + t, false, PW);
+      // Nuit ou forte pluie dès l'ouverture : aucun oiseau.
+      expect(rueBird(pits, D, 1000 + t, PW, -Infinity)).toBeNull();
+      const b = rueBird(pits, D, 1000 + t, PW);
       // Visite en cours au début de la fenêtre : ignorée.
       if (b && t === 0) cur = [{ x: NaN }];
       if (b) cur.push(b);
@@ -166,6 +166,33 @@ describe('particules et oiseaux des arbres de la rue', () => {
       expect(a < 0 || a > PW).toBe(true);
       expect(z < 0 || z > PW).toBe(true);
     }
+    expect(birdAway(D, true)).toBe(true);
+    expect(birdAway(rainy, false)).toBe(true);
+    expect(birdAway(D, false)).toBe(false);
+  });
+  it('oiseau : la nuit tombe ou la forte pluie arrive pendant la visite → il repart par un bord, sans disparaître sur place', () => {
+    const D = day(6, 10, { wind: 0.3 });
+    // Instants de bascule répartis sur 40 cycles (vol d'arrivée, perchoir, départ, hors visite).
+    let left = 0;
+    for (let flip = 1000; flip < 1000 + 40 * BIRD_CYCLE; flip += 37.3) {
+      let state: ReturnType<typeof nextBirdAway> | undefined;
+      let prev: { x: number; y: number } | null = null;
+      let after = false;
+      // La bascule dure 30 s puis le temps redevient propice : rien ne réapparaît en cours de visite.
+      for (let t = flip - 60; t < flip + 2 * BIRD_CYCLE; t += 0.05) {
+        state = nextBirdAway(state, t >= flip && t < flip + 30, t);
+        const b = rueBird(pits, D, t, PW, state?.since ?? null);
+        if (prev && !b) expect(prev.x < 0 || prev.x > PW, `disparu sur place à ${t.toFixed(2)} (bascule ${flip})`).toBe(true);
+        if (!prev && b && t > flip - 59.9) expect(b.x < 0 || b.x > PW, `apparu sur place à ${t.toFixed(2)} (bascule ${flip})`).toBe(true);
+        if (b && t >= flip) after = true;
+        // Aucune arrivée après la bascule tant que son cycle dure.
+        if (b && t >= flip && Math.floor(t / BIRD_CYCLE) === Math.floor(flip / BIRD_CYCLE) && !prev) expect.fail(`arrivée après la bascule (${flip})`);
+        prev = b;
+      }
+      if (after) left++;
+    }
+    // Au moins quelques bascules tombent pendant une visite.
+    expect(left).toBeGreaterThan(3);
   });
 });
 

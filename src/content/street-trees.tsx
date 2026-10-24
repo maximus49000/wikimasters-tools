@@ -8,7 +8,9 @@ import type { RuePit } from '../core/library/paint/rue-verte-plan';
 import { rueTreeModel, rueWet } from '../core/library/paint/rue-verte-painter';
 import {
   RUE_CAP_OF,
+  birdAway,
   gradePixels,
+  nextBirdAway,
   paintRueLampWash,
   paintRueLayer,
   rueBird,
@@ -17,6 +19,7 @@ import {
   rueParticles,
   rueSpriteBox,
   rueTreePose,
+  type BirdAway,
   type RueLampWash,
   type RueLayerName,
   type RueParticleKind,
@@ -103,8 +106,40 @@ function idleSlot(): Promise<Slot> {
   });
 }
 
-// Peintre réel : un seul canvas, une couche après l'autre (peinte, étalonnée, lavis des lampes, PNG), réparties sur les
-// créneaux de temps mort : au moins une couche par créneau, une de plus tant qu'il reste SLOT_MARGIN_MS avant l'échéance.
+// Emprise d'une couche dans le monde (unités) : chaque image est rognée à ses pixels peints (une grappe ne couvre qu'une petite
+// part de la boîte de l'arbre ; mémoire décodée divisée d'autant sur Android). Jeu sans emprise (peintre des tests) : la
+// boîte entière de l'arbre.
+export type RueCrop = { x: number; y: number; w: number; h: number };
+const CROPS = new WeakMap<RueSprites, Partial<Record<RueLayerName, RueCrop>>>();
+// Marge (px du canvas) gardée autour des pixels peints : le lissage d'une couche cisaillée n'étire jamais un bord opaque.
+const CROP_PAD = 1;
+// Plus petit rectangle des pixels non transparents (± CROP_PAD, borné au canvas), null si la couche est vide.
+export function opaqueBounds(data: Uint8ClampedArray, w: number, h: number): { x: number; y: number; w: number; h: number } | null {
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    for (let x = 0; x < w; x++) {
+      if (data[row + x * 4 + 3] === 0) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      y1 = y;
+    }
+  }
+  if (x1 < 0) return null;
+  x0 = Math.max(0, x0 - CROP_PAD);
+  y0 = Math.max(0, y0 - CROP_PAD);
+  x1 = Math.min(w - 1, x1 + CROP_PAD);
+  y1 = Math.min(h - 1, y1 + CROP_PAD);
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+// Peintre réel : un seul canvas, une couche après l'autre (peinte, étalonnée, lavis des lampes, rognée à ses pixels peints,
+// PNG), réparties sur les créneaux de temps mort : au moins une couche par créneau, une de plus tant qu'il reste
+// SLOT_MARGIN_MS avant l'échéance.
 export const canvasRueSpritePainter: RueSpritePainter = async (job) => {
   if (typeof document === 'undefined' || (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom'))) return null;
   const { box, res } = job;
@@ -114,6 +149,10 @@ export const canvasRueSpritePainter: RueSpritePainter = async (job) => {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   const out: RueSprites = {};
+  const crops: Partial<Record<RueLayerName, RueCrop>> = {};
+  const cut = document.createElement('canvas');
+  const cutCtx = cut.getContext('2d');
+  if (!cutCtx) return null;
   let slot: Slot | null = null;
   let inSlot = 0;
   for (const layer of job.layers) {
@@ -138,8 +177,24 @@ export const canvasRueSpritePainter: RueSpritePainter = async (job) => {
     }
     // Lavis chaud par-dessus l'étalonnage (lumière des lampadaires, hors nuit bleue).
     paintRueLampWash(ctx, job.pit, layer, job.washes);
-    out[layer] = canvas.toDataURL('image/png');
+    const b = opaqueBounds(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+    // Couche vide (rien de peint à ce moment) : aucune image.
+    if (!b) {
+      out[layer] = '';
+      continue;
+    }
+    crops[layer] = { x: box.x + b.x / res, y: box.y + b.y / res, w: b.w / res, h: b.h / res };
+    if (b.w === canvas.width && b.h === canvas.height) {
+      out[layer] = canvas.toDataURL('image/png');
+      continue;
+    }
+    cut.width = b.w;
+    cut.height = b.h;
+    cutCtx.clearRect(0, 0, b.w, b.h);
+    cutCtx.drawImage(canvas, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+    out[layer] = cut.toDataURL('image/png');
   }
+  CROPS.set(out, crops);
   return out;
 };
 
@@ -246,7 +301,7 @@ function decoded(s: RueSprites): boolean {
   return (Object.keys(s) as RueLayerName[]).every((l) => !s[l] || (imgs[l]?.complete === true && imgs[l]!.naturalWidth > 0));
 }
 
-// Courbe CSS `ease` (cubic-bezier(.25, .1, .25, 1)) : y pour x ∈ [0, 1] (Newton puis dichotomie).
+// Courbe CSS `ease` (cubic-bezier(.25, .1, .25, 1)) : y pour x ∈ [0, 1] (t essayé à x, puis dichotomie, 20 pas au plus).
 function cssEase(x: number): number {
   const bx = (t: number): number => 3 * (1 - t) * (1 - t) * t * 0.25 + 3 * (1 - t) * t * t * 0.25 + t * t * t;
   const by = (t: number): number => 3 * (1 - t) * (1 - t) * t * 0.1 + 3 * (1 - t) * t * t + t * t * t;
@@ -290,7 +345,7 @@ function fitCanvas(cv: HTMLCanvasElement, area: Area): number {
 // Marge (unités) autour de la boîte d'un arbre sur la toile de travail du fondu (cisaillement des rameaux, grappes).
 const FADE_PAD = 12;
 let scratch: HTMLCanvasElement | null = null;
-function paintFrame(main: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: number, area: Area, F: readonly number[], trees: readonly Tree[], imgs: readonly (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[]): void {
+function paintFrame(main: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: number, area: Area, F: readonly number[], trees: readonly Tree[], imgs: readonly (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[], sets: readonly (RueSprites | undefined)[]): void {
   main.setTransform(1, 0, 0, 1, 0, 0);
   main.globalAlpha = 1;
   main.clearRect(0, 0, cv.width, cv.height);
@@ -342,7 +397,9 @@ function paintFrame(main: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: nu
       const c = F[o + 3]!;
       ctx.setTransform(k, 0, k * c, k, ox + k * F[o + 4]!, oy + k * F[o + 5]!);
       ctx.globalAlpha = F[o + 6]!;
-      const b = tr.box;
+      // Image rognée à son emprise (CROPS), sinon (peintre des tests) la boîte entière de l'arbre.
+      const set = sets[F[o + 1]!];
+      const b = (set && CROPS.get(set)?.[tr.layers[F[o + 2]!]!]) ?? tr.box;
       ctx.drawImage(img, b.x, b.y, b.w, b.h);
     } else if (kind === 1) {
       const sh = PART_SHAPE[KINDS[F[o + 1]!]!];
@@ -466,6 +523,8 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
   const dark = daylight < 0.45;
   // Météos successives (instant de changement) : chaque particule garde celle de sa naissance (rue-sprites.ts).
   const weathers = useRef<RueWeather[]>([]);
+  // Instant depuis lequel l'oiseau reste à l'écart (nuit, forte pluie) : `undefined` avant la première image.
+  const birdAwayRef = useRef<BirdAway | undefined>(undefined);
   const bare = useMemo(() => trees.map((tr) => foliageOf(D, 'rue' + Math.round(tr.v.x), tr.v.species).d <= 0.1), [trees, D]);
   const wind = useMemo(() => windOf(D.meteo, D.meteo.wind >= 0.8), [D]);
   // Par fosse : jeu de sprites dessiné (l'ancien reste tant que le nouveau n'est pas décodé) et début de son fondu d'entrée.
@@ -548,7 +607,11 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
           const alpha = rnd(PART_SHAPE[p.kind].op * p.alpha);
           if (alpha > 0) F.push(1, KIND_ID[p.kind], rnd(p.x), rnd(p.y), rnd(p.rot % 360, 0), colorId(graded(p.color)), alpha);
         }
-      const b = still ? null : rueBird(pits, D, t, dark, plan.width);
+      let b = null;
+      if (!still) {
+        birdAwayRef.current = nextBirdAway(birdAwayRef.current, birdAway(D, dark), t);
+        b = rueBird(pits, D, t, plan.width, birdAwayRef.current?.since ?? null);
+      }
       if (b) F.push(2, rnd(b.x), rnd(b.y), b.flying ? 1 : 0, rnd(b.flap), b.dir, 0);
       if (frameSink) frameSink(opsOf(F, trees, sets));
       const cv = canvas.current;
@@ -572,7 +635,7 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
       // Échange des tampons : l'image dessinée devient la signature, l'ancienne signature servira à l'image suivante.
       work.current.F = sf.sig;
       sf.sig = F;
-      paintFrame(sf.ctx, cv, sf.k, area, F, trees, imgs);
+      paintFrame(sf.ctx, cv, sf.k, area, F, trees, imgs, sets);
     };
   }, [trees, ids, still, at, wind, bare, plan.width, pits, D, dark, graded, area]);
   // Nouvelle zone : tampon à refaire.

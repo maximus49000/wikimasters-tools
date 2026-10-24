@@ -403,11 +403,27 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
 
 // Oiseau qui se pose dans un arbre : toutes les ~110 s, un oiseau (un seul dans la scène : la maquette en tire un par bande
 // de 480 px ; ici une bande tirée par cycle, jamais deux visites qui se chevauchent) arrive en vol par un bord de la scène,
-// se perche 20-40 s dans un arbre feuillu (adulte) de cette bande, repart par l'autre bord. Jamais la nuit ni sous forte pluie.
+// se perche 20-40 s dans un arbre feuillu (adulte) de cette bande, repart par l'autre bord. Jamais la nuit ni sous forte pluie
+// (`birdAway`) : `awaySince` est l'instant (s de scène) depuis lequel il en est ainsi (null : temps propice ; −Infinity : déjà
+// ainsi à l'ouverture). Aucune arrivée après cet instant ; un oiseau déjà là ne disparaît pas sur place : en vol d'arrivée, il
+// se pose puis repart aussitôt ; perché, il s'envole à cet instant ; en partance, il finit son vol.
 // `dir` : sens du vol d'arrivée (la tête posée regarde par là).
 const BANDS = new WeakMap<readonly RuePit[], { adults: RuePit[]; bands: number[] }>();
-export function rueBird(items: readonly RuePit[], D: FondMoment, t: number, dark: boolean, width: number): { x: number; y: number; flying: boolean; flap: number; dir: 1 | -1 } | null {
-  if (dark || D.meteo.precip > 0.4) return null;
+// Durée (s) de chaque vol (arrivée, départ) ; cycle des visites (s) : une visite (≤ 40 + 6 + 40 + 6 s) tient dans son cycle.
+const BIRD_FLIGHT = 6;
+export const BIRD_CYCLE = 110;
+export const birdAway = (D: FondMoment, dark: boolean): boolean => dark || D.meteo.precip > 0.4;
+// Suivi de `awaySince` image après image (appelant) : `prev` undefined à la première image (déjà hostile : −Infinity, rien à
+// montrer). Redevenu propice, l'instant est gardé jusqu'à la fin du cycle de la dernière image hostile : une visite écourtée
+// ne réapparaît jamais en cours de route.
+export type BirdAway = { since: number; cycle: number } | null;
+export function nextBirdAway(prev: BirdAway | undefined, away: boolean, t: number): BirdAway {
+  const cycle = Math.floor(t / BIRD_CYCLE);
+  if (away) return { since: prev === undefined ? -Infinity : prev ? prev.since : t, cycle };
+  return prev && cycle <= prev.cycle ? prev : null;
+}
+export function rueBird(items: readonly RuePit[], D: FondMoment, t: number, width: number, awaySince: number | null = null): { x: number; y: number; flying: boolean; flap: number; dir: 1 | -1 } | null {
+  if (awaySince === -Infinity) return null;
   let memo = BANDS.get(items);
   if (!memo) {
     const adults = items.filter((p) => p.kind === 'pit' && !p.empty && !p.young);
@@ -415,29 +431,35 @@ export function rueBird(items: readonly RuePit[], D: FondMoment, t: number, dark
   }
   const { adults, bands } = memo;
   if (!bands.length) return null;
-  const k = Math.floor(t / 110);
+  const k = Math.floor(t / BIRD_CYCLE);
   const band = bands[Math.floor(rngOf(`oiseau-bande-${k}`)() * bands.length)]!;
   const rk = rngOf(`oiseau-${band}-${k}`);
   const trees = adults.filter((p) => Math.floor(p.x / 480) === band);
   const v = trees[Math.floor(rk() * trees.length)]!;
   if (foliageOf(D, 'rue' + Math.round(v.x), v.species).d < 0.3) return null;
   const m = rueTreeModel(v);
-  const t0 = k * 110 + rk() * 40;
-  const perch = 20 + rk() * 20;
+  const t0 = k * BIRD_CYCLE + rk() * 40;
+  let perch = 20 + rk() * 20;
   const a = t - t0;
   const fromLeft = rk() < 0.5;
   const px = m.cx + (rk() - 0.5) * v.r;
   const py = m.cy - v.r * 0.3;
-  if (a < 0 || a > 6 + perch + 6) return null;
+  // Temps devenu hostile : pas d'arrivée après coup ; sinon le perchoir s'écourte (envol à cet instant, ou dès le poser).
+  if (awaySince !== null) {
+    if (awaySince <= t0) return null;
+    perch = Math.min(perch, Math.max(0, awaySince - t0 - BIRD_FLIGHT));
+  }
+  if (a < 0 || a > BIRD_FLIGHT + perch + BIRD_FLIGHT) return null;
   const start = fromLeft ? -20 : width + 20;
   const end = fromLeft ? width + 20 : -20;
   const dir = fromLeft ? 1 : -1;
   // Battement amorti au poser et à l'envol (aucun saut vertical).
-  if (a < 6) {
-    const q = smooth(a / 6);
+  if (a < BIRD_FLIGHT) {
+    const q = smooth(a / BIRD_FLIGHT);
     return { x: start + (px - start) * q, y: py - 30 * (1 - q) + Math.sin(a * 5) * 1.5 * (1 - q), flying: true, flap: Math.sin(a * 14) * 0.8, dir };
   }
-  if (a < 6 + perch) return { x: px, y: py, flying: false, flap: 0, dir };
-  const q = smooth((a - 6 - perch) / 6);
-  return { x: px + (end - px) * q, y: py - 30 * q + Math.sin(a * 5) * 1.5 * q, flying: true, flap: Math.sin(a * 14) * 0.8, dir };
+  if (a < BIRD_FLIGHT + perch) return { x: px, y: py, flying: false, flap: 0, dir };
+  const d = a - BIRD_FLIGHT - perch;
+  const q = smooth(d / BIRD_FLIGHT);
+  return { x: px + (end - px) * q, y: py - 30 * q + Math.sin(d * 5) * 1.5 * q, flying: true, flap: Math.sin(a * 14) * 0.8, dir };
 }

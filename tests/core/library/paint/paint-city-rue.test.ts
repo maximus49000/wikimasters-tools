@@ -3,7 +3,9 @@ import { lampsFor } from '../../../../src/core/library/city/lamps';
 import { cityMetrics } from '../../../../src/core/library/city/metrics';
 import { shopFrame, shopSlotsFor } from '../../../../src/core/library/city/shops/slots';
 import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
-import { streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
+import { stageXs } from '../../../../src/core/library/city/install';
+import { createTraffic, streetFixtures } from '../../../../src/core/library/city/traffic/engine';
+import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_STAGE_CLEAR, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
 import { hashString } from '../../../../src/core/library/scene-world';
 import { TILE, tileCount, tileItems } from '../../../../src/core/library/paint/city-painter';
 import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
@@ -54,14 +56,33 @@ describe('verdure de la rue (streetVerdure)', () => {
       const rue = plan.rue;
       const pits = rue.filter((v): v is RuePit => v.kind === 'pit');
       const tag = `graine ${seed}, ${width} px`;
+      // Abords sans arbre (scènes, passage piéton, arrêt de bus du trottoir des immeubles) et longueur de rue qui reste.
+      const fx = streetFixtures(width, seed, plan.unit);
+      const zones = [
+        ...stageXs(width, seed).map((x) => ({ x, half: PIT_STAGE_CLEAR * plan.unit })),
+        { x: fx.lightX, half: PIT_CROSSING_CLEAR * plan.unit },
+        { x: fx.busStop.far, half: PIT_BUS_STOP_CLEAR * plan.unit },
+      ];
+      const cleared = (() => {
+        const spans = zones.map((z) => [Math.max(0, z.x - z.half - PIT_HALF), Math.min(width, z.x + z.half + PIT_HALF)] as const).sort((a, b) => a[0] - b[0]);
+        let len = 0;
+        let end = -Infinity;
+        for (const [a, b] of spans) {
+          if (b <= end) continue;
+          len += b - Math.max(a, end);
+          end = b;
+        }
+        return len;
+      })();
 
       it(`${tag} : déterministe et identique à plan.rue`, () => {
         const { rue: _omit, ...rest } = plan;
         expect(streetVerdure(rest, width)).toEqual(streetVerdure(rest, width));
         expect(streetVerdure(rest, width)).toEqual(rue);
-        // Un arbre tous les 70-110 px (décision du 2026-10-20), moins les pas sautés devant les portes et les lampadaires :
-        // mesuré au 2026-10-24 au moins 0,78 × largeur / 90 fosses (vides comprises) ; plancher 0,75.
-        expect(pits.length).toBeGreaterThanOrEqual((0.75 * width) / 90);
+        // Un arbre tous les 70-110 px (décision du 2026-10-20) sur la rue hors des abords sans arbre, moins les pas sautés
+        // devant les portes et les lampadaires : plancher 0,75 × longueur libre / 90 fosses (vides comprises), arrondi à
+        // l'entier inférieur (à 720 px, un pas tombé au bord d'un abord pèse : 4 fosses mesurées pour 4,27 et 4,53).
+        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((0.75 * (width - cleared)) / 90));
       });
 
       it(`${tag} : fosses hors des entrées, portes des locaux, lampadaires, arbres et mobilier`, () => {
@@ -84,6 +105,15 @@ describe('verdure de la rue (streetVerdure)', () => {
         }
       });
 
+      it(`${tag} : aucune fosse dans l'emprise des scènes, du passage piéton ni de l'arrêt de bus du trottoir des immeubles`, () => {
+        const u = plan.unit;
+        for (const p of pits) for (const z of zones) expect(Math.abs(p.x - z.x)).toBeGreaterThanOrEqual(z.half + PIT_HALF);
+        // Mêmes emplacements que le trafic (feu, arrêt) et la fête (scènes) : la placette est fixe.
+        const w = createTraffic({ width, seed, unit: u, startS: 0 });
+        expect(w.light.x).toBe(fx.lightX);
+        expect(w.busStop).toEqual(fx.busStop);
+      });
+
       it(`${tag} : couloir des passants libre (fosses à la bordure, bacs et pots à la façade)`, () => {
         for (const p of pits) {
           expect(p.y).toBeGreaterThanOrEqual(plan.curb - 5);
@@ -101,8 +131,10 @@ describe('verdure de la rue (streetVerdure)', () => {
       // Pas de 70-110 px, centre libre cherché à ± 21 px : jamais moins de 70 − 2 × 21 = 28 px entre deux fosses ; au
       // moins 65 % des écarts entre 56 et 124 px (mesuré : 67 % au pire) (le reste : essai décalé loin, ou pas sauté devant une suite de portes).
       it(`${tag} : fosses dans l'ordre, au moins 28 px, 65 % des écarts entre 56 et 124 px`, () => {
-        const gaps = pits.slice(1).map((p, i) => p.x - pits[i]!.x);
-        for (const g of gaps) expect(g).toBeGreaterThanOrEqual(28);
+        const all = pits.slice(1).map((p, i) => p.x - pits[i]!.x);
+        for (const g of all) expect(g).toBeGreaterThanOrEqual(28);
+        // Écarts de part et d'autre d'un abord sans arbre (placette de la scène, passage, arrêt) : hors de la règle du pas.
+        const gaps = pits.slice(1).filter((p, i) => !zones.some((z) => z.x - z.half < p.x && z.x + z.half > pits[i]!.x)).map((p) => p.x - pits[pits.indexOf(p) - 1]!.x);
         const inRange = gaps.filter((g) => g >= 56 && g <= 124).length;
         expect(inRange).toBeGreaterThanOrEqual(0.65 * gaps.length);
       });

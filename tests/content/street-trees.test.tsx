@@ -6,7 +6,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RUE_BAKE_TRIES, StreetTrees, resetStreetTreesForTests, setRueFrameSinkForTests, setRueSpritePainterForTests, type RueBakeJob, type RueDraw, type RueSprites } from '../../src/content/street-trees';
+import { RUE_BAKE_TRIES, StreetTrees, opaqueBounds, resetStreetTreesForTests, setRueFrameSinkForTests, setRueSpritePainterForTests, type RueBakeJob, type RueDraw, type RueSprites } from '../../src/content/street-trees';
 import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
 import { fondMoment } from '../../src/core/library/paint/fond-time';
 import { windOf } from '../../src/core/library/paint/fond-vent';
@@ -288,9 +288,24 @@ describe('rueTreePose', () => {
       const mm = rueTreeModel(pit);
       const p = rueTreePose(pit, mm, 1000, w, W);
       expect(p.masses).toHaveLength(rueLayers(mm).filter((l) => l[0] === 'c').length);
-      expect(p.masses.some((g) => Math.abs(g.dx) > 0.1)).toBe(true);
-      expect(p.twigShear).not.toBe(0);
+      // Sur 10 s (le vent local peut passer par zéro à un instant donné : ondes progressives).
+      const poses = Array.from({ length: 10 }, (_, i) => rueTreePose(pit, mm, 1000 + i, w, W));
+      expect(poses.some((q) => q.masses.some((g) => Math.abs(g.dx) > 0.1)), `fosse ${pit.x}`).toBe(true);
+      expect(poses.some((q) => q.twigShear !== 0)).toBe(true);
     }
+  });
+});
+
+describe('opaqueBounds (rognage des couches cuites)', () => {
+  const img = (w: number, h: number, opaque: [number, number][]): Uint8ClampedArray => {
+    const d = new Uint8ClampedArray(w * h * 4);
+    for (const [x, y] of opaque) d[(y * w + x) * 4 + 3] = 1;
+    return d;
+  };
+  it('emprise des pixels non transparents ± 1 px, bornée au canvas ; couche vide : null', () => {
+    expect(opaqueBounds(img(10, 8, []), 10, 8)).toBeNull();
+    expect(opaqueBounds(img(10, 8, [[4, 3], [6, 5]]), 10, 8)).toEqual({ x: 3, y: 2, w: 5, h: 5 });
+    expect(opaqueBounds(img(10, 8, [[0, 0], [9, 7]]), 10, 8)).toEqual({ x: 0, y: 0, w: 10, h: 8 });
   });
 });
 

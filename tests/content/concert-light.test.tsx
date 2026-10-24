@@ -97,8 +97,9 @@ describe('ConcertLight dans le calque des installations (Ghibli)', () => {
     expect(count(host, '[data-concert-light]')).toBe(1);
     expect(count(host, '[data-stage-beams], [data-stage-beam]')).toBe(0);
     expect(count(host, '[data-concert-light] animate, [data-concert-light] animateTransform')).toBe(0);
-    // Spectacle devant les passants (crew) ; chaussée du public révélée SOUS eux (back), jamais par-dessus.
-    expect(count(host, '[data-install-part="crew"] [data-concert-light]')).toBe(1);
+    // Spectacle devant les passants et les arbres de la rue (stage) ; chaussée du public révélée SOUS eux (back), jamais par-dessus.
+    expect(count(host, '[data-install-part="stage"] [data-concert-light]')).toBe(1);
+    expect(count(host, '[data-install-part="crew"] [data-concert-light]')).toBe(0);
     expect(count(host, '[data-install-part="back"] [data-concert-crowd-layer]')).toBe(1);
     expect(count(host, '[data-concert-light] [data-concert-crowd]')).toBe(0);
     expect(count(host, '[data-concert-crowd]')).toBe(4);

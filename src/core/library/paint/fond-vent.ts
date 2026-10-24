@@ -1,6 +1,7 @@
 // Champ de vent du fond de ville : fonction pure de (x, t), tirée de la météo (force, direction). Base turbulente (ondes
 // progressives de périodes incommensurables, déphasées par la position) + rafales : paquets gaussiens tirés par graine qui
-// traversent la scène dans le sens du vent (jamais un balancement sinusoïdal synchrone). Vent signé ≈ −2,5…2,5 (0 = calme).
+// traversent la scène dans le sens du vent (jamais un balancement sinusoïdal synchrone). Vent signé, |v| ≤ 3,5 × force
+// (base ≤ 0,9 + rafales qui peuvent se chevaucher ; 0 = calme).
 // Port de maquettes/fond-ville/src/04a-vent.js ; le mouvement réduit est géré par les appelants.
 import { mulberry32 } from '../scene-world';
 import type { FondMeteo } from './fond-time';
