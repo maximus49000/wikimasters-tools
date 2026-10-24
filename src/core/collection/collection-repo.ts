@@ -25,7 +25,7 @@ export function createCollectionRepo(store: KeyValueStore) {
     },
 
     // Carte vendue, échangée ou revenue : le nombre d'exemplaires varie sans nouveau parcours. À zéro, la carte quitte la Collection.
-    // Une carte dont le nombre est inconnu n'est pas touchée (le prochain parcours complet la corrigera).
+    // Une carte au nombre inconnu (obtenue depuis le dernier parcours) part sur une vente ou un échange (voir `applyCopyDeltas`).
     adjustCopies(deltas: Record<string, number>): Promise<void> {
       const run = tail.then(async () => {
         const state = (await store.get<CollectionState>(KEY)) ?? {};
