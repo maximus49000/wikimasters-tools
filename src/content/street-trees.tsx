@@ -57,6 +57,8 @@ const PART_SHAPE: Record<RueParticleKind, { x: number; y: number; w: number; h: 
   neige: { x: -0.9, y: -0.9, w: 1.8, h: 1.8, rx: 0.9, op: '0.95' },
   graine: { x: -0.45, y: -0.45, w: 0.9, h: 0.9, rx: 0.45, op: '0.85' },
 };
+// Début de la part de chaque genre dans le pool.
+const offsetOf = RUE_PARTICLE_KINDS.reduce<Record<string, number>>((acc, k, i) => ((acc[k] = i === 0 ? 0 : acc[RUE_PARTICLE_KINDS[i - 1]!]! + RUE_CAP_OF[RUE_PARTICLE_KINDS[i - 1]!]), acc), {}) as Record<RueParticleKind, number>;
 const POOL = RUE_PARTICLE_KINDS.flatMap((kind) => Array.from({ length: RUE_CAP_OF[kind] }, (_, i) => ({ kind, i })));
 // Marge minimale par créneau de temps mort avant d'y cuire une couche de plus (ms).
 const SLOT_MARGIN_MS = 6;
@@ -261,23 +263,18 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
       // Particules : chaque genre remplit sa part du pool ; le reste est éteint. Mouvement réduit : rien du tout.
       const pool = els.current.pool;
       const ps = still ? [] : rueParticles(pits, D, t, w, plan.width);
-      let base = 0;
-      for (const kind of RUE_PARTICLE_KINDS) {
-        const mine = ps.filter((p) => p.kind === kind);
-        for (let j = 0; j < RUE_CAP_OF[kind]; j++) {
-          const node = pool[base + j];
-          if (!node) continue;
-          const p = mine[j];
-          if (!p) {
-            setIfChanged(node, 'opacity', '0');
-            continue;
-          }
-          setIfChanged(node, 'transform', `translate(${num(p.x)} ${num(p.y)})${p.rot ? ` rotate(${num(p.rot % 360, 0)})` : ''}`);
-          setIfChanged(node, 'fill', graded(p.color));
-          setIfChanged(node, 'opacity', PART_SHAPE[kind].op);
-        }
-        base += RUE_CAP_OF[kind];
+      // Chaque particule a sa place fixe dans la part de son genre : une place sans particule est éteinte.
+      const lit = new Set<number>();
+      for (const p of ps) {
+        const at = offsetOf[p.kind] + p.slot;
+        const node = pool[at];
+        if (!node) continue;
+        lit.add(at);
+        setIfChanged(node, 'transform', `translate(${num(p.x)} ${num(p.y)})${p.rot ? ` rotate(${num(p.rot % 360, 0)})` : ''}`);
+        setIfChanged(node, 'fill', graded(p.color));
+        setIfChanged(node, 'opacity', num(Number(PART_SHAPE[p.kind].op) * p.alpha));
       }
+      for (let k = 0; k < pool.length; k++) if (!lit.has(k)) setIfChanged(pool[k]!, 'opacity', '0');
       // Oiseau : en vol (trait en V), posé (corps et tête) ; éteint sinon.
       const birdEl = els.current.bird;
       if (birdEl) {
@@ -285,11 +282,14 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
         if (!b) setIfChanged(birdEl, 'opacity', '0');
         else {
           const { x, y, flap } = b;
+          // En vol : trait en V ; posé : corps et tête (tournée dans le sens d'arrivée), en aplat sans trait.
+          const hx = x + b.dir * 0.6 - 0.45;
           const d = b.flying
             ? `M${num(x - 1.3)} ${num(y - flap)}L${num(x)} ${num(y + 0.3)}L${num(x + 1.3)} ${num(y - flap)}`
-            : `M${num(x - 0.7)} ${num(y - 1.1)}h1.4v1.1h-1.4zM${num(x + 0.15)} ${num(y - 1.3)}a0.45 0.45 0 1 0 0.9 0a0.45 0.45 0 1 0 -0.9 0z`;
+            : `M${num(x - 0.7)} ${num(y - 1.1)}h1.4v1.1h-1.4zM${num(hx)} ${num(y - 1.3)}a0.45 0.45 0 1 0 0.9 0a0.45 0.45 0 1 0 -0.9 0z`;
           setIfChanged(birdEl, 'd', d);
           setIfChanged(birdEl, 'fill', b.flying ? 'none' : INK);
+          setIfChanged(birdEl, 'stroke', b.flying ? INK : 'none');
           setIfChanged(birdEl, 'opacity', '0.85');
         }
       }

@@ -3,7 +3,7 @@ import { hashString, mulberry32 } from '../scene-world';
 import { TAU } from './cel';
 import type { Rgb } from './color';
 import { bloomOf, foliageOf, smooth, type FondMoment } from './fond-time';
-import { STIFF, gustsAt, massAmp, windAt, type Wind } from './fond-vent';
+import { STIFF, gustOf, gustPeriod, massAmp, windAt, type Gust, type Wind } from './fond-vent';
 import type { Grade } from './grade';
 import { paintBranches, paintDryLeaves, paintLeaves, paintTrunk, tuftState, type TreeModel, type Tuft } from './hill-trees';
 import type { PaintCtx } from './paint-ctx';
@@ -145,118 +145,194 @@ export function rueTreePose(v: RuePit, m: TreeModel, t: number, w: Wind, width =
 }
 
 // ───────────── Particules et oiseaux (port de `paintParticlesArbre` / `paintBirdsArbre`, notes §3 c) ─────────────
-// Fonctions pures de (fosses, jour, t, vent) : le calque les pose dans un pool fixe de nœuds à 15 Hz. Jamais rien de créé sur
-// place : feuilles et pétales naissent à une touffe (lâche) du houppier au passage d'une rafale, dérivent, tournoient,
-// retombent au sol et y restent 50 s, ou sortent par un bord ; gouttes et neige tombent du houppier ; graines dérivent depuis
-// la ramure ; l'oiseau arrive et repart en vol par un bord. Le mouvement réduit est géré par l'appelant (rien du tout).
+// Fonctions pures de (fosses, jour, t, vent) : le calque les pose dans un pool fixe de nœuds à 15 Hz. Rien n'apparaît ni ne
+// disparaît sur place : chaque particule occupe une PLACE fixe du pool (plafond par genre réparti d'avance entre les arbres
+// concernés, jamais dépassé) et sa vie entière est décidée à sa naissance (instant, point de départ, trajet, fin). Elle naît à
+// sa source (touffe lâche, dessous du houppier, ramure) et ne finit qu'en se posant au sol (puis fond dans le tapis peint des
+// tranches ou s'efface en éclaboussure) ou en sortant par un bord. Une place ne porte qu'une vie à la fois : ses cycles sont
+// plus longs que la vie la plus longue. Le mouvement réduit est géré par l'appelant (rien du tout).
 export type RueParticleKind = 'feuille' | 'petale' | 'goutte' | 'neige' | 'graine';
-// `born` : point de naissance (feuilles et pétales : la touffe d'où ils partent).
-export type RueParticle = { kind: RueParticleKind; x: number; y: number; rot: number; color: string; born?: { x: number; y: number } };
+// `id` : clé de naissance (même particule d'une image à l'autre) ; `slot` : place dans la part du pool de son genre ;
+// `alpha` : opacité de fin de vie (fondu au sol) ; `born` : point de naissance.
+export type RueParticle = { kind: RueParticleKind; x: number; y: number; rot: number; color: string; id: string; slot: number; alpha: number; born: { x: number; y: number } };
 export const RUE_PARTICLE_CAP = { feuilles: 40, petales: 30, gouttes: 24, neige: 16, graines: 20 } as const;
 export const RUE_PARTICLE_KINDS: readonly RueParticleKind[] = ['feuille', 'petale', 'goutte', 'neige', 'graine'];
 export const RUE_CAP_OF: Record<RueParticleKind, number> = { feuille: RUE_PARTICLE_CAP.feuilles, petale: RUE_PARTICLE_CAP.petales, goutte: RUE_PARTICLE_CAP.gouttes, neige: RUE_PARTICLE_CAP.neige, graine: RUE_PARTICLE_CAP.graines };
 export const RUE_POOL = RUE_PARTICLE_KINDS.reduce((a, k) => a + RUE_CAP_OF[k], 0);
+// Feuilles posées : 50 s au sol, puis 3 s de fondu dans le tapis de feuilles des tranches. Fenêtre de naissance d'une place
+// (une rafale qui passe l'arbre dans ces 30 s) ; gouttes et neige : éclaboussure qui s'efface ; graines : fondu au sol.
+const LEAF_GROUND_S = 50;
+const LEAF_FADE_S = 3;
+const LEAF_WINDOW_S = 30;
+const SPLASH_S = 0.3;
+const SEED_FADE_S = 2;
 const hexOf = (c: Rgb): string => '#' + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+const rngOf = (key: string): (() => number) => mulberry32(hashString(key) >>> 0);
 
-// Touffes qui peuvent partir (lâches en automne ; en avril, les touffes du bout des branches des cerisiers en fleur), par
-// modèle et par jour (la pose est lue à 15 Hz).
+// Touffes qui peuvent partir (lâches en automne ; en avril, les touffes du bout des branches des cerisiers en fleur).
 type Loose = { tf: Tuft; color: string }[];
-const LOOSE = new WeakMap<TreeModel, { doy: number; list: Loose }>();
-function looseOf(v: RuePit, m: TreeModel, D: FondMoment, petals: number): Loose {
-  const hit = LOOSE.get(m);
-  if (hit && hit.doy === D.doy) return hit.list;
-  const f = foliageOf(D, 'rue' + Math.round(v.x), v.species);
-  const list: Loose = [];
-  for (const tf of m.tufts) {
-    const st = tuftState(tf, f, D, v.species);
-    if (petals > 0.3 ? st.size > 0 && tf.rank > 0.5 : st.loose && st.size > 0) list.push({ tf, color: petals > 0.3 ? '#F6C0D4' : hexOf(st.tones[1]!) });
-  }
-  LOOSE.set(m, { doy: D.doy, list });
-  return list;
+// Arbres de la scène pour un jour : modèle, feuillage, source, et places du pool par genre (mémorisé par liste et par jour).
+type TreeInfo = { v: RuePit; m: TreeModel; d: number; cx: number; cy: number; ground: number; loose: Loose; petals: boolean; slots: Record<RueParticleKind, { from: number; n: number }> };
+const INFOS = new WeakMap<readonly RuePit[], { key: string; trees: TreeInfo[] }>();
+
+// Répartit un plafond entre `n` arbres : parts égales, le reste aux premiers.
+function share(cap: number, ok: boolean[]): { from: number; n: number }[] {
+  const n = ok.filter(Boolean).length;
+  let from = 0;
+  let rank = 0;
+  return ok.map((on) => {
+    if (!on || !n) return { from: 0, n: 0 };
+    const k = Math.floor(cap / n) + (rank++ < cap % n ? 1 : 0);
+    const out = { from, n: k };
+    from += k;
+    return out;
+  });
 }
+
+function treesOf(items: readonly RuePit[], D: FondMoment): TreeInfo[] {
+  const key = `${D.doy}|${D.meteo.precip > 0 ? 1 : 0}|${D.meteo.snow ? 1 : 0}`;
+  const hit = INFOS.get(items);
+  if (hit && hit.key === key) return hit.trees;
+  const pits = items.filter((v) => v.kind === 'pit' && !v.empty);
+  const trees = pits.map((v) => {
+    const m = rueTreeModel(v);
+    const f = foliageOf(D, 'rue' + Math.round(v.x), v.species);
+    const bloom = v.species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
+    const petals = bloom > 0.3;
+    const loose: Loose = [];
+    if ((f.drop > 0 && f.drop < 1) || petals)
+      for (const tf of m.tufts) {
+        const st = tuftState(tf, f, D, v.species);
+        if (petals ? st.size > 0 && tf.rank > 0.5 : st.loose && st.size > 0) loose.push({ tf, color: petals ? '#F6C0D4' : hexOf(st.tones[1]!) });
+      }
+    return { v, m, d: f.d, cx: v.x + v.lean, cy: m.cy, ground: v.y - 0.5, loose, petals, slots: {} as TreeInfo['slots'] };
+  });
+  const seeds = D.doy >= 125 && D.doy < 175;
+  const ok: Record<RueParticleKind, boolean[]> = {
+    feuille: trees.map((tr) => !tr.petals && tr.loose.length > 0),
+    petale: trees.map((tr) => tr.petals && tr.loose.length > 0),
+    goutte: trees.map((tr) => D.meteo.precip > 0 && tr.d > 0.1),
+    neige: trees.map(() => D.meteo.snow),
+    graine: trees.map((tr) => seeds && (tr.v.species === 'tilleul' || tr.v.species === 'platane')),
+  };
+  for (const kind of RUE_PARTICLE_KINDS) share(RUE_CAP_OF[kind], ok[kind]).forEach((s, i) => (trees[i]!.slots[kind] = s));
+  INFOS.set(items, { key, trees });
+  return trees;
+}
+
+// Instant de passage d'une rafale au droit de `x`.
+const passOf = (g: Gust, x: number): number => g.tk + (x - g.x0) / (g.dir * g.speed);
 
 export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number, w: Wind, width: number): RueParticle[] {
   const out: RueParticle[] = [];
-  const n: Record<RueParticleKind, number> = { feuille: 0, petale: 0, goutte: 0, neige: 0, graine: 0 };
-  const push = (p: RueParticle): void => {
-    if (n[p.kind] >= RUE_CAP_OF[p.kind] || p.x < -5 || p.x > width + 5) return;
-    n[p.kind]++;
-    out.push(p);
-  };
+  const trees = treesOf(items, D);
   const dir = w.dir;
   const force = w.wind;
-  const wet = D.meteo.precip > 0;
-  for (const v of items) {
-    if (v.kind !== 'pit' || v.empty) continue;
-    const m = rueTreeModel(v);
-    const f = foliageOf(D, 'rue' + Math.round(v.x), v.species);
-    const r = v.r;
-    const cx = v.x + v.lean;
-    const cy = m.cy;
-    const ground = v.y - 0.5;
-    const petals = v.species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
-    // Feuilles (automne) ou pétales (avril) : à chaque rafale qui passe l'arbre, quelques touffes lâchent leurs feuilles.
-    if (force >= 0.05 && ((f.drop > 0 && f.drop < 1) || petals > 0.3)) {
-      const loose = looseOf(v, m, D, petals);
-      const kind: RueParticleKind = petals > 0.3 ? 'petale' : 'feuille';
-      if (loose.length)
-        for (const g of gustsAt(t, w, width)) {
-          const tp = g.tk + (v.x - g.x0) / (g.dir * g.speed);
-          if (tp > t || t - tp > 60) continue;
-          const rk = mulberry32(hashString(`part-${Math.round(v.x)}-${g.k}`) >>> 0);
-          const cnt = Math.min(6, 1 + Math.floor(g.A * 3));
-          for (let j = 0; j < cnt; j++) {
-            if (n[kind] >= RUE_CAP_OF[kind]) break;
-            const o = loose[Math.floor(rk() * loose.length)]!;
-            const born = tp + j * 0.2 + rk() * 0.3;
-            const a = t - born;
-            const x0 = o.tf.x + (rk() - 0.5) * o.tf.rr;
-            const y0 = o.tf.y + (rk() - 0.5) * o.tf.rr;
-            const vx = dir * (14 + 22 * force) * (0.7 + rk() * 0.6);
-            const fallV = kind === 'petale' ? 2.2 : 3.6;
-            const flut = 1.5 + rk() * 2;
-            if (a < 0) continue;
-            const land = (ground - y0) / fallV;
-            const aa = Math.min(a, land);
-            const x = x0 + vx * aa * (1 - 0.3 * Math.min(1, aa / 4)) + Math.sin(aa * 3 + j) * flut;
-            const y = aa >= land ? ground : y0 + fallV * aa - 2.5 * Math.sin(Math.min(aa, 1.2) * 2.6);
-            if (a - land > 50) continue;
-            push({ kind, x, y, rot: ((aa * 4 + j) * 180) / Math.PI, color: o.color, born: { x: x0, y: y0 } });
+  const inside = (x: number): boolean => x >= -5 && x <= width + 5;
+  // Feuilles et pétales : chaque place, à chaque cycle, part au passage de la première rafale de sa fenêtre de naissance.
+  if (force >= 0.05) {
+    const P = gustPeriod(w);
+    for (const tr of trees) {
+      const kind: RueParticleKind = tr.petals ? 'petale' : 'feuille';
+      const s = tr.slots[kind];
+      if (!s.n) continue;
+      const fallV = tr.petals ? 2.2 : 3.6;
+      const life = (tr.ground - (tr.m.top - 2)) / fallV + LEAF_GROUND_S + LEAF_FADE_S;
+      const C = life + LEAF_WINDOW_S;
+      const x = tr.v.x;
+      for (let j = 0; j < s.n; j++) {
+        const phase = rngOf(`place-${kind}-${Math.round(x)}-${j}`)() * C;
+        const n = Math.floor((t - phase) / C);
+        const lo = n * C + phase + (j % 4) * 0.25;
+        const hi = n * C + phase + LEAF_WINDOW_S;
+        if (t < lo) continue;
+        // Première rafale qui passe l'arbre dans [lo, hi] (les rafales se suivent : passOf croît avec k).
+        let tp = NaN;
+        for (let k = Math.floor((lo - (x - (dir > 0 ? -300 : width + 300)) / (dir * (50 + 60 * force))) / P) - 1; ; k++) {
+          const p = passOf(gustOf(k, w, width), x);
+          if (p > hi) break;
+          if (p >= lo) {
+            tp = p;
+            break;
           }
         }
+        if (Number.isNaN(tp) || t < tp) continue;
+        const rk = rngOf(`part-${Math.round(x)}-${j}-${n}`);
+        const o = tr.loose[Math.floor(rk() * tr.loose.length)]!;
+        const x0 = o.tf.x + (rk() - 0.5) * o.tf.rr;
+        const y0 = o.tf.y + (rk() - 0.5) * o.tf.rr;
+        const vx = dir * (14 + 22 * force) * (0.7 + rk() * 0.6);
+        const flut = 1.5 + rk() * 2;
+        const ph = rk() * TAU;
+        const a = t - tp;
+        const land = (tr.ground - y0) / fallV;
+        if (a > land + LEAF_GROUND_S + LEAF_FADE_S) continue;
+        const aa = Math.min(a, land);
+        const px = x0 + vx * aa * (1 - 0.3 * Math.min(1, aa / 4)) + (Math.sin(aa * 3 + ph) - Math.sin(ph)) * flut;
+        if (!inside(px)) continue;
+        const py = aa >= land ? tr.ground : y0 + fallV * aa - 2.5 * Math.sin(Math.min(aa, 1.2) * 2.6);
+        const alpha = a > land + LEAF_GROUND_S ? Math.max(0, 1 - (a - land - LEAF_GROUND_S) / LEAF_FADE_S) : 1;
+        out.push({ kind, x: px, y: py, rot: ((aa * 4 + ph) * 180) / Math.PI, color: o.color, id: `${kind}-${Math.round(x)}-${j}-${n}`, slot: s.from + j, alpha, born: { x: x0, y: y0 } });
+      }
     }
-    // Gouttes sous la pluie : tombent des masses basses (3 par arbre).
-    if (wet && f.d > 0.1)
-      for (let j = 0; j < 3; j++) {
-        const per = 1.1 + j * 0.37;
-        const k = Math.floor(t / per);
-        const rk = mulberry32(hashString(`goutte-${Math.round(v.x)}-${j}-${k}`) >>> 0);
-        const x = cx + (rk() - 0.5) * r * 1.5;
-        const y = cy + r * 0.5 + 40 * (t - k * per);
-        if (y < ground) push({ kind: 'goutte', x, y, rot: 0, color: '#D2E6FF' });
-      }
-    // Neige qui glisse des branches par rafale.
-    if (D.meteo.snow && Math.abs(windAt(v.x, t, w, width)) > 1)
-      for (let j = 0; j < 2; j++) {
-        const per = 2.4 + j * 0.9;
-        const k = Math.floor(t / per);
-        const rk = mulberry32(hashString(`neige-${Math.round(v.x)}-${j}-${k}`) >>> 0);
-        if (rk() < 0.5) continue;
-        const x = cx + (rk() - 0.5) * r * 1.6;
-        const a = t - k * per;
-        const y = cy - r * 0.3 + rk() * r + 18 * a * a;
-        if (y < ground) push({ kind: 'neige', x, y, rot: 0, color: '#F2F6FA' });
-      }
-    // Graines et chatons en suspension (mai – juin, tilleuls et platanes).
-    if (D.doy >= 125 && D.doy < 175 && (v.species === 'tilleul' || v.species === 'platane') && force > 0.05)
-      for (let j = 0; j < 3; j++) {
-        const per = 0.9 + j * 0.5;
-        const k = Math.floor(t / per);
-        const rk = mulberry32(hashString(`graine-${Math.round(v.x)}-${j}-${k}`) >>> 0);
-        const a = t - k * per;
-        const x = cx + (rk() - 0.5) * r + dir * (10 + 15 * force) * a;
-        const y = cy - r * 0.2 + 1.5 * a + Math.sin(a * 2 + j) * 1.5;
-        if (a < 8 && y < ground) push({ kind: 'graine', x, y, rot: 0, color: '#FFFAEB' });
+  }
+  for (const tr of trees) {
+    const { v, cx, cy, ground } = tr;
+    const r = v.r;
+    // Gouttes : tombent du dessous du houppier à 40 px/s, éclaboussure qui s'efface au sol ; une goutte par place à la fois.
+    const sd = tr.slots.goutte;
+    for (let j = 0; j < sd.n; j++) {
+      const y0 = cy + r * 0.5;
+      const fall = (ground - y0) / 40;
+      const per = Math.max(fall + SPLASH_S + 0.2, 1.1 + (j % 3) * 0.37);
+      const phase = rngOf(`place-goutte-${Math.round(v.x)}-${j}`)() * per;
+      const n = Math.floor((t - phase) / per);
+      const a = t - (n * per + phase);
+      if (a > fall + SPLASH_S) continue;
+      const x = cx + (rngOf(`goutte-${Math.round(v.x)}-${j}-${n}`)() - 0.5) * r * 1.5;
+      if (!inside(x)) continue;
+      const onGround = a >= fall;
+      out.push({ kind: 'goutte', x, y: onGround ? ground : y0 + 40 * a, rot: 0, color: '#D2E6FF', id: `goutte-${Math.round(v.x)}-${j}-${n}`, slot: sd.from + j, alpha: onGround ? Math.max(0, 1 - (a - fall) / SPLASH_S) : 1, born: { x, y: y0 } });
+    }
+    // Neige qui glisse des branches : décidée à la naissance (rafale de plus de 1 à cet instant), chute en accélérant.
+    const sn = tr.slots.neige;
+    for (let j = 0; j < sn.n; j++) {
+      // Cycle plus long que la chute la plus longue (paquet parti du haut du houppier) + l'éclaboussure.
+      const per = Math.max(2.4 + (j % 2) * 0.9, Math.sqrt((ground - (cy - r * 0.3)) / 18) + SPLASH_S + 0.2);
+      const phase = rngOf(`place-neige-${Math.round(v.x)}-${j}`)() * per;
+      const n = Math.floor((t - phase) / per);
+      const tb = n * per + phase;
+      const rk = rngOf(`neige-${Math.round(v.x)}-${j}-${n}`);
+      if (rk() < 0.5 || Math.abs(windAt(v.x, tb, w, width)) <= 1) continue;
+      const x = cx + (rk() - 0.5) * r * 1.6;
+      const y0 = cy - r * 0.3 + rk() * r;
+      if (y0 >= ground || !inside(x)) continue;
+      const fall = Math.sqrt((ground - y0) / 18);
+      const a = t - tb;
+      if (a > fall + SPLASH_S) continue;
+      const onGround = a >= fall;
+      out.push({ kind: 'neige', x, y: onGround ? ground : y0 + 18 * a * a, rot: 0, color: '#F2F6FA', id: `neige-${Math.round(v.x)}-${j}-${n}`, slot: sn.from + j, alpha: onGround ? Math.max(0, 1 - (a - fall) / SPLASH_S) : 1, born: { x, y: y0 } });
+    }
+    // Graines et chatons : partent de la ramure, dérivent sous le vent en descendant, se posent et s'effacent (ou sortent).
+    const sg = tr.slots.graine;
+    if (force > 0.05)
+      for (let j = 0; j < sg.n; j++) {
+        const y0 = cy - r * 0.2;
+        const land = (ground - y0) / 1.5;
+        const C = land + SEED_FADE_S + 3;
+        const phase = rngOf(`place-graine-${Math.round(v.x)}-${j}`)() * C;
+        const n = Math.floor((t - phase) / C);
+        const rk = rngOf(`graine-${Math.round(v.x)}-${j}-${n}`);
+        const tb = n * C + phase + rk() * 3;
+        const a = t - tb;
+        if (a < 0 || a > land + SEED_FADE_S) continue;
+        const x0 = cx + (rk() - 0.5) * r;
+        const ph = rk() * TAU;
+        const aa = Math.min(a, land);
+        const x = x0 + dir * (10 + 15 * force) * aa;
+        if (!inside(x)) continue;
+        const y = Math.min(ground, y0 + 1.5 * aa + (Math.sin(aa * 2 + ph) - Math.sin(ph)) * 1.5 * (1 - aa / land));
+        out.push({ kind: 'graine', x, y, rot: 0, color: '#FFFAEB', id: `graine-${Math.round(v.x)}-${j}-${n}`, slot: sg.from + j, alpha: a > land ? Math.max(0, 1 - (a - land) / SEED_FADE_S) : 1, born: { x: x0, y: y0 } });
       }
   }
   return out;
@@ -265,15 +341,20 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
 // Oiseau qui se pose dans un arbre : toutes les ~110 s, un oiseau (un seul dans la scène : la maquette en tire un par bande
 // de 480 px ; ici une bande tirée par cycle, jamais deux visites qui se chevauchent) arrive en vol par un bord de la scène,
 // se perche 20-40 s dans un arbre feuillu (adulte) de cette bande, repart par l'autre bord. Jamais la nuit ni sous forte pluie.
-export function rueBird(items: readonly RuePit[], D: FondMoment, t: number, dark: boolean, width: number): { x: number; y: number; flying: boolean; flap: number } | null {
+// `dir` : sens du vol d'arrivée (la tête posée regarde par là).
+const BANDS = new WeakMap<readonly RuePit[], { adults: RuePit[]; bands: number[] }>();
+export function rueBird(items: readonly RuePit[], D: FondMoment, t: number, dark: boolean, width: number): { x: number; y: number; flying: boolean; flap: number; dir: 1 | -1 } | null {
   if (dark || D.meteo.precip > 0.4) return null;
-  const k = Math.floor(t / 110);
-  const adults = items.filter((p) => p.kind === 'pit' && !p.empty && !p.young);
-  const bands = [...new Set(adults.map((p) => Math.floor(p.x / 480)))].sort((a, b) => a - b);
+  let memo = BANDS.get(items);
+  if (!memo) {
+    const adults = items.filter((p) => p.kind === 'pit' && !p.empty && !p.young);
+    BANDS.set(items, (memo = { adults, bands: [...new Set(adults.map((p) => Math.floor(p.x / 480)))].sort((a, b) => a - b) }));
+  }
+  const { adults, bands } = memo;
   if (!bands.length) return null;
-  const rb = mulberry32(hashString(`oiseau-bande-${k}`) >>> 0);
-  const band = bands[Math.floor(rb() * bands.length)]!;
-  const rk = mulberry32(hashString(`oiseau-${band}-${k}`) >>> 0);
+  const k = Math.floor(t / 110);
+  const band = bands[Math.floor(rngOf(`oiseau-bande-${k}`)() * bands.length)]!;
+  const rk = rngOf(`oiseau-${band}-${k}`);
   const trees = adults.filter((p) => Math.floor(p.x / 480) === band);
   const v = trees[Math.floor(rk() * trees.length)]!;
   if (foliageOf(D, 'rue' + Math.round(v.x), v.species).d < 0.3) return null;
@@ -287,11 +368,13 @@ export function rueBird(items: readonly RuePit[], D: FondMoment, t: number, dark
   if (a < 0 || a > 6 + perch + 6) return null;
   const start = fromLeft ? -20 : width + 20;
   const end = fromLeft ? width + 20 : -20;
+  const dir = fromLeft ? 1 : -1;
+  // Battement amorti au poser et à l'envol (aucun saut vertical).
   if (a < 6) {
     const q = smooth(a / 6);
-    return { x: start + (px - start) * q, y: py - 30 * (1 - q) + Math.sin(a * 5) * 1.5, flying: true, flap: Math.sin(a * 14) * 0.8 };
+    return { x: start + (px - start) * q, y: py - 30 * (1 - q) + Math.sin(a * 5) * 1.5 * (1 - q), flying: true, flap: Math.sin(a * 14) * 0.8, dir };
   }
-  if (a < 6 + perch) return { x: px, y: py, flying: false, flap: 0 };
+  if (a < 6 + perch) return { x: px, y: py, flying: false, flap: 0, dir };
   const q = smooth((a - 6 - perch) / 6);
-  return { x: px + (end - px) * q, y: py - 30 * q + Math.sin(a * 5) * 1.5, flying: true, flap: Math.sin(a * 14) * 0.8 };
+  return { x: px + (end - px) * q, y: py - 30 * q + Math.sin(a * 5) * 1.5 * q, flying: true, flap: Math.sin(a * 14) * 0.8, dir };
 }

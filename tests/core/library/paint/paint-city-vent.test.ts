@@ -71,7 +71,7 @@ import { fondMoment, foliageOf, type FondMoment } from '../../../../src/core/lib
 import { tuftState } from '../../../../src/core/library/paint/hill-trees';
 import type { RuePit } from '../../../../src/core/library/paint/rue-verte-plan';
 import { rueTreeModel } from '../../../../src/core/library/paint/rue-verte-painter';
-import { RUE_PARTICLE_CAP, rueBird, rueParticles, type RueParticle } from '../../../../src/core/library/paint/rue-sprites';
+import { RUE_CAP_OF, RUE_PARTICLE_CAP, rueBird, rueParticles, type RueParticle } from '../../../../src/core/library/paint/rue-sprites';
 
 describe('particules et oiseaux des arbres de la rue', () => {
   const PW = 1440;
@@ -110,11 +110,11 @@ describe('particules et oiseaux des arbres de la rue', () => {
     let checked = 0;
     for (let t = 0; t < 300 && checked < 20; t += 0.25) {
       for (const p of rueParticles(pits, D, 1000 + t, w, PW)) {
-        if (p.kind !== 'feuille' || !p.born) continue;
+        if (p.kind !== 'feuille') continue;
         const near = pits.some((v) => {
           const m = rueTreeModel(v);
           const f = foliageOf(D, 'rue' + Math.round(v.x), v.species);
-          return m.tufts.some((tf) => tuftState(tf, f, D, v.species).loose && Math.hypot(p.born!.x - tf.x, p.born!.y - tf.y) <= tf.rr);
+          return m.tufts.some((tf) => tuftState(tf, f, D, v.species).loose && Math.hypot(p.born.x - tf.x, p.born.y - tf.y) <= tf.rr);
         });
         expect(near).toBe(true);
         checked++;
@@ -153,4 +153,74 @@ describe('particules et oiseaux des arbres de la rue', () => {
       expect(z < 0 || z > PW).toBe(true);
     }
   });
+});
+
+// Suivi de chaque particule (clé de naissance) sur 300 s à 15 Hz : rien n'apparaît ni ne disparaît sur place.
+describe('particules des arbres de la rue : vies entières', () => {
+  const PW = 1440;
+  const plan = cityPaintPlan(PW, 340, 7);
+  const pits = plan.rue.filter((v): v is RuePit => v.kind === 'pit' && !v.empty);
+  const DT = 1 / 15;
+  const STEP = 100 * DT + 1; // vitesse maximale ≈ 100 px/s
+  const ground = Math.max(...pits.map((v) => v.y - 0.5));
+  const crowns = pits.map((v) => {
+    const m = rueTreeModel(v);
+    return { x0: m.box.x0 - v.r, x1: m.box.x1 + v.r, y0: m.box.y0 - v.r, y1: v.y };
+  });
+  const cases: [string, FondMoment, 'feuille' | 'petale' | 'goutte' | 'neige' | 'graine'][] = [
+    ['feuilles de novembre, vent 1', fondMoment({ y: 2026, m: 11, d: 10 }, 840, { cloud: 0.2, precip: 0, wind: 1, snow: false }), 'feuille'],
+    ['feuilles de novembre, vent 0,2', fondMoment({ y: 2026, m: 11, d: 10 }, 840, { cloud: 0.2, precip: 0, wind: 0.2, snow: false }), 'feuille'],
+    ['pétales d\'avril', fondMoment({ y: 2026, m: 4, d: 2 }, 840, { cloud: 0.2, precip: 0, wind: 1, snow: false }), 'petale'],
+    ['graines de mai', fondMoment({ y: 2026, m: 5, d: 20 }, 840, { cloud: 0.2, precip: 0, wind: 1, snow: false }), 'graine'],
+    ['gouttes sous la pluie', fondMoment({ y: 2026, m: 6, d: 10 }, 840, { cloud: 0.8, precip: 0.5, wind: 0.5, snow: false }), 'goutte'],
+    ['neige au vent', fondMoment({ y: 2026, m: 1, d: 15 }, 840, { cloud: 0.8, precip: 0, wind: 1, snow: true }), 'neige'],
+  ];
+  for (const [label, D, kind] of cases) {
+    it(`${label} : naissance à la source, aucun saut, fin au sol (fondu) ou par un bord, plafond tenu`, () => {
+      const w = windOf(D.meteo, false);
+      const cap = RUE_CAP_OF[kind];
+      const prev = new Map<string, RueParticle>();
+      const seen = new Set<string>();
+      let born = 0;
+      let ended = 0;
+      const frames = Math.round(300 / DT);
+      for (let f = 0; f <= frames; f++) {
+        const ps = rueParticles(pits, D, 1000 + f * DT, w, PW).filter((p) => p.kind === kind);
+        expect(ps.length).toBeLessThanOrEqual(cap);
+        expect(new Set(ps.map((p) => p.slot)).size).toBe(ps.length);
+        for (const p of ps) expect(p.slot).toBeLessThan(cap);
+        const now = new Map(ps.map((p) => [p.id, p]));
+        for (const p of ps) {
+          const q = prev.get(p.id);
+          if (q) {
+            expect(Math.hypot(p.x - q.x, p.y - q.y), p.id).toBeLessThanOrEqual(STEP);
+            continue;
+          }
+          // Revenue après une absence : seulement hors du cadre visible (sortie puis retour sous le bord).
+          if (seen.has(p.id)) {
+            expect(p.x < 0 || p.x > PW, p.id).toBe(true);
+            continue;
+          }
+          seen.add(p.id);
+          if (f === 0) continue;
+          born++;
+          expect(Math.hypot(p.x - p.born.x, p.y - p.born.y), p.id).toBeLessThanOrEqual(STEP);
+          expect(crowns.some((c) => p.born.x >= c.x0 && p.born.x <= c.x1 && p.born.y >= c.y0 && p.born.y <= c.y1), p.id).toBe(true);
+        }
+        if (f < frames)
+          for (const [id, q] of prev) {
+            if (now.has(id)) continue;
+            ended++;
+            // Dernière image d'un fondu : au plus un pas de fondu (éclaboussure de 0,3 s à 15 Hz : 0,22).
+            const faded = q.alpha < 0.25 && q.y >= ground - 1.5;
+            const edge = q.x < 5 + STEP || q.x > PW - 5 - STEP;
+            expect(faded || edge, `${id} ${q.x.toFixed(1)},${q.y.toFixed(1)} a=${q.alpha.toFixed(2)}`).toBe(true);
+          }
+        prev.clear();
+        for (const p of ps) prev.set(p.id, p);
+      }
+      expect(born).toBeGreaterThan(0);
+      expect(ended).toBeGreaterThan(0);
+    });
+  }
 });

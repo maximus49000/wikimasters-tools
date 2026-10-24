@@ -15,12 +15,18 @@ export function windOf(meteo: FondMeteo, storm: boolean): Wind {
 
 export type Gust = { k: number; tk: number; A: number; L: number; speed: number; dir: 1 | -1; x0: number };
 
+// Période des rafales (s) pour une force de vent.
+export const gustPeriod = (w: Wind): number => 9 - 5 * w.wind;
+// Rafale n° k (tirée par graine : la même pour tout le monde).
+export function gustOf(k: number, w: Wind, width: number): Gust {
+  const P = gustPeriod(w);
+  const rk = mulberry32((k * 7919 + 13) >>> 0);
+  return { k, tk: k * P + rk() * P * 0.8, A: 0.6 + rk() * 0.9, L: 120 + rk() * 120, speed: 50 + 60 * w.wind, dir: w.dir, x0: w.dir > 0 ? -300 : width + 300 };
+}
+
 export function gustsAt(t: number, w: Wind, width: number): Gust[] {
-  const P = 9 - 5 * w.wind, speed = 50 + 60 * w.wind, out: Gust[] = [];
-  for (let k = Math.floor(t / P) - 5; k <= Math.floor(t / P) + 1; k++) {
-    const rk = mulberry32((k * 7919 + 13) >>> 0);
-    out.push({ k, tk: k * P + rk() * P * 0.8, A: 0.6 + rk() * 0.9, L: 120 + rk() * 120, speed, dir: w.dir, x0: w.dir > 0 ? -300 : width + 300 });
-  }
+  const P = gustPeriod(w), out: Gust[] = [];
+  for (let k = Math.floor(t / P) - 5; k <= Math.floor(t / P) + 1; k++) out.push(gustOf(k, w, width));
   return out;
 }
 
