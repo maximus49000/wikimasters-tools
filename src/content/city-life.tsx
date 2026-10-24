@@ -31,6 +31,7 @@ import { pieceAt } from '../core/library/city/halloween-night';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { useArtStyle } from './art-setting';
+import { StreetTreesSlot } from './street-trees-slot';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { CITIZENS_3D } from './figure/citizen-config';
 import { useFigureRegistry } from './figure/figure-host';
@@ -1299,6 +1300,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           />
         ))}
       </g>
+      {/* Arbres de la rue (ville peinte) : devant toute la vie des façades, les devantures et le trottoir des immeubles (on ne voit
+          jamais une fenêtre à travers un houppier), derrière les lampadaires, le passage piéton et la circulation. */}
+      {ghibli && <StreetTreesSlot seed={seed} width={width} height={height} still={still} />}
       <StreetLamps width={width} height={height} seed={seed} minutes={city.minutes} daylight={sky.daylight} forcedNight={forcedNight} ghibli={ghibli} />
       {/* Drapeaux de lampadaires, barrières, camionnettes et camions élévateurs : devant les lampadaires, derrière les files. */}
       <InstallLayer {...install} part="front" />
