@@ -16,15 +16,17 @@ const DX_MAX = 2;
 const S_MAX = 0.03;
 const clamp = (v: number, m: number): number => Math.max(-m, Math.min(m, v));
 
-// Vent lissé sur la largeur de la bande : moyenne pondérée triangulaire (1-2-3-4-5-4-3-2-1) de 9 échantillons espacés d'une demi-bande
-// (±2 bandes) autour du centre. Une rafale (gaussienne de 120 à 240 px) plus étroite que deux bandes ferait sinon sauter `dx` de plus de 0,75 px
-// d'une bande à la suivante et déchirerait un houppier à cheval sur leur limite ; deux bandes voisines partagent ainsi
-// presque tous leurs échantillons. Vent nul → somme nulle (windAt renvoie 0 sous 0,02).
-const SMOOTH = [[-2, 1], [-1.5, 2], [-1, 3], [-0.5, 4], [0, 5], [0.5, 4], [1, 3], [1.5, 2], [2, 1]] as const;
+// Vent lissé sur la largeur de la bande : moyenne pondérée triangulaire (1-2-…-9-…-2-1) de 17 échantillons espacés d'une
+// demi-bande (±4 bandes) autour du centre. Une rafale (gaussienne de 120 à 240 px) plus étroite ferait sinon sauter le
+// déplacement de plus de 0,75 px d'une bande à la suivante et déchirerait un houppier à cheval sur leur limite. Le critère
+// est le déplacement EFFECTIF `dx + s·(y − pivot)` sur toute la hauteur des houppiers du groupe (jusque sous le pivot, où le
+// cisaillement s'ajoute) : ±2 bandes donnaient jusqu'à 1,1 px, ±4 bandes ≤ 0,6 px (test paint-city-colline-vent). Les rafales
+// restent visibles mais plus larges. Vent nul → somme nulle (windAt renvoie 0 sous 0,02).
+const SMOOTH_HALF = 8;
 function smoothWind(cx: number, slice: number, t: number, w: Wind, width: number): number {
   let sum = 0;
-  for (const [o, k] of SMOOTH) sum += k * windAt(cx + o * slice, t, w, width);
-  return sum / 25;
+  for (let j = -SMOOTH_HALF; j <= SMOOTH_HALF; j++) sum += (SMOOTH_HALF + 1 - Math.abs(j)) * windAt(cx + j * 0.5 * slice, t, w, width);
+  return sum / ((SMOOTH_HALF + 1) * (SMOOTH_HALF + 1));
 }
 
 export type SliceMove = { x0: number; x1: number; dx: number; s: number; pivot: number };
@@ -36,8 +38,12 @@ export type SliceMove = { x0: number; x1: number; dx: number; s: number; pivot: 
 // ramenée à la largeur de bande (même déphasage par bande à 240 px) : 0,01 par px fixe faisait 2,4 rad par bande sur Android
 // et dépassait 0,75 px d'écart par vent fort.
 export function hillSlices(plan: CityPaintPlan, group: 0 | 1 | 2, slice: number, t: number, w: Wind): SliceMove[] {
-  const out: SliceMove[] = [];
+  return hillSlicesInto([], plan, group, slice, t, w);
+}
+// Même calcul dans un tableau réutilisé (ses objets aussi) : aucune allocation par image dans la boucle du calque.
+export function hillSlicesInto(out: SliceMove[], plan: CityPaintPlan, group: 0 | 1 | 2, slice: number, t: number, w: Wind): SliceMove[] {
   const f = HILL_FACTOR[group];
+  let i = 0;
   for (let x0 = 0; x0 < plan.width; x0 += slice) {
     const x1 = Math.min(plan.width, x0 + slice);
     const cx = (x0 + x1) / 2;
@@ -45,7 +51,14 @@ export function hillSlices(plan: CityPaintPlan, group: 0 | 1 | 2, slice: number,
     const osc = 0.75 + 0.25 * Math.sin(2.9 * t + 0.0025 * cx * (HILL_SLICE_DESKTOP / slice));
     // Pivot : pied du rang ; pour la crête, la ligne de crête au centre de la bande.
     const pivot = group === 0 ? hillCrestY(plan, cx) : plan.height * HILL_ROWS[group - 1]!.y;
-    out.push({ x0, x1, dx: clamp(v * 1.1 * osc, DX_MAX), s: clamp(v * 0.015, S_MAX), pivot });
+    const m = out[i] ?? (out[i] = { x0: 0, x1: 0, dx: 0, s: 0, pivot: 0 });
+    m.x0 = x0;
+    m.x1 = x1;
+    m.dx = clamp(v * 1.1 * osc, DX_MAX);
+    m.s = clamp(v * 0.015, S_MAX);
+    m.pivot = pivot;
+    i++;
   }
+  out.length = i;
   return out;
 }

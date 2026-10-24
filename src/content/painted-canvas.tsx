@@ -248,6 +248,9 @@ export function paintedContext(cv: HTMLCanvasElement): { ctx: CanvasRenderingCon
   return { ctx: d.context(cv), drawable: d !== nullDriver };
 }
 
+// Signature d'un étalonnage (celle que `onDrawn` rapporte).
+export const gradeSigOf = (grade: Grade | null): string => (grade ? gradeValues(grade) : 'identite');
+
 const boxId = (i: { x: number; y: number; w: number; h: number }): string => `${i.x},${i.y},${i.w},${i.h}`;
 
 // Échelle du tampon (px par unité) : celle des tranches, plafonnée à MAX_PIXELS.
@@ -260,11 +263,12 @@ function unitScale(box: { w: number; h: number }): number {
 
 type Drawn = { count: number; grade: string; boxes: ReadonlySet<string> };
 
-// `onDrawn` : urls des images posées sur la toile, à chaque dessin (le calque de la colline au vent attend que la tranche
-// repeinte soit dessinée avant de montrer son nouveau feuillage, scene-city.tsx).
-export function PaintedCanvas({ box, images, grade, onReady, onDrawn, tag }: { box: { x: number; y: number; w: number; h: number }; images: readonly CanvasImage[]; grade: Grade | null; onReady?: (ready: boolean) => void; onDrawn?: (urls: readonly string[]) => void; tag: string }): ReactElement {
+// `onDrawn` : urls des images posées sur la toile et signature de l'étalonnage dessiné (`gradeSigOf`), appelé dans la même tâche
+// que le dessin : le calque de la colline au vent y pose aussitôt le feuillage qui va avec (même image, même teinte),
+// hill-wind-layer.tsx.
+export function PaintedCanvas({ box, images, grade, onReady, onDrawn, tag }: { box: { x: number; y: number; w: number; h: number }; images: readonly CanvasImage[]; grade: Grade | null; onReady?: (ready: boolean) => void; onDrawn?: (urls: readonly string[], gradeSig: string) => void; tag: string }): ReactElement {
   const canvas = useRef<HTMLCanvasElement | null>(null);
-  const gradeSig = grade ? gradeValues(grade) : 'identite';
+  const gradeSig = gradeSigOf(grade);
   const sig = `${boxId(box)}#${gradeSig}#${images.map((i) => `${boxId(i)},${i.url}`).join('|')}`;
   // Dernier dessin : sources posées par place (repli d'une image indécodable), nombre d'images et étalonnage (diagnostic).
   const shown = useRef(new Map<string, Source>());
@@ -323,7 +327,7 @@ export function PaintedCanvas({ box, images, grade, onReady, onDrawn, tag }: { b
       use(shown.current.values(), 1);
       use(before, -1);
       setDrawn({ count: placed.length, grade: key, boxes });
-      drawnCb.current?.(placed.map((p) => p.im.url));
+      drawnCb.current?.(placed.map((p) => p.im.url), key);
     })();
     return () => {
       cancelled = true;

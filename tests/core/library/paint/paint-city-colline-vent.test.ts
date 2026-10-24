@@ -204,4 +204,29 @@ describe('colline au vent : mouvement des bandes', () => {
     expect(maxGap).toBeLessThanOrEqual(0.75);
     expect(maxStep).toBeLessThanOrEqual(0.5);
   });
+
+  it("couture : déplacement effectif dx + s·(y − pivot) de deux bandes voisines ≤ 0,75 px sur toute la hauteur des houppiers du groupe", () => {
+    let worst = 0;
+    for (const seed of [1, 7, 42]) {
+      const plan = cityPaintPlan(W, H, seed);
+      for (const g of GROUPS3) {
+        // Hauteur des houppiers du groupe (toutes tranches) : le cisaillement y est le plus fort aux deux bords.
+        let y0 = Infinity;
+        let y1 = -Infinity;
+        for (let t = 0; t < tileCount(W); t++) {
+          const b = hillCanopyBox(plan, t, g);
+          if (b) ((y0 = Math.min(y0, b.y)), (y1 = Math.max(y1, b.y + b.h)));
+        }
+        for (const w of [WINDS['0.5']!, WINDS['1']!]) for (const slice of SLICES) for (let t = 0; t <= 300; t += 0.5) {
+          const a = hillSlices(plan, g, slice, t, w);
+          for (let i = 0; i + 1 < a.length; i++)
+            for (const y of [y0, y1]) {
+              const off = (k: number): number => a[k]!.dx + a[k]!.s * (y - a[k]!.pivot);
+              worst = Math.max(worst, Math.abs(off(i) - off(i + 1)));
+            }
+        }
+      }
+    }
+    expect(worst).toBeLessThanOrEqual(0.75);
+  });
 });
