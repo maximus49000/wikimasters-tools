@@ -12,6 +12,10 @@ const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_ZOOM_MS = 300;
 const LOST_MS = 1000;
 const WHEEL_STEP = 1.15;
+// Geste fluide : recadrage après ce temps sans mouvement, ou au-delà de ces écarts entre l'image dessinée et la vue voulue.
+const COMMIT_IDLE_MS = 220;
+const COMMIT_SCALE = 1.8;
+const COMMIT_SHIFT = 0.45;
 
 type Options = { svg: () => SVGSVGElement | null; box: () => HTMLElement | null; world: Size; phase: OutsidePhase; from: Rect | null; windows: readonly Rect[]; onSettled: (phase: 'outside' | 'inside') => void };
 
@@ -49,8 +53,51 @@ export function useOutsideCamera(o: Options): void {
     const frames = new Set<number>();
     const later = (f: FrameRequestCallback): void => { const id = requestAnimationFrame((t) => { frames.delete(id); f(t); }); frames.add(id); };
     const size = (): { w: number; h: number; left: number; top: number } => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height, left: r.left, top: r.top }; };
-    const write = (r: Rect): void => svg.setAttribute('viewBox', viewBoxOf(r));
+    const still = reducedMotion();
+    // Geste fluide (2026-10-24) : réécrire le viewBox à chaque image d'un zoom ou d'un déplacement oblige Chrome Android à
+    // redessiner toute la scène à la nouvelle échelle ; pendant un geste il n'y arrive pas et montre des images où manquent le
+    // voile de pluie (flash clair), les voitures, les passants (mesuré image par image sur S26). Pendant le mouvement, la caméra
+    // déplace et agrandit donc l'image DÉJÀ dessinée (transformation CSS du <svg>, que le compositeur applique sans redessiner),
+    // et ne recadre la scène (viewBox) qu'à l'arrêt : COMMIT_IDLE_MS sans mouvement, ou quand l'image dessinée ne couvre plus
+    // assez l'écran (agrandie ou réduite de plus de COMMIT_SCALE, décalée de plus de COMMIT_SHIFT de l'écran). Le <svg> déborde
+    // (overflow visible) : la scène autour du cadrage est déjà dessinée quand on la fait glisser dans l'écran.
+    const base = svg.viewBox?.baseVal;
+    let committed: Rect | null = base && base.width > 0 ? { x: base.x, y: base.y, w: base.width, h: base.height } : null;
+    let pending: Rect | null = null;
+    let idle = 0;
+    // `xMidYMid slice` : échelle et marges d'un rectangle du monde dans la boîte.
+    const fit = (r: Rect, b: { w: number; h: number }): { k: number; ox: number; oy: number } => {
+      const k = Math.max(b.w / r.w, b.h / r.h);
+      return { k, ox: (b.w - r.w * k) / 2, oy: (b.h - r.h * k) / 2 };
+    };
+    const commit = (r: Rect): void => {
+      if (idle) { clearTimeout(idle); idle = 0; }
+      pending = null;
+      committed = r;
+      svg.setAttribute('viewBox', viewBoxOf(r));
+      svg.style.transform = '';
+    };
+    const flush = (): void => { if (pending) commit(pending); };
+    const write = (r: Rect): void => {
+      const b = size();
+      if (still || !committed || !b.w || !b.h) return commit(r);
+      const c = fit(committed, b);
+      const t = fit(r, b);
+      const a = t.k / c.k;
+      const tx = t.ox - c.ox * a + (committed.x - r.x) * t.k;
+      const ty = t.oy - c.oy * a + (committed.y - r.y) * t.k;
+      if (a > COMMIT_SCALE || a < 1 / COMMIT_SCALE || Math.abs(tx) > COMMIT_SHIFT * b.w || Math.abs(ty) > COMMIT_SHIFT * b.h) return commit(r);
+      svg.style.transform = `matrix(${a.toFixed(5)},0,0,${a.toFixed(5)},${tx.toFixed(2)},${ty.toFixed(2)})`;
+      pending = r;
+      if (idle) clearTimeout(idle);
+      idle = window.setTimeout(() => { idle = 0; flush(); }, COMMIT_IDLE_MS);
+    };
+    svg.style.transformOrigin = '0 0';
+    svg.style.overflow = 'visible';
+    if (!still) svg.style.willChange = 'transform';
+    // Boîte redimensionnée (rotation, plein écran) : l'image transformée ne correspond plus, recadrage tout de suite.
     const show = (): void => { const b = size(); if (!b.w || !b.h || !cam.current) return; cam.current = clampCamera(cam.current, b, world); write(viewRect(cam.current, b, world)); };
+    const reframe = (): void => { const b = size(); if (!b.w || !b.h || !cam.current) return; cam.current = clampCamera(cam.current, b, world); commit(viewRect(cam.current, b, world)); };
     const tween = (from: Rect, to: Rect, ms: number, done: () => void): void => {
       const t0 = performance.now();
       const step = (now: number): void => {
@@ -60,8 +107,8 @@ export function useOutsideCamera(o: Options): void {
       };
       later(step);
     };
-    const settle = (p: 'outside' | 'inside'): void => queueMicrotask(() => opts.current.onSettled(p));
-    const still = reducedMotion();
+    // Fin de transition : cadrage exact écrit avant de rendre la main (la pièce relit son viewBox en rentrant).
+    const settle = (p: 'outside' | 'inside'): void => { flush(); queueMicrotask(() => opts.current.onSettled(p)); };
 
     if (phase === 'leaving') {
       const b = size();
@@ -80,7 +127,11 @@ export function useOutsideCamera(o: Options): void {
       if (still || !from || !now) { if (from) write(from); settle('inside'); } else tween(now, from, TRANSITION_MS, () => settle('inside'));
     }
 
-    const cleanup: Array<() => void> = [() => { for (const id of frames) cancelAnimationFrame(id); frames.clear(); }];
+    const cleanup: Array<() => void> = [
+      () => { for (const id of frames) cancelAnimationFrame(id); frames.clear(); },
+      // Sortie de la phase : cadrage en attente écrit, transformation et débordement retirés (la pièce retrouve son <svg>).
+      () => { flush(); if (idle) clearTimeout(idle); svg.style.transform = ''; svg.style.transformOrigin = ''; svg.style.overflow = ''; svg.style.willChange = ''; },
+    ];
     if (phase === 'outside') {
       const marker = (): SVGGElement | null => svg.querySelector<SVGGElement>('[data-follow-marker]');
       let following: Element | null = null;
@@ -192,9 +243,9 @@ export function useOutsideCamera(o: Options): void {
       el.addEventListener('wheel', wheel, { passive: false });
       // La boîte change de taille après l'événement (React applique la taille du conteneur plus tard) : on observe la boîte elle-même ;
       // repli sur resize si ResizeObserver manque (jsdom).
-      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => show()) : null;
-      if (ro) ro.observe(el); else window.addEventListener('resize', show);
-      show();
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => reframe()) : null;
+      if (ro) ro.observe(el); else window.addEventListener('resize', reframe);
+      reframe();
       cleanup.push(() => {
         stop();
         el.removeEventListener('pointerdown', down);
@@ -202,7 +253,7 @@ export function useOutsideCamera(o: Options): void {
         el.removeEventListener('pointerup', up);
         el.removeEventListener('pointercancel', cancel);
         el.removeEventListener('wheel', wheel);
-        if (ro) ro.disconnect(); else window.removeEventListener('resize', show);
+        if (ro) ro.disconnect(); else window.removeEventListener('resize', reframe);
       });
     }
     return () => { for (const f of cleanup) f(); };
