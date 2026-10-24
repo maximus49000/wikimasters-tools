@@ -202,7 +202,7 @@ export function usePaintedSkyline(plan: CityPaintPlan | null): Float32Array | nu
   return useSyncExternalStore(subscribe, read, read);
 }
 
-// Instant du fond vivant des tranches affichées pour cette ville (grue montée ou non, découpe des nuages) ; null avant la
+// Instant du fond vivant des tranches affichées pour cette ville (plus utilisé par la découpe des nuages : la grue et les ailes sont devant eux) ; null avant la
 // première publication.
 export function usePaintedMoment(plan: CityPaintPlan | null): FondMoment | null {
   const read = useCallback(() => (plan ? (shownMoment.get(citySig(plan)) ?? null) : null), [plan]);

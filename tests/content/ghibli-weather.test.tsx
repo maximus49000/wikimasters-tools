@@ -12,7 +12,7 @@ import { createWeatherClock, lightningAt, steadySource } from '../../src/core/li
 import { gradeFor, gradeValues } from '../../src/core/library/paint/grade';
 import { TILE, tileCount } from '../../src/core/library/paint/city-painter';
 import { cityPaintPlan, type CityPaintPlan } from '../../src/core/library/paint/city-plan';
-import { animatedTops, skylinePath, skylinePathFromProfile } from '../../src/core/library/paint/sky-clip';
+import { skylinePath, skylinePathFromProfile } from '../../src/core/library/paint/sky-clip';
 import { resetPaintedCacheForTests, setTilePainterForTests, usePaintedCity } from '../../src/content/painted-city';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -300,7 +300,7 @@ describe('captures du banc', () => {
       const d = container.querySelector(`clipPath[id="${ref}"] path`)!.getAttribute('d');
       const profile = new Float32Array(720);
       for (let x = 0; x < 720; x++) profile[x] = 120 - Math.floor(x / TILE);
-      expect(d).toBe(skylinePathFromProfile(cityPlan, profile, animatedTops(cityPlan)));
+      expect(d).toBe(skylinePathFromProfile(cityPlan, profile));
       expect(d).not.toBe(skylinePath(cityPlan));
     } finally {
       setTilePainterForTests(null);

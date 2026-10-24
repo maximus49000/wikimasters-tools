@@ -8,13 +8,14 @@ import { CLOUD_BLOBS, godRayTarget, rayWindow, sunCoverage, type CloudSpot } fro
 import { smooth, type Weather } from '../core/library/weather/weather-types';
 import { CLOUD_KINDS, FOG_W, cloudBlobs, cloudShape, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
-import { animatedTops, skylinePathFromProfile } from '../core/library/paint/sky-clip';
+import { skylinePathFromProfile } from '../core/library/paint/sky-clip';
+import { FondSkySlot, fondSig, type FondVeil } from './fond-sky-slot';
 import { PaintedCanvas, gradeKey, type CanvasImage } from './painted-canvas';
 import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
 import { fadeStyle, useShownAfterMount } from './ghibli-sky';
 import { usePaintedClouds, usePaintedFog, usePaintedSnow } from './painted-sky';
-import { usePaintedMoment, usePaintedSkyline } from './painted-city';
+import { usePaintedSkyline } from './painted-city';
 import { moonPlace, sunPlace } from './sky-place';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
@@ -115,7 +116,7 @@ function PatternDefs({ id, seed, ghibli }: { id: string; seed: number; ghibli: b
 }
 
 // `cover` : nuages pris pour la couverture du soleil (forme peinte quand les nuages peints sont montrés), relus à chaque relevé.
-type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; cover: RefObject<readonly CloudSpot[]>; sky: RefObject<Sky>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string };
+type LoopInput = { clock: Props['clock']; seed: number; width: number; height: number; pool: CloudSpot[]; cover: RefObject<readonly CloudSpot[]>; sky: RefObject<Sky>; onStep: RefObject<((s: CloudStep) => void) | undefined>; layout: string; veil: FondVeil };
 
 // Positions intégrées des nuages, de la neige et de la brume : gardées d'une relance de la boucle à l'autre (pas de saut).
 type Motion = { drift: number; snowFarX: number; snowNearX: number; fogX: number };
@@ -129,6 +130,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
   const skyRef = input.sky;
   const onStepRef = input.onStep;
   const coverRef = input.cover;
+  const tintVeil = input.veil;
   const motionRef = useRef<Motion | null>(null);
   useLayoutEffect(() => {
     const el = sky.current;
@@ -216,6 +218,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         const tintColor = mixHex('#1A1E2B', mixHex('#9AA4B2', '#4E5663', dark), daylight);
         const tintBg = veilBackground(tintColor, [[1, 0], [0.45, 100]]);
         for (const fill of tintFills) putFill(fill, tintBg);
+        tintVeil.color = tintColor;
         const cloudColor = mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), cloudDark);
         put(nodes.clouds, 'fill', cloudColor);
         // Chaque nuage a sa nuance de gris (plus claire ou plus sombre que la teinte de base) : on voit le ciel bouger.
@@ -232,6 +235,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         svg?.style.setProperty('--wmt-haze-color', mixHex('#3A4160', '#EEF2F6', daylight));
       }
       set(nodes.tint, 0.92 * thick);
+      // Voile publié pour la grue et les ailes des moulins, dessinées après les nuages donc hors de ce voile (fond-sky-slot.tsx).
+      tintVeil.alpha = 0.92 * thick;
       // Ciel entièrement couvert : le voile gris doit cacher le bleu (même sans pluie), pas seulement le tamiser.
       const overcast = w.cloud > 0.8 ? clamp01((w.cloud - 0.8) / 0.15) * (0.95 + 0.05 * dark) : 0;
       // Le gris du ciel couvert est dessiné DANS le décor, sous les immeubles (voir SkyAndStars) ; ici il ne reste qu'un léger voile.
@@ -363,7 +368,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       svg?.style.removeProperty('--wmt-celestial');
       svg?.style.removeProperty('--wmt-haze');
     };
-  }, [sky, ground, clock, seed, width, height, pool, coverRef, skyRef, layout]);
+  }, [sky, ground, clock, seed, width, height, pool, coverRef, skyRef, layout, tintVeil]);
   return placeRef;
 }
 
@@ -415,19 +420,18 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const snowGrade = useMemo(() => snowGk.grade, [snowGk.key]);
   const snowImages = useMemo<CanvasImage[]>(() => snow.tiles.map((t) => ({ x: t.x, y: 0, w: t.w, h: height, url: t.url })), [snow.tiles, height]);
-  // Découpe FIXE des nuages : le ciel au-dessus de la silhouette des tranches peintes affichées (profil alpha au pixel), des toits
-  // du premier plan et des ailes des moulins et de la grue (calque vie-fond, à l'instant des tranches affichées : la grue
-  // seulement quand elle est montée) ; boîtes du fond tant que le profil manque. La
-  // neige posée est peinte sous les toits et sous la crête (snow-painter.ts) : rien à ajouter. Seul le groupe intérieur défile.
+  // Découpe FIXE des nuages : le ciel au-dessus de la silhouette des tranches peintes affichées (profil alpha au pixel) et des
+  // toits du premier plan ; boîtes du fond tant que le profil manque. La grue et les ailes des moulins n'y sont plus retirées
+  // (boîtes qui laissaient des trous dans les nuages, capture de l'utilisateur du 2026-10-24) : elles sont dessinées devant les
+  // nuages (emplacement `FondSkySlot` ci-dessous). La neige posée est peinte sous les toits et sous la crête (snow-painter.ts) :
+  // rien à ajouter. Seul le groupe intérieur défile.
   const cityTop = usePaintedSkyline(cityPlan);
-  const cityMoment = usePaintedMoment(cityPlan);
-  const skyline = useMemo(
-    () => (cityPlan ? skylinePathFromProfile(cityPlan, cityTop, cityTop ? animatedTops(cityPlan, cityMoment ?? undefined) : []) : ''),
-    [cityPlan, cityTop, cityMoment],
-  );
+  const skyline = useMemo(() => (cityPlan ? skylinePathFromProfile(cityPlan, cityTop) : ''), [cityPlan, cityTop]);
+  // Voile du ciel publié par la boucle pour la grue et les ailes (objet stable, modifié en place).
+  const veil = useRef<FondVeil>({ color: '#9AA4B2', alpha: 0 }).current;
   // La boucle met ses nœuds en cache : elle repart quand la neige posée ou la brume changent de nœud.
   const layout = `${ghibli}|${snow.ready}|${fogUrl !== ''}`;
-  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onStep: onStepRef, layout });
+  const placeRef = useWeatherLoop(skyRoot, groundRoot, { clock, seed, width, height, pool, cover: coverRef, sky: skyRef, onStep: onStepRef, layout, veil });
   // Mouvement réduit : pas de boucle, mais le ciel (chaque minute) relance un placement pour suivre la météo.
   useLayoutEffect(() => {
     if (still) placeRef.current?.();
@@ -533,6 +537,9 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
             <use href={`#${uid}-strip`} x={-width} />
           </g>
         )}
+        {/* Grue et ailes des moulins du fond vivant (FondLife, scene-city.tsx) : devant les nuages (ils passent derrière la
+            colline), sous le voile gris, la pluie, le brouillard et la neige. */}
+        {ghibli && <FondSkySlot sig={fondSig(seed, width, height)} veil={veil} height={height} />}
         {/* Voile en calque à part : un `<rect>` à dégradé SVG était redessiné à chaque zoom et Chrome Android le laissait parfois disparaître
             un instant (saut de lumière mesuré sur S26). Le `<div>` en `will-change: transform` est un calque que le compositeur étire. */}
         <foreignObject data-wx="overcast" x={0} y={0} width={width} height={height} opacity={0} style={{ pointerEvents: 'none' }}>

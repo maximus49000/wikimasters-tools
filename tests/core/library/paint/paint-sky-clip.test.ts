@@ -1,10 +1,8 @@
 // tests/core/library/paint/paint-sky-clip.test.ts
 import { describe, expect, it } from 'vitest';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
-import { alphaTopProfile, animatedTops, cityTopY, skylinePath, skylinePathFromProfile, skylinePoints } from '../../../../src/core/library/paint/sky-clip';
+import { alphaTopProfile, cityTopY, skylinePath, skylinePathFromProfile, skylinePoints } from '../../../../src/core/library/paint/sky-clip';
 import { roofLineY, roofSpan } from '../../../../src/core/library/paint/snow-painter';
-import { craneK, vieDay } from '../../../../src/core/library/paint/fond-vie';
-import { SUNNY, fondMoment } from '../../../../src/core/library/paint/fond-time';
 
 // y de la ligne brisée en x (dernier segment qui contient x : les marches verticales prennent la valeur de droite).
 const at = (pts: [number, number][], x: number): number => {
@@ -98,51 +96,27 @@ describe('découpe des nuages au pixel', () => {
     }
   });
 
-  it('boîtes en plus (ailes du moulin) : le ciel s’arrête au-dessus', () => {
+  // Grue et ailes des moulins : dessinées devant les nuages (fond-sky-slot.tsx), plus de boîte retirée du ciel autour d'elles
+  // (trous dans les nuages, capture de l'utilisateur du 2026-10-24) : au-dessus d'elles, la découpe est le profil seul.
+  it('grue et moulins : aucune boîte, la découpe reste le profil (hors toits du premier plan)', () => {
     const profile = new Float32Array(1440).fill(100);
-    const pts = vertices(skylinePathFromProfile(plan, profile, [[300, 320, 20]]));
-    const inside = pts.filter(([x]) => x >= 300 && x <= 320);
-    expect(inside.length).toBeGreaterThan(0);
-    for (const [, y] of inside) expect(y).toBeLessThanOrEqual(20);
-  });
-
-  // Neige posée : snow-painter.ts la peint SOUS la ligne de toit (touches centrées dessous, trait des maisons du fond décalé de
-  // sa demi-épaisseur, bande de crête sous la crête) : le profil des tranches de la ville et `roofLineY` la couvrent déjà.
-  it('ailes des moulins : boîtes en escalier qui couvrent le disque, sans ses coins', () => {
-    const tops = animatedTops(plan);
-    const topOver = (x: number): number => Math.min(Infinity, ...tops.filter(([a, b]) => x >= a && x <= b).map(([, , y]) => y));
-    let mills = 0;
+    const pts = vertices(skylinePathFromProfile(plan, profile));
+    const spans: [number, number][] = [];
     for (const e of plan.fond.escapes) {
-      if (!e.mill) continue;
-      mills++;
-      const r = 9 * e.mill.s + 2;
-      const hx = e.mill.x - 0.5 * e.mill.s;
-      const hy = e.mill.y - 13 * e.mill.s;
-      for (let x = hx - r; x <= hx + r; x += 0.25) expect(topOver(x)).toBeLessThanOrEqual(hy - Math.sqrt(Math.max(0, r * r - (x - hx) ** 2)) + 1e-9);
-      // Coins du carré englobant : plus de ciel coupé là (bandes des bords bien plus basses que le haut du disque).
-      expect(topOver(hx - r + 0.01)).toBeGreaterThan(hy - r + 0.3 * r);
+      spans.push([e.crane.x - e.crane.boom - 1, e.crane.x + e.crane.boom + 1]);
+      if (e.mill) {
+        const r = 9 * e.mill.s + 2;
+        const hx = e.mill.x - 0.5 * e.mill.s;
+        spans.push([hx - r, hx + r]);
+      }
     }
-    expect(mills).toBeGreaterThan(0);
-  });
-
-  it('grue : une boîte seulement les jours où le calque vie-fond la montre', () => {
-    const e = plan.fond.escapes[0]!;
-    const c = e.crane;
-    const has = (m: ReturnType<typeof fondMoment>): boolean =>
-      animatedTops({ fond: { ...plan.fond, escapes: [{ ...e, mill: null }] } }, m).some(([x0, x1, y]) => x0 <= c.x - c.boom && x1 >= c.x + c.boom && y <= c.base - c.mast - 3);
-    let on = 0;
-    let off = 0;
-    for (let k = 0; k < 365; k++) {
-      const d = new Date(Date.UTC(2026, 0, 1 + k));
-      const m = fondMoment({ y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() }, 12 * 60, SUNNY);
-      const shown = craneK(e, 12, vieDay(m)) > 0;
-      expect(has(m)).toBe(shown);
-      if (shown) on++;
-      else off++;
+    expect(spans.length).toBeGreaterThan(0);
+    let seen = 0;
+    for (let x = 0.25; x < 1440; x += 0.5) {
+      if (underFront(x - 1) || underFront(x + 1) || !spans.some(([a, b]) => x >= a && x <= b)) continue;
+      seen++;
+      expect(at(pts, x)).toBe(100);
     }
-    expect(on).toBeGreaterThan(0);
-    expect(off).toBeGreaterThan(0);
-    // Dimanche : aucune grue, aucune boîte (plus de rectangle sans nuage jusqu'au sol).
-    expect(has(fondMoment({ y: 2026, m: 10, d: 25 }, 12 * 60, SUNNY))).toBe(false);
+    expect(seen).toBeGreaterThan(0);
   });
 });

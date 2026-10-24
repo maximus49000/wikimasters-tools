@@ -24,6 +24,7 @@ import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { fondMoment, type FondMoment } from '../core/library/paint/fond-time';
 import { PaintedCanvas, gradeKey, type CanvasImage } from './painted-canvas';
 import { FondLife } from './fond-life';
+import { fondSig } from './fond-sky-slot';
 import { treesSig, useStreetTreesReady, useStreetTreesScene } from './street-trees-slot';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
@@ -301,7 +302,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
       <g data-painted-city="" data-ready={paintedReady ? 'true' : 'false'} style={{ opacity: showPainted ? 1 : 0, transition: fade }}>
         <PaintedCanvas box={{ x: 0, y: 0, w: width, h: height }} images={tileImages} grade={grade} onReady={setCanvasReady} tag="ville" />
         {/* Vie animée du fond (PR 2b) : colline et mur du fond, au-dessus des tranches, sous la lumière de nuit et les fenêtres. */}
-        {plan && <FondLife plan={plan} moment={moment} minutes={minutes} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} dim={dim} forcedNight={forcedNight} day={city?.day} fog={fog} />}
+        {/* La grue et les ailes des moulins passent devant les nuages, dans le calque météo, quand il existe (fond-sky-slot.tsx). */}
+        {plan && <FondLife plan={plan} moment={moment} minutes={minutes} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} dim={dim} forcedNight={forcedNight} day={city?.day} fog={fog} sky={{ sig: fondSig(seed, width, height), shown: showPainted, fade }} />}
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
         <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} moment={moment} />
         <GhibliWindows buildings={buildings} minutes={minutes} day={city?.day} daylight={sky.daylight} gloom={gloom} dim={dim} farLight={FAR_LIGHT} plan={plan} life={life} states={states} moment={moment} />
