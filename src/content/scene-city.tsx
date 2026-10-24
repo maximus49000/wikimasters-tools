@@ -24,6 +24,7 @@ import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { fondMoment, type FondMoment } from '../core/library/paint/fond-time';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
 import { FondLife } from './fond-life';
+import { StreetTrees } from './street-trees';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
 const FAR_LIGHT = 0.5;
@@ -280,6 +281,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
         <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} moment={moment} />
         <GhibliWindows buildings={buildings} minutes={minutes} day={city?.day} daylight={sky.daylight} gloom={gloom} dim={dim} farLight={FAR_LIGHT} plan={plan} life={life} states={states} moment={moment} />
+        {/* Arbres de la rue au vent (PR 3) : après les fenêtres, une vitre allumée ne se voit jamais à travers un houppier. */}
+        {plan && <StreetTrees plan={plan} moment={moment} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} dim={dim} minutes={minutes} />}
       </g>
       {shopFronts}
     </g>

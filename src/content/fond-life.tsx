@@ -5,6 +5,7 @@ import type { CityPaintPlan } from '../core/library/paint/city-plan';
 import type { FondMoment } from '../core/library/paint/fond-time';
 import { gradeHex, millAngle, vieDay, vieFrame, vieModel, type VieEl, type VieGroup, type VieNode } from '../core/library/paint/fond-vie';
 import { gradeFor } from '../core/library/paint/grade';
+import { setIfChanged } from './svg-write';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Calque `vie-fond` de la ville peinte (chantier « fond vivant », PR 2b) : la vie animée de la colline et du mur du fond
@@ -21,16 +22,6 @@ const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof win
 // Attributs SVG à trait d'union : nom React.
 const REACT_NAME: Record<string, string> = { 'stroke-width': 'strokeWidth', 'stroke-opacity': 'strokeOpacity', 'fill-opacity': 'fillOpacity', 'clip-path': 'clipPath' };
 const COLOR = new Set(['fill', 'stroke']);
-
-// Attribut écrit seulement s'il change ; la dernière valeur écrite est gardée en mémoire (pas de lecture du DOM à chaque image).
-const WRITTEN = new WeakMap<Element, Map<string, string>>();
-function setIfChanged(el: Element, name: string, value: string): void {
-  let w = WRITTEN.get(el);
-  if (!w) WRITTEN.set(el, (w = new Map()));
-  if (w.get(name) === value) return;
-  w.set(name, value);
-  if (el.getAttribute(name) !== value) el.setAttribute(name, value);
-}
 
 type Props = {
   plan: CityPaintPlan;
