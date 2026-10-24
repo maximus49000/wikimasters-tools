@@ -3,7 +3,7 @@ import { lampsFor } from '../../../../src/core/library/city/lamps';
 import { cityMetrics } from '../../../../src/core/library/city/metrics';
 import { shopFrame, shopSlotsFor } from '../../../../src/core/library/city/shops/slots';
 import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
-import { streetVerdure, type RueBox, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
+import { streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
 import { hashString } from '../../../../src/core/library/scene-world';
 import { TILE, tileCount, tileItems } from '../../../../src/core/library/paint/city-painter';
 import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
@@ -71,9 +71,9 @@ describe('verdure de la rue (streetVerdure)', () => {
           expect(p.y).toBeGreaterThan(m.walkY);
         }
         for (const v of rue.filter((v): v is RueBox => v.kind === 'bac' || v.kind === 'parterre')) {
-          expect(v.y).toBeGreaterThanOrEqual(plan.ground);
-          expect(v.y).toBeLessThanOrEqual(plan.ground + 3.5);
-          expect(v.y).toBeLessThan(m.doorY);
+          // Debout contre le mur : bas de la face avant à doorY − 0,1 (pieds des figures qui longent la façade).
+          expect(v.y + v.h).toBeCloseTo(m.doorY - 0.1, 9);
+          expect(v.y).toBeGreaterThanOrEqual(plan.ground - 5);
         }
         for (const v of rue.filter((v): v is RuePots => v.kind === 'pots')) expect(plan.doors.some((d) => d.x === v.x)).toBe(true);
       });
@@ -165,24 +165,55 @@ describe('verdure de la rue : peinture (paintRueVerdure)', () => {
     expect(empties).toBeGreaterThan(0);
   });
 
-  it('couloir des passants (doorY → walkY) : seulement le bas des bacs et parterres collés à la façade, jamais une fosse, un pot ou une grimpante', () => {
+  const dates = (): ReturnType<typeof fondMoment>[] => [july, dayOf(20), { ...dayOf(40), meteo: { cloud: 1, precip: 0.5, wind: 0.3, snow: true } }, dayOf(110), dayOf(200), { ...dayOf(250), meteo: { cloud: 0.9, precip: 0.6, wind: 0.4, snow: false } }];
+  const BOX_SHADOW = 'rgba(70,50,130,0.2)';
+
+  it('couloir des passants (doorY → walkY) : seulement l’ombre portée des bacs et parterres (au sol), jamais un objet', () => {
     const m = cityMetrics(H);
     for (const seed of [1, 7, 42]) {
       const plan = cityPaintPlan(2880, H, seed);
       const boxes = plan.rue.filter((v): v is RueBox => v.kind === 'bac' || v.kind === 'parterre');
-      for (const D of [july, dayOf(20), { ...dayOf(40), meteo: { cloud: 1, precip: 0.5, wind: 0.3, snow: true } }, dayOf(110), dayOf(200), { ...dayOf(250), meteo: { cloud: 0.9, precip: 0.6, wind: 0.4, snow: false } }]) {
+      for (const D of dates()) {
         // Sans le tapis de feuilles mortes (posé à plat sur tout le trottoir, sous les pieds des passants).
         const ctx = recordingCtx();
         paintRueVerdure(ctx, plan, plan.rue, D, 0, 2880);
         expect(rueLeafCount(plan, D)).toBe(0);
         for (const [x, y] of ctx.points) {
           if (y <= m.doorY || y >= m.walkY) continue;
-          // Bas d'un bac (≤ 4,5 px sous ground, ombre comprise ≤ 5,7) : à la façade, devant la vitrine.
-          expect(y).toBeLessThanOrEqual(plan.ground + 5.7 + 1e-6);
-          expect(boxes.some((b) => x >= b.x0 - 1e-6 && x <= b.x1 + 2.5 + 1e-6)).toBe(true);
+          // Ombre d'un bac ou d'un parterre : bande de 1,2 px sous son pied, décalée de 1 à 2,5 px à droite.
+          expect(y).toBeLessThanOrEqual(m.doorY - 0.1 + 1.2 + 1e-6);
+          expect(boxes.some((b) => x >= b.x0 + 1 - 1e-6 && x <= b.x1 + 2.5 + 1e-6)).toBe(true);
         }
       }
     }
+  });
+
+  it('bacs, parterres et pots debout contre le mur : tout leur dessin (hors ombre portée) au-dessus de doorY', () => {
+    const m = cityMetrics(H);
+    const kinds = new Set<string>();
+    let n = 0;
+    for (const seed of [1, 7, 42]) {
+      const plan = cityPaintPlan(2880, H, seed);
+      const items: RueItem[] = plan.rue.filter((v) => v.kind === 'bac' || v.kind === 'parterre' || v.kind === 'pots');
+      // Le plan ne pose aujourd'hui aucun parterre (voir le rapport de la tâche 4) : un parterre de haie et un de fleurs
+      // placés comme le plan les placerait (pied à doorY − 0,1), à l'endroit d'un bac.
+      const bac = items.find((v): v is RueBox => v.kind === 'bac')!;
+      for (const hedge of [true, false]) items.push({ kind: 'parterre', x0: bac.x0, x1: bac.x0 + 18, y: m.doorY - 0.1 - 3.5, w: 18, h: 3.5, flowerSeed: bac.flowerSeed, hedge });
+      for (const v of items) kinds.add(v.kind);
+      for (const D of dates()) {
+        for (const v of items) {
+          const ctx = recordingCtx();
+          // L'ombre portée (peinture au sol) n'est pas enregistrée : seuls les points de l'objet restent.
+          const fillRect = ctx.fillRect;
+          ctx.fillRect = (x, y, w, h) => (ctx.fillStyle === BOX_SHADOW ? undefined : fillRect(x, y, w, h));
+          paintRueVerdure(ctx, plan, [v], D, 0, 2880);
+          for (const [, y] of ctx.points) expect(y).toBeLessThanOrEqual(m.doorY + 1e-6);
+          n++;
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(50);
+    expect([...kinds].sort()).toEqual(['bac', 'parterre', 'pots']);
   });
 
   it('feuilles mortes : à l’automne entre le pied des façades et la bordure, aucune une fois la rue balayée', () => {

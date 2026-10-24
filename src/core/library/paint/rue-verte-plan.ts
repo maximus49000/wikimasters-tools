@@ -1,4 +1,5 @@
 import { DOOR_MARGIN, DOOR_WIDTH } from '../city/doors';
+import { cityMetrics } from '../city/metrics';
 import { lampsFor } from '../city/lamps';
 import { shopFrame, shopSlotsFor } from '../city/shops/slots';
 import type { CityPaintPlan } from './city-plan';
@@ -13,7 +14,9 @@ import { fondRng } from './fond-time';
 // `lampsFor`), arbres du plan (± r + 6), mobilier (± 3, seulement pour les bacs et parterres, collés à la façade comme lui),
 // les autres éléments posés (± 3), hors de l'image.
 // Le couloir des passants (doorY → walkY) reste libre : fosses à la bordure (curb − 1,4), bacs et parterres collés à la
-// façade (ground + 0,3 … + 0,5). Pur et déterministe ; ses tirages (`fondRng(seed, 'rue-…')`) ne touchent aucun autre tirage.
+// façade, posés debout contre le mur : leur bas (face avant) est à `doorY − 0,1`, la ligne des pieds des habitants, clients et
+// équipes qui longent la façade (seule leur ombre portée, peinture au sol, déborde dans le couloir).
+// Pur et déterministe ; ses tirages (`fondRng(seed, 'rue-…')`) ne touchent aucun autre tirage.
 
 export type RueSpecies = 'platane' | 'tilleul' | 'marronnier' | 'cerisier';
 export type RuePit = { kind: 'pit'; x: number; x0: number; x1: number; y: number; empty: boolean; young: boolean; species: RueSpecies; h: number; r: number; lean: number; flowers: boolean; flowerSeed: number };
@@ -24,6 +27,8 @@ export type RueGrass = { kind: 'herbe'; x: number; y: number; n: number };
 export type RueItem = RuePit | RueBox | RueClimber | RuePots | RueGrass;
 
 const SPECIES: readonly RueSpecies[] = ['platane', 'platane', 'tilleul', 'marronnier', 'tilleul', 'cerisier'];
+// Écart entre le bas d'un bac ou d'un parterre et la ligne des pieds le long des façades (doorY).
+export const BOX_CLEARANCE = 0.1;
 // Dégagement de part et d'autre de la porte vitrée d'un local.
 export const SHOP_DOOR_MARGIN = 4;
 // Demi-largeur de la fosse (grille et bordure de pierre).
@@ -34,6 +39,8 @@ type Kind = 'door' | 'lamp' | 'tree' | 'furn' | 'shopdoor';
 
 export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): RueItem[] {
   const { seed, curb, ground, unit: u } = plan;
+  // Pied des bacs et parterres : juste au-dessus de la ligne de marche le long des façades (doorY).
+  const wallFoot = cityMetrics(plan.height).doorY - BOX_CLEARANCE;
   const out: RueItem[] = [];
   const near = plan.buildings.filter((b) => !b.far);
   const lamps = lampsFor(width, seed).map((l) => l.x);
@@ -94,7 +101,9 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
       const w = 6 + rb() * 3;
       const bx = left ? s.x0 + 9 + i * (w + 3) : s.x1 - 9 - w - i * (w + 3);
       // Hauteur, bac haut et fleurs tirés seulement pour un bac posé (même suite de tirages que la maquette).
-      if (!busy(bx, bx + w, ['door', 'furn', 'shopdoor'])) out.push({ kind: 'bac', x0: bx, x1: bx + w, y: ground + 0.5, w, h: 3 + rb(), tall: rb() < 0.3, flowerSeed: rb() * 1000 });
+      if (busy(bx, bx + w, ['door', 'furn', 'shopdoor'])) continue;
+      const h = 3 + rb();
+      out.push({ kind: 'bac', x0: bx, x1: bx + w, y: wallFoot - h, w, h, tall: rb() < 0.3, flowerSeed: rb() * 1000 });
     }
   }
   // 3. Parterre au pied d'un immeuble sans commerce (50 %), haie basse ou fleurs.
@@ -104,7 +113,7 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     if (inShop || rb() > 0.5) continue;
     const w = Math.min(22, b.w * 0.45);
     const bx = b.x + (rb() < 0.5 ? 2 : b.w - w - 2);
-    if (!busy(bx, bx + w, ['door', 'furn', 'tree'])) out.push({ kind: 'parterre', x0: bx, x1: bx + w, y: ground + 0.3, w, h: 3.5, flowerSeed: rb() * 1000, hedge: rb() < 0.5 });
+    if (!busy(bx, bx + w, ['door', 'furn', 'tree'])) out.push({ kind: 'parterre', x0: bx, x1: bx + w, y: wallFoot - 3.5, w, h: 3.5, flowerSeed: rb() * 1000, hedge: rb() < 0.5 });
   }
 
   // 4. Grimpantes sur l'arête d'une façade (15 %), du sol à 6-36 px au-dessus du rez-de-chaussée.

@@ -56,7 +56,13 @@ const leafBands = (x0: number, x1: number): number[] => {
   for (let band = Math.floor((x0 - 40) / LEAF_BAND); band * LEAF_BAND < x1 + 40; band++) out.push(band);
   return out;
 };
-const leafPits = (plan: Pick<CityPaintPlan, 'rue'>): RuePit[] => plan.rue.filter((v): v is RuePit => v.kind === 'pit' && !v.empty && !v.young);
+// Arbres adultes plantés de la rue (autour desquels tombent les feuilles), mémorisés par liste d'éléments du plan.
+const LEAF_PITS = new WeakMap<readonly RueItem[], RuePit[]>();
+const leafPits = (plan: Pick<CityPaintPlan, 'rue'>): RuePit[] => {
+  let pits = LEAF_PITS.get(plan.rue);
+  if (!pits) LEAF_PITS.set(plan.rue, (pits = plan.rue.filter((v): v is RuePit => v.kind === 'pit' && !v.empty && !v.young)));
+  return pits;
+};
 
 // Part de la clé des tranches [x0, x1] : flaques (pluie, s'il y a une fosse plantée), nombre de feuilles au sol et, s'il y en
 // a, les arbres des bandes du tapis (une bande déborde de la tranche).

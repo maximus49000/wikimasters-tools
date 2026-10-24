@@ -1,8 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { paintFond } from '../../../../src/core/library/paint/fond-painter';
-import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
-import { rueLeafCount } from '../../../../src/core/library/paint/rue-verte-painter';
-import { hashString } from '../../../../src/core/library/scene-world';
 import { cityPaintPlan, hillTopY } from '../../../../src/core/library/paint/city-plan';
 import { CORNICE, LEFT_GAP, leftOf, paintBuilding, paintCityTile, paintPodium, TILE, tileCount, tileItems, tileKey } from '../../../../src/core/library/paint/city-painter';
 import { doorsFor } from '../../../../src/core/library/city/doors';
@@ -10,6 +6,10 @@ import { GROUND_FLOOR } from '../../../../src/core/library/city/metrics';
 import { roofOutline } from '../../../../src/core/library/city/facade-layout';
 import { PAINT_VERSION } from '../../../../src/core/library/paint/city-painter';
 import { paintParisRoof } from '../../../../src/core/library/paint/roof-painter';
+import { paintFond } from '../../../../src/core/library/paint/fond-painter';
+import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
+import { rueLeafCount } from '../../../../src/core/library/paint/rue-verte-painter';
+import { hashString } from '../../../../src/core/library/scene-world';
 import { recordingCtx } from './recording-ctx';
 
 afterEach(() => vi.restoreAllMocks());
