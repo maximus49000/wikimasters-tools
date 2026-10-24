@@ -5,7 +5,7 @@ import { shopFrame, shopSlotsFor } from '../../../../src/core/library/city/shops
 import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
 import { stageXs } from '../../../../src/core/library/city/install';
 import { createTraffic, streetFixtures } from '../../../../src/core/library/city/traffic/engine';
-import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_PITCH, PIT_REPLANT, PIT_SEARCH, PIT_STAGE_CLEAR, pitFootY, pitTopY, rueCuts, rueSlots, sectionOf, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
+import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_MIN_GAP, PIT_PITCH, PIT_REPLANT, PIT_SEARCH, PIT_STAGE_CLEAR, pitFootY, pitTopY, rueCuts, rueSlots, sectionOf, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
 import { hashString } from '../../../../src/core/library/scene-world';
 import { TILE, tileCount, tileItems } from '../../../../src/core/library/paint/city-painter';
 import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
@@ -82,8 +82,8 @@ describe('verdure de la rue (streetVerdure)', () => {
         // Boulevard (2026-10-24, notes §1 variante A) : une place tous les 60 px sur la rue hors des abords sans arbre, moins
         // les places sautées devant les entrées, portes de local et lampadaires (une porte tous les 30 px environ dans une rue
         // de locaux ; recherche à ± 20, porte vitrée contre le fût seulement) : plancher d'une fosse (vides comprises) par
-        // 90 px de longueur libre, arrondi à l'entier inférieur (mesuré sur les graines 1-40 : une par 67 px en moyenne, 89 au
-        // pire à 720 px, 83 à 1 440 et 85 à 2 880 ; l'ancien pas de 48-72 px à ± 21 donnait une par 76 à 103 px).
+        // 90 px de longueur libre, arrondi à l'entier inférieur (mesuré sur les graines 1-40 avec l écart minimal de 34 px : une par 68-70 px en moyenne, plancher tenu avec 1 fosse de marge au
+        // pire ; l ancien pas de 48-72 px à ± 21 donnait une par 76 à 103 px).
         expect(pits.length).toBeGreaterThanOrEqual(Math.floor((width - cleared) / 90));
       });
 
@@ -129,14 +129,12 @@ describe('verdure de la rue (streetVerdure)', () => {
         for (const v of rue.filter((v): v is RuePots => v.kind === 'pots')) expect(plan.doors.some((d) => d.x === v.x)).toBe(true);
       });
 
-      // Boulevard (notes §1, variante A) : une place tous les 60 px, centre cherché à ± 12 px, sinon la place reste vide.
-      it(`${tag} : pas constant de ${PIT_PITCH} px (écart = multiple de ${PIT_PITCH} à ± ${2 * PIT_SEARCH} près), chaque fosse à ± ${PIT_SEARCH} px de sa place`, () => {
+      // Boulevard (notes §1, variante A) : une place tous les 60 px, centre cherché à ± 20 px, sinon la place reste vide.
+      it(`${tag} : pas constant de ${PIT_PITCH} px chaque fosse à ± ${PIT_SEARCH} px de sa place, deux fosses à ${PIT_MIN_GAP} px au moins l'une de l'autre`, () => {
         const slots = rueSlots(seed, width);
         for (let i = 1; i < pits.length; i++) {
           const g = pits[i]!.x - pits[i - 1]!.x;
-          const n = Math.max(1, Math.round(g / PIT_PITCH));
-          expect(Math.abs(g - n * PIT_PITCH)).toBeLessThanOrEqual(2 * PIT_SEARCH);
-          expect(g).toBeGreaterThanOrEqual(PIT_PITCH - 2 * PIT_SEARCH);
+          expect(g).toBeGreaterThanOrEqual(PIT_MIN_GAP);
           expect(pits[i]!.slot).toBeGreaterThan(pits[i - 1]!.slot);
         }
         for (const p of pits) expect(Math.abs(p.x - slots[p.slot]!)).toBeLessThanOrEqual(PIT_SEARCH);
@@ -145,14 +143,22 @@ describe('verdure de la rue (streetVerdure)', () => {
       });
 
       it(`${tag} : une place sautée ne décale pas ses voisins (mêmes fosses, mêmes tirages, sans les fosses voisines)`, () => {
-        // Chaque fosse ne dépend que de sa place : retirer une fosse d'une autre place ne change rien (plus de règle d'écart),
-        // et ses tirages (taille, essence, inclinaison) sont ceux de sa place, pas de son rang dans la rue.
-        const wider = cityPaintPlan(width + 600, H, seed).rue.filter((v): v is RuePit => v.kind === 'pit');
+        // Chaque fosse ne dépend que de sa place : forcer une place vide ne bouge aucune autre fosse (sauf la suivante, qui peut
+        // cesser de céder à la fosse retirée), et ses tirages sont ceux de sa place, pas de son rang dans la rue.
+        const { rue: _omit, ...rest } = plan;
+        const victim = pits[Math.floor(pits.length / 2)]!.slot;
+        const without = streetVerdure(rest, width, new Set([victim])).filter((v): v is RuePit => v.kind === 'pit');
+        let compared = 0;
         for (const p of pits) {
-          const same = wider.find((q) => q.slot === p.slot);
-          if (!same) continue;
-          expect([same.h, same.r, same.lean, same.young, same.empty]).toEqual([p.h, p.r, p.lean, p.young, p.empty]);
+          if (p.slot === victim || p.slot === victim + 1 || p.slot === victim + 2) continue;
+          const same = without.find((q) => q.slot === p.slot);
+          expect(same).toBeDefined();
+          expect(same!.x).toBe(p.x);
+          expect([same!.h, same!.r, same!.lean, same!.young, same!.empty]).toEqual([p.h, p.r, p.lean, p.young, p.empty]);
+          compared++;
         }
+        expect(compared).toBeGreaterThan(0);
+        expect(without.some((q) => q.slot === victim)).toBe(false);
       });
 
       it(`${tag} : une essence par tronçon (coupé au passage piéton et à l'arrêt de bus), même âge, 1 replantation sur ${PIT_REPLANT} places`, () => {

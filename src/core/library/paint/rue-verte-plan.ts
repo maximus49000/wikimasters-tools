@@ -44,14 +44,16 @@ export const SHOP_DOOR_MARGIN = 4;
 // Demi-largeur de la fosse (carré de terre de 14 px et sa bordure de pierre ; 5 avant la maquette V5).
 export const PIT_HALF = 7;
 // Alignement en boulevard : une place tous les PIT_PITCH px à partir d'une phase tirée (PIT_PHASE + rng × PIT_PHASE_SPREAD),
-// centre libre cherché à ± PIT_SEARCH px (au pixel, droite puis gauche à distance égale), sinon la place reste vide : les
-// voisins ne bougent pas (écart entre deux fosses ≥ PIT_PITCH − 2 × PIT_SEARCH = 20 px, plus de règle d'écart minimal).
+// centre libre cherché à ± PIT_SEARCH px (au pixel, gauche puis droite à distance égale), sinon la place reste vide : les
+// voisins ne bougent pas. Une place est aussi sautée (la plus à droite cède) si sa fosse serait à moins de PIT_MIN_GAP px de la
+// fosse précédente : sans cela l'écart pouvait descendre à 20 px et les couronnes fondaient.
 // Recherche à ± 20 au lieu des ± 12 de la maquette : dans une rue de locaux (une porte tous les 30 px) ± 12 sautait plus
 // d'une place sur deux.
 export const PIT_PITCH = 60;
 export const PIT_PHASE = 30;
 export const PIT_PHASE_SPREAD = 20;
 export const PIT_SEARCH = 20;
+export const PIT_MIN_GAP = 34;
 // Une place sur PIT_REPLANT replantée (compteur, décalage tiré) : jeune au tuteur, ou fosse vide (PIT_EMPTY_SHARE du tirage).
 export const PIT_REPLANT = 10;
 export const PIT_EMPTY_SHARE = 0.25;
@@ -75,6 +77,8 @@ export function rueCuts(width: number, seed: number, unit: number): number[] {
   const f = streetFixtures(width, seed, unit);
   return [f.lightX, f.busStop.far].sort((a, b) => a - b);
 }
+// Sûr pour une fosse déplacée de ± PIT_SEARCH : les zones dégagées du passage piéton et de l'arrêt de bus (PIT_*_CLEAR + PIT_HALF)
+// sont plus larges que la recherche, donc la fosse reste du même côté de chaque coupe que sa place.
 export const sectionOf = (cuts: readonly number[], x: number): number => cuts.filter((c) => c < x).length;
 // Une essence par tronçon (notes §5) : le plus long (tronçon principal) en platane ou tilleul ; un tronçon court en robinier
 // ou cerisier (alternés, le premier tiré) ; un autre tronçon long dans l'essence (platane / tilleul) que le principal n'a pas
@@ -104,7 +108,7 @@ export const PIT_CROSSING_CLEAR = CROSS_HALF + 6;
 export const PIT_BUS_STOP_CLEAR = 26;
 type Kind = 'door' | 'lamp' | 'furn' | 'shopdoor';
 
-export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): RueItem[] {
+export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number, skipSlots: ReadonlySet<number> = new Set()): RueItem[] {
   const { seed, curb, ground, unit: u } = plan;
   // Pied des bacs et parterres : juste au-dessus de la ligne de marche le long des façades (doorY).
   const wallFoot = cityMetrics(plan.height).doorY - BOX_CLEARANCE;
@@ -133,7 +137,7 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     out.some((v) => 'x0' in v && !(wall && v.kind === 'pit') && x1 > v.x0 - 3 && x0 < v.x1 + 3);
 
   // 1. Alignement d'arbres en fosse à la bordure, en boulevard : à chaque place (rueSlots), le centre libre le plus proche à
-  // ± PIT_SEARCH px près, au pixel (droite puis gauche à distance égale) ; rien de libre → place sautée, les voisins restent
+  // ± PIT_SEARCH px près, au pixel (gauche puis droite à distance égale) ; rien de libre → place sautée, les voisins restent
   // sur leur pas. Entrées mesurées sur la fosse réelle (± PIT_HALF) contre leur span élargi de 4 px ; porte vitrée d'un
   // local : seul le fût (centre) à 4 px au moins de la porte (la fosse peut passer devant, la porte reste dégagée ; règle
   // élargie le 2026-10-24 pour garder la densité demandée par l'utilisateur) ;
@@ -161,13 +165,17 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
   const species = sectionSpecies(width, seed, u);
   const footY = pitFootY(curb, u);
   const replant = Math.floor(fondRng(seed, 'rue-arbres', 'replant')() * PIT_REPLANT);
+  // `skipSlots` : places forcées vides (prise des tests, sans effet sur le tirage des autres places).
+  let lastPit = -Infinity;
   rueSlots(seed, width).forEach((x, slot) => {
+    if (skipSlots.has(slot)) return;
     let px: number | null = null;
     for (let k = 0; k <= 2 * PIT_SEARCH && px === null; k++) {
       const c = x + (k % 2 ? -1 : 1) * Math.ceil(k / 2);
       if (!pitBusy(c)) px = c;
     }
-    if (px === null) return;
+    if (px === null || px - lastPit < PIT_MIN_GAP) return;
+    lastPit = px;
     const rng = fondRng(seed, 'rue-arbres', String(slot));
     const again = slot % PIT_REPLANT === replant;
     const empty = again && rng() < PIT_EMPTY_SHARE;
