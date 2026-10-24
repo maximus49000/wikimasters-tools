@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
@@ -22,7 +22,7 @@ import { shopLookOf, shopOrigin, type GlowLamp } from './shop/ghibli-shop-front'
 import { usePaintedCity } from './painted-city';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { fondMoment, type FondMoment } from '../core/library/paint/fond-time';
-import { gradeFor, gradeValues } from '../core/library/paint/grade';
+import { PaintedCanvas, gradeKey, type CanvasImage } from './painted-canvas';
 import { FondLife } from './fond-life';
 import { treesSig, useStreetTreesReady, useStreetTreesScene } from './street-trees-slot';
 
@@ -46,7 +46,7 @@ function useLingering(on: boolean, ms: number): boolean {
   return on || late;
 }
 
-// Ville peinte prête à montrer : tranches peintes ET arbres de la rue cuits (ils font partie du décor : toute la ville entre
+// Ville peinte prête à montrer : tranches peintes ET dessinées sur leur toile (painted-canvas.tsx) ET arbres de la rue cuits (ils font partie du décor : toute la ville entre
 // ensemble dans le fondu). Filet de sécurité : TREES_CAP_MS après les tranches, la ville est montrée quand même et les arbres
 // en retard entrent chacun en fondu (street-trees.tsx). Les arbres sont dessinés plus haut dans la profondeur (devant les
 // façades et leur vie, street-trees-slot.tsx) : leur état arrive par le magasin de street-trees-slot.
@@ -116,13 +116,23 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
   // Arbres de la rue : scène publiée pour leur emplacement dans le calque de la rue (city-life.tsx, scene-panorama.tsx), qui
   // suivent la visibilité et le fondu de la ville peinte ; null en classique.
   const treesKey = treesSig(seed, width, height);
-  const paintedReady = usePaintedReady(painted.ready, useStreetTreesReady(treesKey), plan);
+  // Tranches sur une toile étalonnée aux pixels (painted-canvas.tsx : plus de filtre SVG ni de grandes <image>, que Chrome
+  // Android lâchait au zoom : flash clair, ville noire) ; même arrondi au vingtième que les arbres de la rue (même teinte).
+  const gk = gradeKey(sky.daylight, sky.twilight, gloom);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const grade = useMemo(() => gk.grade, [gk.key]);
+  const tileImages = useMemo<CanvasImage[]>(
+    () => painted.tiles.filter((t) => t.url !== '').map((t) => ({ x: t.x, y: 0, w: t.w, h: height, url: t.url })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [painted.tiles.map((t) => `${t.x},${t.w},${t.url}`).join('|'), height],
+  );
+  const [canvasReady, setCanvasReady] = useState(false);
+  const paintedReady = usePaintedReady(painted.ready && canvasReady, useStreetTreesReady(treesKey), plan);
   const showPainted = ghibli && paintedReady;
   const fade = reducedMotion() ? 'none' : FADE;
   useStreetTreesScene(treesKey, plan ? { plan, moment, daylight: sky.daylight, twilight: sky.twilight, gloom, dim, minutes, shown: showPainted, fade } : null);
   // Brouillard de la météo (brume de la colline, vie du fond), lu une fois par minute.
   const fog = useMemo(() => Math.round((weather?.read(Date.now()).fog ?? 0) * 20) / 20, [weather, Math.round(minutes)]);
-  const gradeId = useId().replace(/:/g, '');
   // Vitrines pour la lumière de nuit (G5) : vitre de chaque local, allumée la nuit quand le commerce est ouvert (comme ShopFront).
   const nightShops = useMemo(
     () =>
@@ -289,14 +299,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         {entrances}
       </g>
       <g data-painted-city="" data-ready={paintedReady ? 'true' : 'false'} style={{ opacity: showPainted ? 1 : 0, transition: fade }}>
-        <filter id={gradeId} colorInterpolationFilters="sRGB">
-          <feColorMatrix type="matrix" values={gradeValues(gradeFor(sky.daylight, sky.twilight, gloom))} />
-        </filter>
-        <g filter={`url(#${gradeId})`}>
-          {painted.tiles.filter((t) => t.url !== '').map((t) => (
-            <image key={t.x} data-painted-tile={t.x} href={t.url} x={t.x} y={0} width={t.w} height={height} preserveAspectRatio="none" />
-          ))}
-        </g>
+        <PaintedCanvas box={{ x: 0, y: 0, w: width, h: height }} images={tileImages} grade={grade} onReady={setCanvasReady} tag="ville" />
         {/* Vie animée du fond (PR 2b) : colline et mur du fond, au-dessus des tranches, sous la lumière de nuit et les fenêtres. */}
         {plan && <FondLife plan={plan} moment={moment} minutes={minutes} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} dim={dim} forcedNight={forcedNight} day={city?.day} fog={fog} />}
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}

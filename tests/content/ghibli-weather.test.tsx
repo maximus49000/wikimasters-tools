@@ -131,9 +131,12 @@ describe('précipitations et phénomènes peints', () => {
     await flush(120);
     const cover = container.querySelector('[data-wx="snow-cover"]')!;
     expect(cover.tagName.toLowerCase()).toBe('g');
-    expect(cover.querySelectorAll('image[data-snow-tile]')).toHaveLength(tileCount(720));
+    expect(cover.querySelector('[data-painted-canvas="neige"]')!.getAttribute('data-images')).toBe(String(tileCount(720)));
     expect(Number(cover.getAttribute('opacity'))).toBeGreaterThan(0);
-    expect(cover.querySelector('feColorMatrix')!.getAttribute('values')).toBe(gradeValues(gradeFor(1, 0, true)));
+    expect(cover.querySelector('[data-painted-canvas="neige"]')!.getAttribute('data-grade')).toBe(gradeValues(gradeFor(1, 0, true)));
+    // Étalonnage aux pixels de la toile : plus de filtre SVG ni d'image sur la neige posée.
+    expect(cover.querySelector('feColorMatrix')).toBeNull();
+    expect(cover.querySelector('image')).toBeNull();
   });
 
   it('nœud de neige remplacé : la boucle suit le nouveau nœud', async () => {
@@ -144,7 +147,7 @@ describe('précipitations et phénomènes peints', () => {
     act(() => root.render(<svg><WeatherLayer scene="city" width={1080} height={216} seed={1} sky={SKY} clock={clock} /></svg>));
     await flush(120);
     const cover = container.querySelector('[data-wx="snow-cover"]')!;
-    expect(cover.querySelectorAll('image[data-snow-tile]')).toHaveLength(tileCount(1080));
+    expect(cover.querySelector('[data-painted-canvas="neige"]')!.getAttribute('data-images')).toBe(String(tileCount(1080)));
     expect(Number(cover.getAttribute('opacity'))).toBeGreaterThan(0);
   });
 });
@@ -202,7 +205,7 @@ describe('relecture finale', () => {
     act(() => root.render(<svg><WeatherLayer scene="city" width={1080} height={216} seed={1} sky={SKY} clock={clock} /></svg>));
     const cover = container.querySelector('[data-wx="snow-cover"]')!;
     expect(cover.tagName.toLowerCase()).toBe('g');
-    expect(cover.querySelectorAll('image[data-snow-tile]').length).toBeGreaterThan(0);
+    expect(Number(cover.querySelector('[data-painted-canvas="neige"]')!.getAttribute('data-images'))).toBeGreaterThan(0);
   });
 
   it('Ghibli → classique → Ghibli : éclair et neige classiques rétablis, nuages repris sans repeindre', async () => {
