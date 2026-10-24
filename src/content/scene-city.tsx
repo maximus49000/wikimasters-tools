@@ -19,7 +19,8 @@ import { lampLit, lampsFor } from '../core/library/city/lamps';
 import { lampBlobs, patchBox } from '../core/library/city/night-light';
 import { layerBox } from './shop/shop-host';
 import { shopLookOf, shopOrigin, type GlowLamp } from './shop/ghibli-shop-front';
-import { usePaintedCity } from './painted-city';
+import { hillWindEnabled, usePaintedCity } from './painted-city';
+import { HillWindLayer } from './hill-wind-layer';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { fondMoment, type FondMoment } from '../core/library/paint/fond-time';
 import { PaintedCanvas, gradeKey, type CanvasImage } from './painted-canvas';
@@ -46,7 +47,8 @@ function useLingering(on: boolean, ms: number): boolean {
   return on || late;
 }
 
-// Ville peinte prête à montrer : tranches peintes ET dessinées sur leur toile (painted-canvas.tsx) ET arbres de la rue cuits (ils font partie du décor : toute la ville entre
+// Ville peinte prête à montrer : tranches peintes ET dessinées sur leur toile (painted-canvas.tsx) ET feuillage de la colline
+// dessiné sur son calque (hill-wind-layer.tsx, quand le vent l'anime) ET arbres de la rue cuits (ils font partie du décor : toute la ville entre
 // ensemble dans le fondu). Filet de sécurité : TREES_CAP_MS après les tranches, la ville est montrée quand même et les arbres
 // en retard entrent chacun en fondu (street-trees.tsx). Les arbres sont dessinés plus haut dans la profondeur (devant les
 // façades et leur vie, street-trees-slot.tsx) : leur état arrive par le magasin de street-trees-slot.
@@ -127,7 +129,10 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
     [painted.tiles.map((t) => `${t.x},${t.w},${t.url}`).join('|'), height],
   );
   const [canvasReady, setCanvasReady] = useState(false);
-  const paintedReady = usePaintedReady(painted.ready && canvasReady, useStreetTreesReady(treesKey), plan);
+  // Colline au vent (PR 3b) : tranches peintes sans houppiers, feuillage sur son calque ; la ville attend aussi ce calque.
+  const hillOn = hillWindEnabled();
+  const [hillReady, setHillReady] = useState(false);
+  const paintedReady = usePaintedReady(painted.ready && canvasReady && (!hillOn || hillReady), useStreetTreesReady(treesKey), plan);
   const showPainted = ghibli && paintedReady;
   const fade = reducedMotion() ? 'none' : FADE;
   useStreetTreesScene(treesKey, plan ? { plan, moment, daylight: sky.daylight, twilight: sky.twilight, gloom, dim, minutes, shown: showPainted, fade } : null);
@@ -300,6 +305,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
       </g>
       <g data-painted-city="" data-ready={paintedReady ? 'true' : 'false'} style={{ opacity: showPainted ? 1 : 0, transition: fade }}>
         <PaintedCanvas box={{ x: 0, y: 0, w: width, h: height }} images={tileImages} grade={grade} onReady={setCanvasReady} tag="ville" />
+        {/* Feuillage de la colline au vent (PR 3b) : juste au-dessus des tranches (peintes sans houppiers), sous la vie du fond. */}
+        {plan && hillOn && <HillWindLayer plan={plan} tiles={painted.tiles} moment={moment} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} onReady={setHillReady} />}
         {/* Vie animée du fond (PR 2b) : colline et mur du fond, au-dessus des tranches, sous la lumière de nuit et les fenêtres. */}
         {plan && <FondLife plan={plan} moment={moment} minutes={minutes} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} dim={dim} forcedNight={forcedNight} day={city?.day} fog={fog} />}
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
