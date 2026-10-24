@@ -95,11 +95,18 @@ describe('mouvements de la collection', () => {
     expect(list[0]).toMatchObject({ slug: PARIS.slug, copies: 1 });
   });
 
-  it('ne touche pas une carte dont le nombre d’exemplaires est inconnu', async () => {
+  it('une carte jamais recomptée (obtenue depuis le dernier parcours) qui part quitte la collection', async () => {
     const repo = createCollectionRepo(createMemoryStore());
     await repo.observe([PARIS]);
     await repo.adjustCopies({ [PARIS.slug]: -1 });
-    expect(await repo.list()).toHaveLength(1);
+    expect(await repo.list()).toEqual([]);
+  });
+
+  it('un retour sur une carte au nombre inconnu ne lui invente pas de nombre', async () => {
+    const repo = createCollectionRepo(createMemoryStore());
+    await repo.observe([PARIS]);
+    await repo.adjustCopies({ [PARIS.slug]: 1 });
+    expect(await repo.list()).toEqual([PARIS]);
   });
 
   it('en fin de parcours complet, remplace les nombres et retire les cartes non recomptées', async () => {
