@@ -1,4 +1,4 @@
-// Écriture d'attributs SVG par les boucles à 15 images/s (fond-life.tsx, street-trees.tsx) : un attribut n'est écrit que s'il
+// Écriture d'attributs SVG par les boucles à 15 images/s (fond-life.tsx) : un attribut n'est écrit que s'il
 // change ; la dernière valeur écrite est gardée en mémoire (pas de lecture du DOM à chaque image).
 const WRITTEN = new WeakMap<Element, Map<string, string>>();
 export function setIfChanged(el: Element, name: string, value: string): void {

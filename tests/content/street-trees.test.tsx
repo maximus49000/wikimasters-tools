@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-// tests/content/street-trees.test.tsx — calque `arbres-rue` (PR 3) : un groupe par fosse plantée, nœuds constants à toute heure,
-// mouvement réduit sans aucune transformation qui change, pose au vent (rameaux, grappes, rehauts ; fût jamais transformé).
+// tests/content/street-trees.test.tsx — calque `arbres-rue` (PR 3) : une toile 2D dans le SVG, un groupe d'état par fosse
+// plantée, nœuds constants à toute heure et d'une image à l'autre (le vent n'écrit rien dans le SVG), mouvement réduit sans
+// aucune pose qui change, pose au vent (rameaux, grappes, rehauts ; fût jamais transformé). Les images de la boucle sont lues
+// en ordres de dessin (`setRueFrameSinkForTests`).
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RUE_BAKE_TRIES, StreetTrees, resetStreetTreesForTests, setRueSpritePainterForTests, type RueBakeJob, type RueSprites } from '../../src/content/street-trees';
+import { RUE_BAKE_TRIES, StreetTrees, resetStreetTreesForTests, setRueFrameSinkForTests, setRueSpritePainterForTests, type RueBakeJob, type RueDraw, type RueSprites } from '../../src/content/street-trees';
 import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
 import { fondMoment } from '../../src/core/library/paint/fond-time';
 import { windOf } from '../../src/core/library/paint/fond-vent';
@@ -24,7 +26,10 @@ let host: HTMLDivElement;
 let root: Root;
 let frames: FrameRequestCallback[] = [];
 let jobs: RueBakeJob[] = [];
+let drawn: (readonly RueDraw[])[] = [];
 beforeEach(() => {
+  drawn = [];
+  setRueFrameSinkForTests((ops) => drawn.push(ops));
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -44,6 +49,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   setRueSpritePainterForTests(null);
+  setRueFrameSinkForTests(null);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -72,7 +78,12 @@ const tick = (ms: number): void => {
   const list = frames.splice(0);
   act(() => list.forEach((cb) => cb(ms)));
 };
-const transforms = (): (string | null)[] => [...host.querySelectorAll('[data-rue-arbre] image')].map((n) => n.getAttribute('transform'));
+type LayerDraw = Extract<RueDraw, { op: 'layer' }>;
+const lastFrame = (): readonly RueDraw[] => drawn.at(-1) ?? [];
+const layersOf = (ops: readonly RueDraw[]): LayerDraw[] => ops.filter((o): o is LayerDraw => o.op === 'layer');
+// Matrices des couches de la dernière image, par arbre et couche.
+const poses = (): string[] => layersOf(lastFrame()).map((o) => `${o.tree}:${o.layer}:${o.m.join(' ')}`);
+const ID = '1 0 0 1 0 0';
 
 describe('calque arbres-rue', () => {
   it('la ville de test a des fosses plantées', () => {
@@ -87,45 +98,61 @@ describe('calque arbres-rue', () => {
     }
     const groups = host.querySelectorAll('[data-rue-arbre]');
     expect(groups).toHaveLength(pits.length);
-    groups.forEach((g, i) => {
-      expect([...g.children].map((c) => c.getAttribute('data-rue-couche'))).toEqual(rueLayers(rueTreeModel(pits[i]!)));
-    });
+    expect([...groups].every((g) => g.children.length === 0 && g.hasAttribute('data-rue-pret'))).toBe(true);
+    expect(host.querySelectorAll('[data-arbres-rue-toile] canvas')).toHaveLength(1);
     expect(new Set(counts).size).toBe(1);
-    // Images cuites posées sur la boîte fixe de la fosse ; nuit : cuisson étalonnée.
-    const img = groups[0]!.querySelector('[data-rue-couche="trunk"]')!;
-    const box = rueSpriteBox(pits[0]!);
-    expect(img.getAttribute('href')).toMatch(/^data:.*\|trunk$/);
-    expect([img.getAttribute('x'), img.getAttribute('width')]).toEqual([String(box.x), String(box.w)]);
+    // Couches dessinées dans l'ordre (rehauts éteints omis), fosse après fosse ; images cuites ; nuit : cuisson étalonnée.
+    tick(1_800_000_000_000);
+    const layers = layersOf(lastFrame());
+    pits.forEach((v, i) => {
+      const want = rueLayers(rueTreeModel(v));
+      const got = layers.filter((o) => o.tree === i).map((o) => o.layer);
+      expect(got, `fosse ${i}`).toEqual(want.filter((l) => got.includes(l)));
+      expect(got.filter((l) => l !== 'hi' && l !== 'pale'), `fosse ${i}`).toEqual(want.filter((l) => l !== 'hi' && l !== 'pale'));
+    });
+    expect(layers.map((o) => o.tree)).toEqual(layers.map((o) => o.tree).sort((a, b) => a - b));
+    expect(layers.find((o) => o.tree === 0 && o.layer === 'trunk')!.href).toMatch(/^data:.*\|trunk$/);
+    expect(rueSpriteBox(pits[0]!).w).toBeGreaterThan(0);
     expect(jobs.some((j) => j.grade !== null)).toBe(true);
     expect(jobs.some((j) => j.grade === null)).toBe(true);
   });
   it('au vent : les grappes bougent d\'une image à l\'autre, le fût jamais', async () => {
     render(15 * 60, { still: false });
     await settle();
+    const nodes = host.querySelectorAll('*').length;
+    const svg = host.innerHTML;
     tick(1_800_000_000_000);
-    const a = transforms();
+    const a = poses();
     tick(1_800_000_000_700);
-    const b = transforms();
+    const b = poses();
     expect(a).not.toEqual(b);
-    const trunk = [...host.querySelectorAll('[data-rue-couche="trunk"], [data-rue-couche="shadow"]')];
-    expect(trunk.every((n) => n.getAttribute('transform') === null)).toBe(true);
+    const trunk = layersOf(lastFrame()).filter((o) => o.layer === 'trunk' || o.layer === 'shadow');
+    expect(trunk.length).toBe(2 * pits.length);
+    expect(trunk.every((o) => o.m.join(' ') === ID)).toBe(true);
+    // Le vent ne touche pas au SVG de la scène : mêmes nœuds, mêmes attributs.
+    expect(host.querySelectorAll('*').length).toBe(nodes);
+    expect(host.innerHTML).toBe(svg);
   });
   it('mouvement réduit : aucune transformation ne change entre deux images de la boucle', async () => {
     render(15 * 60, { still: true });
     await settle();
+    expect(drawn.length).toBeGreaterThan(0);
+    const a = poses();
     tick(1_800_000_000_000);
-    const a = transforms();
     tick(1_800_000_000_700);
-    expect(transforms()).toEqual(a);
-    expect(a.filter((v) => v !== null).length).toBeGreaterThan(pits.length);
-    expect(a.every((v) => v === null || /^(translate\(0 0\)|matrix\(1 0 0 1 0 0\))$/.test(v))).toBe(true);
+    expect(poses()).toEqual(a);
+    expect(a.length).toBeGreaterThan(pits.length);
+    expect(a.every((v) => v.endsWith(ID))).toBe(true);
+    // Arbres entiers dès la première image (pas de fondu en mouvement réduit).
+    expect(layersOf(lastFrame()).every((o) => o.alpha === 1)).toBe(true);
   });
 });
 
 describe('cuisson et apparition des arbres', () => {
   const sprite = (job: RueBakeJob): RueSprites => Object.fromEntries(job.layers.map((l) => [l, `data:${job.key}|${l}`]));
-  const opacities = (): string[] => [...host.querySelectorAll<SVGGElement>('[data-rue-arbre]')].map((g) => g.style.opacity);
-  it("onReady attend que toutes les fosses aient leur image ; avant, chaque arbre est à opacité 0 (fondu à l'entrée)", async () => {
+  const prets = (): boolean[] => [...host.querySelectorAll('[data-rue-arbre]')].map((g) => g.hasAttribute('data-rue-pret'));
+  const alphaOf = (tree: number): number[] => layersOf(lastFrame()).filter((o) => o.tree === tree && o.layer === 'trunk').map((o) => o.alpha);
+  it("onReady attend que toutes les fosses aient leur image ; avant, l'arbre n'est pas dessiné, puis il entre en fondu", async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((r) => (release = r));
     setRueSpritePainterForTests(async (job) => {
@@ -136,14 +163,29 @@ describe('cuisson et apparition des arbres', () => {
     render(15 * 60, { onReady: ready });
     await settle();
     expect(ready).toHaveBeenLastCalledWith(false);
-    expect(opacities().slice(0, -1).every((o) => o === '1')).toBe(true);
-    expect(opacities().at(-1)).toBe('0');
-    const g = host.querySelectorAll<SVGGElement>('[data-rue-arbre]');
-    expect(g[g.length - 1]!.style.transition).toContain('opacity');
+    expect(prets().slice(0, -1).every(Boolean)).toBe(true);
+    expect(prets().at(-1)).toBe(false);
+    const lastTree = pits.length - 1;
+    // Première image après la cuisson : les arbres cuits commencent leur fondu (rien sur place), une seconde plus tard ils
+    // sont entiers ; le dernier, pas encore cuit, n'est pas dessiné.
+    tick(1_800_000_000_000);
+    expect(alphaOf(0)).toEqual([]);
+    tick(1_800_000_001_100);
+    expect(alphaOf(0)).toEqual([1]);
+    expect(alphaOf(lastTree)).toEqual([]);
     release();
     await settle();
     expect(ready).toHaveBeenLastCalledWith(true);
-    expect(opacities().every((o) => o === '1')).toBe(true);
+    expect(prets().every(Boolean)).toBe(true);
+    // Cuit après coup : fondu d'entrée d'une seconde.
+    tick(1_800_000_002_000);
+    expect(alphaOf(lastTree)).toEqual([]);
+    tick(1_800_000_002_500);
+    const mid = alphaOf(lastTree)[0]!;
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1);
+    tick(1_800_000_003_100);
+    expect(alphaOf(lastTree)).toEqual([1]);
   });
   it('une cuisson ratée est retentée ; épuisée, la fosse est marquée et ne bloque pas la ville', async () => {
     const tries = new Map<string, number>();
@@ -161,7 +203,7 @@ describe('cuisson et apparition des arbres', () => {
     expect(tries.get(keyOf(pits[0]!))).toBe(3);
     expect(tries.get(keyOf(pits[1]!))).toBe(RUE_BAKE_TRIES);
     const g = host.querySelectorAll('[data-rue-arbre]');
-    expect(g[0]!.querySelector('image')!.getAttribute('href')).toMatch(/^data:/);
+    expect(g[0]!.hasAttribute('data-rue-pret')).toBe(true);
     expect(g[0]!.hasAttribute('data-rue-echec')).toBe(false);
     expect(g[1]!.hasAttribute('data-rue-echec')).toBe(true);
     expect(ready).toHaveBeenLastCalledWith(true);
@@ -183,28 +225,33 @@ describe('particules et oiseau des arbres', () => {
         </svg>,
       ),
     );
-  const active = (): Element[] => [...host.querySelectorAll('[data-rue-part]')].filter((n) => n.getAttribute('opacity') !== '0');
-  it('pool fixe de 130 particules et un oiseau ; au vent de novembre, feuilles et gouttes posées, plafonds par genre', async () => {
+  type PartDraw = Extract<RueDraw, { op: 'part' }>;
+  const active = (): PartDraw[] => lastFrame().filter((o): o is PartDraw => o.op === 'part');
+  it('au vent de novembre, feuilles et gouttes dessinées par-dessus les houppiers, plafonds par genre, SVG inchangé', async () => {
     mountAt(false);
     await settle();
-    expect(host.querySelectorAll('[data-rue-part]')).toHaveLength(130);
-    expect(host.querySelectorAll('[data-rue-oiseau]')).toHaveLength(1);
+    const nodes = host.querySelectorAll('*').length;
     let most = 0;
     for (let s = 0; s < 40; s++) {
       tick(1_800_000_000_000 + s * 1500);
       const on = active();
       most = Math.max(most, on.length);
-      for (const n of on) expect(n.getAttribute('transform')).toMatch(/^translate\(/);
-      expect(on.filter((n) => n.getAttribute('data-rue-part') === 'feuille').length).toBeLessThanOrEqual(40);
+      for (const o of on) expect(Number.isFinite(o.x) && Number.isFinite(o.y) && o.alpha > 0).toBe(true);
+      expect(on.filter((o) => o.kind === 'feuille').length).toBeLessThanOrEqual(40);
+      expect(on.length).toBeLessThanOrEqual(130);
+      // Particules et oiseau après tous les arbres.
+      const ops = lastFrame();
+      const firstPart = ops.findIndex((o) => o.op !== 'layer');
+      if (firstPart >= 0) expect(ops.slice(firstPart).every((o) => o.op !== 'layer')).toBe(true);
     }
     expect(most).toBeGreaterThan(0);
-    expect(host.querySelectorAll('[data-rue-part]')).toHaveLength(130);
+    expect(host.querySelectorAll('*').length).toBe(nodes);
   });
   it('mouvement réduit : aucune particule, aucun oiseau', async () => {
     mountAt(true);
     await settle();
-    expect(active()).toHaveLength(0);
-    expect(host.querySelector('[data-rue-oiseau]')!.getAttribute('opacity')).toBe('0');
+    expect(drawn.length).toBeGreaterThan(0);
+    expect(lastFrame().every((o) => o.op === 'layer')).toBe(true);
   });
 });
 

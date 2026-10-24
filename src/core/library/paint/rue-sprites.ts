@@ -172,7 +172,42 @@ const rngOf = (key: string): (() => number) => mulberry32(hashString(key) >>> 0)
 // Touffes qui peuvent partir (lâches en automne ; en avril, les touffes du bout des branches des cerisiers en fleur).
 type Loose = { tf: Tuft; color: string }[];
 // Arbres de la scène pour un jour : modèle, feuillage, source, et places du pool par genre (mémorisé par liste et par jour).
-type TreeInfo = { v: RuePit; m: TreeModel; d: number; cx: number; cy: number; ground: number; loose: Loose; petals: boolean; slots: Record<RueParticleKind, { from: number; n: number }> };
+type TreeInfo = { v: RuePit; m: TreeModel; d: number; cx: number; cy: number; ground: number; loose: Loose; petals: boolean; slots: Record<RueParticleKind, { from: number; n: number }>; memo: Draws };
+// Tirages mémorisés (la boucle tourne à 15 images/s : ni clé texte ni générateur recréés à chaque image). Mêmes clés, mêmes
+// tirages dans le même ordre que `rngOf(clé)`, donc mêmes valeurs. `cycle` : derniers tirages par place (cycle `n`) ;
+// `once` : tirage fixe par place ; `gust` : tirage par rafale `k`, par place (vidé au-delà de 16 rafales).
+type Draws = { cycle: Map<string, { n: number; v: number[] }>; once: Map<string, number>; gust: Map<string, Map<number, number>> };
+function drawsOf(key: string, count: number): number[] {
+  const r = rngOf(key);
+  return Array.from({ length: count }, () => r());
+}
+function cycleDraws(d: Draws, slot: string, n: number, key: () => string, count: number): number[] {
+  const hit = d.cycle.get(slot);
+  if (hit && hit.n === n) return hit.v;
+  const v = drawsOf(key(), count);
+  d.cycle.set(slot, { n, v });
+  return v;
+}
+function onceDraw(d: Draws, slot: string, key: () => string): number {
+  let v = d.once.get(slot);
+  if (v === undefined) d.once.set(slot, (v = rngOf(key())()));
+  return v;
+}
+function gustDraw(d: Draws, slot: string, k: number, key: () => string): number {
+  let m = d.gust.get(slot);
+  if (!m) d.gust.set(slot, (m = new Map()));
+  let v = m.get(k);
+  if (v === undefined) {
+    if (m.size >= 16) m.clear();
+    m.set(k, (v = rngOf(key())()));
+  }
+  return v;
+}
+// Itérateur sur des tirages mémorisés (remplace les appels successifs `rk()`).
+const seq = (v: readonly number[]): (() => number) => {
+  let i = 0;
+  return () => v[i++]!;
+};
 const INFOS = new WeakMap<readonly RuePit[], { key: string; trees: TreeInfo[] }>();
 
 // Répartit un plafond entre `n` arbres : parts égales, le reste aux premiers.
@@ -206,7 +241,7 @@ function treesOf(items: readonly RuePit[], D: FondMoment): TreeInfo[] {
         const st = tuftState(tf, f, D, v.species);
         if (petals ? st.size > 0 && tf.rank > 0.5 : st.loose && st.size > 0) loose.push({ tf, color: petals ? '#F6C0D4' : hexOf(st.tones[1]!) });
       }
-    return { v, m, d: f.d, cx: v.x + v.lean, cy: m.cy, ground: v.y - 0.5, loose, petals, slots: {} as TreeInfo['slots'] };
+    return { v, m, d: f.d, cx: v.x + v.lean, cy: m.cy, ground: v.y - 0.5, loose, petals, slots: {} as TreeInfo['slots'], memo: { cycle: new Map(), once: new Map(), gust: new Map() } };
   });
   const seeds = D.doy >= 125 && D.doy < 175;
   const ok: Record<RueParticleKind, boolean[]> = {
@@ -255,7 +290,8 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
     const C = life + LEAF_WINDOW_S;
     const x = tr.v.x;
     for (let j = 0; j < s.n; j++) {
-      const phase = rngOf(`place-${kind}-${Math.round(x)}-${j}`)() * C;
+      const slot = `${kind}${j}`;
+      const phase = onceDraw(tr.memo, slot, () => `place-${kind}-${Math.round(x)}-${j}`) * C;
       const n = Math.floor((t - phase) / C);
       const lo = n * C + phase;
       // Dernier départ possible (décalage de place compris) : la vie finit avant le cycle suivant.
@@ -274,12 +310,12 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
         const pass = passOf(g, x);
         if (pass > hi) break;
         if (pass < lo || j % 6 >= 1 + Math.floor(g.A * 3)) continue;
-        if (rngOf(`lache-${Math.round(x)}-${j}-${k}`)() >= p) continue;
+        if (gustDraw(tr.memo, slot, k, () => `lache-${Math.round(x)}-${j}-${k}`) >= p) continue;
         tp = pass + (j % 4) * 0.25;
         break;
       }
       if (Number.isNaN(tp) || t < tp) continue;
-      const rk = rngOf(`part-${Math.round(x)}-${j}-${n}`);
+      const rk = seq(cycleDraws(tr.memo, slot, n, () => `part-${Math.round(x)}-${j}-${n}`, 6));
       const o = tr.loose[Math.floor(rk() * tr.loose.length)]!;
       const x0 = o.tf.x + (rk() - 0.5) * o.tf.rr;
       const y0 = o.tf.y + (rk() - 0.5) * o.tf.rr;
@@ -306,12 +342,13 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
       const y0 = cy + r * 0.5;
       const fall = (ground - y0) / 40;
       const per = Math.max(fall + SPLASH_S + 0.2, 1.1 + (j % 3) * 0.37);
-      const phase = rngOf(`place-goutte-${Math.round(v.x)}-${j}`)() * per;
+      const slot = `goutte${j}`;
+      const phase = onceDraw(tr.memo, slot, () => `place-goutte-${Math.round(v.x)}-${j}`) * per;
       const n = Math.floor((t - phase) / per);
       const tb = n * per + phase;
       const a = t - tb;
       if (a > fall + SPLASH_S || !(weatherAt(hist, tb).meteo.precip > 0)) continue;
-      const x = cx + (rngOf(`goutte-${Math.round(v.x)}-${j}-${n}`)() - 0.5) * r * 1.5;
+      const x = cx + (cycleDraws(tr.memo, slot, n, () => `goutte-${Math.round(v.x)}-${j}-${n}`, 1)[0]! - 0.5) * r * 1.5;
       if (!inside(x)) continue;
       const onGround = a >= fall;
       out.push({ kind: 'goutte', x, y: onGround ? ground : y0 + 40 * a, rot: 0, color: '#D2E6FF', id: `goutte-${Math.round(v.x)}-${j}-${n}`, slot: sd.from + j, alpha: onGround ? Math.max(0, 1 - (a - fall) / SPLASH_S) : 1, born: { x, y: y0 } });
@@ -321,11 +358,12 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
     for (let j = 0; j < sn.n; j++) {
       // Cycle plus long que la chute la plus longue (paquet parti du haut du houppier) + l'éclaboussure.
       const per = Math.max(2.4 + (j % 2) * 0.9, Math.sqrt((ground - (cy - r * 0.3)) / 18) + SPLASH_S + 0.2);
-      const phase = rngOf(`place-neige-${Math.round(v.x)}-${j}`)() * per;
+      const slot = `neige${j}`;
+      const phase = onceDraw(tr.memo, slot, () => `place-neige-${Math.round(v.x)}-${j}`) * per;
       const n = Math.floor((t - phase) / per);
       const tb = n * per + phase;
       const bw = weatherAt(hist, tb);
-      const rk = rngOf(`neige-${Math.round(v.x)}-${j}-${n}`);
+      const rk = seq(cycleDraws(tr.memo, slot, n, () => `neige-${Math.round(v.x)}-${j}-${n}`, 3));
       if (!bw.meteo.snow || rk() < 0.5 || Math.abs(windAt(v.x, tb, bw.w, width)) <= 1) continue;
       const x = cx + (rk() - 0.5) * r * 1.6;
       const y0 = cy - r * 0.3 + rk() * r;
@@ -342,9 +380,10 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
       const y0 = cy - r * 0.2;
       const land = (ground - y0) / 1.5;
       const C = land + SEED_FADE_S + 3;
-      const phase = rngOf(`place-graine-${Math.round(v.x)}-${j}`)() * C;
+      const slot = `graine${j}`;
+      const phase = onceDraw(tr.memo, slot, () => `place-graine-${Math.round(v.x)}-${j}`) * C;
       const n = Math.floor((t - phase) / C);
-      const rk = rngOf(`graine-${Math.round(v.x)}-${j}-${n}`);
+      const rk = seq(cycleDraws(tr.memo, slot, n, () => `graine-${Math.round(v.x)}-${j}-${n}`, 3));
       const tb = n * C + phase + rk() * 3;
       const a = t - tb;
       if (a < 0 || a > land + SEED_FADE_S) continue;

@@ -174,7 +174,7 @@ describe('ville peinte', () => {
       await settle();
       expect(city().getAttribute('data-ready')).toBe('true');
       expect(city().style.opacity).toBe('1');
-      expect(([...qa('[data-rue-arbre]')] as SVGGElement[]).every((g) => g.style.opacity === '1')).toBe(true);
+      expect([...qa('[data-rue-arbre]')].every((g) => g.hasAttribute('data-rue-pret'))).toBe(true);
     });
     it('filet de sécurité : 8 s après les tranches, la ville est montrée et les arbres en retard entrent en fondu', async () => {
       localStorage.setItem(ART_KEY, 'ghibli');
@@ -200,11 +200,12 @@ describe('ville peinte', () => {
       await act(async () => caps.at(-1)!());
       expect(city().getAttribute('data-ready')).toBe('true');
       expect(city().style.opacity).toBe('1');
-      const trees = ([...qa('[data-rue-arbre]')] as SVGGElement[]);
-      expect(trees.every((g) => g.style.opacity === '0' && g.style.transition.includes('opacity'))).toBe(true);
+      // Arbres pas encore cuits : pas dessinés ; cuits, ils entrent en fondu sur la toile (street-trees.test.tsx).
+      const trees = [...qa('[data-rue-arbre]')];
+      expect(trees.every((g) => !g.hasAttribute('data-rue-pret'))).toBe(true);
       release();
       await settle();
-      expect(trees.every((g) => g.style.opacity === '1')).toBe(true);
+      expect(trees.every((g) => g.hasAttribute('data-rue-pret'))).toBe(true);
     });
   });
 

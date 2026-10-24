@@ -8,7 +8,6 @@ import type { RuePit } from '../core/library/paint/rue-verte-plan';
 import { rueTreeModel, rueWet } from '../core/library/paint/rue-verte-painter';
 import {
   RUE_CAP_OF,
-  RUE_PARTICLE_KINDS,
   gradePixels,
   paintRueLampWash,
   paintRueLayer,
@@ -26,50 +25,47 @@ import {
 import { gradeHex } from '../core/library/paint/fond-vie';
 import { INK } from '../core/library/paint/cel';
 import type { TreeModel } from '../core/library/paint/hill-trees';
-import { setIfChanged } from './svg-write';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Calque `arbres-rue` de la ville peinte (PR 3, notes de la maquette §3 c, §3 d) : les arbres des fosses de la rue, au vent.
-// Par fosse plantée, un <g data-rue-arbre> d'<image> cuites (rue-sprites.ts) : ombre des masses, fût + charpentières (jamais
-// transformés), rameaux fins (cisaillement), une image par grappe (translation), rehauts et rehauts pâles (opacité). Nœuds
-// constants pour la vie de la scène ; la boucle de l'horloge murale (15 images/s) n'écrit que les attributs qui changent.
+// Par fosse plantée, des couches cuites (rue-sprites.ts) : ombre des masses, fût + charpentières (jamais transformés), rameaux
+// fins (cisaillement), une image par grappe (translation), rehauts et rehauts pâles (opacité), puis particules et oiseau. Le
+// tout est dessiné sur UNE toile 2D placée dans le <svg> par <foreignObject> (comme la pluie, rain-canvas.tsx), à la même
+// profondeur que l'ancien calque SVG : la boucle de l'horloge murale (15 images/s) redessine la toile seule, sans toucher au
+// SVG de la scène, et ne redessine rien quand l'image ne change pas (vent calme, aucune particule).
 // Cuisson hors écran en temps mort (requestIdleCallback, échéance respectée : une ou quelques couches par créneau, jamais une
 // image bloquée), une fosse après l'autre, par (fosse, date, pluie, neige, étalonnage arrondi au vingtième, lavis des
-// lampadaires) ; l'ancienne image reste jusqu'à la nouvelle. Une cuisson ratée est retentée (3 essais) ; une fosse sans
-// image après ses essais est marquée `data-rue-echec` et signalée une fois dans la console. Les arbres font partie du décor :
-// `onReady` dit quand toutes les fosses ont leur image (scene-city attend ce signal pour montrer la ville peinte) ; un arbre
-// cuit après coup apparaît en fondu (jamais sur place). L'étalonnage (matrice `gradeFor`)
+// lampadaires) ; l'ancienne image reste jusqu'à la nouvelle (décodée). Une cuisson ratée est retentée (3 essais) ; une fosse
+// sans image après ses essais est marquée `data-rue-echec` et signalée une fois dans la console. Les arbres font partie du
+// décor : `onReady` dit quand toutes les fosses ont leur image (scene-city attend ce signal pour montrer la ville peinte) ; un
+// arbre cuit après coup apparaît en fondu (jamais sur place). L'étalonnage (matrice `gradeFor`)
 // est appliqué aux pixels à la cuisson : pas de filtre SVG animé (trop cher sur Android). Images en data URL PNG, comme toutes
 // les images cuites de la scène : la CSP du site refuse blob:.
-// Mouvement réduit (`prefers-reduced-motion` ou `still`) : arbres dessinés, pose nulle écrite une fois, aucune boucle.
+// Mouvement réduit (`prefers-reduced-motion` ou `still`) : arbres dessinés en pose nulle, sans fondu, aucune boucle.
+// Limite connue (comme la pluie) : une copie `<use>` du calque (fenêtre soulevée de la pièce) ne recopie pas une toile.
 const FRAME_MS = 66;
 // Cache : au moins deux générations de sprites (l'affichée et la suivante) pour tous les arbres de la scène.
 const CACHE_MIN = 24;
 let cacheMax = CACHE_MIN;
 // Essais de cuisson d'une même clé.
 export const RUE_BAKE_TRIES = 3;
-// Fondu d'entrée d'un arbre (même durée que le fondu de la ville peinte, scene-city.tsx).
-const TREE_FADE = 'opacity 1s ease';
-// Pool fixe des particules (feuilles, pétales, gouttes, neige, graines) : géométrie et opacité par genre, nœuds constants.
-const PART_SHAPE: Record<RueParticleKind, { x: number; y: number; w: number; h: number; rx?: number; op: string }> = {
-  feuille: { x: -0.9, y: -0.5, w: 1.8, h: 1, op: '1' },
-  petale: { x: -0.9, y: -0.5, w: 1.8, h: 1, op: '1' },
-  goutte: { x: -0.25, y: -1.2, w: 0.5, h: 1.4, op: '0.9' },
-  neige: { x: -0.9, y: -0.9, w: 1.8, h: 1.8, rx: 0.9, op: '0.95' },
-  graine: { x: -0.45, y: -0.45, w: 0.9, h: 0.9, rx: 0.45, op: '0.85' },
+// Particules (feuilles, pétales, gouttes, neige, graines) : géométrie (repère de la particule) et opacité par genre.
+const PART_SHAPE: Record<RueParticleKind, { x: number; y: number; w: number; h: number; rx?: number; op: number }> = {
+  feuille: { x: -0.9, y: -0.5, w: 1.8, h: 1, op: 1 },
+  petale: { x: -0.9, y: -0.5, w: 1.8, h: 1, op: 1 },
+  goutte: { x: -0.25, y: -1.2, w: 0.5, h: 1.4, op: 0.9 },
+  neige: { x: -0.9, y: -0.9, w: 1.8, h: 1.8, rx: 0.9, op: 0.95 },
+  graine: { x: -0.45, y: -0.45, w: 0.9, h: 0.9, rx: 0.45, op: 0.85 },
 };
-// Début de la part de chaque genre dans le pool.
-const offsetOf = RUE_PARTICLE_KINDS.reduce<Record<string, number>>((acc, k, i) => ((acc[k] = i === 0 ? 0 : acc[RUE_PARTICLE_KINDS[i - 1]!]! + RUE_CAP_OF[RUE_PARTICLE_KINDS[i - 1]!]), acc), {}) as Record<RueParticleKind, number>;
-const POOL = RUE_PARTICLE_KINDS.flatMap((kind) => Array.from({ length: RUE_CAP_OF[kind] }, (_, i) => ({ kind, i })));
 // Marge minimale par créneau de temps mort avant d'y cuire une couche de plus (ms).
 const SLOT_MARGIN_MS = 6;
 const q20 = (v: number): number => Math.round(Math.max(0, Math.min(1, v)) * 20) / 20;
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const CALM: Wind = { wind: 0, dir: 1, wet: 0, storm: false };
-// Nombre écrit à `d` décimales, zéro (même « -0,00 ») écrit « 0 ».
-const num = (v: number, d = 2): string => {
-  const s = v.toFixed(d);
-  return Number(s) === 0 ? '0' : s;
+// Arrondi (au centième par défaut) des valeurs dessinées, « -0 » ramené à 0 : la signature de l'image ne change qu'au centième.
+const rnd = (v: number, d = 2): number => {
+  const f = 10 ** d;
+  return Math.round(v * f) / f || 0;
 };
 
 export type RueSprites = Partial<Record<RueLayerName, string>>;
@@ -149,6 +145,164 @@ export const canvasRueSpritePainter: RueSpritePainter = async (job) => {
 
 type Tree = { v: RuePit; m: TreeModel; box: { x: number; y: number; w: number; h: number }; layers: RueLayerName[]; masses: number };
 
+// Une image de la boucle, en ordres de dessin dans le repère du monde (bancs d'essai et tests : `setRueFrameSinkForTests`).
+// `m` : matrice (a b c d e f) de la couche, comme l'ancien attribut `transform` ; `alpha` : fondu d'entrée de l'arbre × opacité
+// de la couche (rehauts).
+export type RueDraw =
+  | { op: 'layer'; tree: number; layer: RueLayerName; href: string; m: readonly number[]; alpha: number }
+  | { op: 'part'; kind: RueParticleKind; x: number; y: number; rot: number; color: string; alpha: number }
+  | { op: 'bird'; x: number; y: number; flying: boolean; flap: number; dir: 1 | -1 };
+let frameSink: ((ops: readonly RueDraw[]) => void) | null = null;
+export function setRueFrameSinkForTests(sink: ((ops: readonly RueDraw[]) => void) | null): void {
+  frameSink = sink;
+}
+
+// Images décodées des sprites (une par couche), gardées tant que leur jeu de sprites l'est (cache ou arbre affiché).
+const JSDOM = typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
+const IMAGES = new WeakMap<RueSprites, Partial<Record<RueLayerName, HTMLImageElement>>>();
+const decodedListeners = new Set<() => void>();
+function imagesOf(s: RueSprites): Partial<Record<RueLayerName, HTMLImageElement>> {
+  let imgs = IMAGES.get(s);
+  if (!imgs) {
+    imgs = {};
+    for (const [l, url] of Object.entries(s) as [RueLayerName, string][]) {
+      if (JSDOM || !url) continue;
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => decodedListeners.forEach((f) => f());
+      img.src = url;
+      imgs[l] = img;
+    }
+    IMAGES.set(s, imgs);
+  }
+  return imgs;
+}
+// Numéro d'un jeu de sprites (signature de l'image : une nouvelle cuisson se redessine).
+const SET_IDS = new WeakMap<RueSprites, number>();
+let setSeq = 0;
+function setId(s: RueSprites): number {
+  let n = SET_IDS.get(s);
+  if (n === undefined) SET_IDS.set(s, (n = ++setSeq));
+  return n;
+}
+// Image de la boucle en tampon plat réutilisé (aucun objet par image) : des enregistrements de STRIDE nombres,
+//   couche : [0, arbre, rang de la couche, c, e, f, alpha] (matrice 1 0 c 1 e f) ;
+//   particule : [1, genre, x, y, rotation, couleur, alpha] ; oiseau : [2, x, y, en vol, battement, sens, 0] ;
+//   jeu de sprites dessiné : [3, arbre, numéro du jeu, 0, 0, 0, 0] (une nouvelle cuisson change l'image).
+// Le même tampon sert de signature : une image identique à la précédente n'est pas redessinée.
+const STRIDE = 7;
+const KINDS: readonly RueParticleKind[] = ['feuille', 'petale', 'goutte', 'neige', 'graine'];
+const KIND_ID: Record<RueParticleKind, number> = { feuille: 0, petale: 1, goutte: 2, neige: 3, graine: 4 };
+const COLORS: string[] = [];
+const COLOR_IDS = new Map<string, number>();
+const colorId = (c: string): number => {
+  let n = COLOR_IDS.get(c);
+  if (n === undefined) COLOR_IDS.set(c, (n = COLORS.push(c) - 1));
+  return n;
+};
+function sameFrame(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+// Ordres de dessin lisibles (tests et bancs d'essai seulement).
+function opsOf(F: readonly number[], trees: readonly Tree[], sets: readonly (RueSprites | undefined)[]): RueDraw[] {
+  const ops: RueDraw[] = [];
+  for (let o = 0; o < F.length; o += STRIDE) {
+    const kind = F[o];
+    if (kind === 0) {
+      const i = F[o + 1]!;
+      const layer = trees[i]!.layers[F[o + 2]!]!;
+      ops.push({ op: 'layer', tree: i, layer, href: sets[i]?.[layer] ?? '', m: [1, 0, F[o + 3]!, 1, F[o + 4]!, F[o + 5]!], alpha: F[o + 6]! });
+    } else if (kind === 1) ops.push({ op: 'part', kind: KINDS[F[o + 1]!]!, x: F[o + 2]!, y: F[o + 3]!, rot: F[o + 4]!, color: COLORS[F[o + 5]!]!, alpha: F[o + 6]! });
+    else if (kind === 2) ops.push({ op: 'bird', x: F[o + 1]!, y: F[o + 2]!, flying: F[o + 3] === 1, flap: F[o + 4]!, dir: F[o + 5]! < 0 ? -1 : 1 });
+  }
+  return ops;
+}
+// Toutes les couches d'un jeu de sprites sont prêtes à dessiner (jsdom : rien à décoder).
+function decoded(s: RueSprites): boolean {
+  if (JSDOM) return true;
+  const imgs = imagesOf(s);
+  return (Object.keys(s) as RueLayerName[]).every((l) => !s[l] || (imgs[l]?.complete === true && imgs[l]!.naturalWidth > 0));
+}
+
+// Toile des arbres : tampon = taille affichée × dpr, au plus 2 px par unité de monde (résolution des sprites) et 4 Mpx.
+const MAX_UNIT_SCALE = 2;
+const MAX_PIXELS = 4_000_000;
+type Area = { x: number; y: number; w: number; h: number };
+function fitCanvas(cv: HTMLCanvasElement, area: Area): number {
+  const r = cv.getBoundingClientRect();
+  const dpr = typeof window !== 'undefined' && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+  let k = r.width > 0 ? (r.width / area.w) * dpr : dpr;
+  k = Math.min(k, MAX_UNIT_SCALE);
+  if (area.w * area.h * k * k > MAX_PIXELS) k = Math.sqrt(MAX_PIXELS / (area.w * area.h));
+  k = Math.max(0.25, Math.round(k * 8) / 8);
+  const w = Math.max(1, Math.round(area.w * k));
+  const h = Math.max(1, Math.round(area.h * k));
+  if (cv.width !== w) cv.width = w;
+  if (cv.height !== h) cv.height = h;
+  return k;
+}
+
+// Dessine une image de la boucle (efface tout, puis les enregistrements dans l'ordre : arbres, particules, oiseau).
+function paintFrame(ctx: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: number, area: Area, F: readonly number[], trees: readonly Tree[], imgs: readonly (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[]): void {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const ox = -area.x * k;
+  const oy = -area.y * k;
+  for (let o = 0; o < F.length; o += STRIDE) {
+    const kind = F[o];
+    if (kind === 0) {
+      const tr = trees[F[o + 1]!]!;
+      const img = imgs[F[o + 1]!]?.[tr.layers[F[o + 2]!]!];
+      if (!img) continue;
+      // Repère du monde × matrice de la couche (1 0 c 1 e f).
+      const c = F[o + 3]!;
+      ctx.setTransform(k, 0, k * c, k, ox + k * F[o + 4]!, oy + k * F[o + 5]!);
+      ctx.globalAlpha = F[o + 6]!;
+      const b = tr.box;
+      ctx.drawImage(img, b.x, b.y, b.w, b.h);
+    } else if (kind === 1) {
+      const sh = PART_SHAPE[KINDS[F[o + 1]!]!];
+      ctx.setTransform(k, 0, 0, k, ox + k * F[o + 2]!, oy + k * F[o + 3]!);
+      const rot = F[o + 4]!;
+      if (rot) ctx.rotate((rot * Math.PI) / 180);
+      ctx.globalAlpha = F[o + 6]!;
+      ctx.fillStyle = COLORS[F[o + 5]!]!;
+      if (sh.rx) {
+        ctx.beginPath();
+        ctx.arc(sh.x + sh.w / 2, sh.y + sh.h / 2, sh.rx, 0, Math.PI * 2);
+        ctx.fill();
+      } else ctx.fillRect(sh.x, sh.y, sh.w, sh.h);
+    } else if (kind === 2) {
+      // En vol : trait en V ; posé : corps et tête (tournée dans le sens d'arrivée), en aplat sans trait.
+      const x = F[o + 1]!;
+      const y = F[o + 2]!;
+      const flap = F[o + 4]!;
+      ctx.setTransform(k, 0, 0, k, ox, oy);
+      ctx.globalAlpha = 0.85;
+      if (F[o + 3] === 1) {
+        ctx.beginPath();
+        ctx.moveTo(x - 1.3, y - flap);
+        ctx.lineTo(x, y + 0.3);
+        ctx.lineTo(x + 1.3, y - flap);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
+      } else {
+        const hx = x + F[o + 5]! * 0.6 - 0.45;
+        ctx.fillStyle = INK;
+        ctx.fillRect(x - 0.7, y - 1.1, 1.4, 1.1);
+        ctx.beginPath();
+        ctx.arc(hx + 0.45, y - 1.3, 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
 type Props = {
   plan: CityPaintPlan;
   moment: FondMoment;
@@ -166,7 +320,7 @@ type Props = {
 };
 
 export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minutes, still: stillProp, at, onReady }: Props): ReactElement {
-  const root = useRef<SVGGElement | null>(null);
+  const canvas = useRef<HTMLCanvasElement | null>(null);
   const still = stillProp ?? reducedMotion();
   const trees = useMemo<Tree[]>(
     () =>
@@ -179,6 +333,14 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
         }),
     [plan],
   );
+  // Zone de la toile : toute la largeur, des houppiers (et de l'envol de l'oiseau, 30 unités plus haut) jusqu'au sol des fosses.
+  const area = useMemo<Area>(() => {
+    if (!trees.length) return { x: 0, y: 0, w: 1, h: 1 };
+    const top = Math.min(...trees.map((tr) => tr.box.y)) - 36;
+    const bottom = Math.max(...trees.map((tr) => Math.max(tr.box.y + tr.box.h, tr.v.y + 3)));
+    const y = Math.floor(Math.max(0, top));
+    return { x: 0, y, w: plan.width, h: Math.ceil(Math.min(plan.height, bottom)) - y };
+  }, [trees, plan.width, plan.height]);
   const lamps = useMemo(() => lampsFor(plan.width, plan.seed), [plan]);
   const qd = q20(daylight);
   const qt = q20(twilight);
@@ -202,9 +364,10 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
   useEffect(() => {
     onReady?.(ready);
   }, [ready, onReady]);
+  // Dernier rendu, lu par la boucle (pas de nouvelle boucle à chaque cuisson).
+  const spritesNow = useRef(sprites);
+  spritesNow.current = sprites;
 
-  // Pose à 15 Hz : écrit les transformations et opacités des couches mobiles.
-  const els = useRef<{ trees: Tree[] | null; list: { twigs: Element; cs: Element[]; hi: Element; pale: Element }[]; pool: Element[]; bird: Element | null }>({ trees: null, list: [], pool: [], bird: null });
   const pits = useMemo(() => trees.map((tr) => tr.v), [trees]);
   // Particules et oiseau : couleurs passées dans l'étalonnage courant (comme fond-life.tsx), mémorisées par teinte.
   const graded = useMemo(() => {
@@ -221,50 +384,65 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
   const weathers = useRef<RueWeather[]>([]);
   const bare = useMemo(() => trees.map((tr) => foliageOf(D, 'rue' + Math.round(tr.v.x), tr.v.species).d <= 0.1), [trees, D]);
   const wind = useMemo(() => windOf(D.meteo, D.meteo.wind >= 0.8), [D]);
+  // Par fosse : jeu de sprites dessiné (l'ancien reste tant que le nouveau n'est pas décodé) et début de son fondu d'entrée.
+  const shownRef = useRef(new Map<string, { s: RueSprites; since: number }>());
+  // Toile : échelle du tampon (0 = à recalculer) et signature de la dernière image dessinée (image identique : rien à faire).
+  const surface = useRef<{ k: number; sig: number[]; fresh: boolean; ctx: CanvasRenderingContext2D | null | undefined }>({ k: 0, sig: [], fresh: true, ctx: undefined });
+  // Tampons réutilisés d'une image à l'autre : image en cours, images décodées et jeux dessinés par fosse.
+  const work = useRef<{ F: number[]; imgs: (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[]; sets: (RueSprites | undefined)[] }>({ F: [], imgs: [], sets: [] });
+  const ids = useMemo(() => trees.map((tr) => `${tr.v.x}|${tr.v.y}`), [trees]);
   const place = useMemo(() => {
-    let zeroed = false;
     return (now: number): void => {
-      const el = root.current;
-      if (!el) return;
-      if (els.current.trees !== trees) {
-        const groups = el.querySelectorAll('[data-rue-arbre]');
-        els.current = {
-          trees,
-          list: trees.map((tr, i) => {
-            const g = groups[i]!;
-            const pick = (l: string): Element => g.querySelector(`[data-rue-couche="${l}"]`)!;
-            return { twigs: pick('twigs'), cs: Array.from({ length: tr.masses }, (_, k) => pick(`c${k}`)), hi: pick('hi'), pale: pick('pale') };
-          }),
-          pool: [...el.querySelectorAll('[data-rue-part]')],
-          bird: el.querySelector('[data-rue-oiseau]'),
-        };
-        zeroed = false;
-      }
-      // Mouvement réduit : pose nulle écrite une fois, jamais modifiée ensuite.
-      if (still && zeroed) return;
-      zeroed = still;
+      // Mouvement réduit : pose nulle (vent calme), aucune particule, aucun oiseau, aucun fondu.
       const t = still ? 0 : at !== undefined ? at * 3600 : now;
       const w = still ? CALM : wind;
-      trees.forEach((tr, i) => {
-        const node = els.current.list[i];
-        if (!node) return;
+      const nowMs = Date.now();
+      const sp = spritesNow.current;
+      const shown = shownRef.current;
+      const { F, imgs, sets } = work.current;
+      F.length = 0;
+      for (let i = 0; i < trees.length; i++) {
+        const tr = trees[i]!;
+        const id = ids[i]!;
+        const cur = sp[i];
+        const was = shown.get(id);
+        if (cur && was?.s !== cur && decoded(cur)) shown.set(id, { s: cur, since: was ? was.since : still ? -Infinity : nowMs });
+        const on = shown.get(id);
+        imgs[i] = undefined;
+        sets[i] = on?.s;
+        if (!on) continue;
+        // Fondu d'entrée (1 s, « ease ») : un arbre cuit après coup n'apparaît jamais sur place.
+        const f = Math.max(0, Math.min(1, (nowMs - on.since) / 1000));
+        const fade = f >= 1 ? 1 : rnd(f * f * (3 - 2 * f), 3);
+        if (fade <= 0) continue;
+        imgs[i] = imagesOf(on.s);
+        F.push(3, i, setId(on.s), 0, 0, 0, 0);
         const p = rueTreePose(tr.v, tr.m, t, w, plan.width);
-        const s = p.twigShear;
-        setIfChanged(node.twigs, 'transform', `matrix(1 0 ${num(s, 4)} 1 ${num(-s * tr.m.rootY)} 0)`);
-        p.masses.forEach((g, k) => {
-          if (node.cs[k]) setIfChanged(node.cs[k], 'transform', `translate(${num(g.dx)} ${num(g.dy)})`);
-        });
-        // Rehauts : la translation n'est écrite que s'ils se voient.
+        const sh = rnd(p.twigShear, 4);
         const off = bare[i];
-        const hi = off ? '0' : num(p.hiAlpha);
-        setIfChanged(node.hi, 'opacity', hi);
-        if (hi !== '0') setIfChanged(node.hi, 'transform', `translate(${num(p.hiDx)} 0)`);
-        const pale = off ? '0' : num(p.paleAlpha);
-        setIfChanged(node.pale, 'opacity', pale);
-        if (pale !== '0') setIfChanged(node.pale, 'transform', `translate(${num(p.paleDx)} 0)`);
-      });
-      // Particules : chaque genre remplit sa part du pool ; le reste est éteint. Mouvement réduit : rien du tout.
-      const pool = els.current.pool;
+        const hi = off ? 0 : rnd(p.hiAlpha);
+        const pale = off ? 0 : rnd(p.paleAlpha);
+        let k = 0;
+        for (let li = 0; li < tr.layers.length; li++) {
+          const l = tr.layers[li]!;
+          let c = 0;
+          let e = 0;
+          let g = 0;
+          let a = fade;
+          if (l === 'twigs') ((c = sh), (e = rnd(-sh * tr.m.rootY)));
+          else if (l === 'hi') ((a = fade * hi), (e = rnd(p.hiDx)));
+          else if (l === 'pale') ((a = fade * pale), (e = rnd(p.paleDx)));
+          else if (l[0] === 'c') {
+            const mv = p.masses[k++];
+            if (mv) ((e = rnd(mv.dx)), (g = rnd(mv.dy)));
+          }
+          if (a <= 0) continue;
+          F.push(0, i, li, c, e, g, a);
+        }
+      }
+      imgs.length = trees.length;
+      sets.length = trees.length;
+      // Particules : chaque genre a sa part du pool (plafonds RUE_CAP_OF). Mouvement réduit : rien du tout.
       const hist = weathers.current;
       if (!still) {
         const last = hist[hist.length - 1];
@@ -274,73 +452,77 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
         // Au-delà de la vie la plus longue (≈ 2 min), les anciennes météos ne servent plus.
         while (hist.length > 1 && hist[1]!.from < t - 300) hist.shift();
       }
-      const ps = still ? [] : rueParticles(pits, D, t, w, plan.width, hist);
-      // Chaque particule a sa place fixe dans la part de son genre : une place sans particule est éteinte.
-      const lit = new Set<number>();
-      for (const p of ps) {
-        const at = offsetOf[p.kind] + p.slot;
-        const node = pool[at];
-        if (!node) continue;
-        lit.add(at);
-        setIfChanged(node, 'transform', `translate(${num(p.x)} ${num(p.y)})${p.rot ? ` rotate(${num(p.rot % 360, 0)})` : ''}`);
-        setIfChanged(node, 'fill', graded(p.color));
-        setIfChanged(node, 'opacity', num(Number(PART_SHAPE[p.kind].op) * p.alpha));
-      }
-      for (let k = 0; k < pool.length; k++) if (!lit.has(k)) setIfChanged(pool[k]!, 'opacity', '0');
-      // Oiseau : en vol (trait en V), posé (corps et tête) ; éteint sinon.
-      const birdEl = els.current.bird;
-      if (birdEl) {
-        const b = still ? null : rueBird(pits, D, t, dark, plan.width);
-        if (!b) setIfChanged(birdEl, 'opacity', '0');
-        else {
-          const { x, y, flap } = b;
-          // En vol : trait en V ; posé : corps et tête (tournée dans le sens d'arrivée), en aplat sans trait.
-          const hx = x + b.dir * 0.6 - 0.45;
-          const d = b.flying
-            ? `M${num(x - 1.3)} ${num(y - flap)}L${num(x)} ${num(y + 0.3)}L${num(x + 1.3)} ${num(y - flap)}`
-            : `M${num(x - 0.7)} ${num(y - 1.1)}h1.4v1.1h-1.4zM${num(hx)} ${num(y - 1.3)}a0.45 0.45 0 1 0 0.9 0a0.45 0.45 0 1 0 -0.9 0z`;
-          setIfChanged(birdEl, 'd', d);
-          setIfChanged(birdEl, 'fill', b.flying ? 'none' : INK);
-          setIfChanged(birdEl, 'stroke', b.flying ? INK : 'none');
-          setIfChanged(birdEl, 'opacity', '0.85');
+      if (!still)
+        for (const p of rueParticles(pits, D, t, w, plan.width, hist)) {
+          if (p.slot >= RUE_CAP_OF[p.kind]) continue;
+          const alpha = rnd(PART_SHAPE[p.kind].op * p.alpha);
+          if (alpha > 0) F.push(1, KIND_ID[p.kind], rnd(p.x), rnd(p.y), rnd(p.rot % 360, 0), colorId(graded(p.color)), alpha);
+        }
+      const b = still ? null : rueBird(pits, D, t, dark, plan.width);
+      if (b) F.push(2, rnd(b.x), rnd(b.y), b.flying ? 1 : 0, rnd(b.flap), b.dir, 0);
+      if (frameSink) frameSink(opsOf(F, trees, sets));
+      const cv = canvas.current;
+      const sf = surface.current;
+      if (!cv || JSDOM) return;
+      if (sf.k === 0) ((sf.k = fitCanvas(cv, area)), (sf.fresh = true));
+      // Image identique à la précédente (vent calme, aucune particule) : la toile garde son dessin.
+      if (!sf.fresh && sameFrame(F, sf.sig)) return;
+      if (sf.ctx === undefined) {
+        try {
+          sf.ctx = cv.getContext('2d');
+        } catch {
+          sf.ctx = null;
         }
       }
+      if (!sf.ctx) return;
+      sf.fresh = false;
+      // Échange des tampons : l'image dessinée devient la signature, l'ancienne signature servira à l'image suivante.
+      work.current.F = sf.sig;
+      sf.sig = F;
+      paintFrame(sf.ctx, cv, sf.k, area, F, trees, imgs);
     };
-  }, [trees, still, at, wind, bare, plan.width, pits, D, dark, graded]);
-  // Mouvement réduit : aucune boucle, la pose nulle est écrite une fois.
+  }, [trees, ids, still, at, wind, bare, plan.width, pits, D, dark, graded, area]);
+  // Nouvelle zone : tampon à refaire.
+  useEffect(() => {
+    surface.current.k = 0;
+  }, [area]);
+  // Mouvement réduit : aucune boucle ; une image à chaque cuisson, à chaque image décodée et à chaque redimensionnement.
   useWallClockLoop(place, [place], { frameMs: FRAME_MS, enabled: !still });
   useEffect(() => {
     if (still) place(0);
+  }, [still, place, sprites]);
+  useEffect(() => {
+    const redraw = (): void => {
+      if (still) place(0);
+    };
+    const resized = (): void => {
+      surface.current.k = 0;
+      redraw();
+    };
+    decodedListeners.add(redraw);
+    window.addEventListener('resize', resized);
+    const ro = typeof ResizeObserver === 'function' && canvas.current ? new ResizeObserver(resized) : null;
+    if (ro && canvas.current) ro.observe(canvas.current);
+    return () => {
+      decodedListeners.delete(redraw);
+      window.removeEventListener('resize', resized);
+      ro?.disconnect();
+    };
   }, [still, place]);
-  const fade = still ? 'none' : TREE_FADE;
 
+  // Une toile 2D dans le <svg> (foreignObject, comme la pluie de rain-canvas.tsx) : le vent n'écrit plus rien dans le SVG de la
+  // scène. Chaque écriture d'attribut y coûtait une repeinture et une stratification (Layerize) de TOUTE la scène (≈ 4 000
+  // éléments) : ≈ 40 ms par image à CPU ×4, donc saturé à 15 Hz. La toile, composée à part, se redessine seule (≈ 3 ms).
+  // Les groupes `data-rue-arbre` (vides, rien n'y est peint) disent l'état de chaque fosse : image cuite (`data-rue-pret`),
+  // cuisson abandonnée (`data-rue-echec`).
   return (
-    <g data-arbres-rue="" ref={root}>
+    <g data-arbres-rue="">
       {trees.map((tr, i) => (
-        <g key={`${tr.v.x}|${tr.v.y}`} data-rue-arbre={i} data-rue-echec={lost[i] && !sprites[i] ? '' : undefined} style={{ opacity: sprites[i] ? 1 : 0, transition: fade }}>
-          {tr.layers.map((l) => (
-            <image
-              key={l}
-              data-rue-couche={l}
-              href={sprites[i]?.[l]}
-              x={tr.box.x}
-              y={tr.box.y}
-              width={tr.box.w}
-              height={tr.box.h}
-              preserveAspectRatio="none"
-              opacity={l === 'hi' || l === 'pale' ? 0 : undefined}
-            />
-          ))}
-        </g>
+        <g key={`${tr.v.x}|${tr.v.y}`} data-rue-arbre={i} data-rue-pret={sprites[i] ? '' : undefined} data-rue-echec={lost[i] && !sprites[i] ? '' : undefined} />
       ))}
-      {/* Pool fixe de particules (130 nœuds, opacité 0 quand inactifs) et oiseau, par-dessus les houppiers. */}
-      <g data-arbres-rue-particules="">
-        {POOL.map(({ kind, i }) => {
-          const sh = PART_SHAPE[kind];
-          return <rect key={`${kind}${i}`} data-rue-part={kind} x={sh.x} y={sh.y} width={sh.w} height={sh.h} rx={sh.rx} opacity={0} />;
-        })}
-        <path data-rue-oiseau="" d="M0 0" stroke={INK} strokeWidth={0.6} fill="none" opacity={0} />
-      </g>
+      <foreignObject data-arbres-rue-toile="" x={area.x} y={area.y} width={area.w} height={area.h} style={{ pointerEvents: 'none' }}>
+        <canvas ref={canvas} style={{ width: '100%', height: '100%', display: 'block' }} />
+      </foreignObject>
     </g>
   );
 }
