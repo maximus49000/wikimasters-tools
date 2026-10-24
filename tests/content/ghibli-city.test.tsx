@@ -30,6 +30,8 @@ const render = async (minutes: number, width = 720) => {
 };
 const q = (s: string) => container.querySelector(s);
 const qa = (s: string) => container.querySelectorAll(s);
+// Tranches posées sur la toile de la ville peinte (painted-canvas.tsx ; sans canvas en jsdom, comptées sans être dessinées).
+const tilesOnCanvas = () => Number(q('[data-painted-canvas="ville"]')?.getAttribute('data-images') ?? -1);
 
 beforeEach(() => {
   container = document.createElement('div');
@@ -89,7 +91,7 @@ describe('ville peinte', () => {
     const painter = vi.fn(async (_plan: unknown, tile: number) => `blob:fake-${tile}`);
     setTilePainterForTests(painter);
     await render(23 * 60);
-    expect(qa('[data-painted-tile]').length).toBe(2);
+    expect(tilesOnCanvas()).toBe(2);
     expect(q('[data-painted-city]')?.getAttribute('data-ready')).toBe('true');
     expect((q('[data-painted-city]') as HTMLElement).style.opacity).toBe('1');
     expect((q('[data-classic-city]') as HTMLElement).style.opacity).toBe('0');
@@ -106,18 +108,22 @@ describe('ville peinte', () => {
     // La 1re tranche n'est jamais repeinte ; la 2e peut l'être si un arbre ou une entrée change près de l'ancien bord.
     expect(painter.mock.calls.filter((c) => c[1] === 0).length).toBe(1);
     expect(painter.mock.calls.filter((c) => c[1] === 2).length).toBe(1);
-    expect(qa('[data-painted-tile]').length).toBe(3);
+    expect(tilesOnCanvas()).toBe(3);
   });
 
   it('l’étalonnage suit l’heure', async () => {
     localStorage.setItem(ART_KEY, 'ghibli');
     setTilePainterForTests(async (_p, t) => `blob:fake-${t}`);
     await render(12 * 60);
-    const noon = q('[data-painted-city] feColorMatrix')?.getAttribute('values');
+    const noon = q('[data-painted-canvas="ville"]')?.getAttribute('data-grade');
     await render(23 * 60);
-    const night = q('[data-painted-city] feColorMatrix')?.getAttribute('values');
+    const night = q('[data-painted-canvas="ville"]')?.getAttribute('data-grade');
     expect(noon).toBeTruthy();
+    expect(night).toBeTruthy();
     expect(night).not.toBe(noon);
+    // Étalonnage aux pixels de la toile : plus aucun filtre SVG sur les tranches.
+    expect(q('[data-painted-city] feColorMatrix')).toBeNull();
+    expect(q('[data-painted-city] image')).toBeNull();
   });
 
   it('nuit : flaques des lampadaires, fenêtres allumées et vitres sombres, hors filtre ; rien de visible à midi', async () => {
@@ -148,7 +154,7 @@ describe('ville peinte', () => {
       return `blob:fake-${t}`;
     });
     await render(12 * 60);
-    expect(qa('[data-painted-tile]').length).toBe(1);
+    expect(tilesOnCanvas()).toBe(1);
     expect(q('[data-painted-city]')?.getAttribute('data-ready')).toBe('false');
   });
 
@@ -165,7 +171,7 @@ describe('ville peinte', () => {
         return sprite(job);
       });
       await render(12 * 60);
-      expect(qa('[data-painted-tile]').length).toBe(2);
+      expect(tilesOnCanvas()).toBe(2);
       expect(qa('[data-rue-arbre]').length).toBeGreaterThan(0);
       expect(city().getAttribute('data-ready')).toBe('false');
       expect(city().style.opacity).toBe('0');

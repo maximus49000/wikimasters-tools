@@ -9,7 +9,7 @@ import { smooth, type Weather } from '../core/library/weather/weather-types';
 import { CLOUD_KINDS, FOG_W, cloudBlobs, cloudShape, cloudStep, stepKey, type CloudStep } from '../core/library/paint/sky-painter';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { animatedTops, skylinePathFromProfile } from '../core/library/paint/sky-clip';
-import { gradeFor, gradeValues } from '../core/library/paint/grade';
+import { PaintedCanvas, gradeKey, type CanvasImage } from './painted-canvas';
 import { boltPath } from '../core/library/weather/bolt';
 import { useArtStyle } from './art-setting';
 import { fadeStyle, useShownAfterMount } from './ghibli-sky';
@@ -403,6 +403,10 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
   const fogUrl = usePaintedFog(seed, fogH, ghibli && need.current.fog);
   const cityPlan = useMemo(() => (ghibli ? cityPaintPlan(width, height, seed) : null), [ghibli, width, height, seed]);
   const snow = usePaintedSnow(needSnow ? cityPlan : null);
+  const snowGk = gradeKey(sky.daylight, sky.twilight, gloom);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const snowGrade = useMemo(() => snowGk.grade, [snowGk.key]);
+  const snowImages = useMemo<CanvasImage[]>(() => snow.tiles.map((t) => ({ x: t.x, y: 0, w: t.w, h: height, url: t.url })), [snow.tiles, height]);
   // Découpe FIXE des nuages : le ciel au-dessus de la silhouette des tranches peintes affichées (profil alpha au pixel), des toits
   // du premier plan et des ailes des moulins et de la grue (calque vie-fond, à l'instant des tranches affichées : la grue
   // seulement quand elle est montée) ; boîtes du fond tant que le profil manque. La
@@ -460,12 +464,9 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
         <RainGroundCanvas {...rainProps} />
         {ghibli && snow.ready ? (
           <g data-wx="snow-cover" opacity={0}>
-            <filter id={`${uid}-grade`} colorInterpolationFilters="sRGB">
-              <feColorMatrix type="matrix" values={gradeValues(gradeFor(sky.daylight, sky.twilight, gloom))} />
-            </filter>
-            <g filter={`url(#${uid}-grade)`}>
-              {snow.tiles.map((t) => <image key={t.x} data-snow-tile={t.x} href={t.url} x={t.x} y={0} width={t.w} height={height} preserveAspectRatio="none" />)}
-            </g>
+            {/* Neige posée sur la toile étalonnée aux pixels (painted-canvas.tsx) : plus de filtre SVG ni de grandes <image>,
+                que Chrome Android lâchait au zoom (flash clair, neige qui disparaît). L'opacité du groupe reste animée par la boucle. */}
+            <PaintedCanvas box={{ x: 0, y: 0, w: width, h: height }} images={snowImages} grade={snowGrade} tag="neige" />
           </g>
         ) : (
           <rect data-wx="snow-cover" x={0} y={ground} width={width} height={height - ground} fill="#F4F8FC" opacity={0} />
