@@ -209,18 +209,22 @@ describe('calendrier de la rue', () => {
     expect(leavesOnGround(nov, 18, 5)).toBe(leavesOnGround(nov, 18, 5));
   });
 
-  it('balayage à 7 h 30 : le sol est propre juste après, pas juste avant', () => {
-    let found = false;
-    for (let s = 1; s <= 40 && !found; s++) {
-      for (let d = 1; d <= 30 && !found; d++) {
+  it('balayage à 7 h 30 : des feuilles juste avant, le sol propre juste après', () => {
+    let hit: { D: { y: number; month: number; day: number }; s: number } | null = null;
+    for (let s = 1; s <= 50 && !hit; s++) {
+      for (let d = 5; d <= 25 && !hit; d++) {
         const D = { y: 2026, month: 11, day: d };
-        if (sweptKey(D, 7.52, s) === 'b' && sweptKey(D, 7.48, s) === '') {
-          expect(leavesOnGround(D, 7.52, s)).toBe(0);
-          expect(sweptKey(D, 7.48, s)).toBe('');
-          found = true;
-        }
+        if (sweptKey(D, 7.5, s) === 'b' && leavesOnGround(D, 7.49, s) > 0) hit = { D, s };
       }
     }
-    expect(found).toBe(true);
+    expect(hit).not.toBeNull();
+    expect(sweptKey(hit!.D, 7.49, hit!.s)).toBe('');
+    expect(leavesOnGround(hit!.D, 7.49, hit!.s)).toBeGreaterThan(0);
+    expect(leavesOnGround(hit!.D, 7.51, hit!.s)).toBe(0);
+  });
+
+  it('parterres : bornes exactes des plages', () => {
+    const kinds = [72, 73, 150, 151, 155, 156, 278, 279, 282, 283, 334, 335, 339, 340].map((n) => bedState({ doy: n }).kind);
+    expect(kinds).toEqual(['winter', 'spring', 'spring', 'bare', 'bare', 'summer', 'summer', 'bare', 'bare', 'autumn', 'autumn', 'bare', 'bare', 'winter']);
   });
 });
