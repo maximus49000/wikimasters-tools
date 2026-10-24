@@ -255,7 +255,12 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
     const workers = new Map<string, { x: number; y: number }>();
     // Équipe à pied (celle du camion élévateur sort de sa cabine : hors de ce relevé).
     const foot = crew?.getAttribute('data-equipment') !== 'lift';
-    if (foot) for (const w of crew?.querySelectorAll('[data-worker]') ?? []) workers.set(w.getAttribute('data-worker-k') ?? '?', xy(w));
+    // Position à la minute affichée (`data-at` quand l'ouvrier est posé au terme de sa marche animée).
+    const at = (w: Element): { x: number; y: number } => {
+      const p = w.getAttribute('data-at')?.split(',').map(Number);
+      return p ? { x: p[0]!, y: p[1]! } : xy(w);
+    };
+    if (foot) for (const w of crew?.querySelectorAll('[data-worker]') ?? []) workers.set(w.getAttribute('data-worker-k') ?? '?', at(w));
     // Fondu d'un humain : une opacité sur l'ouvrier lui-même ou sur le groupe de l'équipe (pas le détail du dessin).
     const faded = (e: Element): boolean => e.hasAttribute('opacity') || /opacity/.test((e as HTMLElement).style?.cssText ?? '');
     const out: Snap = {
@@ -1004,7 +1009,7 @@ describe('camion élévateur : vitesse de roulage normale entre deux lampadaires
 // Suite du bogue du 2026-10-24 : camionnette, vélo porteur et camion plateau roulaient à ≈ 2 px/s, les équipes à pied étalaient
 // leur marche sur toute l'étape. Rendu à la minute : chaque trajet est joué par une animation CSS à sa vraie durée.
 describe('véhicules et équipes de montage : allure normale', () => {
-  type Anim = { dur: number; delay: number; pts: { x: number; y: number }[] };
+  type Anim = { dur: number; delay: number; pts: { x: number; y: number; t: number }[] };
   // Animation d'un élément rendu : durée et délai (s), positions de ses images clés (lues dans le <style> du calque).
   const animOf = (el: Element): Anim | null => {
     const a = /^(\S+) ([\d.]+)s linear (-?[\d.]+)s both$/.exec((el as HTMLElement).style.animation ?? '');
@@ -1012,14 +1017,13 @@ describe('véhicules et équipes de montage : allure normale', () => {
     const css = [...el.ownerDocument.querySelectorAll('style')].map((st) => st.textContent ?? '').join('');
     const body = new RegExp(`@keyframes ${a[1]}\\{(.*?)\\}\\}`).exec(css);
     expect(body, `images clés de ${a[1]}`).not.toBeNull();
-    const pts = [...body![1]!.matchAll(/\{transform:translate\(([-\d.]+)px, ([-\d.]+)px\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
+    // `t` : instant de l'image clé (s depuis le début de l'animation).
+    const pts = [...body![1]!.matchAll(/([\d.]+)%\{transform:translate\(([-\d.]+)px, ([-\d.]+)px\)/g)].map((m) => ({ t: (Number(m[1]) / 100) * Number(a[2]), x: Number(m[2]), y: Number(m[3]) }));
     return { dur: Number(a[2]), delay: Number(a[3]), pts };
   };
   // Vitesse de croisière (px/s) : la plus grande entre deux images clés.
-  const cruise = (a: Anim): number => {
-    const dt = a.dur / (a.pts.length - 1);
-    return Math.max(...a.pts.slice(1).map((p, i) => Math.hypot(p.x - a.pts[i]!.x, p.y - a.pts[i]!.y) / dt));
-  };
+  const cruise = (a: Anim): number =>
+    Math.max(...a.pts.slice(1).map((p, i) => (p.t > a.pts[i]!.t ? Math.hypot(p.x - a.pts[i]!.x, p.y - a.pts[i]!.y) / (p.t - a.pts[i]!.t) : 0)));
   const u = metrics.unit;
   const xyOf = (e: Element): { x: number; y: number } => {
     const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec((e as HTMLElement).style.transform)!;
@@ -1049,9 +1053,11 @@ describe('véhicules et équipes de montage : allure normale', () => {
           const speed = cruise(a) / u;
           expect(speed, `${kind} ${date.d}/${date.m} ${m} : ${speed.toFixed(1)} px/s`).toBeGreaterThanOrEqual(range[kind]![0]);
           expect(speed, `${kind} ${date.d}/${date.m} ${m} : ${speed.toFixed(1)} px/s`).toBeLessThanOrEqual(range[kind]![1]);
-          // L'animation finit là où le rendu suivant le pose (data-to-x) et part de sa position au rendu s'il n'est pas déjà en route.
+          // Posé au terme du trajet (data-to-x, dernière image clé) : retirer l'animation au rendu suivant ne rejoue rien ; il part
+          // de sa position à la minute affichée (data-x) s'il n'est pas déjà en route.
           expect(Math.abs(Number(v.getAttribute('data-to-x')) - a.pts[a.pts.length - 1]!.x), `${kind} ${m} : terme`).toBeLessThan(0.15);
-          if (a.delay >= 0) expect(Math.abs(xyOf(v).x - a.pts[0]!.x), `${kind} ${m} : départ`).toBeLessThan(0.15);
+          expect(Math.abs(xyOf(v).x - a.pts[a.pts.length - 1]!.x), `${kind} ${m} : posé au terme`).toBeLessThan(0.15);
+          if (a.delay >= 0) expect(Math.abs(Number(v.getAttribute('data-x')) - a.pts[0]!.x), `${kind} ${m} : départ`).toBeLessThan(0.15);
           trips[kind]!++;
         }
         unmount();
@@ -1070,6 +1076,8 @@ describe('véhicules et équipes de montage : allure normale', () => {
   const walks = (date: YMD, setId: string, from: number, to: number): number => {
     let n = 0;
     let prev: { item: string; step: string; a: { x: number; y: number }; anim: boolean } | null = null;
+    // Position posée par le rendu précédent, par élément.
+    let shown = new Map<string, { x: number; y: number }>();
     for (let m = from; m < to; m++) {
       const c = layer(date, m);
       const crew = c.querySelector(`[data-crew="${setId}"]:not([data-van-crew])`);
@@ -1087,6 +1095,22 @@ describe('véhicules et équipes de montage : allure normale', () => {
         expect(speed, `${tag} : marche à ${speed.toFixed(1)} px/s`).toBeLessThanOrEqual(CREW_WALK_SPEED * 1.25);
         n++;
       }
+      // Jamais de saut : une marche qui part dans la minute commence là où le rendu précédent avait posé chaque élément (ouvriers,
+      // échelle, charge), et l'élément est posé au terme de son animation (la retirer au rendu suivant ne rejoue rien).
+      const parts = new Map<string, Element>();
+      const all = c.querySelector(`[data-crew="${setId}"]`);
+      for (const w of all?.querySelectorAll(':scope > [data-worker]') ?? []) parts.set(`w-${w.getAttribute('data-worker-k')}`, w);
+      for (const e of all?.querySelectorAll(':scope > [data-ladder], :scope > [data-carried-item]') ?? []) parts.set(e.hasAttribute('data-ladder') ? 'ladder' : 'load', e);
+      const bases = new Map([...parts].map(([k, e]) => [k, xyOf(e)] as const));
+      for (const [k, e] of parts) {
+        const an = animOf(e);
+        if (!an) continue;
+        const last = an.pts[an.pts.length - 1]!;
+        expect(Math.hypot(last.x - bases.get(k)!.x, last.y - bases.get(k)!.y), `${tag} ${k} : posé au terme de l'animation`).toBeLessThan(0.15);
+        const before = shown.get(k);
+        if (an.delay >= 0 && before) expect(Math.hypot(an.pts[0]!.x - before.x, an.pts[0]!.y - before.y), `${tag} ${k} : part d'où il était`).toBeLessThanOrEqual(1);
+      }
+      shown = bases;
       const pos = a ? xyOf(a) : null;
       // Pendant l'aller ou le retour, hors de la minute de la marche : il attend sur place (ou sort l'objet du véhicule).
       if (pos && prev && prev.item === item && prev.step === step && (step === 'arrive' || step === 'leave') && !prev.anim && !anim) {
