@@ -142,14 +142,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     };
     const patterns = { snowFar: pat('snow-far'), snowNear: pat('snow-near'), fog: pat('fog') };
     const boltLines = Array.from(el.querySelectorAll<SVGElement>('[data-wx-bolt-line]'));
-    // Les deux voiles sont des `<div>` à dégradé CSS dans un foreignObject (voir le rendu) : on y écrit le fond, pas des `stop-color`.
-    const tintFills = Array.from(el.querySelectorAll<HTMLElement>('[data-wx-fill="tint"]'));
-    const overcastFills = Array.from(el.querySelectorAll<HTMLElement>('[data-wx-fill="overcast"]'));
-    const veilBackground = (hex: string, stops: ReadonlyArray<readonly [number, number]>): string =>
-      `linear-gradient(to bottom, ${stops.map(([alpha, pos]) => `${hex}${Math.round(alpha * 255).toString(16).padStart(2, '0')} ${pos}%`).join(', ')})`;
-    const putFill = (node: HTMLElement, value: string): void => {
-      if (node.style.background !== value) node.style.background = value;
-    };
+    const tintStops = Array.from(el.querySelectorAll<SVGElement>('[data-wx-stop="tint"]'));
+    const overcastStops = Array.from(el.querySelectorAll<SVGElement>('[data-wx-stop="overcast"]'));
     const cloudNodes = Array.from(el.querySelectorAll<SVGElement>('[data-wx-cloud]'));
     // N'écrit un attribut que s'il change : les copies `<use>` éventuelles (fenêtre soulevée) ne sont pas invalidées pour rien.
     const put = (node: SVGElement | null, name: string, value: string): void => {
@@ -214,8 +208,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       if (key !== colorKey) {
         colorKey = key;
         const tintColor = mixHex('#1A1E2B', mixHex('#9AA4B2', '#4E5663', dark), daylight);
-        const tintBg = veilBackground(tintColor, [[1, 0], [0.45, 100]]);
-        for (const fill of tintFills) putFill(fill, tintBg);
+        for (const stop of tintStops) put(stop, 'stop-color', tintColor);
         const cloudColor = mixHex(mixHex('#262C46', '#FFFFFF', daylight), mixHex('#2F3542', '#6A7280', daylight), cloudDark);
         put(nodes.clouds, 'fill', cloudColor);
         // Chaque nuage a sa nuance de gris (plus claire ou plus sombre que la teinte de base) : on voit le ciel bouger.
@@ -225,8 +218,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
         });
         // Gris clair sans pluie (comme un vrai ciel couvert), de plus en plus foncé avec l'intensité de la pluie.
         const overcastColor = mixHex('#1A1E2B', mixHex('#D4D8DD', '#2E3440', rainDark), daylight);
-        const overcastBg = veilBackground(overcastColor, [[1, 0], [1, 60], [0.5, 100]]);
-        for (const fill of overcastFills) putFill(fill, overcastBg);
+        for (const stop of overcastStops) put(stop, 'stop-color', overcastColor);
         svg?.style.setProperty('--wmt-overcast-color', overcastColor);
         // Voile d'altitude : blanc laiteux le jour, à peine plus clair que le ciel la nuit.
         svg?.style.setProperty('--wmt-haze-color', mixHex('#3A4160', '#EEF2F6', daylight));
@@ -485,6 +477,15 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
       <g data-weather="" data-window-weather="" data-scene={scene} id={id} ref={skyRoot}>
         <PatternDefs id={uid} seed={seed} ghibli={ghibli} />
         <defs>
+          <linearGradient id={`${uid}-tint`} x1="0" y1="0" x2="0" y2="1">
+            <stop data-wx-stop="tint" offset="0" stopColor="#9AA4B2" stopOpacity={1} />
+            <stop data-wx-stop="tint" offset="1" stopColor="#9AA4B2" stopOpacity={0.45} />
+          </linearGradient>
+          <linearGradient id={`${uid}-overcast`} x1="0" y1="0" x2="0" y2="1">
+            <stop data-wx-stop="overcast" offset="0" stopColor="#B9C0CA" stopOpacity={1} />
+            <stop data-wx-stop="overcast" offset="0.6" stopColor="#B9C0CA" stopOpacity={1} />
+            <stop data-wx-stop="overcast" offset="1" stopColor="#B9C0CA" stopOpacity={0.5} />
+          </linearGradient>
           <linearGradient id={`${uid}-fog`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#E7ECF1" stopOpacity={0.35} />
             <stop offset="1" stopColor="#E7ECF1" stopOpacity={0.95} />
@@ -511,11 +512,7 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
           </g>
         </defs>
         {/* Voile du ciel : plus fort en haut, il assombrit sans effacer le paysage. */}
-        {/* Voile en calque à part : un `<rect>` à dégradé SVG était redessiné à chaque zoom et Chrome Android le laissait parfois disparaître
-            un instant (saut de lumière mesuré sur S26). Le `<div>` en `will-change: transform` est un calque que le compositeur étire. */}
-        <foreignObject data-wx="tint" x={0} y={0} width={width} height={height} opacity={0} style={{ pointerEvents: 'none' }}>
-          <div data-wx-fill="tint" style={{ width: '100%', height: '100%', willChange: 'transform', background: 'linear-gradient(to bottom, #9AA4B2ff 0%, #9AA4B273 100%)' }} />
-        </foreignObject>
+        <rect data-wx="tint" x={0} y={0} width={width} height={height} fill={`url(#${uid}-tint)`} opacity={0} />
         {/* Nuages : une bande translatée d'un bloc, avec sa copie une largeur plus à gauche pour boucler. */}
         {ghibli ? (
           <g data-wx-clip="sky" clipPath={`url(#${uid}-skyline)`}>
@@ -533,11 +530,7 @@ function WeatherLayerView({ scene, width, height, seed, sky, clock, id, groundId
             <use href={`#${uid}-strip`} x={-width} />
           </g>
         )}
-        {/* Voile en calque à part : un `<rect>` à dégradé SVG était redessiné à chaque zoom et Chrome Android le laissait parfois disparaître
-            un instant (saut de lumière mesuré sur S26). Le `<div>` en `will-change: transform` est un calque que le compositeur étire. */}
-        <foreignObject data-wx="overcast" x={0} y={0} width={width} height={height} opacity={0} style={{ pointerEvents: 'none' }}>
-          <div data-wx-fill="overcast" style={{ width: '100%', height: '100%', willChange: 'transform', background: 'linear-gradient(to bottom, #B9C0CAff 0%, #B9C0CAff 60%, #B9C0CA80 100%)' }} />
-        </foreignObject>
+        <rect data-wx="overcast" x={0} y={0} width={width} height={height} fill={`url(#${uid}-overcast)`} opacity={0} />
         <g data-wx="rainbow" opacity={0} fill="none" strokeOpacity={0.55} strokeWidth={5}>
           {RAINBOW.map((color, i) => {
             const r = arc - i * 5;
