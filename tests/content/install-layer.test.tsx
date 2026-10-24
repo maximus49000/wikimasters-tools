@@ -15,7 +15,7 @@ import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { DARK } from '../../src/core/library/city/events';
 import { BARRIER, STAGE } from '../../src/content/install-sprites';
 import { PropContext, PropRegistry, propKey } from '../../src/content/prop/prop-host';
-import { FLAG_PHASE_PX, barrierK, collectFlags, placeFlags } from '../../src/content/install-layer';
+import { FLAG_PHASE_PX, barrierK, collectFlags, liftTruckAt, placeFlags } from '../../src/content/install-layer';
 import { FLAG_CYCLE_S, FLAG_FRAMES } from '../../src/core/library/paint/props/install';
 import { MUSICIANS, musicianAt } from '../../src/content/stage-band';
 import { VAN_SPEED } from '../../src/core/library/city/van';
@@ -336,22 +336,25 @@ describe('camionnette et ouvriers : on arrive et on repart, rien n apparaît sur
   }, 60000);
   it('camion élévateur : arrive et repart hors champ, ses ouvriers sortent de la cabine et y rentrent', () => {
     const scan = (date: YMD, setId: string, from: number, to: number, arrives: boolean, leaves: boolean): void => {
-      let prev: { x: number; workers: number[] } | null = null;
+      let prev: { x: number; target: number; workers: number[] } | null = null;
       let trips = 0;
       for (let m = from; m < to; m++) {
         const c = layer(date, m);
         const crew = c.querySelector(`[data-crew="${setId}"][data-equipment="lift"]`);
         const t = crew?.querySelector('[data-lift-truck]');
-        const now = t ? { x: Number(t.getAttribute('data-x')), workers: [...crew!.querySelectorAll(':scope > [data-worker]')].map((w) => xy(w).x) } : null;
+        // `target` : position visée par la transition CSS du rendu (le trajet de la minute, joué en quelques secondes).
+        const target = t ? Number(/translate\(([-\d.]+)px/.exec((t as HTMLElement).style.transform)![1]) : 0;
+        const now = t ? { x: Number(t.getAttribute('data-x')), target, workers: [...crew!.querySelectorAll(':scope > [data-worker]')].map((w) => xy(w).x) } : null;
         const tag = `${setId} ${date.d}/${date.m} ${m}`;
         const off = (x: number): boolean => x < -30 * u || x > W + 30 * u;
         if (m === from) expect(now === null, `${tag} : état initial`).toBe(arrives);
         if (now && !prev && m > from) {
           trips++;
-          expect(off(now.x), `${tag} : arrive hors champ (${now.x})`).toBe(true);
+          expect(off(now.x) && off(now.target), `${tag} : arrive hors champ (${now.x})`).toBe(true);
         }
-        if (!now && prev && m > from) expect(off(prev.x), `${tag} : repart hors champ (${prev.x})`).toBe(true);
-        if (now && prev) expect(Math.abs(now.x - prev.x), `${tag} : saut du camion`).toBeLessThanOrEqual(W / 2);
+        if (!now && prev && m > from) expect(off(prev.x) && off(prev.target), `${tag} : repart hors champ (${prev.x})`).toBe(true);
+        // Jamais téléporté : un déplacement d'une minute à l'autre a été annoncé par la transition du rendu précédent.
+        if (now && prev) expect(Math.min(Math.abs(now.x - prev.x), Math.abs(now.x - prev.target)), `${tag} : saut du camion`).toBeLessThanOrEqual(1);
         // Un ouvrier au sol n'apparaît (ne disparaît) qu'à la cabine, caché par elle.
         if (now && prev && now.workers.length > prev.workers.length) for (const x of now.workers.slice(prev.workers.length)) expect(Math.abs(x - now.x), `${tag} : sort de la cabine`).toBeLessThanOrEqual(32 * u);
         if (now && prev && now.workers.length < prev.workers.length) for (const x of prev.workers.slice(now.workers.length)) expect(Math.abs(x - prev.x), `${tag} : rentre dans la cabine`).toBeLessThanOrEqual(32 * u);
@@ -898,5 +901,85 @@ describe('installations cellulo en Ghibli (G5)', () => {
     expect(count(host, `${LAMP_FLAGS} [data-lamp-flag] > line`)).toBe(LAMPS);
     expect(count(host, `${LAMP_FLAGS} [data-flag-art] animateTransform`)).toBe(LAMPS);
     expect(count(host, `${DOOR_FLAGS} [data-door-flag] rect`)).toBe(3 * FLAG_DOORS);
+  });
+});
+
+// Bogue du 2026-10-24 : le camion élévateur roulait au pas (≈ 0,3 px/s) d'un lampadaire à l'autre, son trajet étant étalé sur
+// toute l'étape « arrive » (plusieurs minutes). Il roule désormais à la vitesse de la rue, freine et attend garé.
+describe('camion élévateur : vitesse de roulage normale entre deux lampadaires', () => {
+  const offstage = (x: number): boolean => x < -30 * metrics.unit || x > W + 30 * metrics.unit;
+  // Échantillons d'une seconde pendant `arrive` et `leave` (et la seconde qui suit) d'un jeu au camion élévateur.
+  const drives = (date: YMD, setId: string, from: number, to: number): void => {
+    const set = decorSetsFor(date, W, H, SEED).find((s) => s.id === setId)!;
+    const base = absMinute(dayNumber(date), 0);
+    let prev: { x: number; step: string } | null = null;
+    let first: number | null = null;
+    let last: number | null = null;
+    let fast = 0;
+    let slow = 0;
+    for (let m = from; m < to; m++) {
+      const a = liftTruckAt(set, base + m, W, metrics);
+      const b = liftTruckAt(set, base + m + 1, W, metrics);
+      const rolling = (s: { step: string } | null): boolean => !!s && (s.step === 'arrive' || s.step === 'leave');
+      if (!rolling(a) && !rolling(b)) {
+        prev = b ? { x: b.x, step: b.step } : null;
+        continue;
+      }
+      for (let s = 0; s < 60; s++) {
+        const t = base + m + s / 60;
+        const now = liftTruckAt(set, t, W, metrics);
+        const tag = `${setId} ${date.d}/${date.m} ${m} min ${s} s (${now?.step})`;
+        if (now && first === null) first = now.x;
+        if (now) last = now.x;
+        if (now && prev) {
+          const v = Math.abs(now.x - prev.x); // px/s (échelle 1)
+          expect(v, `${tag} : vitesse ${v.toFixed(1)} px/s`).toBeLessThanOrEqual(40);
+          if (v >= 15) fast++;
+          else if (v > 0.01) slow++;
+        }
+        // Le camion atteint sa place avant la fin de l'arrivée et y attend à l'arrêt.
+        if (now && now.step === 'arrive') {
+          const next = liftTruckAt(set, t + 1 / 60, W, metrics);
+          if (next && next.step !== 'arrive') expect(Math.abs(now.x - now.park), `${tag} : garé à la fin de l'arrivée`).toBeLessThan(0.01);
+        }
+        prev = now ? { x: now.x, step: now.step } : null;
+      }
+    }
+    expect(fast, `${setId} : il roule vraiment (≥ 15 px/s)`).toBeGreaterThan(0);
+    // Mise en vitesse et freinage doux : quelques secondes lentes par trajet seulement.
+    expect(slow, `${setId} : secondes lentes (accélération, freinage)`).toBeLessThanOrEqual(fast);
+    expect(first !== null && offstage(first), `${setId} : entre par un bord du monde (${first})`).toBe(true);
+    expect(last !== null && offstage(last), `${setId} : repart par un bord du monde (${last})`).toBe(true);
+  };
+  it('pose des drapeaux du 14 juillet (13/7) et dépose (15/7)', () => {
+    drives(D13, 'lamps-bastille', 530, 1030);
+    drives(D15, 'lamps-bastille', 530, 1030);
+  }, 120000);
+  it('rendu à la minute : la transition CSS du camion le fait rouler à la même vitesse', () => {
+    const set = decorSetsFor(D13, W, H, SEED).find((s) => s.id === 'lamps-bastille')!;
+    const base = absMinute(dayNumber(D13), 0);
+    let trips = 0;
+    for (let m = 540; m < 1020; m++) {
+      const t = liftTruckAt(set, base + m, W, metrics);
+      if (!t || Math.abs(t.target - t.x) < 1) continue;
+      const css = /^transform ([\d.]+)s ease-in-out ([\d.]+)s$/.exec(t.move);
+      expect(css, `${m} : transition ${t.move}`).not.toBeNull();
+      const dur = Number(css![1]);
+      const delay = Number(css![2]);
+      expect(delay + dur, `${m} : le trajet tient dans la minute`).toBeLessThanOrEqual(60);
+      const v = Math.abs(t.target - t.x) / dur;
+      expect(v, `${m} : vitesse moyenne ${v.toFixed(1)} px/s`).toBeGreaterThanOrEqual(12);
+      expect(v).toBeLessThanOrEqual(40);
+      trips++;
+    }
+    expect(trips).toBeGreaterThan(2);
+    // Le rendu porte la même cible et la même transition.
+    const c = layer(D13, 600);
+    const truck = c.querySelector('[data-crew="lamps-bastille"] [data-lift-truck]') as HTMLElement | null;
+    const t = liftTruckAt(set, base + 600, W, metrics);
+    if (truck && t) {
+      expect(truck.style.transform).toContain(`translate(${t.target.toFixed(1)}px`);
+      expect(truck.getAttribute('data-x')).toBe(t.x.toFixed(1));
+    }
   });
 });

@@ -76,7 +76,6 @@ const VAN_MOVE = 'transform 60s linear';
 const liftOff = (u: number): number => Math.max(70, 40 * u + 20);
 const lerp = (a: number, b: number, p: number): number => a + (b - a) * p;
 const sgn = (d: number, fallback: 1 | -1 = 1): 1 | -1 => (d > 0 ? 1 : d < 0 ? -1 : fallback);
-const mid = (a: number, b: number): number => (a + b) / 2;
 
 // Ordre d'intervention (même tri que le moteur : u ou removeU, puis id).
 const orderOf = (set: DecorSet, removing: boolean): DecorItem[] => {
@@ -582,18 +581,17 @@ type CrewInput = {
   abs: number; stepFrom: number; stepTo: number; home: Pt; van: VanGeom | null; street: boolean; standSide: ReadonlyMap<string, 1 | -1>; ghibli: boolean; lights?: boolean;
 };
 
-// Itinéraire du camion élévateur : les éléments qu'il pose, dans l'ordre d'intervention. Un élément se rejoint depuis le milieu
-// du chemin qui le sépare du précédent (ou depuis le bord du monde) et se quitte vers le milieu du chemin vers le suivant : d'un
-// créneau à l'autre, le camion ne saute pas.
+// Itinéraire du camion élévateur : les éléments qu'il pose, dans l'ordre d'intervention. Un élément se rejoint depuis la place
+// du précédent (ou depuis le bord du monde) et se quitte vers la place du suivant (ou vers le bord du monde) : d'un créneau à
+// l'autre, le camion ne saute pas (les éléments au camion élévateur d'un jeu se suivent sans autre élément entre eux).
 type Route = { from: number; to: number; fromHome: boolean; toHome: boolean };
-function route(inp: CrewInput, anchor: (i: DecorItem) => number, home: (i: DecorItem) => number): Route {
+function route(inp: Pick<CrewInput, 'set' | 'item' | 'removing'>, anchor: (i: DecorItem) => number, home: (i: DecorItem) => number): Route {
   const lift = itemEquipment(inp.set, inp.item) === 'lift';
   const list = orderOf(inp.set, inp.removing).filter((i) => (itemEquipment(inp.set, i) === 'lift') === lift);
   const k = list.findIndex((i) => i.id === inp.item.id);
-  const here = anchor(inp.item);
   const prev = list[k - 1];
   const next = list[k + 1];
-  return { from: prev ? mid(anchor(prev), here) : home(inp.item), to: next ? mid(here, anchor(next)) : home(inp.item), fromHome: !prev, toHome: !next };
+  return { from: prev ? anchor(prev) : home(inp.item), to: next ? anchor(next) : home(inp.item), fromHome: !prev, toHome: !next };
 }
 
 // Équipe à pied : chaque élément est un aller-retour depuis l'arrière de la camionnette (`home`). À l'aller, l'objet est sorti
@@ -1121,11 +1119,38 @@ function liftPark(item: DecorItem, dir: 1 | -1, m: CityMetrics): number {
   return bucketTarget(item, m).x + dir * 22 * m.unit;
 }
 
-type LiftGeom = { dir: 1 | -1; here: number; tx: number; ty: number; outrigger: number; lift: number; inside: boolean; inBucket: boolean };
+// Roulage du camion élévateur : vitesse de croisière (px du monde par seconde à l'échelle 1 : multiplier par `unit`), celle
+// d'un véhicule qui avance prudemment dans la rue, et durée de la mise en vitesse au départ comme du freinage à l'arrivée (s).
+export const LIFT_SPEED = 25;
+const LIFT_EASE_S = 1.5;
+// Un trajet tient dans une minute de rendu (une seule transition CSS) : au-delà, très large scène, il roule un peu plus vite.
+const LIFT_MAX_S = 55;
+// Trajet : de `from` à `to` (px du monde), parti à la minute absolue `t0`, en `dur` s ; vitesse de croisière `v` (px/s), mise en
+// vitesse et freinage en `ease` s chacun (accélération constante).
+type Drive = { from: number; to: number; t0: number; dur: number; v: number; ease: number };
+function liftDrive(from: number, to: number, unit: number): Omit<Drive, 't0'> {
+  const dist = Math.abs(to - from);
+  const v = LIFT_SPEED * unit;
+  const ease = Math.min(LIFT_EASE_S, dist / v);
+  const dur = dist / v + ease;
+  if (dur <= LIFT_MAX_S) return { from, to, dur, v, ease };
+  return { from, to, dur: LIFT_MAX_S, v: dist / (LIFT_MAX_S - LIFT_EASE_S), ease: LIFT_EASE_S };
+}
+function driveX(d: Drive, abs: number): number {
+  const t = (abs - d.t0) * 60;
+  if (t <= 0 || d.dur <= 0) return t <= 0 ? d.from : d.to;
+  if (t >= d.dur) return d.to;
+  const { v, ease } = d;
+  const s = t < ease ? (v * t * t) / (2 * ease) : t < d.dur - ease ? (v * ease) / 2 + v * (t - ease) : Math.abs(d.to - d.from) - (v * (d.dur - t) ** 2) / (2 * ease);
+  return d.from + Math.sign(d.to - d.from) * s;
+}
+
+type LiftGeom = { dir: 1 | -1; here: number; tx: number; target: number; move: string; ty: number; outrigger: number; lift: number; inside: boolean; inBucket: boolean };
+type LiftInput = Pick<CrewInput, 'set' | 'item' | 'step' | 'progress' | 'removing' | 'width' | 'metrics' | 'abs' | 'stepFrom' | 'stepTo'>;
 
 // Camion élévateur : il roule jusqu'à l'élément, déploie ses stabilisateurs, lève la nacelle (un travailleur dedans, l'autre
 // au sol), fixe ou retire, redescend, replie et repart. Il se gare contre le trottoir (roues au bord, stabilisateurs courts).
-function liftPlan(inp: CrewInput): LiftGeom {
+function liftPlan(inp: LiftInput): LiftGeom {
   const m = inp.metrics;
   const u = m.unit;
   const ty = m.curb + 1.5 * u;
@@ -1137,29 +1162,58 @@ function liftPlan(inp: CrewInput): LiftGeom {
   const park = (i: DecorItem): number => liftPark(i, dir, m);
   const { from, to, fromHome, toHome } = route(inp, park, edge);
   const here = park(inp.item);
-  // Trajet depuis / vers le bord du monde : le camion reste hors champ la première minute de son arrivée et a quitté le champ
-  // dès la dernière minute de son départ (rendu à la minute : il n'est jamais ôté ni posé dans le champ).
-  const span = inp.stepTo - inp.stepFrom;
-  const roll = Math.max(span - 1, span / 2);
-  const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
-  const p = inp.step === 'arrive' && fromHome && span > 0
-    ? clamp01((inp.abs - inp.stepFrom - (span - roll)) / roll)
-    : inp.step === 'leave' && toHome && span > 0 ? clamp01((inp.abs - inp.stepFrom) / roll) : inp.progress;
+  // Roulage (bogue du 2026-10-24 : étalé sur toute l'étape, le camion avançait à moins de 0,5 px/s) : un trajet à LIFT_SPEED,
+  // de quelques secondes, d'une place à la suivante, à cheval sur la fin du créneau précédent (`leave`) et le début du suivant
+  // (`arrive`) : les deux étapes calculent le même trajet, parti à la minute ronde qui précède leur frontière. Le reste de
+  // l'étape, le camion attend garé, l'équipe en cabine. Depuis le bord du monde : il reste hors champ la première minute de son
+  // arrivée (rendu à la minute : il n'est jamais posé dans le champ) ; vers le bord : il a quitté le champ dès l'avant-dernière
+  // minute de son départ (il n'est jamais ôté dans le champ).
+  let drive: Drive | null = null;
+  if (inp.step === 'arrive') {
+    const d = liftDrive(from, here, u);
+    const t0 = fromHome ? Math.max(inp.stepFrom, Math.min(Math.ceil(inp.stepFrom) + 1, inp.stepTo - d.dur / 60)) : Math.floor(inp.stepFrom);
+    drive = { ...d, t0 };
+  } else if (inp.step === 'leave') {
+    const d = liftDrive(here, to, u);
+    drive = { ...d, t0: toHome ? Math.max(inp.stepFrom, Math.ceil(inp.stepTo) - 2) : Math.floor(inp.stepTo) };
+  }
+  const p = inp.progress;
   let tx = here;
   let outrigger = 1;
   let lift = 0;
   let inside = false; // les deux travailleurs dans la cabine (en route)
   let inBucket = false; // l'un d'eux dans la nacelle (levée, en haut, redescente)
   switch (inp.step) {
-    case 'arrive': tx = lerp(from, here, p); outrigger = 0; inside = true; break;
-    case 'leave': tx = lerp(here, to, p); outrigger = 0; inside = true; break;
+    case 'arrive':
+    case 'leave': tx = driveX(drive!, inp.abs); outrigger = 0; inside = true; break;
     case 'deploy': outrigger = p; break;
     case 'stow': outrigger = 1 - p; break;
     case 'rise': lift = p; inBucket = true; break;
     case 'lower': lift = 1 - p; inBucket = true; break;
     default: lift = 1; inBucket = true; // fix / unfix
   }
-  return { dir, here, tx, ty, outrigger, lift, inside, inBucket };
+  // Rendu à la minute : un trajet qui part dans la minute affichée est joué en entier par la transition CSS (délai jusqu'au
+  // départ, durée du trajet, mise en vitesse et freinage doux), comme le hayon du camion de déménagement.
+  let target = tx;
+  let move = MOVE;
+  if (drive && drive.dur > 0 && drive.t0 < inp.abs + 1 && drive.t0 + drive.dur / 60 > inp.abs) {
+    const start = Math.max(drive.t0, inp.abs);
+    target = drive.to;
+    move = `transform ${(drive.dur - (start - drive.t0) * 60).toFixed(2)}s ease-in-out ${((start - inp.abs) * 60).toFixed(2)}s`;
+  }
+  return { dir, here, tx, target, move, ty, outrigger, lift, inside, inBucket };
+}
+
+// Camion élévateur du jeu à la minute absolue `abs` (fractionnaire possible) : position `x` (px du monde), cible et transition
+// CSS du rendu (`target`, `move`), place de travail (`park`) et étape ; null s'il n'est pas à l'œuvre.
+export function liftTruckAt(set: DecorSet, abs: number, width: number, metrics: CityMetrics): { x: number; target: number; move: string; park: number; step: string } | null {
+  const c = crewAt(set, abs, set.day);
+  if (!c) return null;
+  const item = set.items.find((i) => i.id === c.itemId)!;
+  if (itemEquipment(set, item) !== 'lift') return null;
+  const w = crewStepWindow(set, abs, set.day)!;
+  const g = liftPlan({ set, item, step: c.step, progress: c.progress, removing: c.removing, width, metrics, abs, stepFrom: w.from, stepTo: w.to });
+  return { x: g.tx, target: g.target, move: g.move, park: g.here, step: c.step };
 }
 
 function liftCrew(inp: CrewInput): ReactElement {
@@ -1257,7 +1311,7 @@ function liftCrew(inp: CrewInput): ReactElement {
     <>
       {ground && <WorkerNode w={ground} outfit={inp.outfits[1]!} inp={inp} k={kp} />}
       {waiting && <WorkerNode w={waiting} outfit={inp.outfits[0]!} inp={inp} k={kp} />}
-      <g data-lift-truck="" data-x={g.tx.toFixed(1)} data-half={(LIFT_HALF * kv).toFixed(1)} data-park={g.here.toFixed(1)} style={{ transform: `translate(${g.tx.toFixed(1)}px, ${g.ty.toFixed(1)}px)`, transition: MOVE }}>
+      <g data-lift-truck="" data-x={g.tx.toFixed(1)} data-half={(LIFT_HALF * kv).toFixed(1)} data-park={g.here.toFixed(1)} style={{ transform: `translate(${g.target.toFixed(1)}px, ${g.ty.toFixed(1)}px)`, transition: g.move }}>
         <LiftTruck
           sky={inp.sky}
           still={false}
@@ -1270,7 +1324,7 @@ function liftCrew(inp: CrewInput): ReactElement {
           beacon
           cargo={cargo}
           lights={inp.lights ?? false}
-          ghibli={inp.ghibli ? { rainy: inp.rainy, dir: g.dir, k: kv, worldX: g.tx, move: MOVE, occupied: g.inside, still: false } : undefined}
+          ghibli={inp.ghibli ? { rainy: inp.rainy, dir: g.dir, k: kv, worldX: g.target, move: g.move, occupied: g.inside, still: false } : undefined}
         />
       </g>
     </>
