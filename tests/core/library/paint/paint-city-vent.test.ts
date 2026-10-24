@@ -71,7 +71,7 @@ import { fondMoment, foliageOf, type FondMoment } from '../../../../src/core/lib
 import { tuftState } from '../../../../src/core/library/paint/hill-trees';
 import type { RuePit } from '../../../../src/core/library/paint/rue-verte-plan';
 import { rueTreeModel } from '../../../../src/core/library/paint/rue-verte-painter';
-import { RUE_CAP_OF, RUE_PARTICLE_CAP, rueBird, rueParticles, type RueParticle } from '../../../../src/core/library/paint/rue-sprites';
+import { RUE_CAP_OF, RUE_PARTICLE_CAP, rueBird, rueParticles, type RueParticle, type RueWeather } from '../../../../src/core/library/paint/rue-sprites';
 
 describe('particules et oiseaux des arbres de la rue', () => {
   const PW = 1440;
@@ -167,7 +167,12 @@ describe('particules des arbres de la rue : vies entières', () => {
     const m = rueTreeModel(v);
     return { x0: m.box.x0 - v.r, x1: m.box.x1 + v.r, y0: m.box.y0 - v.r, y1: v.y };
   });
-  const cases: [string, FondMoment, 'feuille' | 'petale' | 'goutte' | 'neige' | 'graine'][] = [
+  // Changement de météo au milieu du suivi (à 150 s) : `D2` ; sans lui, même météo tout du long.
+  const cases: [string, FondMoment, 'feuille' | 'petale' | 'goutte' | 'neige' | 'graine', FondMoment?][] = [
+    ['feuilles de novembre, vent 1 puis 0,3 sous la pluie', fondMoment({ y: 2026, m: 11, d: 10 }, 840, { cloud: 0.2, precip: 0, wind: 1, snow: false }), 'feuille', fondMoment({ y: 2026, m: 11, d: 10 }, 841, { cloud: 0.8, precip: 0.5, wind: 0.3, snow: false })],
+    ['gouttes : pluie puis éclaircie', fondMoment({ y: 2026, m: 6, d: 10 }, 840, { cloud: 0.8, precip: 0.5, wind: 0.5, snow: false }), 'goutte', fondMoment({ y: 2026, m: 6, d: 10 }, 841, { cloud: 0.2, precip: 0, wind: 1, snow: false })],
+    ['graines : vent 1 puis 0,2', fondMoment({ y: 2026, m: 5, d: 20 }, 840, { cloud: 0.2, precip: 0, wind: 1, snow: false }), 'graine', fondMoment({ y: 2026, m: 5, d: 20 }, 841, { cloud: 0.2, precip: 0, wind: 0.2, snow: false })],
+    ['neige : vent 1 puis neige sans vent', fondMoment({ y: 2026, m: 1, d: 15 }, 840, { cloud: 0.8, precip: 0, wind: 1, snow: true }), 'neige', fondMoment({ y: 2026, m: 1, d: 15 }, 841, { cloud: 0.8, precip: 0, wind: 0.1, snow: true })],
     ['feuilles de novembre, vent 1', fondMoment({ y: 2026, m: 11, d: 10 }, 840, { cloud: 0.2, precip: 0, wind: 1, snow: false }), 'feuille'],
     ['feuilles de novembre, vent 0,2', fondMoment({ y: 2026, m: 11, d: 10 }, 840, { cloud: 0.2, precip: 0, wind: 0.2, snow: false }), 'feuille'],
     ['pétales d\'avril', fondMoment({ y: 2026, m: 4, d: 2 }, 840, { cloud: 0.2, precip: 0, wind: 1, snow: false }), 'petale'],
@@ -175,9 +180,12 @@ describe('particules des arbres de la rue : vies entières', () => {
     ['gouttes sous la pluie', fondMoment({ y: 2026, m: 6, d: 10 }, 840, { cloud: 0.8, precip: 0.5, wind: 0.5, snow: false }), 'goutte'],
     ['neige au vent', fondMoment({ y: 2026, m: 1, d: 15 }, 840, { cloud: 0.8, precip: 0, wind: 1, snow: true }), 'neige'],
   ];
-  for (const [label, D, kind] of cases) {
+  for (const [label, D1, kind, D2] of cases) {
     it(`${label} : naissance à la source, aucun saut, fin au sol (fondu) ou par un bord, plafond tenu`, () => {
-      const w = windOf(D.meteo, false);
+      const w1 = windOf(D1.meteo, false);
+      const w2 = D2 ? windOf(D2.meteo, false) : w1;
+      const hist: RueWeather[] = [{ from: -Infinity, w: w1, meteo: D1.meteo }];
+      if (D2) hist.push({ from: 1150, w: w2, meteo: D2.meteo });
       const cap = RUE_CAP_OF[kind];
       const prev = new Map<string, RueParticle>();
       const seen = new Set<string>();
@@ -185,7 +193,9 @@ describe('particules des arbres de la rue : vies entières', () => {
       let ended = 0;
       const frames = Math.round(300 / DT);
       for (let f = 0; f <= frames; f++) {
-        const ps = rueParticles(pits, D, 1000 + f * DT, w, PW).filter((p) => p.kind === kind);
+        const t = 1000 + f * DT;
+        const late = !!D2 && t >= 1150;
+        const ps = rueParticles(pits, late ? D2! : D1, t, late ? w2 : w1, PW, hist).filter((p) => p.kind === kind);
         expect(ps.length).toBeLessThanOrEqual(cap);
         expect(new Set(ps.map((p) => p.slot)).size).toBe(ps.length);
         for (const p of ps) expect(p.slot).toBeLessThan(cap);
@@ -223,4 +233,24 @@ describe('particules des arbres de la rue : vies entières', () => {
       expect(ended).toBeGreaterThan(0);
     });
   }
+});
+
+describe('débit des feuilles', () => {
+  it('suit le vent : moins de feuilles à l’écran au vent 0,2 qu’au vent 1 (novembre), aucune sous 0,05', () => {
+    const plan = cityPaintPlan(1440, 340, 7);
+    const pits = plan.rue.filter((v): v is RuePit => v.kind === 'pit' && !v.empty);
+    const mean = (wind: number): number => {
+      const D = fondMoment({ y: 2026, m: 11, d: 10 }, 840, { cloud: 0.2, precip: 0, wind, snow: false });
+      const w = windOf(D.meteo, false);
+      let n = 0;
+      let f = 0;
+      for (let t = 1000; t < 1600; t += 0.5, f++) n += rueParticles(pits, D, t, w, 1440).filter((p) => p.kind === 'feuille').length;
+      return n / f;
+    };
+    const strong = mean(1);
+    const light = mean(0.2);
+    expect(light).toBeLessThan(strong * 0.7);
+    expect(light).toBeGreaterThan(0);
+    expect(mean(0.04)).toBe(0);
+  });
 });

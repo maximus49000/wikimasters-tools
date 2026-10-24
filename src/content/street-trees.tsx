@@ -21,6 +21,7 @@ import {
   type RueLampWash,
   type RueLayerName,
   type RueParticleKind,
+  type RueWeather,
 } from '../core/library/paint/rue-sprites';
 import { gradeHex } from '../core/library/paint/fond-vie';
 import { INK } from '../core/library/paint/cel';
@@ -216,6 +217,8 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
     };
   }, [daylight, twilight, gloom]);
   const dark = daylight < 0.45;
+  // Météos successives (instant de changement) : chaque particule garde celle de sa naissance (rue-sprites.ts).
+  const weathers = useRef<RueWeather[]>([]);
   const bare = useMemo(() => trees.map((tr) => foliageOf(D, 'rue' + Math.round(tr.v.x), tr.v.species).d <= 0.1), [trees, D]);
   const wind = useMemo(() => windOf(D.meteo, D.meteo.wind >= 0.8), [D]);
   const place = useMemo(() => {
@@ -262,7 +265,16 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
       });
       // Particules : chaque genre remplit sa part du pool ; le reste est éteint. Mouvement réduit : rien du tout.
       const pool = els.current.pool;
-      const ps = still ? [] : rueParticles(pits, D, t, w, plan.width);
+      const hist = weathers.current;
+      if (!still) {
+        const last = hist[hist.length - 1];
+        if (!last) hist.push({ from: -Infinity, w, meteo: D.meteo });
+        else if (last.w.wind !== w.wind || last.w.dir !== w.dir || last.w.wet !== w.wet || last.w.storm !== w.storm || last.meteo.precip !== D.meteo.precip || last.meteo.snow !== D.meteo.snow)
+          hist.push({ from: t, w, meteo: D.meteo });
+        // Au-delà de la vie la plus longue (≈ 2 min), les anciennes météos ne servent plus.
+        while (hist.length > 1 && hist[1]!.from < t - 300) hist.shift();
+      }
+      const ps = still ? [] : rueParticles(pits, D, t, w, plan.width, hist);
       // Chaque particule a sa place fixe dans la part de son genre : une place sans particule est éteinte.
       const lit = new Set<number>();
       for (const p of ps) {
