@@ -18,7 +18,7 @@ import type { PaintCtx } from './paint-ctx';
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 11;
+export const PAINT_VERSION = 12;
 
 const LEAVES = ['#2A6A2E', '#52A23C', '#A8DC58'].map(hexRgb);
 const BARK = hexRgb('#9A8468');

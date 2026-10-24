@@ -24,10 +24,17 @@ const METEO: Record<string, FondMeteo> = {
   nuages: { cloud: 0.65, precip: 0, wind: 0.4, snow: false },
   pluie: { cloud: 0.92, precip: 0.65, wind: 0.5, snow: false },
   neige: { cloud: 0.85, precip: 0.5, wind: 0.2, snow: true },
+  brouillard: { cloud: 0.55, precip: 0, wind: 0.05, snow: false },
 };
-const moment = fondMoment({ y, m, d }, Math.round(T * 60), METEO[q.get('meteo') ?? 'soleil']!);
+const moment = fondMoment({ y, m, d }, Math.floor(T * 60), METEO[q.get('meteo') ?? 'soleil']!);
 const [vx, vy, vw, vh] = (q.get('view') ?? `0,0,${W},${H}`).split(',').map(Number) as [number, number, number, number];
+if (q.has('vie')) {
+  const { mountVie } = await import('./vie');
+  mountVie({ W, H, SEED, SCALE, T, moment, view: [vx, vy, vw, vh], q, fog: q.get('meteo') === 'brouillard' ? 0.85 : q.get('meteo') === 'nuages' ? 0.05 : 0 });
+  throw new Error('vie');
+}
 const c = document.createElement('canvas');
+c.id = 'out';
 c.width = vw * SCALE;
 c.height = vh * SCALE;
 document.body.appendChild(c);

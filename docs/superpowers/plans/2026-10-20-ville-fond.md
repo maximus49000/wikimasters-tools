@@ -70,7 +70,7 @@ Branche de travail : `ccr-f0374a79-8v8eca`. Pour reprendre, relire ce plan, la s
 
 - **PR 1 (audit D1 à D6)** : FAIT, fusionnée (#354).
   - `npm run preprod` reste à lancer par l'utilisateur, puis l'extension est à reconstruire.
-- **PR 2a (colline peinte)** : EN COURS. Commit intermédiaire `bf8ad77` poussé (tsc propre, 417 tests ciblés au vert).
+- **PR 2a (colline peinte)** : historique. Commit intermédiaire `bf8ad77` poussé (tsc propre, 417 tests ciblés au vert).
   - Nouveaux fichiers : `src/core/library/paint/fond-plan.ts`, `fond-painter.ts`, `fond-time.ts`, `hill-trees.ts`.
   - Fait :
     - échappée (route, funiculaire, escalier, square, kiosque, fontaine, marché, lavoir, verger, ruisseau, moulin aux ailes
@@ -93,13 +93,25 @@ Branche de travail : `ccr-f0374a79-8v8eca`. Pour reprendre, relire ce plan, la s
     5. Suite complète. 13 échecs existent déjà sur main dans ce conteneur (habitants 3D, commerces, véhicules,
        installations, vie aux fenêtres, `library-scene`) : n'en ajouter aucun.
     6. Envoyer les captures à l'utilisateur, ouvrir la PR 2a, la fusionner s'il le demande, puis repartir de `main`.
-- **PR 2b (vie animée du fond)** : À FAIRE, d'après `04-vie-fond.js` de la maquette. Calque SVG `vie-fond` à nœuds
-  constants, sous l'étalonnage, avec deux clipPath fixes :
-  - lumières (A, K, N) et aiguilles de l'horloge (E) ;
-  - fumées (C, au plus 12) ;
-  - cabines du funiculaire (J), véhicules de la route (D), grue (I) ;
-  - étourneaux et martinets (F), pigeons à l'heure pile (L) ;
-  - brume (M), piétons (12 par heure), fanfare du kiosque, jet de la fontaine, ailes du moulin.
+- **PR 2a (colline peinte)** : FAITE, fusionnée (#355).
+- **PR 2b (vie animée du fond)** : EN COURS sur `ccr-f0374a79-8v8eca`, d'après `04-vie-fond.js` de la maquette.
+  - Fichiers : `src/core/library/paint/fond-vie.ts` (pur : modèle, nœuds fixes, poses `vieFrame`), `src/content/fond-life.tsx`
+    (calque `vie-fond`, entre les tranches et la lumière de nuit, deux clipPath fixes, étalonnage des couleurs en JS),
+    `tests/core/library/paint/paint-city-vie.test.ts`. Aiguilles de l'horloge et ailes du moulin retirées des tranches
+    (`PAINT_VERSION` 12) ; lumière du mur du fond à 15 % derrière un volet fermé (`farLightK`, ghibli-windows).
+  - [x] lumières (A colline, K réverbères, N monuments et drapeaux), aiguilles (E) ;
+  - [x] fumées (C, 12 panaches au plus, les mêmes toute la journée) ;
+  - [x] funiculaire (J), voitures et bus (D : bas de route caché ; si le haut est visible, aller-retour avec arrêt), grue (I) ;
+  - [x] étourneaux et martinets (F), pigeons (L), brume (M), piétons (escalier, sentier de la gare, route), fanfare, jet,
+    ailes du moulin ;
+  - [x] tests (déterminisme, nœuds constants sur 24 h, entrées/sorties, horaires, fumées, budget de 40 nœuds, mouvement réduit) ;
+  - [x] banc : mode `vie=1` de `.superpowers/harness-fond` (vie.tsx : tranches étalonnées + FondLife + GhibliWindows) ;
+  - [x] captures `maquettes/fond-ville/pr2b-*.png` (automne 18 h 30, nuit 23 h, hiver 8 h, dimanche d'été 16 h, tour le
+    14 juillet, funiculaire), comparées à `captures/` ;
+  - [x] mesure (`.superpowers/harness-fond/app.html` : vraie ScenePanorama, branche contre `origin/main` en worktree, CPU ×4,
+    1 440 px) : décor seul +20 à +30 ms de tâches par seconde ; scène peuplée : processeur saturé dans les deux cas
+    (≈ 990 ms/s), écart de tâches ≤ 1 % ;
+  - [ ] suite complète (15 échecs déjà sur main dans ce conteneur), puis PR.
 - **PR 3 (verdure de la rue et arbres)** : À FAIRE.
   1. Commencer par la mesure au banc ralenti ×4 du vent par sprites cuits par masse à 15 Hz. Repli validé si le budget est
      dépassé : rue et échappée animées seulement, colline par tranches de 240 px.

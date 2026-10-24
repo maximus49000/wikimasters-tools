@@ -124,19 +124,14 @@ export function paintLandmark(ctx: PaintCtx, l: Landmark, hz: number): void {
     fillRect(ctx, shade(c, 0.3), x + w * 0.65, base - h, w * 0.35, h);
     poly(ctx, haze(SPIRE, hz), [[x - 2 * s, base - h], [x + w / 2, base - h - 22 * s], [x + w + 2 * s, base - h]]);
     disc(ctx, haze(hexRgb('#D0583A'), hz), x + w / 2, base - h - 22 * s, 3 * s);
-    // Cadran.
+    // Cadran (les aiguilles, à l'heure de la scène, sont dans le calque de la vie du fond : fond-life.tsx).
     disc(ctx, '#FFF8E0', x + w / 2, base - h + 12 * s, 4.5 * s);
     ctx.strokeStyle = ink(0.9);
     ctx.lineWidth = 0.6;
     ctx.beginPath();
     ctx.arc(x + w / 2, base - h + 12 * s, 4.5 * s, 0, TAU);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + w / 2, base - h + 12 * s);
-    ctx.lineTo(x + w / 2, base - h + 9 * s);
-    ctx.moveTo(x + w / 2, base - h + 12 * s);
-    ctx.lineTo(x + w / 2 + 2.5 * s, base - h + 12 * s);
-    ctx.stroke();
+    disc(ctx, ink(0.9), x + w / 2, base - h + 12 * s, 0.5 * s);
     for (let k = 0; k < 3; k++) {
       fillRect(ctx, shade(c, 0.5), x + w * 0.3, base - h + 24 * s + k * 12 * s, w * 0.18, 5 * s);
       fillRect(ctx, shade(c, 0.5), x + w * 0.6, base - h + 24 * s + k * 12 * s, w * 0.18, 5 * s);

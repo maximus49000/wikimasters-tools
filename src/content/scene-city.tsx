@@ -23,6 +23,7 @@ import { usePaintedCity } from './painted-city';
 import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { fondMoment, type FondMoment } from '../core/library/paint/fond-time';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
+import { FondLife } from './fond-life';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
 const FAR_LIGHT = 0.5;
@@ -95,6 +96,8 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
   const plan = useMemo(() => (lingering ? cityPaintPlan(width, height, seed) : null), [lingering, width, height, seed]);
   const moment = useFondMoment(minutes, gloom, rainy, city, weather);
   const painted = usePaintedCity(plan, moment);
+  // Brouillard de la météo (brume de la colline, vie du fond), lu une fois par minute.
+  const fog = useMemo(() => Math.round((weather?.read(Date.now()).fog ?? 0) * 20) / 20, [weather, Math.round(minutes)]);
   const gradeId = useId().replace(/:/g, '');
   // Vitrines pour la lumière de nuit (G5) : vitre de chaque local, allumée la nuit quand le commerce est ouvert (comme ShopFront).
   const nightShops = useMemo(
@@ -272,9 +275,11 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
             <image key={t.x} data-painted-tile={t.x} href={t.url} x={t.x} y={0} width={t.w} height={height} preserveAspectRatio="none" />
           ))}
         </g>
+        {/* Vie animée du fond (PR 2b) : colline et mur du fond, au-dessus des tranches, sous la lumière de nuit et les fenêtres. */}
+        {plan && <FondLife plan={plan} moment={moment} minutes={minutes} daylight={sky.daylight} twilight={sky.twilight} gloom={gloom} dim={dim} forcedNight={forcedNight} day={city?.day} fog={fog} />}
         {/* Lumière de nuit avant les fenêtres : la découpe éclairée du décor ne recouvre pas les vitres allumées. */}
         <GhibliNightLight width={width} height={height} seed={seed} minutes={minutes} daylight={sky.daylight} dim={dim} forcedNight={forcedNight} plan={plan} shops={nightShops} rainy={rainy} moment={moment} />
-        <GhibliWindows buildings={buildings} minutes={minutes} day={city?.day} daylight={sky.daylight} gloom={gloom} dim={dim} farLight={FAR_LIGHT} plan={plan} life={life} states={states} />
+        <GhibliWindows buildings={buildings} minutes={minutes} day={city?.day} daylight={sky.daylight} gloom={gloom} dim={dim} farLight={FAR_LIGHT} plan={plan} life={life} states={states} moment={moment} />
       </g>
       {shopFronts}
     </g>
