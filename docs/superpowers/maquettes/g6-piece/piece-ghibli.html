@@ -201,19 +201,25 @@ function cat(o={}){ // pose 'walk' (phase) | 'leap' (u 0→1, incl) | 'rest' (u 
    push(place(lathe([[1.3,-6.5],[1.5,0]],8),{rz:a2,t:knee}),GINGER);
    const paw=[knee[0]+Math.sin(a2)*6.5,knee[1]-Math.cos(a2)*6.5,knee[2]];push(place(superEll(2,1.1,1.6,.6,.6,6,8),{t:[paw[0]+.5,Math.max(0,paw[1])+.6,paw[2]]}),CREAM)});
   const w=Math.sin(ph*.5);tailTube([[-12,15+bob,0],[-18,19+bob,w*1.5],[-21,25+bob,w*3],[-19,30+bob,w*4],[-15,32+bob,w*4.5]]);
- }else if(o.pose==='leap'){const u=o.u||0,incl=o.incl||0; // élan : corps étiré, pattes avant tendues, arrière en extension
+ }else if(o.pose==='crouch'){const c=o.c==null?1:o.c; // appel : corps ramassé au sol, pattes pliées, tête basse prête à bondir
+  push(place(superEll(13,5-1.2*c,6.5,.8,.85,12,20),{rz:.12*c,t:[0,8.5-1.5*c,0]}),GINGER);
+  push(place(superEll(5.4,5,5.4,.75,.75,12,16),{t:[12,13-1.5*c,0]}),GINGER);ears(12,13-1.5*c,0,[1,0],-.2*c);face(12,13-1.5*c,0,[1,0]);
+  [[1],[-1]].forEach(([s])=>{push(place(lathe([[1.5,-6],[1.8,0]],8),{rz:-.9*c,t:[8,8-1.2*c,s*3.2]}),GINGER);push(place(lathe([[1.3,-5.5],[1.5,0]],8),{rz:.9*c,t:[8+Math.sin(.9*c)*6,8-1.2*c-Math.cos(.9*c)*6,s*3.2]}),GINGER)});
+  [[1],[-1]].forEach(([s])=>push(place(superEll(5.5,5.5,4.5,.7,.7,10,14),{t:[-8,7,s*3.5]}),GINGER));
+  tailTube([[-12,8,0],[-19,6,2],[-25,4,4],[-28,3,7]]);
+ }else if(o.pose==='leap'){const u=o.u||0,incl=o.incl||0; // bond : corps étiré sur la tangente, antérieurs vers l'assise à l'arrivée
   const B=p=>rotZ(p,incl);const put=(m,c,pos,x)=>push(place(m,{rz:incl,t:add(B(pos),[0,0,0])}),c,x);
   put(superEll(16,5.6,5.6,.8,.85,12,20),GINGER,[0,16,0]);
   put(superEll(5.4,5,5.4,.75,.75,12,16),GINGER,[16,20,0]);
   const hp=B([16,20,0]);ears(hp[0],hp[1],hp[2],[Math.cos(incl),0],incl*.5);face(hp[0],hp[1],hp[2],[Math.cos(incl),0]);
-  [[1],[-1]].forEach(([s])=>{const sh=B([13,13,s*3]);push(place(lathe([[1.4,-12],[1.7,0]],8),{rz:incl-1.15,t:sh}),GINGER)});
-  [[1],[-1]].forEach(([s])=>{const hp2=B([-12,14,s*3.2]);push(place(lathe([[1.5,-12.5],[1.9,0]],8),{rz:incl+1.05+.3*u,t:hp2}),GINGER)});
+  [[1],[-1]].forEach(([s])=>{const sh=B([13,13,s*3]);push(place(lathe([[1.4,-12],[1.7,0]],8),{rz:incl-.9+.55*u,t:sh}),GINGER)});
+  [[1],[-1]].forEach(([s])=>{const hp2=B([-12,14,s*3.2]);push(place(lathe([[1.5,-12.5],[1.9,0]],8),{rz:incl+1.15-1.1*u,t:hp2}),GINGER)});
   tailTube([B([-15,16,0]),B([-23,17,1]),B([-30,16,2]),B([-35,13,2])]);
  }else{ // rest : u=0 assis, u=1 enroulé
-  const u=o.u||0,L=(a,b)=>a+(b-a)*u;
-  push(place(superEll(L(8,12.5),L(10.5,5.8),L(9,10.5),.7,.7,14,22),{rx:L(-.25,0),t:[0,L(10.5,5.8),L(-2,0)]}),GINGER);
+  const u=o.u||0,L=(a,b)=>a+(b-a)*u,sq=o.squash||0;
+  push(place(superEll(L(8,12.5)*(1+.3*sq),L(10.5,5.8)*(1-.3*sq),L(9,10.5),.7,.7,14,22),{rx:L(-.25,0)-.2*sq,t:[0,L(10.5,5.8)*(1-.3*sq),L(-2,0)]}),GINGER);
   push(place(superEll(L(6,4),L(6.5,3.5),L(5.5,4),.75,.75,12,16),{t:[L(0,-6),L(13,5),L(4.5,7)]}),CREAM);
-  const hp=[L(0,-6),L(22.5,9.5),L(4.5,8)];push(place(superEll(6.3,5.8,6.3,.75,.75,12,18),{t:hp}),GINGER);
+  const hp=[L(0,-6),L(22.5,9.5)-6*sq,L(4.5,8)+2*sq];push(place(superEll(6.3,5.8,6.3,.75,.75,12,18),{t:hp}),GINGER);
   const fwd=[Math.sin(L(0,-.9)),Math.cos(L(0,-.9))];ears(hp[0],hp[1],hp[2],fwd);face(hp[0],hp[1],hp[2],fwd);
   if(u<.98){[[-1],[1]].forEach(([s])=>{push(place(lathe([[1.6,0],[1.5,L(11,3)]],8),{t:[s*3.4,0,L(7.5,6)]}),GINGER);push(place(superEll(2,1.2,2.6,.6,.6,6,10),{t:[s*3.4,1,L(8.5,7)]}),CREAM)})}
   const tailS=[[6,2,-7],[13,1.8,-3],[15,2,4],[12,2.4,9]],tailC=[[10,2,-6],[14,2,2],[10,2.2,9],[2,2.4,11],[-4,2.6,10]];
@@ -234,7 +240,7 @@ function chair(st=STYLES.scandinave,o={}){
  P.push(part(place(superEll(24,1.7,1.5,.3,.3,6,16),{t:[0,53,-19.6]}),W,{crease:false}));
  for(let i=-2;i<=2;i++)P.push(part(place(superEll(2,23,.9,.3,.3,10,10),{rx:-.075,t:[i*8.5,77.5,-22.4]}),W,{crease:false}));
  for(const sx of[-1,1]){P.push(part(tube([[sx*24.2,72,-21.5],[sx*25.6,71,0],[sx*26.2,70,16]],1.9,10),W,{crease:false}));P.push(part(place(lathe([[1.6,0],[1.6,27]],10),{t:[sx*26.2,43,14]}),W,{crease:false}))}
- if(o.cat!=null&&o.cat!==false)P.push(...cat({pose:'rest',u:o.cat===true?0:o.cat,ry:.25,t:[0,49.5,3]}));
+ if(o.cat!=null&&o.cat!==false)P.push(...cat({pose:'rest',u:o.cat===true?0:Math.max(0,o.cat),squash:o.cat<0?-o.cat:0,ry:.25,t:[0,49.5,3]}));
  return P;
 }
 
@@ -300,16 +306,16 @@ function palm(){const P=[];
  P.push(part(lathe([[0,24],[13.8,24]],24),SOIL,{flat:true,noshadow:true}));
  P.push(part(tube([[0,24,0],[1,60,0],[-2,100,0],[-3,136,1]],2.3,8),tone('#B5915E'),{crease:false}));
  const top=[-3,136,1];
- for(let k=0;k<9;k++){const a=k*2*Math.PI/9+.25,rise=.55+.3*((k*5)%3)/2,len=78+10*((k*7)%3);
+ for(let k=0;k<9;k++){const a=k*2*Math.PI/9+.25,th0=.3+.3*((k*5)%3)/2,len=66+10*((k*7)%3);
   // rachis : monte, s'arque puis retombe (dans le plan local x-y, puis tourné de a)
-  const N=20;const loc=[];for(let i=0;i<=N;i++){const s=i/N;loc.push([len*s*(1-.15*s),28*Math.sin(Math.PI*s*.9)*rise-62*s*s*s,0])}
+  const N=20;const loc=[[0,0,0]];for(let i=1;i<=N;i++){const s=(i-.5)/N;const th=th0+1.55*s*s;const q=loc[i-1];loc.push([q[0]+Math.sin(th)*len/N,q[1]+Math.cos(th)*len/N,0])}
   const world=loc.map(p=>add(rotY(p,a),top));P.push(part(tube(world,.75,6),GREEN2,{crease:false}));
   // folioles fines et souples des deux côtés, de plus en plus courtes vers la pointe
   for(let i=3;i<loc.length;i++){for(let f=0;f<1;f++){const s=i/N;const p0=loc[i-1],p1=loc[i];const pm=[p0[0]+(p1[0]-p0[0])*f*.5,p0[1]+(p1[1]-p0[1])*f*.5,0];
-   const tilt=Math.atan2(p1[1]-p0[1],p1[0]-p0[0]);const Lf=(34-18*s)*(.92+.16*((i*3)%2));
-   for(const sd of[-1,1]){const droop=.95+.3*(((i*7+(sd>0?1:0))%4)/3)+.3*s;
+   const tilt=Math.atan2(p1[1]-p0[1],p1[0]-p0[0]);const Lf=(26-12*s)*(.92+.16*((i*3)%2));
+   for(const sd of[-1,1]){const droop=.5+.25*(((i*7+(sd>0?1:0))%4)/3)+.25*s;
     const out=[[0,0],[1.1,Lf*.2],[1.35,Lf*.45],[1,Lf*.75],[0,Lf],[-1,Lf*.75],[-1.35,Lf*.45],[-1.1,Lf*.2]];
-    let m=leaf(out,.35,(x,y,z)=>[x,y-.009*z*z,z]);m=place(m,{s:[1,1,sd],rx:sd*droop});m=place(m,{rz:tilt*.35,ry:a,t:add(rotY(pm,a),top)});
+    let m=leaf(out,.35,(x,y,z)=>[x,y-.009*z*z,z]);m=place(m,{s:[1,1,sd],rx:sd*droop});m=place(m,{rz:tilt*.6,ry:a,t:add(rotY(pm,a),top)});
     P.push(part(m,(i+sd)%2?GREEN:GREEN2,{crease:false}))}}}}
  return P}
 function beanbag(){ // sac de billes affaissé : base large, plis verticaux, creux au sommet, légère bascule
@@ -386,7 +392,7 @@ function drawBackground(ctx,t){
  ctx.beginPath();ctx.moveTo(543,FL+112);ctx.lineTo(772,FL+112);ctx.lineTo(767,FL+120);ctx.lineTo(538,FL+120);ctx.closePath();ctx.fill();
  // flaque du lampadaire (deux tons nets, pas de flou)
  ctx.fillStyle='rgba(255,246,208,.42)';ctx.beginPath();ctx.ellipse(132,506,78,20,0,0,7);ctx.fill();ctx.fillStyle='rgba(255,246,208,.45)';ctx.beginPath();ctx.ellipse(132,506,46,11,0,0,7);ctx.fill();
- ctx.fillStyle='rgba(255,233,176,.5)';ctx.beginPath();ctx.ellipse(957,524,52,13,0,0,7);ctx.fill();ctx.fillStyle='rgba(255,233,176,.5)';ctx.beginPath();ctx.ellipse(957,524,30,7,0,0,7);ctx.fill();
+ ctx.fillStyle='rgba(255,233,176,.5)';ctx.beginPath();ctx.ellipse(222,554,52,13,0,0,7);ctx.fill();ctx.fillStyle='rgba(255,233,176,.5)';ctx.beginPath();ctx.ellipse(222,554,30,7,0,0,7);ctx.fill();
  // fenêtre
  const wx=690,wy=92,ww=180,wh=208;
  ctx.fillStyle=sh(WALL,.25);ctx.fillRect(wx-12,wy-12,ww+24,wh+24); // embrasure
@@ -438,12 +444,12 @@ function buildRoom(){
  FURN.length=0;
  FURN.push(sprite(arcLamp(),300,526,{w:420,h:420,ox:300,oy:400,yaw:0}));
  FURN.push(sprite(gueridon(),400,480,{w:200,h:160,ox:120,oy:140,yaw:.3}));
- FURN.push(sprite(palm(),488,480,{w:360,h:330,ox:230,oy:310,yaw:.2}));
+ FURN.push(sprite(palm(),488,480,{w:360,h:400,ox:200,oy:380,yaw:.2}));
  FURN.push(sprite(beanbag(),600,517,{w:220,h:140,ox:140,oy:120,yaw:.35}));
  FURN.push(sprite(sofa(STYLES.scandinave),778,424,{w:520,h:260,ox:330,oy:240,yaw:0}));
- FURN.push(sprite(monstera(),905,458,{w:240,h:220,ox:150,oy:200,yaw:.4}));
- FURN.push(sprite(lantern(),957,522,{w:170,h:140,ox:100,oy:120,yaw:0}));
- FURN.push(sprite(catTree(),1040,448,{w:260,h:260,ox:150,oy:240,yaw:-.25}));
+ FURN.push(sprite(monstera(),962,534,{w:260,h:220,ox:150,oy:200,yaw:.15}));
+ FURN.push(sprite(lantern(),222,552,{w:170,h:140,ox:100,oy:120,yaw:0}));
+ FURN.push(sprite(catTree(),1052,448,{w:260,h:260,ox:150,oy:240,yaw:-.25}));
 }
 const CHAIR_X=130,CHAIR_Y=506,CHAIR_YAW=.22;
 function chairSprite(angle,catU){
@@ -454,18 +460,22 @@ let catSitSprite=null;const catWalkSprites={};
 function catWalk(ph,dir){const k=Math.round(ph*6)/6+'|'+dir;if(!catWalkSprites[k])catWalkSprites[k]=render(cat({pose:'walk',phase:ph,ry:dir>0?deg(12):deg(192)}),{...ROOM,w:160,h:110,ox:80,oy:95});return catWalkSprites[k]}
 
 /* ---------- chronologie (13 s) ---------- */
-const T=14.5;
-function timeline(t){ // renvoie l'état : chairAngle, cat {mode,x,y,ph,dir,u,incl}
+const T=15;
+// bond en cloche : y(u)=y0+(y1-y0)u-h*sin(pi u) ; inclinaison = tangente (ecran : y vers le bas)
+function arc(x0,x1,y0,y1,h,u){const x=x0+(x1-x0)*u,y=y0+(y1-y0)*u-h*Math.sin(Math.PI*u);const dy=(y1-y0)-h*Math.PI*Math.cos(Math.PI*u),dx=(x1-x0);return{x,y,incl:Math.atan2(-dy,Math.abs(dx))*.7}}
+function timeline(t){ // renvoie l'etat : chairAngle, cat {mode,x,y,ph,dir,u,incl,c}
  let ang=0,c=null;const ease=u=>u*u*(3-2*u);
  const rock=(t0,A)=>{const u=t-t0;return u>0?deg(A)*Math.exp(-.55*u)*Math.sin(2*Math.PI*u/1.75):0};
- if(t<2.1){const u=t/2.1;c={mode:'walk',x:-80+(52+80)*u,y:518,ph:u*15,dir:1}}
- else if(t<2.7){const u=(t-2.1)/.6;c={mode:'leap',x:52+(130-52)*ease(u),y:518+(418-518)*u-62*Math.sin(Math.PI*u),dir:1,u,incl:(.6-1.3*u)}}
- else if(t<5.6){c={mode:'rest',u:0};ang=rock(2.65,6.5)}
- else if(t<6.6){c={mode:'rest',u:ease((t-5.6)/1)};ang=rock(2.65,6.5)}
- else if(t<9.9){c={mode:'rest',u:1};ang=rock(2.65,6.5)}
- else if(t<10.5){c={mode:'rest',u:1-ease((t-9.9)/.6)}}
- else if(t<11.05){const u=(t-10.5)/.55;c={mode:'leap',x:130+(34-130)*u,y:418+(518-418)*u*u-30*Math.sin(Math.PI*u),dir:-1,u,incl:(-.3-.9*u)};ang=rock(10.5,2.4)}
- else if(t<13.4){const u=(t-11.05)/2.35;c={mode:'walk',x:34-(34+90)*u,y:518,ph:u*17,dir:-1};ang=rock(10.5,2.4)}
+ if(t<2.1){const u=t/2.1;c={mode:'walk',x:-80+(46+80)*u,y:518,ph:u*15,dir:1}}
+ else if(t<2.5){const u=(t-2.1)/.4;c={mode:'crouch',x:46,y:518,c:ease(Math.min(1,u*1.3)),dir:1}}
+ else if(t<3.1){const u=(t-2.5)/.6;const a=arc(46,130,518,418,78,u);c={mode:'leap',...a,dir:1,u}}
+ else if(t<3.4){const u=(t-3.1)/.3;c={mode:'rest',u:-.8*Math.sin(Math.PI*u)-.001};ang=rock(3.1,6.5)}
+ else if(t<6.1){c={mode:'rest',u:0};ang=rock(3.1,6.5)}
+ else if(t<7.1){c={mode:'rest',u:ease((t-6.1)/1)};ang=rock(3.1,6.5)}
+ else if(t<10.4){c={mode:'rest',u:1};ang=rock(3.1,6.5)}
+ else if(t<11){c={mode:'rest',u:1-ease((t-10.4)/.6)}}
+ else if(t<11.55){const u=(t-11)/.55;const a=arc(130,34,418,518,26,u);c={mode:'leap',...a,dir:-1,u};ang=rock(11,2.4)}
+ else if(t<13.9){const u=(t-11.55)/2.35;c={mode:'walk',x:34-(34+90)*u,y:518,ph:u*17,dir:-1};ang=rock(11,2.4)}
  return{ang,cat:c};
 }
 let chairCache={key:null,sp:null};
@@ -477,10 +487,11 @@ function drawScene(ctx,t){
  if(chairCache.key!==key){chairCache={key,sp:chairSprite(st.ang,catU)}}
  const all=[...FURN,chairCache.sp].sort((a,b)=>(a.y+a.c.height)-(b.y+b.c.height)); // le plus bas devant
  // ordre réel : par ligne de sol
- const order=[{s:chairCache.sp,g:CHAIR_Y},{s:FURN[0],g:526},{s:FURN[1],g:480},{s:FURN[2],g:480},{s:FURN[3],g:517},{s:FURN[4],g:424},{s:FURN[5],g:458},{s:FURN[6],g:522},{s:FURN[7],g:448}].sort((a,b)=>a.g-b.g);
+ const order=[{s:chairCache.sp,g:CHAIR_Y},{s:FURN[0],g:526},{s:FURN[1],g:480},{s:FURN[2],g:480},{s:FURN[3],g:517},{s:FURN[4],g:424},{s:FURN[5],g:534},{s:FURN[6],g:548},{s:FURN[7],g:448}].sort((a,b)=>a.g-b.g);
  order.forEach(({s})=>ctx.drawImage(s.c,s.x,s.y));
  if(st.cat&&st.cat.mode==='walk'){const c=catWalk(st.cat.ph,st.cat.dir);ctx.drawImage(c,st.cat.x-70,st.cat.y-85)}
- if(st.cat&&st.cat.mode==='leap'){const c=render(cat({pose:'leap',u:st.cat.u,incl:st.cat.incl*st.cat.dir,ry:st.cat.dir>0?deg(12):deg(192)}),{...ROOM,w:180,h:130,ox:90,oy:100,shadow:false});ctx.drawImage(c,st.cat.x-90,st.cat.y-100)}
+ if(st.cat&&st.cat.mode==='leap'){const c=render(cat({pose:'leap',u:st.cat.u,incl:st.cat.incl,ry:st.cat.dir>0?deg(12):deg(192)}),{...ROOM,w:200,h:160,ox:100,oy:120,shadow:false});ctx.drawImage(c,st.cat.x-100,st.cat.y-120)}
+ if(st.cat&&st.cat.mode==='crouch'){const c=render(cat({pose:'crouch',c:st.cat.c,ry:deg(12)}),{...ROOM,w:160,h:110,ox:80,oy:95});ctx.drawImage(c,st.cat.x-80,st.cat.y-95)}
 }
 
 /* ---------- tour du meuble / plateau / styles ---------- */
