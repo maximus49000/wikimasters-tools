@@ -624,6 +624,10 @@ describe('décors entreposés dans un véhicule de transport (vélo porteur, cam
   it('drapeaux de lampadaires : une caisse sur le plateau du camion élévateur', () => {
     const c = layer(D13, 9 * 60 + 5);
     expect(count(c, '[data-crew="lamps-bastille"] [data-lift-truck] [data-stored-item]')).toBeGreaterThan(0);
+    // 14 juillet inchangé : des drapeaux roulés (pas l'art des décors d'Halloween).
+    const stored = count(c, '[data-crew="lamps-bastille"] [data-lift-truck] [data-flag-crate] [data-stored-item]');
+    expect(count(c, '[data-crew="lamps-bastille"] [data-lift-truck] [data-flag-crate] [data-stored-item] [data-flag-art]')).toBe(stored);
+    expect(c.querySelector('[data-crew="lamps-bastille"] [data-lift-truck] [data-lamp-crate]')).toBeNull();
   });
 });
 

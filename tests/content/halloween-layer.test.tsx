@@ -115,4 +115,26 @@ describe('entrées et lampadaires (install-layer)', () => {
     expect(lanterns.length + bats.length).toBeGreaterThan(0);
     for (const p of lanterns) expect(p.getAttribute('data-lit')).toBe('true');
   });
+
+  // Bogue du 2026-10-24 : la nacelle posait des guirlandes de chauves-souris mais le plateau portait la caisse de drapeaux
+  // tricolores. Le chargement suit le genre des décors encore dans le camion (art des décors tenus, réduit).
+  const OCT24: YMD = { y: 2026, m: 10, d: 24 };
+  const liftCargo = (ghibli: boolean): Element => {
+    const minute = 9 * 60 + 5;
+    const c = render(<svg><InstallLayer width={W} height={H} seed={SEED} sky={skyOf(OCT24, minute)} still={false} date={OCT24} minutes={minute} metrics={metrics} rainy={false} ghibli={ghibli} /></svg>);
+    const truck = c.querySelector('[data-crew="lamps-halloween"] [data-lift-truck]');
+    expect(truck, 'camion élévateur d’Halloween à l’œuvre le 24/10 à 9 h 05').not.toBeNull();
+    return truck!;
+  };
+  for (const ghibli of [false, true]) {
+    it(`camion élévateur d’Halloween (${ghibli ? 'Ghibli' : 'classique'}) : citrouilles et chauves-souris sur le plateau, aucun drapeau`, () => {
+      const truck = liftCargo(ghibli);
+      const stored = [...truck.querySelectorAll('[data-stored-item][data-carried="lift"]')];
+      expect(stored.length).toBeGreaterThan(0);
+      expect(truck.querySelector('[data-flag-art], [data-flag-wave], [data-held-flag]')).toBeNull();
+      const kinds = new Set(stored.map((e) => e.getAttribute('data-stored-kind')));
+      for (const k of kinds) expect(['lamp-pumpkin', 'lamp-bats']).toContain(k);
+      expect(truck.querySelectorAll('[data-lamp-crate] [data-lamp-pumpkin="held"] [data-pumpkin], [data-lamp-crate] [data-lamp-bats="held"] [data-bats]').length).toBe(stored.length);
+    });
+  }
 });

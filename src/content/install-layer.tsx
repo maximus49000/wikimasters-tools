@@ -29,7 +29,7 @@ import { CITIZENS_3D } from './figure/citizen-config';
 import { GhibliFigure, setShown3DFitter } from './figure/ghibli-figure';
 import { paintProp, propKey, type PropRegistry, type PropSpec } from './prop/prop-host';
 import {
-  BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, FlagCrate, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE,
+  BARRIER, BIKE, Barrier, CargoBike, CrewWorker, DoorFlag, FLATBED, FlagArt, Flatbed, HOLD_HAND, HeldSpot, HeldTruss, LIFT_CRATE, LampCrate,
   DoorGhost, DoorWeb, HeldDoorDecor, LampBats, LampPumpkin, LampFlag, LiftTruck, STAGE, StageFloor, StageFrame, StageSpots, VAN_LADDER, Van, liftRest, type CrewPose,
 } from './install-sprites';
 import { ConcertCrowd, ConcertLight } from './concert-light';
@@ -1248,9 +1248,10 @@ function liftCrew(inp: CrewInput): ReactElement {
       waiting = { x: lerp(F, W0, q), y: gy, dir: q < 1 ? dir : g.dir, pose: q < 1 ? 'walk' : 'stand', held: inp.removing ? undefined : piece(dir, 'hands') };
     }
   }
-  // Caisse de drapeaux sur le plateau du camion élévateur : ceux qui restent à poser, ou déjà rangés.
+  // Caisse sur le plateau du camion élévateur : les décors qui restent à poser, ou déjà rangés ; son contenu suit leur genre
+  // (drapeaux le 14 juillet, citrouilles et chauves-souris à Halloween).
   const cargo = inp.set.transport === 'lift'
-    ? <FlagCrate sky={inp.sky} tag="lift" flags={inp.set.items.filter((i) => inVehicle(inp.set, i, inp.abs)).map((i) => `${inp.set.id}/${i.id}`)} ghibli={inp.ghibli ? { dir: g.dir } : undefined} />
+    ? <LampCrate sky={inp.sky} tag="lift" items={inp.set.items.filter((i) => inVehicle(inp.set, i, inp.abs)).map((i) => ({ id: `${inp.set.id}/${i.id}`, kind: i.kind }))} ghibli={inp.ghibli ? { dir: g.dir } : undefined} />
     : null;
   return (
     <>
