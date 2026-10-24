@@ -6,6 +6,10 @@ import { GROUND_FLOOR } from '../../../../src/core/library/city/metrics';
 import { roofOutline } from '../../../../src/core/library/city/facade-layout';
 import { PAINT_VERSION } from '../../../../src/core/library/paint/city-painter';
 import { paintParisRoof } from '../../../../src/core/library/paint/roof-painter';
+import { paintFond } from '../../../../src/core/library/paint/fond-painter';
+import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
+import { rueLeafCount } from '../../../../src/core/library/paint/rue-verte-painter';
+import { hashString } from '../../../../src/core/library/scene-world';
 import { recordingCtx } from './recording-ctx';
 
 afterEach(() => vi.restoreAllMocks());
@@ -209,8 +213,8 @@ describe('peintre de tranche', () => {
     expect(found).toBeGreaterThan(0);
   });
 
-  it('PAINT_VERSION vaut 12', () => {
-    expect(PAINT_VERSION).toBe(12);
+  it('PAINT_VERSION vaut 14', () => {
+    expect(PAINT_VERSION).toBe(14);
   });
 
   it('tranches : aucun volet ni rideau peint (le calque de la vie aux fenêtres les dessine)', () => {
@@ -351,3 +355,70 @@ describe('peintre de tranche', () => {
   });
 });
 
+
+// Empreinte du fond (colline, arbres de la colline) relevée AVANT la verdure de la rue (PR 3, tâche 4) : les options ajoutées à
+// hill-trees.ts (pluie, grappes, rehauts, touffes lâches) ne changent rien à l'appel sans options.
+describe('fond : rendu inchangé par la verdure de la rue', () => {
+  it('empreinte des appels de paintFond (graines 1 et 7, quatre dates dont neige et pluie)', () => {
+    const moments = [
+      fondMoment({ y: 2026, m: 7, d: 7 }, 15 * 60, SUNNY),
+      fondMoment({ y: 2026, m: 11, d: 10 }, 9 * 60, { cloud: 0.8, precip: 0.6, wind: 0.5, snow: false }),
+      fondMoment({ y: 2027, m: 1, d: 15 }, 12 * 60, { cloud: 0.9, precip: 0.4, wind: 0.2, snow: true }),
+      fondMoment({ y: 2027, m: 4, d: 20 }, 18 * 60, SUNNY),
+    ];
+    const got = [1, 7].flatMap((seed) => {
+      const plan = cityPaintPlan(1080, 340, seed);
+      return moments.map((D) => {
+        const ctx = recordingCtx();
+        for (let t = 0; t < tileCount(1080); t++) paintFond(ctx, plan, t * TILE, Math.min(1080, (t + 1) * TILE), D, tileItems(plan, t).landmarks);
+        return hashString(JSON.stringify(ctx.ops) + ctx.fills.join(','));
+      });
+    });
+    expect(got).toEqual([1524930241, 3293085921, 1145549891, 2630642128, 2267434731, 421392909, 3116732953, 3301441831]);
+  });
+});
+
+// Clé des tranches et verdure de la rue (PR 3, tâche 4) : date (calendrier), balayage de 7 h 30, flaques.
+describe('clé des tranches : verdure de la rue', () => {
+  const plan = cityPaintPlan(1440, 340, 1);
+  const rainy = { cloud: 0.9, precip: 0.6, wind: 0.4, snow: false };
+  // Tranche avec une fosse plantée (flaque possible).
+  const tile = [0, 1, 2, 3].find((t) => tileItems(plan, t).rue.some((v) => v.kind === 'pit' && !v.empty))!;
+
+  it('change entre 7 h 29 et 7 h 31 un 10 novembre de balayage', () => {
+    const year = Array.from({ length: 40 }, (_, k) => 2026 + k).find((y) => sweptKey(fondMoment({ y, m: 11, d: 10 }, 7 * 60 + 31, SUNNY), 7.5, plan.seed) === 'b')!;
+    expect(year).toBeDefined();
+    const before = fondMoment({ y: year, m: 11, d: 10 }, 7 * 60 + 29, SUNNY);
+    const after = fondMoment({ y: year, m: 11, d: 10 }, 7 * 60 + 31, SUNNY);
+    expect(rueLeafCount(plan, before)).toBeGreaterThan(0);
+    expect(rueLeafCount(plan, after)).toBe(0);
+    expect(tileKey(plan, tile, before)).not.toBe(tileKey(plan, tile, after));
+  });
+
+  // Entre 15 h et 15 h 10, les poses lentes du fond (volets, linge : `fondStates`, tranches de 10 min) changent déjà la clé ;
+  // la part de la rue (dernier champ) ne change pas, et la clé est identique dans une même tranche de 10 min.
+  it('change entre deux dates ; pas entre 15 h et 15 h 10 en juillet sans pluie (part de la rue)', () => {
+    const at = (d: number, min: number): string => tileKey(plan, tile, fondMoment({ y: 2026, m: 7, d }, min, SUNNY));
+    expect(at(7, 900)).not.toBe(at(8, 900));
+    expect(at(7, 900).split('|').at(-1)).toBe(at(7, 910).split('|').at(-1));
+    expect(at(7, 900)).toBe(at(7, 905));
+  });
+
+  it('change quand la pluie arrive (flaques au pied des arbres), et la tranche peint alors la flaque', () => {
+    const dry = fondMoment({ y: 2026, m: 7, d: 7 }, 15 * 60, SUNNY);
+    const wet = fondMoment({ y: 2026, m: 7, d: 7 }, 15 * 60, rainy);
+    expect(tileKey(plan, tile, dry)).not.toBe(tileKey(plan, tile, wet));
+    const a = recordingCtx();
+    const b = recordingCtx();
+    paintCityTile(a, plan, tile, dry);
+    paintCityTile(b, plan, tile, wet);
+    expect(a.fills.filter((f) => f === 'rgba(60,70,110,0.22)').length).toBe(0);
+    expect(b.fills.filter((f) => f === 'rgba(60,70,110,0.22)').length).toBeGreaterThan(0);
+  });
+
+  it('les éléments de la rue de la tranche sont dans la clé', () => {
+    const target = tileItems(plan, tile).rue.find((v) => v.kind === 'herbe')!;
+    const moved = { ...plan, rue: plan.rue.map((v) => (v === target ? { ...target, x: target.x + 1 } : v)) };
+    expect(tileKey(moved, tile)).not.toBe(tileKey(plan, tile));
+  });
+});

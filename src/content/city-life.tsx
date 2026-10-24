@@ -31,6 +31,7 @@ import { pieceAt } from '../core/library/city/halloween-night';
 import type { Weather } from '../core/library/weather/weather-types';
 import type { Sky } from '../core/library/sky';
 import { useArtStyle } from './art-setting';
+import { StreetTreesSlot } from './street-trees-slot';
 import { placeSill, sillBox, sillFigTransform } from './door-passage';
 import { CITIZENS_3D } from './figure/citizen-config';
 import { useFigureRegistry } from './figure/figure-host';
@@ -1268,16 +1269,27 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           );
         })}
         {of((e) => e.layer === 'sidewalk').map(eventNode)}
-        {/* Foule du défilé du 14 juillet : au bord du trottoir, derrière les barrières (posées sur la chaussée) et les équipes. */}
+        {/* Foule du défilé du 14 juillet : au bord du trottoir, derrière les barrières (posées sur la chaussée) et les équipes ;
+            derrière les arbres de la rue aussi, ses rangs (curb − 1,2 à − 8,8 u) étant sur la ligne des fosses ou en arrière. */}
         {nightPlan && <HalloweenNightLayer plan={nightPlan} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} minutes={city.minutes} sceneS={sceneSecondsAt} frozenT={frozen.current!} />}
         <ParadeCrowd width={width} seed={seed} sky={sky} still={still} rainy={rainy} dayFests={dayFests} minutes={city.minutes} metrics={metrics} doorXs={doorXs} ghibli={ghibli} />
-        {/* Scène, équipes à l'échelle et porteurs : devant les passants (un passant passe toujours derrière une équipe). */}
+        {/* Équipes à l'échelle et porteurs des façades : devant les passants (un passant passe toujours derrière une équipe). La
+            scène de la Fête de la musique est dessinée plus loin, devant les arbres de la rue (partie `stage`). */}
         <InstallLayer {...install} part="crew" />
         {/* Déménagement : les porteurs, après les passants (un passant les contourne par derrière, ils le cachent) et avant le
             camion (ils passent derrière lui en y entrant). */}
         {shops.views.map((view) => (
           <MovingCrew key={view.slot.id} view={view} frame={shops.frames.get(view.slot.id)!} day={dayNumber(date)} seed={seed} width={width} metrics={metrics} sky={sky} rainy={rainy} still={still} t0={t0} minutes={city.minutes} offset={shops.offsets.get(view.slot.id) ?? 0} ghibli={ghibli} />
         ))}
+      </g>
+      {/* Arbres de la rue (ville peinte) : devant toute la vie des façades, les devantures et le trottoir des immeubles (on ne voit
+          jamais une fenêtre à travers un houppier), derrière les lampadaires, le passage piéton et la circulation. */}
+      <StreetTreesSlot seed={seed} width={width} height={height} still={still} />
+      {/* Au bord de la chaussée, devant la ligne des fosses (curb − 1,4) : scène de la Fête de la musique (pied à curb − 1 u ; ses
+          musiciens, faisceaux et équipes de montage) et camion de déménagement (garé sur la chaussée, curb + 2 u), dessinés
+          devant les arbres de la rue. Les porteurs du déménagement, qui longent surtout la façade, restent derrière eux. */}
+      <g data-city-curb="">
+        <InstallLayer {...install} part="stage" />
         {/* Camion de déménagement garé au bord du trottoir : devant les passants, derrière les lampadaires et les files. */}
         {shops.views.map((view, i) => (
           <MovingTruck

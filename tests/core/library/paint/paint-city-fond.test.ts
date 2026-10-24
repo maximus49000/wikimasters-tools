@@ -3,7 +3,7 @@ import { cityPaintPlan, clearPlanCacheForTests, hillCrestY, HILL_ROWS } from '..
 import { paintCityTile, TILE, tileCount, tileKey } from '../../../../src/core/library/paint/city-painter';
 import { BAND, escapeHit, fondCoverage, isTree, itemBox, itemHitsEscape, treeHitsEscape, houseBouquet, type FondHouse, type FondItem } from '../../../../src/core/library/paint/fond-plan';
 import { fondTile, paintVerdure } from '../../../../src/core/library/paint/fond-painter';
-import { fondMoment, foliageOf, SUNNY } from '../../../../src/core/library/paint/fond-time';
+import { bedState, fondMoment, foliageOf, leavesOnGround, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
 import { treeOfItem } from '../../../../src/core/library/paint/fond-plan';
 import { recordingCtx } from './recording-ctx';
 
@@ -185,5 +185,46 @@ describe('fond vivant : tranches', () => {
       paintCityTile(recordingCtx(), p, t, at(7, 8, 900));
       paintCityTile(recordingCtx(), p, t, fondMoment({ y: 2027, m: 1, d: 20 }, 480, { cloud: 0.85, precip: 0.5, wind: 0.2, snow: true }));
     }
+  });
+});
+
+describe('calendrier de la rue', () => {
+  const doy = (n: number) => ({ doy: n });
+  it('parterres : une saison par plage, sol nu entre deux replantations', () => {
+    expect(bedState(doy(80)).kind).toBe('spring');
+    expect(bedState(doy(80)).shoots).toBeGreaterThan(0);
+    expect(bedState(doy(120))).toMatchObject({ kind: 'spring', bloom: 1 });
+    expect(bedState(doy(153)).kind).toBe('bare');
+    expect(bedState(doy(200)).kind).toBe('summer');
+    expect(bedState(doy(281)).kind).toBe('bare');
+    expect(bedState(doy(300)).kind).toBe('autumn');
+    expect(bedState(doy(337)).kind).toBe('bare');
+    expect(bedState(doy(10))).toMatchObject({ kind: 'winter', bloom: 1, faded: 0 });
+  });
+
+  it('feuilles mortes : aucune en juillet, il en tombe en novembre, déterministe', () => {
+    for (let s = 1; s <= 20; s++) expect(leavesOnGround({ y: 2026, month: 7, day: 10 }, 15, s)).toBe(0);
+    const nov = { y: 2026, month: 11, day: 10 };
+    expect([...Array(20).keys()].some((i) => leavesOnGround(nov, 18, i + 1) > 0)).toBe(true);
+    expect(leavesOnGround(nov, 18, 5)).toBe(leavesOnGround(nov, 18, 5));
+  });
+
+  it('balayage à 7 h 30 : des feuilles juste avant, le sol propre juste après', () => {
+    let hit: { D: { y: number; month: number; day: number }; s: number } | null = null;
+    for (let s = 1; s <= 50 && !hit; s++) {
+      for (let d = 5; d <= 25 && !hit; d++) {
+        const D = { y: 2026, month: 11, day: d };
+        if (sweptKey(D, 7.5, s) === 'b' && leavesOnGround(D, 7.49, s) > 0) hit = { D, s };
+      }
+    }
+    expect(hit).not.toBeNull();
+    expect(sweptKey(hit!.D, 7.49, hit!.s)).toBe('');
+    expect(leavesOnGround(hit!.D, 7.49, hit!.s)).toBeGreaterThan(0);
+    expect(leavesOnGround(hit!.D, 7.51, hit!.s)).toBe(0);
+  });
+
+  it('parterres : bornes exactes des plages', () => {
+    const kinds = [72, 73, 150, 151, 155, 156, 278, 279, 282, 283, 334, 335, 339, 340].map((n) => bedState({ doy: n }).kind);
+    expect(kinds).toEqual(['winter', 'spring', 'spring', 'bare', 'bare', 'summer', 'summer', 'bare', 'bare', 'autumn', 'autumn', 'bare', 'bare', 'winter']);
   });
 });

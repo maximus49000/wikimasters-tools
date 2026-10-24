@@ -12,13 +12,15 @@ import { fondStates, paintFond } from './fond-painter';
 import type { FondHouse } from './fond-plan';
 import { DEFAULT_MOMENT, laundryK, shutterK, slotHours, type FondMoment } from './fond-time';
 import type { PaintCtx } from './paint-ctx';
+import type { RueItem } from './rue-verte-plan';
+import { paintRueVerdure, rueMomentKey, rueSpan } from './rue-verte-painter';
 
 // Peintre de la ville (vague Ghibli, décor cellulo) : une tranche de TILE px du monde, en coordonnées du monde (l'appelant
 // décale le canvas). Aplats francs, un ton d'ombre à bord net, un rehaut, trait encré. Chaque immeuble, arbre et meuble a
 // son propre générateur : peint depuis deux tranches, il est identique.
 export const TILE = 360;
 // À incrémenter à chaque changement du dessin : invalide le cache des tranches.
-export const PAINT_VERSION = 12;
+export const PAINT_VERSION = 14;
 
 const LEAVES = ['#2A6A2E', '#52A23C', '#A8DC58'].map(hexRgb);
 const BARK = hexRgb('#9A8468');
@@ -33,7 +35,8 @@ export const tileCount = (width: number): number => Math.max(1, Math.ceil(width 
 export const CORNICE = { over: 1.5, up: 0.8, h: 3, drop: 2.5 } as const;
 
 // `fondHouses` : maisons du fond vivant hors du plan de la colline (rang de crête, maisons de l'échappée) : la neige posée les couvre.
-export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; furniture: Furniture[]; doors: PlanDoor[]; fondHouses: FondHouse[] };
+// `rue` : verdure de la rue principale dont le dessin touche la tranche (fosses, bacs, parterres, grimpantes, pots, herbe).
+export type TileItems = { buildings: PaintBuilding[]; podiums: PaintPodium[]; trees: Tree[]; houses: HillHouse[]; landmarks: Landmark[]; furniture: Furniture[]; doors: PlanDoor[]; fondHouses: FondHouse[]; rue: RueItem[] };
 
 export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
   const x0 = tile * TILE - 2;
@@ -48,6 +51,10 @@ export function tileItems(plan: CityPaintPlan, tile: number): TileItems {
     furniture: plan.furniture.filter((f) => f.x - 10 < x1 && f.x + f.w + 10 > x0),
     doors: plan.doors.filter((d) => d.cx - 13 * d.s < x1 && d.cx + 13 * d.s > x0),
     fondHouses: [...plan.fond.crestHouses, ...plan.fond.escapes.flatMap((e) => e.houses)].filter((h) => h.x - 2 < x1 && h.x + h.w + 2 > x0),
+    rue: plan.rue.filter((v) => {
+      const [a, b] = rueSpan(v);
+      return a < x1 && b > x0;
+    }),
   };
 }
 
@@ -79,12 +86,14 @@ function farStates(plan: CityPaintPlan, buildings: readonly PaintBuilding[], D: 
   return out.join('');
 }
 
-// Clé des états lents de la tranche (date, neige, poses de la tranche de 10 min) : elle ne change que si l'image change.
+// Clé des états lents de la tranche (date, neige, poses de la tranche de 10 min, flaques et feuilles mortes de la rue) : elle
+// ne change que si l'image change.
 export function momentKey(plan: CityPaintPlan, tile: number, D: FondMoment): string {
   const x0 = tile * TILE;
   const x1 = Math.min(plan.width, (tile + 1) * TILE);
-  const states = fondStates(plan, x0, x1, D) + '/' + farStates(plan, tileItems(plan, tile).buildings, D);
-  return `${D.date}|${D.meteo.snow ? 'neige' : ''}|${hashString(states).toString(36)}`;
+  const it = tileItems(plan, tile);
+  const states = fondStates(plan, x0, x1, D) + '/' + farStates(plan, it.buildings, D);
+  return `${D.date}|${D.meteo.snow ? 'neige' : ''}|${hashString(states).toString(36)}|${rueMomentKey(plan, it.rue, D, x0, x1)}`;
 }
 
 // `moment` : instant du fond vivant (date, météo, heure) ; sans lui, la clé ne porte que le dessin du plan (neige posée).
@@ -105,6 +114,7 @@ export function tileKey(plan: CityPaintPlan, tile: number, moment?: FondMoment):
     it.landmarks.map((l) => `${l.kind}${l.x.toFixed(1)}`).join(','),
     it.furniture.map((f) => `${f.kind}${f.x.toFixed(1)}`).join(','),
     it.doors.map((d) => `${d.variant}${d.x.toFixed(1)}`).join(','),
+    hashString(JSON.stringify(it.rue)).toString(36),
     fondSig(plan, tile).toString(36),
     ...(moment ? [momentKey(plan, tile, moment)] : []),
   ].join('|');
@@ -397,6 +407,8 @@ export function paintCityTile(ctx: PaintCtx, plan: CityPaintPlan, tile: number, 
   for (const d of it.doors) paintEntrance(ctx, d.cx, d.base, d.s, d.variant, plan.seed ^ Math.round(d.x * 8));
   for (const t of it.trees) paintTree(ctx, plan, t);
   for (const f of it.furniture) paintFurniture(ctx, plan, f);
+  // Verdure de la rue (PR 3) : par-dessus le premier plan ; ses arbres sont dans le calque animé au-dessus des tranches.
+  paintRueVerdure(ctx, plan, it.rue, moment, x0, x1);
 }
 
 export type { Box };

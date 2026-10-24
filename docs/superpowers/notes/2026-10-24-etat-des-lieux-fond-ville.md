@@ -12,8 +12,9 @@ Document de reprise en local. Références :
 |---|---|---|
 | 1 | Audit des bâtiments : carrés de couleur, immeubles du fond mal coupés (D1 à D6) | **Fusionnée** (#354) |
 | 2a | Colline peinte : échappée, colline sans trous, toits du mur du fond, volets, linge, arbres de colline | **Fusionnée** (#355) |
-| 2b | Vie animée du fond (calque `vie-fond`) | **Code fini, PR en brouillon** : reste la suite complète, puis la fusion |
-| 3 | Verdure de la rue et arbres au vent | **À faire** |
+| 2b | Vie animée du fond (calque `vie-fond`) | **Fusionnée** (#356), pré-prod 1925 |
+| 3 | Verdure de la rue, arbres de rue au vent, particules ; corrections nuages, tapis, montage | **Faite** (branche `feat/ville-fond-pr3-verdure`, plan `plans/2026-10-24-ville-fond-pr3-verdure-vent.md`) |
+| 3b | Colline au vent (tranches de 96 / 240 px) | **Reportée** : le budget de fluidité est pris par la rue à vent 0,5 ; seulement après mesure sur le S26 |
 
 La pré-production n'a pas été lancée depuis ces fusions : `npm run preprod`, puis reconstruire l'extension.
 
@@ -47,17 +48,20 @@ Commits `eb0b241`, `534f714` et `aa0881a`, poussés, au-dessus de `main` (`de201
    d'hiver, dimanche d'été, 14 juillet.
 3. Passer la PR en « prête », la fusionner, puis `npm run preprod`.
 
-## PR 3 : à faire
+## PR 3 : bilan (2026-10-24)
 
-1. Commencer par la mesure au banc (CPU × 4) du vent des arbres, avec des sprites cuits par masse et des transformations à
-   15 Hz. Si le budget est dépassé, repli validé : seuls la rue et l'échappée sont animées, et la colline l'est par tranches
-   de 240 px sur Android.
-2. Porter depuis la maquette :
-   - `03a-arbres.js` : `treeModel`, `paintLeaves`, test des 365 jours (déjà porté pour la colline dans `hill-trees.ts`, à
-     étendre à la rue) ;
-   - `03b-rue-verte.js` : fosses, bacs, parterres, grimpantes, pots, herbe, feuilles mortes et balayage ;
-   - `04a-vent.js` : vent, pluie, orage, feuilles et pétales emportés, neige qui glisse, oiseaux.
-3. Calendrier des saisons : `notes.md` §3 ter.
+- Verdure de la rue (`rue-verte-plan.ts`, `rue-verte-painter.ts`, `PAINT_VERSION` 14) : fosses devant les vitrines, jamais devant une
+  porte, hors scène de la Fête de la musique, passage piéton et arrêt de bus ; bacs et parterres pied au mur ; calendrier réel.
+- Arbres de rue au vent (`street-trees.tsx`, `rue-sprites.ts`, `fond-vent.ts`) : couches cuites et rognées, dessinées sur une toile 2D
+  dans un `foreignObject` (écrire dans le SVG de la scène repeint tout le SVG : ~40 ms par image à CPU × 4) ; calque juste avant les
+  lampadaires (jamais de fenêtre à travers un houppier) ; la ville peinte attend ses arbres (filet de 8 s).
+- Particules et oiseau : vie décidée à la naissance, fin au sol en fondu ou par un bord.
+- Mesure au banc (CPU × 4, 1 440 px, décor seul, surcoût vs main) : vent 0 +24, 0,2 +47, 0,5 +57 ms/s.
+- Corrections signalées par l'utilisateur : nuages découpés au pixel, tapis secoué, camion d'Halloween (chargement, vitesse),
+  véhicules et équipes de montage à allure normale.
+- Reste : mesure sur le S26 (fluidité, mémoire, temps de cuisson au premier plan), colline au vent (PR 3b), limites connues
+  (déménageurs derrière les arbres à l'arrière du camion, ≈ 1/3 de fosses en moins à 720 px).
+- Banc Windows : `.superpowers/harness-fond/shot-win.mjs`, `perf3.mjs`, `vite.config.ts` (playwright-core hors dépôt + Chrome installé).
 
 ## Règles de l'utilisateur, valables partout
 

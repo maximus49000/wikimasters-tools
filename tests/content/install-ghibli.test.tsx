@@ -139,11 +139,22 @@ describe('équipes d’installation au pantin (Ghibli)', () => {
   });
 
   it('barrière à deux porteurs : l’un tire (tow), l’autre tient (hold) ; centre de la barrière entre leurs mains ; ils marchent', () => {
-    const m = findMinute(D14, 'barriers-bastille', (c, n) => c.step === 'arrive' && !c.removing && c.progress > 0.3 && n?.step === 'arrive' && kindOf(D14, 'barriers-bastille', c.itemId).eq === 'hand');
+    // Minute où la marche part (juste après la sortie de la barrière de la camionnette, FETCH = 0,25 de l'étape) : elle est
+    // jouée en quelques secondes par une animation, à l'allure des passants.
+    const m = findMinute(D14, 'barriers-bastille', (c, n) => c.step === 'arrive' && !c.removing && c.progress <= 0.25 && n?.step === 'arrive' && n.progress > 0.25 && kindOf(D14, 'barriers-bastille', c.itemId).eq === 'hand');
     const r = mount(D14, true);
     r.at(m - 1);
     r.at(m);
-    settle(r, NOW / 1000 + m * 60);
+    // Ils marchent : la marche de la minute (animation) règle les pas sur toute sa longueur et sa durée.
+    for (const w of r.host.querySelectorAll('[data-crew="barriers-bastille"] [data-worker]')) {
+      const mv = JSON.parse(w.getAttribute('data-move')!) as { dist: number; dur?: number; look: { gait: string } };
+      expect(mv.dist).toBeGreaterThan(0);
+      expect(mv.dur).toBeGreaterThan(0);
+      expect(mv.look.gait).toBe('walk');
+    }
+    // La minute suivante : arrivés, chargés, ils attendent à la place de la barrière.
+    r.at(m + 1);
+    settle(r, NOW / 1000 + (m + 1) * 60);
     const crew = r.host.querySelector('[data-crew="barriers-bastille"]')!;
     const [b, a] = [...crew.querySelectorAll('[data-worker]')];
     expect(keyOf(figOf(a!)).arms).toBe('tow');
@@ -163,11 +174,6 @@ describe('équipes d’installation au pantin (Ghibli)', () => {
     expect(Math.abs(lp.y - (BARRIER.height / 2) * barrierK(metrics.unit) - (ha.y + hb.y) / 2)).toBeLessThan(0.15);
     // Chaque porteur a sa main au bout de la barrière (montants à ±BARRIER.post).
     expect(Math.abs(Math.abs(ha.x - hb.x) - 2 * BARRIER.post * barrierK(metrics.unit))).toBeLessThan(0.3);
-    for (const w of [a!, b!]) {
-      const mv = JSON.parse(w.getAttribute('data-move')!) as { dist: number; look: { gait: string } };
-      expect(mv.dist).toBeGreaterThan(0);
-      expect(mv.look.gait).toBe('walk');
-    }
   });
 
   it('nacelle : pantin debout dans la nacelle, bras levés quand il pose, pièce de treillis ou projecteur à la main droite', () => {

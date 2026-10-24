@@ -553,6 +553,29 @@ export function FlagCrate({ sky, flags, tag, w = 14, ghibli }: { sky: Sky; flags
   );
 }
 
+// Caisse du plateau du camion élévateur : son contenu suit le genre des décors de lampadaires encore entreposés (`items`,
+// repères `id`). Drapeaux seulement (14 juillet) : FlagCrate, inchangée. Sinon (Halloween) : chaque décor dépasse de la caisse
+// avec l'art du décor tenu à la main (LampPumpkin / LampBats `held`) réduit, dessiné derrière la face de la caisse ; il porte
+// son repère `data-stored-item` et quitte la caisse quand on le prend (comme un drapeau). Ghibli : caisse vide `flag-crate`.
+const CRATE_DECOR: Partial<Record<ItemKind, { y: number; s: number }>> = { 'lamp-flag': { y: -5, s: 1 }, 'lamp-pumpkin': { y: -3, s: 0.6 }, 'lamp-bats': { y: -7, s: 0.7 } };
+export function LampCrate({ sky, items, tag, w = 14, ghibli }: { sky: Sky; items: readonly { id: string; kind: ItemKind }[]; tag: string; w?: number; ghibli?: { dir: 1 | -1 } }): ReactElement {
+  if (items.every((i) => i.kind === 'lamp-flag')) return <FlagCrate sky={sky} tag={tag} flags={items.map((i) => i.id)} ghibli={ghibli} />;
+  const t = (c: string): string => tone(c, sky);
+  const n = items.length;
+  const box = <><rect x={-w / 2} y={-5.5} width={w} height={5.5} rx={0.6} fill={t('#9A6B3E')} stroke={t('#6E4A28')} strokeWidth={0.4} /><line x1={-w / 2} y1={-2.8} x2={w / 2} y2={-2.8} stroke={t('#6E4A28')} strokeWidth={0.4} /></>;
+  return (
+    <g data-flag-crate="" data-lamp-crate="">
+      {items.map((it, i) => {
+        const x = -w / 2 + 1.5 + ((i + 0.5) * (w - 3)) / Math.max(1, n);
+        const at = CRATE_DECOR[it.kind] ?? { y: -3, s: 0.6 };
+        const art = it.kind === 'lamp-bats' ? <LampBats sky={sky} held /> : it.kind === 'lamp-pumpkin' ? <LampPumpkin sky={sky} lit={false} held /> : <><line x1={0} y1={0} x2={0} y2={-6} stroke={t(POLE)} strokeWidth={0.6} /><g transform="translate(0 -6)"><FlagArt sky={sky} w={3.6} h={2.4} /></g></>;
+        return <g key={it.id} data-stored-item={it.id} data-stored-kind={it.kind} data-carried={tag} transform={`translate(${x.toFixed(2)} ${at.y}) scale(${at.s})`}>{art}</g>;
+      })}
+      {ghibli ? <PropInMirror spec={{ id: 'flag-crate', args: { n: 0, w }, dir: ghibli.dir, day: sky.daylight }} fallback={box} /> : box}
+    </g>
+  );
+}
+
 // Échelle couchée (rangée sur un véhicule) : longueur `len`, centrée en x = 0, rails à y = ±1. Ghibli : image `stowed-ladder`
 // dans le groupe en miroir du véhicule (`dir`).
 function StowedLadder({ sky, len, ghibli }: { sky: Sky; len: number; ghibli?: { dir: 1 | -1 } }): ReactElement {

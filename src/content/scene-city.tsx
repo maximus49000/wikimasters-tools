@@ -24,6 +24,7 @@ import { cityPaintPlan } from '../core/library/paint/city-plan';
 import { fondMoment, type FondMoment } from '../core/library/paint/fond-time';
 import { gradeFor, gradeValues } from '../core/library/paint/grade';
 import { FondLife } from './fond-life';
+import { treesSig, useStreetTreesReady, useStreetTreesScene } from './street-trees-slot';
 
 // Lumière des fenêtres du fond par rapport au premier plan (dissipée par la distance).
 const FAR_LIGHT = 0.5;
@@ -43,6 +44,22 @@ function useLingering(on: boolean, ms: number): boolean {
     return () => window.clearTimeout(id);
   }, [on, ms]);
   return on || late;
+}
+
+// Ville peinte prête à montrer : tranches peintes ET arbres de la rue cuits (ils font partie du décor : toute la ville entre
+// ensemble dans le fondu). Filet de sécurité : TREES_CAP_MS après les tranches, la ville est montrée quand même et les arbres
+// en retard entrent chacun en fondu (street-trees.tsx). Les arbres sont dessinés plus haut dans la profondeur (devant les
+// façades et leur vie, street-trees-slot.tsx) : leur état arrive par le magasin de street-trees-slot.
+const TREES_CAP_MS = 8000;
+function usePaintedReady(tilesReady: boolean, trees: boolean, plan: unknown): boolean {
+  const [capped, setCapped] = useState(false);
+  useEffect(() => setCapped(false), [plan]);
+  useEffect(() => {
+    if (!tilesReady || trees || capped) return;
+    const id = window.setTimeout(() => setCapped(true), TREES_CAP_MS);
+    return () => window.clearTimeout(id);
+  }, [tilesReady, trees, capped]);
+  return tilesReady && (trees || capped);
 }
 
 // Les lampadaires ne sont pas ici : ils sont dans le calque animé, devant les passants (StreetLamps, city-life.tsx).
@@ -96,6 +113,13 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
   const plan = useMemo(() => (lingering ? cityPaintPlan(width, height, seed) : null), [lingering, width, height, seed]);
   const moment = useFondMoment(minutes, gloom, rainy, city, weather);
   const painted = usePaintedCity(plan, moment);
+  // Arbres de la rue : scène publiée pour leur emplacement dans le calque de la rue (city-life.tsx, scene-panorama.tsx), qui
+  // suivent la visibilité et le fondu de la ville peinte ; null en classique.
+  const treesKey = treesSig(seed, width, height);
+  const paintedReady = usePaintedReady(painted.ready, useStreetTreesReady(treesKey), plan);
+  const showPainted = ghibli && paintedReady;
+  const fade = reducedMotion() ? 'none' : FADE;
+  useStreetTreesScene(treesKey, plan ? { plan, moment, daylight: sky.daylight, twilight: sky.twilight, gloom, dim, minutes, shown: showPainted, fade } : null);
   // Brouillard de la météo (brume de la colline, vie du fond), lu une fois par minute.
   const fog = useMemo(() => Math.round((weather?.read(Date.now()).fog ?? 0) * 20) / 20, [weather, Math.round(minutes)]);
   const gradeId = useId().replace(/:/g, '');
@@ -254,8 +278,6 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
       </g>
     );
   }
-  const showPainted = ghibli && painted.ready;
-  const fade = reducedMotion() ? 'none' : FADE;
   return (
     <g data-scene-body data-art="ghibli">
       <g data-classic-city="" style={{ opacity: showPainted ? 0 : 1, transition: fade }}>
@@ -266,7 +288,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         {/* Entrées : peintes dans les tranches du décor Ghibli (G4a) ; les sprites s'effacent avec le décor classique. */}
         {entrances}
       </g>
-      <g data-painted-city="" data-ready={painted.ready ? 'true' : 'false'} style={{ opacity: showPainted ? 1 : 0, transition: fade }}>
+      <g data-painted-city="" data-ready={paintedReady ? 'true' : 'false'} style={{ opacity: showPainted ? 1 : 0, transition: fade }}>
         <filter id={gradeId} colorInterpolationFilters="sRGB">
           <feColorMatrix type="matrix" values={gradeValues(gradeFor(sky.daylight, sky.twilight, gloom))} />
         </filter>

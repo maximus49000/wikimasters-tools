@@ -221,6 +221,7 @@ describe('CityLifeLayer', () => {
       .map((el) =>
         el.hasAttribute('data-city-events-back') ? 'events-back'
         : el.hasAttribute('data-city-sidewalk') ? 'sidewalk'
+        : el.hasAttribute('data-city-curb') ? 'curb'
         : el.hasAttribute('data-street-lamps') ? 'lamps'
         : el.hasAttribute('data-install-part') ? `install-${el.getAttribute('data-install-part')}`
         : el.hasAttribute('data-crosswalk') ? 'crosswalk'
@@ -234,7 +235,7 @@ describe('CityLifeLayer', () => {
     // piétons du passage et les poteaux du trottoir d'en face, devant tout. Voyageurs des arrêts de bus : ceux du trottoir des
     // immeubles derrière leur poteau, la marche du premier plan derrière sa file, ceux du trottoir d'en face devant leur poteau.
     // Piétons du passage : sur le trottoir des immeubles derrière les voitures (`crossing-far`), sur la chaussée et en face devant.
-    expect(order).toEqual(['events-back', 'sidewalk', 'lamps', 'install-front', 'install-street', 'crosswalk', 'riders-far', 'crossing-far', 'fixtures-near', 'far', 'riders-near-step', 'near', 'crossing-near', 'fixtures-far', 'riders-near', 'front-sidewalk']);
+    expect(order).toEqual(['events-back', 'sidewalk', 'curb', 'lamps', 'install-front', 'install-street', 'crosswalk', 'riders-far', 'crossing-far', 'fixtures-near', 'far', 'riders-near-step', 'near', 'crossing-near', 'fixtures-far', 'riders-near', 'front-sidewalk']);
     expect(layer.querySelectorAll('[data-street-lamp][data-lit="true"]').length).toBeGreaterThan(0);
   });
   it('les vélos roulent avec la file du premier plan (jamais sur la voie du fond)', () => {

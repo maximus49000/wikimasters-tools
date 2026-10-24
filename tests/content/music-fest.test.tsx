@@ -221,7 +221,8 @@ describe('tout ce qui est porté est tenu par un humain ou rangé dans la camion
       kind: e.getAttribute('data-carried-item') ?? 'ladder',
       key: `${e.closest('[data-crew]')!.getAttribute('data-crew')}/${e.getAttribute('data-carried-item') ?? 'ladder'}`,
     }));
-    const workers = [...c.querySelectorAll('[data-crew] [data-worker]')].map((w) => xyOf(w)?.x).filter((x): x is number => x !== undefined);
+    // Ouvrier posé au terme de sa marche animée : sa position à la minute affichée est `data-at` (comme `data-x` des objets).
+    const workers = [...c.querySelectorAll('[data-crew] [data-worker]')].map((w) => (w.hasAttribute('data-at') ? Number(w.getAttribute('data-at')!.split(',')[0]) : xyOf(w)?.x)).filter((x): x is number => x !== undefined);
     const vans = [...c.querySelectorAll('[data-install-van]')].map((v) => ({ x: Number(v.getAttribute('data-x')), half: Number(v.getAttribute('data-half')) }));
     unmountAll();
     return { objs, workers, vans };

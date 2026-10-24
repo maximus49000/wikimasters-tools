@@ -6,6 +6,7 @@ import { shopSlotsFor } from '../city/shops/slots';
 import { hashString, mulberry32 } from '../scene-world';
 import { cellRng } from './brush';
 import { hexRgb, type Rgb } from './color';
+import { streetVerdure, type RueItem } from './rue-verte-plan';
 import { escapeColumns, farLifeOf, fondPlan, inCol, itemBox, houseBouquet, type Col, type FarLife, type Fond, type FondHouse } from './fond-plan';
 
 // Plan de la ville peinte (vague Ghibli, décor cellulo) : tout ce que le peintre doit savoir, dérivé des MÊMES données que
@@ -77,6 +78,9 @@ export type CityPaintPlan = {
   doors: PlanDoor[];
   // Fond vivant (PR 2a) : échappées, verdure, rang de crête, chapelles, châteaux d'eau, comblement (fond-plan.ts).
   fond: Fond;
+  // Verdure de la rue principale (PR 3) : fosses d'arbres, bacs, parterres, grimpantes, pots, herbe (rue-verte-plan.ts),
+  // calculée après les arbres, le mobilier et les entrées sans changer leurs tirages.
+  rue: RueItem[];
 };
 export type PlanDoor = { x: number; variant: 0 | 1 | 2; cx: number; base: number; s: number };
 // Échelle de l'entrée peinte : cadre de pierre de 15 unités ≈ largeur de l'entrée (12 px) plus ses débords permis.
@@ -474,7 +478,7 @@ function buildPlan(width: number, height: number, seed: number): CityPaintPlan {
   });
   hill.houses = houses;
   hill.tops = fondTops(fond, houses, far, (x) => hillCrestY({ height, hill }, x));
-  return {
+  const plan: Omit<CityPaintPlan, 'rue'> = {
     width,
     height,
     seed,
@@ -492,6 +496,7 @@ function buildPlan(width: number, height: number, seed: number): CityPaintPlan {
     doors: doorsFor(width, height, seed).map((d) => ({ x: d.x, variant: d.variant, cx: d.x + DOOR_WIDTH / 2, base: m.doorY, s: entranceScale(m.unit) })),
     fond,
   };
+  return { ...plan, rue: streetVerdure(plan, width) };
 }
 
 // Ce que le fond vivant peint au-dessus de la crête (boîtes conservatrices) : arbres et éléments de crête, maisons de crête et

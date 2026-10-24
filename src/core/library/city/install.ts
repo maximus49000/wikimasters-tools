@@ -198,6 +198,8 @@ function halloweenSets(day: number, width: number, height: number, seed: number)
 // ---------- Fête de la musique : scènes et stands de bière (positions) ----------
 // Barrières de la rue privatisée : à cette distance (px) de chaque bord du monde.
 export const MUSIC_BARRIER_EDGE = 24;
+// Demi-largeur (unités) du plancher d'une scène de la Fête de la musique (STAGE.half d'install-sprites).
+export const STAGE_HALF = 48;
 // Un stand reste à au moins cette distance (unités) du centre d'une scène : demi-scène (48) + demi-stand (26) + marge.
 export const STAND_STAGE_CLEAR = 82;
 // Marge (px) entre un stand et le bord du monde.

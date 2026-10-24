@@ -10,9 +10,10 @@ import type { SceneId } from '../../src/core/library/library-types';
 import type { Sky } from '../../src/core/library/sky';
 import { createWeatherClock, lightningAt, steadySource } from '../../src/core/library/weather/weather-clock';
 import { gradeFor, gradeValues } from '../../src/core/library/paint/grade';
-import { tileCount } from '../../src/core/library/paint/city-painter';
-import { cityPaintPlan } from '../../src/core/library/paint/city-plan';
-import { skylinePath } from '../../src/core/library/paint/sky-clip';
+import { TILE, tileCount } from '../../src/core/library/paint/city-painter';
+import { cityPaintPlan, type CityPaintPlan } from '../../src/core/library/paint/city-plan';
+import { animatedTops, skylinePath, skylinePathFromProfile } from '../../src/core/library/paint/sky-clip';
+import { resetPaintedCacheForTests, setTilePainterForTests, usePaintedCity } from '../../src/content/painted-city';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const SKY: Sky = { phase: 'day', daylight: 1, twilight: 0, sunFrac: 0.5, moonFrac: null, stars: 0, top: '#6FB1E8', bottom: '#BFE0F5' };
@@ -277,6 +278,31 @@ describe('captures du banc', () => {
     expect(path.getAttribute('d')).toBe(skylinePath(cityPaintPlan(720, 216, 1)));
     // La découpe ne bouge pas : seul le groupe intérieur est translaté.
     expect(clip.getAttribute('transform')).toBeNull();
+  });
+
+  it('Ghibli Ville : tranches peintes avec profil → découpe au pixel (plus de boîtes du fond)', async () => {
+    writeArt('ghibli');
+    resetPaintedCacheForTests();
+    setTilePainterForTests(async (plan, t) => ({ url: `data:fake-${t}`, profile: new Float32Array(Math.min(TILE, plan.width - t * TILE)).fill(120 - t) }));
+    const City = ({ plan }: { plan: CityPaintPlan }): null => {
+      usePaintedCity(plan);
+      return null;
+    };
+    const cityPlan = cityPaintPlan(720, 216, 1);
+    try {
+      act(() => root.render(<svg><City plan={cityPlan} /><WeatherLayer scene="city" width={720} height={216} seed={1} sky={SKY} clock={clockOf('cloudy')} /></svg>));
+      await flush(10);
+      const clip = container.querySelector('[data-wx-clip="sky"]')!;
+      const ref = /^url\(#(.+)\)$/.exec(clip.getAttribute('clip-path') ?? '')![1]!;
+      const d = container.querySelector(`clipPath[id="${ref}"] path`)!.getAttribute('d');
+      const profile = new Float32Array(720);
+      for (let x = 0; x < 720; x++) profile[x] = 120 - Math.floor(x / TILE);
+      expect(d).toBe(skylinePathFromProfile(cityPlan, profile, animatedTops(cityPlan)));
+      expect(d).not.toBe(skylinePath(cityPlan));
+    } finally {
+      setTilePainterForTests(null);
+      resetPaintedCacheForTests();
+    }
   });
 
   it('classique : pas de découpe des nuages', async () => {

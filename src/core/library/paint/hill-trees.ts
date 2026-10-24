@@ -1,5 +1,5 @@
 import { hashString, mulberry32 } from '../scene-world';
-import { TAU, disc, fillRect, ink, shade } from './cel';
+import { TAU, disc, fillRect, ink, light, shade } from './cel';
 import { hexRgb, mixRgb, rgba, type Rgb } from './color';
 import { bloomOf, mixTones, sat, type Foliage, type FondMoment } from './fond-time';
 import type { PaintCtx } from './paint-ctx';
@@ -125,21 +125,24 @@ export function treeModel(key: string, species: string, foot: { x: number; y: nu
   return { key, species, foot, trunkH, rootY, w0, segs, tufts, cx, cy, rx, ry, top: minY - tuftR, trunkBox: { x: foot.x - w0, y: rootY, w: 2 * w0, h: trunkH }, span: [minX, maxX], box: { x0: bx0, y0: by0 - 0.5, x1: bx1, y1: Math.max(foot.y + 0.5, ...segs.map((sg) => Math.max(sg.y0, sg.y1) + Math.max(0.6, sg.w * 1.5) + 0.5), ...tufts.map((tf) => tf.y + tf.rr * 1.4 + 1.6)) } };
 }
 
-// Modèles en mémoire (les mêmes arbres sont repeints à chaque tranche et à chaque créneau) ; borné.
+// Modèles en mémoire (les mêmes arbres sont repeints à chaque tranche et à chaque créneau) ; borné. `trunkW` : largeur du
+// fût imposée (arbres de rue), sinon tirée de la ramure.
 const MODELS = new Map<string, TreeModel>();
-export function treeModelOf(key: string, species: string, foot: { x: number; y: number }, trunkH: number, crownH: number, depth: number, tuftR: number, maxTufts: number): TreeModel {
-  const k = `${key}|${species}|${foot.x.toFixed(2)}|${foot.y.toFixed(2)}|${trunkH.toFixed(2)}|${crownH.toFixed(2)}|${depth}|${tuftR.toFixed(2)}|${maxTufts}`;
+export function treeModelOf(key: string, species: string, foot: { x: number; y: number }, trunkH: number, crownH: number, depth: number, tuftR: number, maxTufts: number, trunkW?: number): TreeModel {
+  const k = `${key}|${species}|${foot.x.toFixed(2)}|${foot.y.toFixed(2)}|${trunkH.toFixed(2)}|${crownH.toFixed(2)}|${depth}|${tuftR.toFixed(2)}|${maxTufts}|${trunkW === undefined ? '' : trunkW.toFixed(3)}`;
   let m = MODELS.get(k);
   if (!m) {
-    m = treeModel(key, species, foot, trunkH, crownH, depth, tuftR, maxTufts);
+    m = treeModel(key, species, foot, trunkH, crownH, depth, tuftR, maxTufts, trunkW);
     MODELS.set(k, m);
     if (MODELS.size > 6000) MODELS.delete(MODELS.keys().next().value as string);
   }
   return m;
 }
 
-// Fût : polygone fixe du pied à la racine des charpentières.
-export function paintTrunk(ctx: PaintCtx, m: TreeModel, bark: Rgb, hz = 0): void {
+// Fût : polygone fixe du pied à la racine des charpentières ; `wet` (pluie, 0..1) : écorce 35 % plus sombre ; platane adulte
+// au fût de plus de 12 px (arbres de rue) : taches claires de l'écorce qui pèle (`young` : jeune arbre, sans taches).
+export function paintTrunk(ctx: PaintCtx, m: TreeModel, bark0: Rgb, hz = 0, wet = 0, young = false): void {
+  const bark = wet ? mixRgb(bark0, hexRgb('#2A2420'), 0.35 * wet) : bark0;
   const { foot, rootY, w0 } = m;
   const tb = w0 * 1.25;
   const tt = w0 * 0.8;
@@ -154,6 +157,11 @@ export function paintTrunk(ctx: PaintCtx, m: TreeModel, bark: Rgb, hz = 0): void
   ctx.save();
   ctx.clip();
   fillRect(ctx, haze(shade(bark, 0.4), hz), foot.x + tt * 0.2, rootY, tb, m.trunkH);
+  if (m.species === 'platane' && !young && m.trunkH > 12) {
+    ctx.fillStyle = rgba(light(bark, 0.5), 1);
+    const r = mulberry32(hashString('ecorce' + m.key));
+    for (let i = 0; i < 6; i++) ctx.fillRect(foot.x - tb * 0.8 + r() * tb * 1.2, rootY + 2 + r() * (m.trunkH - 6), 1, 1.6 + r());
+  }
   ctx.restore();
   ctx.strokeStyle = ink(0.95 - hz);
   ctx.lineWidth = m.trunkH > 12 ? 0.7 : 0.5;
@@ -229,8 +237,9 @@ export function paintBranches(ctx: PaintCtx, m: TreeModel, part: 'coarse' | 'fin
   ctx.lineCap = 'butt';
 }
 
-// État d'une touffe : taille 0..1 (0 = absente), tons (jaunissement par touffe, les bouts d'abord), floraison.
-type TuftState = { size: number; tones: Rgb[] };
+// État d'une touffe : taille 0..1 (0 = absente), tons (jaunissement par touffe, les bouts d'abord), floraison ; `loose` :
+// touffe sur le point de tomber (pendant la chute, au bord de la densité du jour : elle tremble au vent, ses feuilles partent).
+export type TuftState = { size: number; tones: Rgb[]; loose: boolean };
 export function tuftState(tf: Tuft, f: Foliage, D: Pick<FondMoment, 'doy'>, species: string): TuftState {
   const bl = species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
   let size = sat((f.d - tf.rank) / 0.36);
@@ -239,7 +248,7 @@ export function tuftState(tf: Tuft, f: Foliage, D: Pick<FondMoment, 'doy'>, spec
   const yel = f.yel !== undefined ? sat(f.yel * 1.5 - tf.rank * 0.5 + tf.yel * 0.2 - 0.1) : 0;
   let tones = f.yel !== undefined && yel > 0 && f.base && f.autumn ? mixTones(f.base, f.autumn, yel) : f.tones;
   if (bl > 0) tones = ['#D88AA8', '#F0B0C8', '#FCDCE8'].map(hexRgb).map((c, i) => mixRgb(c, tones[i]!, 1 - bl));
-  return { size, tones };
+  return { size, tones, loose: f.drop > 0 && f.drop < 1 && f.d - tf.rank > -0.06 && f.d - tf.rank < 0.1 };
 }
 
 // Blob de feuillage à bord lobé et dentelé (18 sommets) : jamais un cercle.
@@ -254,18 +263,56 @@ function leafBlob(ctx: PaintCtx, x: number, y: number, r: number, ph: number): v
 }
 
 type Item = { tf: Tuft; st: TuftState; rr: number; x: number; y: number };
+// Options des arbres de rue (calque animé au vent) : `which` = grappe (0-5) seule, `shiftX/Y` = décalage du vent (les bouts
+// bougent plus que le cœur), `wet` = pluie (tons assombris, reflets en arc), `part` = 'leaves' (masses), 'shadow' (ombre
+// portée des masses) ou 'hi' (rehauts seuls, `pale` : plus clairs), `loose` = seulement les touffes lâches (true) ou
+// seulement les autres (false). Sans options : le rendu de la colline, inchangé.
+export type LeafOpts = { which?: number; wet?: number; part?: 'leaves' | 'shadow' | 'hi'; pale?: boolean; loose?: boolean; shiftX?: number; shiftY?: number };
 // Feuilles : masses continues (ombre, ton moyen décalé en haut à gauche, rehauts en touches), trait pointillé léger tracé SOUS
 // les aplats (visible seulement sur le bord extérieur et dans les trouées), neige en calottes.
-export function paintLeaves(ctx: PaintCtx, m: TreeModel, f: Foliage, D: Pick<FondMoment, 'doy' | 'meteo'>, hz = 0): void {
+export function paintLeaves(ctx: PaintCtx, m: TreeModel, f: Foliage, D: Pick<FondMoment, 'doy' | 'meteo'>, hz = 0, opts: LeafOpts = {}): void {
+  const wet = opts.wet ?? 0;
+  const part = opts.part ?? 'leaves';
+  const sx = opts.shiftX ?? 0;
+  const sy = opts.shiftY ?? 0;
   const blm = m.species === 'marronnier' ? bloomOf(D, 'marronnier') : 0;
+  const blt = m.species === 'tilleul' ? bloomOf(D, 'tilleul') : 0;
   const items: Item[] = [];
   for (const tf of m.tufts) {
+    if (opts.which !== undefined && tf.cluster !== opts.which) continue;
     const st = tuftState(tf, f, D, m.species);
     if (st.size <= 0) continue;
-    items.push({ tf, st, rr: tf.rr * st.size, x: tf.x, y: tf.y });
+    if (opts.loose !== undefined && st.loose !== opts.loose) continue;
+    // Le rayon suit la taille jusqu'à 0 : aucune touffe ne disparaît d'un coup. Au vent, les bouts bougent plus.
+    const x = sx ? tf.x + sx * (0.5 + tf.rank) + Math.sin(tf.phase) * 0.2 * sx : tf.x;
+    const y = sy ? tf.y + sy * (0.5 + tf.rank) : tf.y;
+    items.push({ tf, st, rr: tf.rr * st.size, x, y });
   }
   if (!items.length) return;
-  const tone = (it: Item, i: number): string => rgba(haze(it.st.tones[i]!, hz), 1);
+  if (part === 'shadow') {
+    ctx.fillStyle = 'rgba(70,50,130,0.16)';
+    ctx.beginPath();
+    for (const it of items) leafBlob(ctx, it.x + 4, it.y + 5, it.rr * 1.05, it.tf.phase);
+    ctx.fill();
+    return;
+  }
+  const tone = (it: Item, i: number): string => rgba(haze(wet ? mixRgb(it.st.tones[i]!, hexRgb('#1A2A3A'), 0.28 * wet) : it.st.tones[i]!, hz), 1);
+  if (part === 'hi') {
+    ctx.fillStyle = opts.pale ? rgba(haze(light(items[0]!.st.tones[2]!, 0.5), hz), 1) : tone(items[0]!, 2);
+    ctx.beginPath();
+    for (const it of items) {
+      if (it.rr < 1.2) continue;
+      const r = mulberry32(hashString('hi' + it.tf.phase));
+      for (let k = 0; k < 3; k++) {
+        const a = -2.4 + r() * 1.4;
+        const d = it.rr * (0.3 + r() * 0.45);
+        ctx.moveTo(it.x + Math.cos(a) * d + 0.6, it.y + Math.sin(a) * d);
+        ctx.ellipse(it.x + Math.cos(a) * d, it.y + Math.sin(a) * d, 0.75, 0.45, a, 0, TAU);
+      }
+    }
+    ctx.fill();
+    return;
+  }
   // 1. Trait encré sur la silhouette (pointillé), sous les aplats.
   ctx.save();
   ctx.setLineDash?.([2.2, 1.1]);
@@ -317,9 +364,25 @@ export function paintLeaves(ctx: PaintCtx, m: TreeModel, f: Foliage, D: Pick<Fon
     }
     ctx.fill();
   }
+  // Pluie : reflets en arc sur le haut des masses.
+  if (wet) {
+    ctx.strokeStyle = `rgba(230,240,255,${Number((0.35 * wet).toFixed(3))})`;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    for (const it of items) {
+      ctx.moveTo(it.x + Math.cos(Math.PI * 1.1) * it.rr * 0.8, it.y + Math.sin(Math.PI * 1.1) * it.rr * 0.8);
+      ctx.arc(it.x, it.y, it.rr * 0.8, Math.PI * 1.1, Math.PI * 1.5);
+    }
+    ctx.stroke();
+  }
   if (blm > 0) {
     ctx.fillStyle = `rgba(255,244,236,${Number(blm.toFixed(3))})`;
     for (const it of items) if (it.tf.outer || it.tf.y < m.cy) ctx.fillRect(it.x - 0.3, it.y - it.rr - 1.4, 0.6, 2);
+  }
+  // Tilleul en fleur (juin) : points crème dans les masses (aucun tilleul sur la colline).
+  if (blt > 0) {
+    ctx.fillStyle = `rgba(250,236,170,${Number(blt.toFixed(3))})`;
+    for (const it of items) if (it.tf.yel < 0.5) ctx.fillRect(it.x + it.rr * 0.3, it.y - it.rr * 0.2, 0.8, 0.8);
   }
   if (D.meteo.snow) {
     ctx.fillStyle = 'rgba(240,244,248,0.92)';
