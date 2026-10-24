@@ -81,9 +81,10 @@ describe('verdure de la rue (streetVerdure)', () => {
         expect(streetVerdure(rest, width)).toEqual(rue);
         // Boulevard (2026-10-24, notes §1 variante A) : une place tous les 60 px sur la rue hors des abords sans arbre, moins
         // les places sautées devant les entrées, portes de local et lampadaires (une porte tous les 30 px environ dans une rue
-        // de locaux) : plancher d'une fosse (vides comprises) par 190 px de longueur libre, arrondi à l'entier inférieur
-        // (mesuré : une par 72 à 179 px ; l'ancien pas de 48-72 px à ± 21 donnait une par 76 à 103 px).
-        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((width - cleared) / 190));
+        // de locaux ; recherche à ± 20, porte vitrée contre le fût seulement) : plancher d'une fosse (vides comprises) par
+        // 90 px de longueur libre, arrondi à l'entier inférieur (mesuré sur les graines 1-40 : une par 67 px en moyenne, 89 au
+        // pire à 720 px, 83 à 1 440 et 85 à 2 880 ; l'ancien pas de 48-72 px à ± 21 donnait une par 76 à 103 px).
+        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((width - cleared) / 90));
       });
 
       it(`${tag} : fosses hors des entrées, portes des locaux, lampadaires, arbres et mobilier`, () => {
@@ -96,8 +97,8 @@ describe('verdure de la rue (streetVerdure)', () => {
           // Entrée (span ± 4 px) contre la grille réelle de la fosse.
           for (const d of doorSpans) expect(overlap(p.x0, p.x1, d.x0, d.x1)).toBe(false);
           for (const l of lamps) expect(overlap(a, b, l - 9, l + 9)).toBe(false);
-          // Porte vitrée ± 4 px contre la grille réelle de la fosse (x0 … x1). Le mobilier, côté façade, ne compte pas ici.
-          for (const d of shopDoors) expect(overlap(p.x0, p.x1, d.x - 4, d.x + d.w + 4)).toBe(false);
+          // Porte vitrée ± 4 px contre le fût seulement (la fosse peut passer devant). Le mobilier, côté façade, ne compte pas ici.
+          for (const d of shopDoors) expect(p.x > d.x - 4 && p.x < d.x + d.w + 4).toBe(false);
         }
         for (const v of rue.filter((v): v is RueBox => v.kind === 'bac')) {
           for (const d of shopDoors) expect(overlap(v.x0, v.x1, d.x - 4, d.x + d.w + 4)).toBe(false);

@@ -45,11 +45,13 @@ export const SHOP_DOOR_MARGIN = 4;
 export const PIT_HALF = 7;
 // Alignement en boulevard : une place tous les PIT_PITCH px à partir d'une phase tirée (PIT_PHASE + rng × PIT_PHASE_SPREAD),
 // centre libre cherché à ± PIT_SEARCH px (au pixel, droite puis gauche à distance égale), sinon la place reste vide : les
-// voisins ne bougent pas (écart entre deux fosses ≥ PIT_PITCH − 2 × PIT_SEARCH = 36 px, plus de règle d'écart minimal).
+// voisins ne bougent pas (écart entre deux fosses ≥ PIT_PITCH − 2 × PIT_SEARCH = 20 px, plus de règle d'écart minimal).
+// Recherche à ± 20 au lieu des ± 12 de la maquette : dans une rue de locaux (une porte tous les 30 px) ± 12 sautait plus
+// d'une place sur deux.
 export const PIT_PITCH = 60;
 export const PIT_PHASE = 30;
 export const PIT_PHASE_SPREAD = 20;
-export const PIT_SEARCH = 12;
+export const PIT_SEARCH = 20;
 // Une place sur PIT_REPLANT replantée (compteur, décalage tiré) : jeune au tuteur, ou fosse vide (PIT_EMPTY_SHARE du tirage).
 export const PIT_REPLANT = 10;
 export const PIT_EMPTY_SHARE = 0.25;
@@ -119,7 +121,8 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     const d = shopFrame(s, ground).door;
     return { x0: d.x - SHOP_DOOR_MARGIN, x1: d.x + d.w + SHOP_DOOR_MARGIN };
   });
-  // `wall` : élément posé contre la façade (parterre) ; les fosses, à la bordure, ne le gênent pas.
+  // `wall` : élément posé contre la façade (bac, parterre) ; les fosses, à la bordure, ne le gênent pas (bacs compris depuis
+  // l'alignement en boulevard : plus nombreuses, les fosses ne retirent plus les bacs de la façade).
   const busy = (x0: number, x1: number, kinds: readonly Kind[], wall = false): boolean =>
     x0 < 0 ||
     x1 > width ||
@@ -131,7 +134,9 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
 
   // 1. Alignement d'arbres en fosse à la bordure, en boulevard : à chaque place (rueSlots), le centre libre le plus proche à
   // ± PIT_SEARCH px près, au pixel (droite puis gauche à distance égale) ; rien de libre → place sautée, les voisins restent
-  // sur leur pas. Entrées et portes de local mesurées sur la fosse réelle (± PIT_HALF) contre leur span élargi de 4 px ;
+  // sur leur pas. Entrées mesurées sur la fosse réelle (± PIT_HALF) contre leur span élargi de 4 px ; porte vitrée d'un
+  // local : seul le fût (centre) à 4 px au moins de la porte (la fosse peut passer devant, la porte reste dégagée ; règle
+  // élargie le 2026-10-24 pour garder la densité demandée par l'utilisateur) ;
   // lampadaires sur ± 6 (± 9 autour du lampadaire). Pas de règle du mobilier pour les fosses : bancs, boîtes aux
   // lettres, vélos et pigeons ont le pied entre ground et ground + 7 u, affiches au mur (paintFurniture), tous côté façade,
   // loin de la bordure où sont les fosses.
@@ -150,7 +155,7 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
     px + PIT_HALF > width - PIT_EDGE ||
     clear.some((c) => Math.abs(px - c.x) < c.half + PIT_HALF) ||
     busy(px - 6, px + 6, ['lamp']) ||
-    busy(px - PIT_HALF, px + PIT_HALF, ['shopdoor']) ||
+    shopDoors.some((d) => px > d.x0 && px < d.x1) ||
     doors.some((d) => px + PIT_HALF > d.x0 && px - PIT_HALF < d.x1);
   const cuts = rueCuts(width, seed, u);
   const species = sectionSpecies(width, seed, u);
@@ -185,7 +190,7 @@ export function streetVerdure(plan: Omit<CityPaintPlan, 'rue'>, width: number): 
       const w = 6 + rb() * 3;
       const bx = left ? s.x0 + 9 + i * (w + 3) : s.x1 - 9 - w - i * (w + 3);
       // Hauteur, bac haut et fleurs tirés seulement pour un bac posé (même suite de tirages que la maquette).
-      if (busy(bx, bx + w, ['door', 'furn', 'shopdoor'])) continue;
+      if (busy(bx, bx + w, ['door', 'furn', 'shopdoor'], true)) continue;
       const h = 3 + rb();
       out.push({ kind: 'bac', x0: bx, x1: bx + w, y: wallFoot - h, w, h, tall: rb() < 0.3, flowerSeed: rb() * 1000 });
     }
