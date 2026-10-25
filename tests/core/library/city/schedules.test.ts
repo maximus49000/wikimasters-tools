@@ -116,6 +116,47 @@ describe('emplois du temps', () => {
     expect(differ / ds.length).toBeGreaterThanOrEqual(0.9);
   });
 
+  it('week-end : actifs levés plus tard en moyenne (≥ 60 min)', () => {
+    const sat = dayOf({ y: 2026, m: 10, d: 10 });
+    const tue = dayOf({ y: 2026, m: 10, d: 13 });
+    let sum = 0, count = 0;
+    for (const d of ds) {
+      const a = full(d, sat), b = full(d, tue);
+      if (a.hd.away.state !== 'home' || b.hd.away.state !== 'home') continue;
+      d.hh.members.forEach((mem, m) => {
+        const works = (x: DwellingDay) => x.hd.people[m]!.duty?.kind === 'work';
+        if (mem.kid || !works(b) || works(a)) return;
+        sum += a.hd.people[m]!.wake - b.hd.people[m]!.wake;
+        count++;
+      });
+    }
+    expect(count).toBeGreaterThan(60);
+    expect(sum / count).toBeGreaterThanOrEqual(60);
+  });
+
+  it('retraités en décembre et en nuit polaire : qui est chez lui à 18 h 06 a fermé ses volets avant', () => {
+    const dec = { y: 2026, m: 12, d: 15 };
+    const olds = pool('retraite', 40).map((d) => ({ ...d, shutters: 'battant' as const }));
+    const days = [
+      at(dayContext(dec, VAC), SEED, dry, sunTimes(dec, { lat: 48.85, lon: 2.35 }, 60)),
+      at(dayContext(dec, VAC), SEED, dry, { kind: 'polar', polar: 'night' }),
+    ];
+    let checked = 0;
+    for (const day of days) {
+      const nightfall = Math.min(day.sunset + 20, 1086);
+      for (const d of olds) {
+        const x = full(d, day);
+        // Tous les membres chez eux de la tombée de la nuit à 18 h 06.
+        if (!x.hd.people.every((_, m) => presentOver(x, m, nightfall, 1086))) continue;
+        checked++;
+        const close = acts(x.schedule).find((a) => a.choreo === 'closeShutters');
+        expect(close, `${d.id} ${day.iso}`).toBeDefined();
+        expect(close!.t0).toBeLessThan(1086);
+      }
+    }
+    expect(checked).toBeGreaterThan(20);
+  });
+
   it('famille : parfois une seule pièce allumée le soir (télé au salon)', () => {
     const tue = dayOf({ y: 2026, m: 10, d: 13 });
     const fams = pool('famille', 100).map((d) => ({ ...d, rooms: ['cuisine', 'chambre', 'salon'] as Dwelling['rooms'] }));

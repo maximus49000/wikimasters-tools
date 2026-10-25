@@ -71,7 +71,7 @@ const SHUT_USERS = new Set(['couple', 'famille', 'retraite', 'solo']);
 const DECOR_TRIES = [0, 40, 80, 120, 160] as const;
 // Trou sans scène autour de l'habillage et du déshabillage (minutes, de part et d'autre).
 const DRESS_GAP = 1.5;
-// Une lumière reste au plus 10 min allumée après que le dernier éveillé s'est couché (extinctions du coucher).
+// Une lumière reste au plus 10 min allumée après que sa pièce s'est vidée, et après que le dernier éveillé s'est couché.
 const LIGHT_GRACE = 10;
 // Fête de la coloc ou du Nouvel An (minutes) ; rideaux du soir tirés au coucher du soleil, entre 17 h et 21 h.
 const PARTY = [1290, 1578] as const;
@@ -107,6 +107,32 @@ function clusters(list: readonly RoomSpan[]): RoomSpan[][] {
 // Repas du foyer d'un jour (même flux que les tests de home-rooms et de visitors).
 export const mealsOf = (d: Dwelling, hd: HouseholdDays): HouseholdMeals => householdMeals(d, hd, dayRng(d.hh.seed, 0, hd.iso, 'repas'));
 
+// Pièces occupées par chacun ce jour-là (`roomTimeline`), indices de l'emploi du temps : membres `m`, visites entrées
+// `n + k` (k = rang parmi les visites `inside`, nounou comprise : ses pièces `NANNY_M` vont à la visite qui les contient).
+// Invités du dîner arrivés moins de 10 min avant (le second, à dîner − 9) : à table quand même, comme le premier.
+export function occupiedRooms(d: Dwelling, hd: HouseholdDays, meals: HouseholdMeals, visits: readonly Visit[]): RoomSpan[] {
+  const n = d.hh.members.length;
+  const K: Room = d.rooms.includes('cuisine') ? 'cuisine' : 'salon';
+  const inside = visits.filter((v) => v.inside);
+  const guests = inside.map((v, k) => ({ m: n + k, a: v.arrive, b: v.leave, nanny: v.kind === 'nounou' }));
+  const nannyAt = (t: number) => guests.find((g) => g.nanny && t >= Math.floor(g.a) && t < g.b)?.m;
+  const diners = new Set(inside.flatMap((v, k) => (v.kind === 'diner' ? [n + k] : [])));
+  const T = meals.dinner;
+  return roomTimeline(d, hd, meals, guests.filter((g) => !g.nanny)).flatMap((s): RoomSpan[] => {
+    if (s.m === NANNY_M) {
+      const m = nannyAt(s.a);
+      return m === undefined ? [] : [{ ...s, m }];
+    }
+    if (T === null || !diners.has(s.m) || (s.what !== 'home' && s.what !== 'evening') || s.b <= T || s.a >= T + DINNER_LEN) return [s];
+    const a = Math.max(s.a, T), b = Math.min(s.b, T + DINNER_LEN);
+    return [
+      ...(s.a < a ? [{ ...s, b: a }] : []),
+      { ...s, a, b, room: K, what: 'dinner' as const },
+      ...(b < s.b ? [{ ...s, a: b }] : []),
+    ];
+  });
+}
+
 function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[], mealsIn?: HouseholdMeals): Segment[] {
   const hh = d.hh;
   const r = mulberry32(draw.rng);
@@ -134,23 +160,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, v
   const total = n + inside.length;
   const guests = inside.map((v, k) => ({ m: n + k, a: v.arrive, b: v.leave, nanny: v.kind === 'nounou' }));
   const nannies = guests.filter((g) => g.nanny).map((g) => g.m);
-  const nannyAt = (t: number) => guests.find((g) => g.nanny && t >= Math.floor(g.a) && t < g.b)?.m;
-  // Invités du dîner arrivés moins de 10 min avant (le second, à dîner − 9) : à table quand même, comme le premier.
-  const diners = new Set(inside.flatMap((v, k) => (v.kind === 'diner' ? [n + k] : [])));
-  const T = meals.dinner;
-  const spans: RoomSpan[] = roomTimeline(d, hd, meals, guests.filter((g) => !g.nanny)).flatMap((s): RoomSpan[] => {
-    if (s.m === NANNY_M) {
-      const m = nannyAt(s.a);
-      return m === undefined ? [] : [{ ...s, m }];
-    }
-    if (T === null || !diners.has(s.m) || (s.what !== 'home' && s.what !== 'evening') || s.b <= T || s.a >= T + DINNER_LEN) return [s];
-    const a = Math.max(s.a, T), b = Math.min(s.b, T + DINNER_LEN);
-    return [
-      ...(s.a < a ? [{ ...s, b: a }] : []),
-      { ...s, a, b, room: K, what: 'dinner' as const },
-      ...(b < s.b ? [{ ...s, a: b }] : []),
-    ];
-  });
+  const spans = occupiedRooms(d, hd, meals, visits);
   const spansOf = new Map<number, RoomSpan[]>();
   for (const s of spans) (spansOf.get(s.m) ?? spansOf.set(s.m, []).get(s.m)!).push(s);
   const avail = new Map<number, Iv[]>();
@@ -446,7 +456,13 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, v
   // Dîner (et dîner des petits) préparé par un adulte présent, la nounou pour les petits.
   const cooksAt = (t: number, first: readonly number[] = []) =>
     [...first, ...adults.filter((m) => presentOver(m, t, t + 5)), ...adults].filter((m, i, all) => all.indexOf(m) === i);
-  if (meals.dinner !== null) actFirst(cooksAt(meals.dinner - 27), meals.dinner - 27, 25, K, 'in', 'cook');
+  if (meals.dinner !== null) {
+    actFirst(cooksAt(meals.dinner - 27), meals.dinner - 27, 25, K, 'in', 'cook');
+    // Vaisselle : après le dîner, un adulte présent range la cuisine 10 à 20 min (la lumière de la cuisine reste allumée).
+    const t = meals.dinner + DINNER_LEN + 1 + r() * 4, dur = 10 + r() * 10;
+    const here = adults.filter((m) => presentOver(m, t, t + 2));
+    if (here.length) actFirst(here, t, dur, K, 'in', 'cook');
+  }
   if (meals.kidsDinner !== null && meals.dinner !== null && meals.kidsDinner < meals.dinner - 30) {
     const t = meals.kidsDinner - 20;
     actFirst(cooksAt(t, nannies.filter((m) => presentOver(m, t, t + 5))), t, 18, K, 'in', 'cook');
@@ -516,7 +532,10 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, v
         act(t0 + 25 + k * 25, 4.5, L, 'balcony', 'leanRail', all[(k + 1) % all.length], { slot: 1 });
       }
     }
-    all.forEach((m, i) => fill(t0 + 6 + i * 2, t1 - 2, L, 'dance', m, { slot: i }));
+    // On danse au salon tant qu'on y est (jamais pendant son coucher).
+    all.forEach((m, i) => {
+      for (const s of spans) if (s.m === m && s.room === L && s.what !== 'bedtime') fill(Math.max(s.a, t0 + 6 + i * 2), Math.min(s.b, t1 - 2), L, 'dance', m, { slot: i });
+    });
   } else party = null;
 
   // ─── événements de la rue ───
@@ -621,7 +640,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, v
   // Extinctions du coucher : les pièces encore allumées quand le dernier éveillé va se coucher (dernière lumière finissant
   // entre son coucher − 15 et + 40) s'éteignent dans l'ordre tiré du jour (`draw.offOrder`), à quelques minutes d'écart, à
   // partir de la première extinction prévue ; une lumière n'est jamais éteinte avant que sa pièce soit vide, ni plus de
-  // LIGHT_GRACE minutes après que tout le monde dort ; une pièce où une scène est en cours ne s'éteint qu'à la fin de la scène.
+  // LIGHT_GRACE minutes après que la pièce s'est vidée ou que tout le monde dort ; une pièce où une scène est en cours ne s'éteint qu'à la fin de la scène.
   const asleep = Math.max(0, ...ms.flatMap((m) => availOf(m).map(([, b]) => b)));
   if (lastBed && lastBed.b >= asleep) {
     const bed = lastBed.a;
@@ -633,7 +652,8 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, v
       for (const room of rooms) {
         const g = lastLit.get(room)!;
         const later = S.some((x) => x.k === 'lit' && x.room === room && x.t0 >= g.t1);
-        let end = Math.max(g.t1, Math.min(Math.max(t, g.t0 + OFF.minLit), asleep + LIGHT_GRACE));
+        // g.t1 : la pièce se vide (dernière présence ou scène) ; au plus LIGHT_GRACE après, et après que tous dorment.
+        let end = Math.max(g.t1, Math.min(Math.max(t, g.t0 + OFF.minLit), g.t1 + LIGHT_GRACE, asleep + LIGHT_GRACE));
         for (const a of S) if (a.k === 'act' && a.room === room && a.t0 < end && a.t1 > end) end = a.t1;
         if (!later) g.t1 = end;
         t = end + OFF.gap[0] + r() * (OFF.gap[1] - OFF.gap[0]);

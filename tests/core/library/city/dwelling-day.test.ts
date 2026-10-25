@@ -4,7 +4,7 @@ import { dwellingDay, type DwellingDay } from '../../../../src/core/library/city
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
 import { sceneDay } from '../../../../src/core/library/city/scene-day';
-import type { Segment } from '../../../../src/core/library/city/schedules';
+import { occupiedRooms, type Segment } from '../../../../src/core/library/city/schedules';
 
 // Emplois du temps tirés des journées de chaque habitant (tâche 10) : mêmes logements que schedules.test.ts (villes de
 // 1440 px, graines 1 à 3), vacances de la Toussaint.
@@ -214,5 +214,97 @@ describe('emplois du temps depuis les journées de chacun', () => {
     const date = WEEK[2]!;
     expect(full(d, date)).toEqual(full(d, date));
     expect(full(d, addDays(date, -1)).hd.iso).toBe('2026-10-13');
+  });
+
+  it('par pièce : chaque minute allumée au plus 10 min après une présence ou une scène dans cette pièce', () => {
+    let seen = 0;
+    for (const d of ds) {
+      for (const date of [...WEEK, { y: 2026, m: 12, d: 31 }, { y: 2026, m: 7, d: 14 }]) {
+        const x = full(d, date);
+        const rooms = occupiedRooms(d, x.hd, x.meals, x.visits);
+        for (const l of lits(x)) {
+          const cover = [
+            ...rooms.filter((s) => s.room === l.room).map((s): [number, number] => [s.a, s.b + 10]),
+            ...acts(x).filter((a) => a.room === l.room).map((a): [number, number] => [a.t0, a.t1 + 10]),
+          ];
+          seen++;
+          expect(longestGap(l.t0, l.t1, cover), `${d.id} ${l.room} ${l.t0.toFixed(1)}-${l.t1.toFixed(1)} ${x.hd.iso}`).toBeLessThanOrEqual(1e-6);
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(1000);
+  });
+
+  it('fête : on ne danse qu\'au salon, jamais pendant son coucher', () => {
+    let dances = 0;
+    for (const d of ds.filter((x) => x.hh.type === 'coloc' || x.hh.type === 'couple')) {
+      for (const date of [{ y: 2026, m: 10, d: 10 }, { y: 2026, m: 10, d: 17 }, { y: 2026, m: 10, d: 24 }, { y: 2026, m: 12, d: 31 }]) {
+        const x = full(d, date);
+        const rooms = occupiedRooms(d, x.hd, x.meals, x.visits);
+        for (const a of acts(x)) {
+          if (a.choreo !== 'dance' || a.event) continue;
+          dances++;
+          expect(rooms.some((s) => s.m === a.m && s.room === 'salon' && s.what !== 'bedtime' && s.a <= a.t0 + 1e-6 && s.b >= a.t1 - 1e-6), `${d.id}#${a.m} ${x.hd.iso}`).toBe(true);
+        }
+      }
+    }
+    expect(dances).toBeGreaterThan(0);
+  });
+
+  it('vaisselle : après le dîner, un adulte présent range la cuisine 10 à 20 min, cuisine allumée', () => {
+    let dinners = 0, dishes = 0;
+    for (const d of ds) {
+      const K = d.rooms.includes('cuisine') ? 'cuisine' : 'salon';
+      for (const date of WEEK) {
+        const x = full(d, date);
+        const T = x.meals.dinner;
+        if (T === null) continue;
+        dinners++;
+        const dish = acts(x).find((a) => a.choreo === 'cook' && a.room === K && a.t0 >= T + 40 && a.t0 <= T + 75 && a.t1 - a.t0 >= 10 - 1e-6 && a.t1 - a.t0 <= 20 + 1e-6);
+        if (!dish) continue;
+        dishes++;
+        expect(d.hh.members[dish.m]!.kid).toBe(false);
+        expect(lits(x).some((l) => l.room === K && l.t0 <= dish.t0 && l.t1 >= dish.t1)).toBe(true);
+      }
+    }
+    expect(dishes).toBeGreaterThan(dinners * 0.7);
+  });
+
+  it('de 20 h à 22 h, un logement où quelqu\'un est éveillé a au moins une pièce allumée (hors feux)', () => {
+    let checked = 0;
+    for (const d of ds) {
+      for (const date of WEEK) {
+        const x = full(d, date);
+        const cover = occupied(x);
+        for (const t of [1200, 1230, 1260, 1290, 1320]) {
+          if (!cover.some(([a, b]) => a <= t && b > t)) continue;
+          if (x.schedule.segments.some((g) => g.k === 'dim' && g.t0 <= t && g.t1 > t)) continue;
+          checked++;
+          expect(lits(x).some((l) => l.t0 <= t && l.t1 > t), `${d.id} ${x.hd.iso} ${t}`).toBe(true);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it('malade au logement : salon allumé l\'après-midi quand il y est', () => {
+    let sick = 0;
+    const days = Array.from({ length: 21 }, (_, i) => addDays({ y: 2026, m: 11, d: 2 }, i));
+    for (const d of ds) {
+      for (const date of days) {
+        const x = full(d, date);
+        const rooms = occupiedRooms(d, x.hd, x.meals, x.visits);
+        x.hd.people.forEach((p) => {
+          if (!p.sick) return;
+          for (const t of [690, 840, 900, 930]) {
+            // Au salon (journée au logement), hors lever, repas et coucher.
+            if (!rooms.some((s) => s.m === p.m && s.what === 'home' && s.a <= t && s.b > t)) continue;
+            sick++;
+            expect(lits(x).some((l) => l.room === 'salon' && l.t0 <= t && l.t1 > t), `${d.id} ${x.hd.iso} ${t}`).toBe(true);
+          }
+        });
+      }
+    }
+    expect(sick).toBeGreaterThan(10);
   });
 });
