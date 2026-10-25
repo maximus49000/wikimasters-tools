@@ -301,3 +301,21 @@
 ### style-scandinave_h-10_nostore-1.png
 
 ![style-scandinave_h-10_nostore-1.png](08-plantes-r1/style-scandinave_h-10_nostore-1.png)
+
+## 08-plantes-r2
+
+### kind-monstera_style-scandinave_res-2.png
+
+![kind-monstera_style-scandinave_res-2.png](08-plantes-r2/kind-monstera_style-scandinave_res-2.png)
+
+### kind-monstera_style-scandinave_res-2_rustle-0.png
+
+![kind-monstera_style-scandinave_res-2_rustle-0.png](08-plantes-r2/kind-monstera_style-scandinave_res-2_rustle-0.png)
+
+### kind-monstera_style-scandinave_res-2_rustle-1.png
+
+![kind-monstera_style-scandinave_res-2_rustle-1.png](08-plantes-r2/kind-monstera_style-scandinave_res-2_rustle-1.png)
+
+### kind-monstera_style-scandinave_res-3_cell-700.png
+
+![kind-monstera_style-scandinave_res-3_cell-700.png](08-plantes-r2/kind-monstera_style-scandinave_res-3_cell-700.png)
