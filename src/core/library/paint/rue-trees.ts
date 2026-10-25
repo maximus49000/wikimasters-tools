@@ -331,11 +331,12 @@ function tubePath(ctx: PaintCtx, ax: RueAxis, dx = 0, shrink = 0): void {
 // Axes dessinés en traits dégressifs (demi-largeur de départ < 0,5 px) ; les autres sont des tubes encrés.
 export const isTwig = (ax: RueAxis): boolean => ax.w[0]! < 0.5;
 
-export type RueSkeletonOpts = { wet?: number };
+export type RueSkeletonOpts = { wet?: number; snow?: boolean };
 // Squelette complet (toujours, quelle que soit la date) : brindilles en traits dégressifs (2 w par segment, 0,25 px minimum)
 // sous les tubes, trait encré commun (1,3 px tronc et charpentières, 0,9 px branches), tubes pleins, flanc droit ombré (tubes
 // décalés de 0,55 w découpés dans le squelette vivant), écorce qui pèle (platane), crevasses (frêne), nœuds au départ des
-// charpentières, bois mort gris. `wet` (pluie 0..1) : écorce 35 % plus sombre (comme `paintTrunk`).
+// charpentières, bois mort gris. `wet` (pluie 0..1) : écorce 35 % plus sombre (comme `paintTrunk`). `snow` : liseré de neige
+// sur le dessus des tubes peu pentus (branches et rameaux, comme `paintBranches` de la colline).
 export function paintRueSkeleton(ctx: PaintCtx, m: RueTreeModel, opts: RueSkeletonOpts = {}): void {
   const wet = opts.wet ?? 0;
   const bark0 = RUE_BARK_V5[m.species];
@@ -424,6 +425,22 @@ export function paintRueSkeleton(ctx: PaintCtx, m: RueTreeModel, opts: RueSkelet
       ctx.fill();
     }
   ctx.restore();
+  if (opts.snow) {
+    ctx.strokeStyle = 'rgba(242,246,250,0.92)';
+    for (const a of live) {
+      if (a.level < 2) continue;
+      for (let i = 0; i + 1 < a.pts.length; i++) {
+        const [x0, y0] = a.pts[i]!;
+        const [x1, y1] = a.pts[i + 1]!;
+        if (Math.abs(y1 - y0) > Math.abs(x1 - x0) * 1.3) continue;
+        ctx.lineWidth = Math.max(0.5, a.w[i]! * 0.7);
+        ctx.beginPath();
+        ctx.moveTo(x0, y0 - a.w[i]! - 0.3);
+        ctx.lineTo(x1, y1 - a.w[i + 1]! - 0.3);
+        ctx.stroke();
+      }
+    }
+  }
   ctx.restore();
 }
 

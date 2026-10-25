@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactElement } from 'react';
 import { lampsFor } from '../core/library/city/lamps';
 import type { CityPaintPlan } from '../core/library/paint/city-plan';
-import { foliageOf, type FondMoment } from '../core/library/paint/fond-time';
+import type { FondMoment } from '../core/library/paint/fond-time';
 import { windOf, type Wind } from '../core/library/paint/fond-vent';
 import { gradeFor, type Grade } from '../core/library/paint/grade';
 import type { RuePit } from '../core/library/paint/rue-verte-plan';
-import { rueTreeModel, rueWet } from '../core/library/paint/rue-verte-painter';
+import { rueWet } from '../core/library/paint/rue-verte-painter';
 import {
   RUE_CAP_OF,
   birdAway,
@@ -18,21 +18,23 @@ import {
   rueLayers,
   rueParticles,
   rueSpriteBox,
+  rueTreeOf,
   rueTreePose,
   type BirdAway,
   type RueLampWash,
   type RueLayerName,
   type RueParticleKind,
+  type RueTree,
   type RueWeather,
 } from '../core/library/paint/rue-sprites';
 import { gradeHex } from '../core/library/paint/fond-vie';
 import { INK } from '../core/library/paint/cel';
-import type { TreeModel } from '../core/library/paint/hill-trees';
 import { useWallClockLoop } from './use-wallclock-loop';
 
 // Calque `arbres-rue` de la ville peinte (PR 3, notes de la maquette §3 c, §3 d) : les arbres des fosses de la rue, au vent.
-// Par fosse plantée, des couches cuites (rue-sprites.ts) : ombre des masses, fût + charpentières (jamais transformés), rameaux
-// fins (cisaillement), une image par grappe (translation), rehauts et rehauts pâles (opacité), puis particules et oiseau. Le
+// Par fosse plantée, des couches cuites (rue-sprites.ts) : ombre du feuillage et couche fixe (squelette entier, lèvre de terre,
+// grille ou herbe du carré), jamais transformées, puis une image par charpentière (ses nuages de feuilles seuls, translatés au
+// vent d'au plus RUE_WIND_MAX px : les feuilles ne quittent jamais leur rameau), puis particules et oiseau. Le
 // tout est dessiné sur UNE toile 2D placée dans le <svg> par <foreignObject> (comme la pluie, rain-canvas.tsx), à la même
 // profondeur que l'ancien calque SVG : la boucle de l'horloge murale (15 images/s) redessine la toile seule, sans toucher au
 // SVG de la scène, et ne redessine rien quand l'image ne change pas (vent calme, aucune particule).
@@ -198,7 +200,7 @@ export const canvasRueSpritePainter: RueSpritePainter = async (job) => {
   return out;
 };
 
-type Tree = { v: RuePit; m: TreeModel; box: { x: number; y: number; w: number; h: number }; layers: RueLayerName[]; masses: number };
+type Tree = { v: RuePit; tr: RueTree; box: { x: number; y: number; w: number; h: number }; layers: RueLayerName[]; masses: number };
 
 // Une image de la boucle, en ordres de dessin dans le repère du monde (bancs d'essai et tests : `setRueFrameSinkForTests`).
 // `m` : matrice (a b c d e f) de la couche, comme l'ancien attribut `transform` ; `alpha` : fondu d'entrée de l'arbre × opacité
@@ -342,7 +344,7 @@ function fitCanvas(cv: HTMLCanvasElement, area: Area): number {
 }
 
 // Dessine une image de la boucle (efface tout, puis les enregistrements dans l'ordre : arbres, particules, oiseau).
-// Marge (unités) autour de la boîte d'un arbre sur la toile de travail du fondu (cisaillement des rameaux, grappes).
+// Marge (unités) autour de la boîte d'un arbre sur la toile de travail du fondu (feuillage au vent).
 const FADE_PAD = 12;
 let scratch: HTMLCanvasElement | null = null;
 function paintFrame(main: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: number, area: Area, F: readonly number[], trees: readonly Tree[], imgs: readonly (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[], sets: readonly (RueSprites | undefined)[]): void {
@@ -468,9 +470,9 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
       plan.rue
         .filter((v): v is RuePit => v.kind === 'pit' && !v.empty)
         .map((v) => {
-          const m = rueTreeModel(v);
-          const layers = rueLayers(m);
-          return { v, m, box: rueSpriteBox(v), layers, masses: layers.filter((l) => l[0] === 'c').length };
+          const tr = rueTreeOf(v);
+          const layers = rueLayers(tr);
+          return { v, tr, box: rueSpriteBox(v), layers, masses: layers.filter((l) => l[0] === 'c').length };
         }),
     [plan],
   );
@@ -525,7 +527,6 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
   const weathers = useRef<RueWeather[]>([]);
   // Instant depuis lequel l'oiseau reste à l'écart (nuit, forte pluie) : `undefined` avant la première image.
   const birdAwayRef = useRef<BirdAway | undefined>(undefined);
-  const bare = useMemo(() => trees.map((tr) => foliageOf(D, 'rue' + Math.round(tr.v.x), tr.v.species).d <= 0.1), [trees, D]);
   const wind = useMemo(() => windOf(D.meteo, D.meteo.wind >= 0.8), [D]);
   // Par fosse : jeu de sprites dessiné (l'ancien reste tant que le nouveau n'est pas décodé) et début de son fondu d'entrée.
   const shownRef = useRef(new Map<string, { s: RueSprites; since: number }>());
@@ -566,27 +567,17 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
         if (fade <= 0) continue;
         imgs[i] = imagesOf(on.s);
         F.push(3, i, setId(on.s), fade, 0, 0, 0);
-        const p = rueTreePose(tr.v, tr.m, t, w, plan.width);
-        const sh = rnd(p.twigShear, 4);
-        const off = bare[i];
-        const hi = off ? 0 : rnd(p.hiAlpha);
-        const pale = off ? 0 : rnd(p.paleAlpha);
+        const p = rueTreePose(tr.v, tr.tr, t, w, plan.width);
         let k = 0;
         for (let li = 0; li < tr.layers.length; li++) {
           const l = tr.layers[li]!;
-          let c = 0;
           let e = 0;
           let g = 0;
-          let a = 1;
-          if (l === 'twigs') ((c = sh), (e = rnd(-sh * tr.m.rootY)));
-          else if (l === 'hi') ((a = hi), (e = rnd(p.hiDx)));
-          else if (l === 'pale') ((a = pale), (e = rnd(p.paleDx)));
-          else if (l[0] === 'c') {
+          if (l[0] === 'c') {
             const mv = p.masses[k++];
             if (mv) ((e = rnd(mv.dx)), (g = rnd(mv.dy)));
           }
-          if (a <= 0) continue;
-          F.push(0, i, li, c, e, g, a);
+          F.push(0, i, li, 0, e, g, 1);
         }
       }
       imgs.length = trees.length;
@@ -637,7 +628,7 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
       sf.sig = F;
       paintFrame(sf.ctx, cv, sf.k, area, F, trees, imgs, sets);
     };
-  }, [trees, ids, still, at, wind, bare, plan.width, pits, D, dark, graded, area]);
+  }, [trees, ids, still, at, wind, plan.width, pits, D, dark, graded, area]);
   // Nouvelle zone : tampon à refaire.
   useEffect(() => {
     surface.current.k = 0;

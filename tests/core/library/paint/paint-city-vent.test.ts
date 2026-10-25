@@ -82,9 +82,8 @@ describe('champ de vent', () => {
 // ── Particules et oiseaux des arbres de la rue (tâche 7) ──
 import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
 import { fondMoment, foliageOf, type FondMoment } from '../../../../src/core/library/paint/fond-time';
-import { tuftState } from '../../../../src/core/library/paint/hill-trees';
 import type { RuePit } from '../../../../src/core/library/paint/rue-verte-plan';
-import { rueTreeModel } from '../../../../src/core/library/paint/rue-verte-painter';
+import { rueLooseOf, rueTreeOf } from '../../../../src/core/library/paint/rue-sprites';
 import { BIRD_CYCLE, RUE_CAP_OF, RUE_PARTICLE_CAP, birdAway, nextBirdAway, rueBird, rueParticles, type RueParticle, type RueWeather } from '../../../../src/core/library/paint/rue-sprites';
 
 describe('particules et oiseaux des arbres de la rue', () => {
@@ -118,18 +117,14 @@ describe('particules et oiseaux des arbres de la rue', () => {
       expect(seen).toBeGreaterThan(0);
     });
   }
-  it('une feuille naît à une touffe lâche (distance ≤ rayon de la touffe)', () => {
+  it('une feuille naît à une touffe ou un nuage lâche (distance ≤ son rayon)', () => {
     const D = day(11, 10);
     const w = windOf(D.meteo, false);
     let checked = 0;
     for (let t = 0; t < 300 && checked < 20; t += 0.25) {
       for (const p of rueParticles(pits, D, 1000 + t, w, PW)) {
         if (p.kind !== 'feuille') continue;
-        const near = pits.some((v) => {
-          const m = rueTreeModel(v);
-          const f = foliageOf(D, 'rue' + Math.round(v.x), v.species);
-          return m.tufts.some((tf) => tuftState(tf, f, D, v.species).loose && Math.hypot(p.born.x - tf.x, p.born.y - tf.y) <= tf.rr);
-        });
+        const near = pits.some((v) => rueLooseOf(v, D).loose.some((o) => Math.hypot(p.born.x - o.x, p.born.y - o.y) <= o.rr));
         expect(near).toBe(true);
         checked++;
       }
@@ -205,7 +200,7 @@ describe('particules des arbres de la rue : vies entières', () => {
   const STEP = 100 * DT + 1; // vitesse maximale ≈ 100 px/s
   const ground = Math.max(...pits.map((v) => v.y - 0.5));
   const crowns = pits.map((v) => {
-    const m = rueTreeModel(v);
+    const { m } = rueTreeOf(v);
     return { x0: m.box.x0 - v.r, x1: m.box.x1 + v.r, y0: m.box.y0 - v.r, y1: v.y };
   });
   // Changement de météo au milieu du suivi (à 150 s) : `D2` ; sans lui, même météo tout du long.
