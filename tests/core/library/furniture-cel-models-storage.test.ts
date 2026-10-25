@@ -6,7 +6,7 @@ import { CEL_MODELS, celPartsOf } from '../../../src/core/library/cel/models';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import { levelsOf } from '../../../src/core/library/furniture-render3d';
 import { STANDING_KINDS, STYLE_IDS } from '../../../src/core/library/library-types';
-import { checkCelModel, FLAT_H, topAt } from './furniture-cel-checks';
+import { checkCelModel, FLAT_H, SHADE_FLOOR, topAt } from './furniture-cel-checks';
 
 const KINDS = ['shelf', 'desk', 'dresser', 'side-table', 'coffee-table', 'rug'] as const;
 const look = lookOf('scandinave');
@@ -77,6 +77,10 @@ describe('rangements, tables et tapis en cellulo', () => {
 
   it('la règle « meuble plat » du contrôle (plancher d’ombre 1 %) ne concerne que le tapis', () => {
     expect(STANDING_KINDS.filter((k) => FURNITURE_MODELS[k].h <= FLAT_H)).toEqual(['rug']);
+  });
+
+  it('le plancher d’ombre abaissé (Ruling 24) ne concerne que l’étagère, à 6,5 %', () => {
+    expect(SHADE_FLOOR).toEqual({ shelf: 0.065 });
   });
 
   it('commode : trois tiroirs à deux poignées, poignées en métal devant la façade', () => {

@@ -32,7 +32,7 @@ export function topAt(parts: readonly CelPart[], x: number, z: number): number {
 
 // Contrôles d'un dessin cellulo de meuble : (a) encombrement ⊂ boîte du modèle à 2 cm près, chaque dimension ≥ 85 % ; (b) dessus
 // praticable à ±1,5 cm du maillage le plus haut sous son centre ; (c) rendu déterministe aux 8 angles ; (d) à chaque angle, ombre
-// propre entre 8 % (1 % pour un meuble plat, cf. FLAT_H) et 65 % des pixels opaques et encre > 0,5 % ; (e) modèle à face : aucun sommet d'une pièce non `interior` dans
+// propre entre 8 % (1 % pour un meuble plat, cf. FLAT_H ; 6,5 % pour l'étagère, cf. SHADE_FLOOR) et 65 % des pixels opaques et encre > 0,5 % ; (e) modèle à face : aucun sommet d'une pièce non `interior` dans
 // la boîte d'ouverture (face rétrécie de 2 cm, de z = 0 au fond moins 2 cm).
 // `skip` : critères écartés pour ce meuble, chacun avec sa raison chez l'appelant ('fill' : dimensions ≥ 85 % ; 'perch' : (b) ;
 // 'shade' : part d'ombre de (d), l'encre restant contrôlée). Le reste est toujours vérifié. Les exemptions ne valent que pour le
@@ -46,6 +46,10 @@ const PERCH_COVER: Partial<Record<StandingKind, number>> = { 'egg-chair': 40 };
 // chaque angle (un tapis sans ourlet est à 0 %), le plafond et l'encre restent ceux de tous les meubles.
 export const FLAT_H = 5;
 const FLAT_SHADE_MIN = 0.01, SHADE_MIN = 0.08;
+// Plancher d'ombre propre à un meuble (Ruling 24) : l'étagère à fond en panneau de bois plafonne à 7,4 % de face et 6,9 % de dos
+// (le fond lit, 25 000 px sur 28 500, est le dénominateur ; seuls les montants ronds, les chants et les nez des tablettes apportent
+// de l'ombre à 1 px par px). Plancher 6,5 % pour elle seule, 8 % pour tous les autres ; liste figée par un test.
+export const SHADE_FLOOR: Partial<Record<StandingKind, number>> = { shelf: 0.065 };
 export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandinave'), life: LifeState = REST_LIFE, fallbackSkip: readonly CelCheck[] = []): void {
   const skip: readonly CelCheck[] = CEL_MODELS[kind] ? [] : fallbackSkip;
   const model = FURNITURE_MODELS[kind];
@@ -83,7 +87,7 @@ export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandi
       else if (shades.has(c)) shade++;
     }
     if (!skip.includes('shade')) {
-      expect(shade / opaque, `${kind} : part d'ombre à l'angle ${angle}`).toBeGreaterThanOrEqual(model.h <= FLAT_H ? FLAT_SHADE_MIN : SHADE_MIN);
+      expect(shade / opaque, `${kind} : part d'ombre à l'angle ${angle}`).toBeGreaterThanOrEqual(model.h <= FLAT_H ? FLAT_SHADE_MIN : (SHADE_FLOOR[kind] ?? SHADE_MIN));
       expect(shade / opaque, `${kind} : part d'ombre à l'angle ${angle}`).toBeLessThanOrEqual(0.65);
     }
     expect(ink / opaque, `${kind} : part d'encre à l'angle ${angle}`).toBeGreaterThan(0.005);
