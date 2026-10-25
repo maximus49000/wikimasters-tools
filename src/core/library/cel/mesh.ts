@@ -73,8 +73,10 @@ export function superEll(a: number, b: number, c: number, e1: number, e2: number
   return finish(m, [0, 0, 0]);
 }
 
-// Tour (révolution autour de y) d'un profil [[r, y], …] de bas en haut ; caps: false pour une surface ouverte.
-export function lathe(profile: [number, number][], nv = 20, deform?: Deform, opt: { caps?: boolean } = {}): Mesh {
+// Tour (révolution autour de y) d'un profil [[r, y], …] de bas en haut ; caps: false pour une surface ouverte ; center : point d'où
+// les triangles sont orientés « vers l'extérieur » (par défaut le milieu des hauteurs du profil ; une surface ouverte comme le dôme
+// d'un abat-jour ou un anneau plat se donne un centre dans son creux, maquette l. 293-294).
+export function lathe(profile: [number, number][], nv = 20, deform?: Deform, opt: { caps?: boolean; center?: Vec3 } = {}): Mesh {
   const m = mk();
   const rings: number[][] = profile.map(([r, y]) => {
     const ring: number[] = [];
@@ -105,7 +107,7 @@ export function lathe(profile: [number, number][], nv = 20, deform?: Deform, opt
     }
   }
   const ys = profile.map((p) => p[1]);
-  return finish(m, [0, (Math.min(...ys) + Math.max(...ys)) / 2, 0]);
+  return finish(m, opt.center ?? [0, (Math.min(...ys) + Math.max(...ys)) / 2, 0]);
 }
 
 // Tube de rayon r le long d'une polyligne lissée (repère de Frenet transporté), bouché aux deux bouts.

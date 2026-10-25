@@ -3,7 +3,7 @@ import type { StandingKind, StyleId } from '../library-types';
 import type { LightSide } from './light';
 
 // Version du dessin cellulo : à incrémenter quand un dessin change (les anciennes images ne sont plus relues).
-export const CEL_VERSION = 12;
+export const CEL_VERSION = 13;
 // Début de toute clé de sprite : la version du dessin (la mémoire persistante efface les images d'une autre version).
 export const SPRITE_KEY_PREFIX = `cel${CEL_VERSION}|`;
 

@@ -17,6 +17,7 @@ import './seating';
 import './wood';
 import './storage';
 import './plants';
+import { PAPER } from './lights-pets'; // (s'inscrit aussi dans les registres)
 
 export { CEL_ITEMS, CEL_MODELS, type CelBuilder, type CelItemBuilder } from './registry';
 
@@ -48,7 +49,8 @@ export function celPartsOf(kind: StandingKind, look: CelLook, life: LifeState, o
   }
   let parts = [...builder(look, life), ...celFromPieces(trim, model, look)];
   if (opts.part && model.base) parts = parts.filter((P) => overhanging(P, model) === (opts.part === 'overhang'));
-  if (lit) parts = parts.map((P) => (P.col === look.tones.shade ? { ...P, col: WARM_LIT, glow: true } : P));
+  // S'allume : toute pièce au ton `shade` (abat-jour, ampoule) et le papier de la lanterne (seul ton hors palette, cf. lights-pets).
+  if (lit) parts = parts.map((P) => (P.col === look.tones.shade || P.col === PAPER ? { ...P, col: WARM_LIT, glow: true } : P));
   return parts;
 }
 
