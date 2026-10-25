@@ -7,7 +7,7 @@ import type { LifeState } from '../life-state';
 import type { CelLook } from '../looks';
 import type { CelPart } from '../mesh';
 import { WARM_LIT } from '../tone';
-import { CEL_ITEMS, CEL_MODELS } from './registry';
+import { CEL_ITEMS, CEL_MODELS, CEL_TRIM_KEEP } from './registry';
 
 // Dessin 3D cellulo des meubles et des objets portés, par familles (remplis par les tâches suivantes). Un meuble sans dessin propre
 // passe par la conversion de son modèle à boîtes (celFromModel) : il s'affiche tout de même, au même encombrement.
@@ -47,7 +47,8 @@ export function celPartsOf(kind: StandingKind, look: CelLook, life: LifeState, o
     const kept = over ? pieces.filter((_, i) => over.pieces.has(i) === (opts.part === 'overhang')) : pieces;
     return celFromPieces(kept, model, look, lit ? { glow: (p) => p.fill === 'shade' && !p.tag } : {});
   }
-  let parts = [...builder(look, life), ...celFromPieces(trim, model, look)];
+  const keep = CEL_TRIM_KEEP[kind];
+  let parts = [...builder(look, life), ...celFromPieces(keep ? trim.filter(keep) : trim, model, look)];
   if (opts.part && model.base) parts = parts.filter((P) => overhanging(P, model) === (opts.part === 'overhang'));
   // S'allume : toute pièce au ton `shade` (abat-jour, ampoule) et le papier de la lanterne (seul ton hors palette, cf. lights-pets).
   if (lit) parts = parts.map((P) => (P.col === look.tones.shade || P.col === PAPER ? { ...P, col: WARM_LIT, glow: true } : P));

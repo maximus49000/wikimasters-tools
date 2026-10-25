@@ -79,8 +79,8 @@ describe('rangements, tables et tapis en cellulo', () => {
     expect(STANDING_KINDS.filter((k) => FURNITURE_MODELS[k].h <= FLAT_H)).toEqual(['rug']);
   });
 
-  it('le plancher d’ombre abaissé (Ruling 24) ne concerne que l’étagère (6,5 %), la niche (3,5 %) et le chargeur (2 %), mesures à l’appui', () => {
-    expect(SHADE_FLOOR).toEqual({ shelf: 0.065, kennel: 0.035, charger: 0.02 });
+  it('le plancher d’ombre abaissé (Ruling 24) ne concerne que l’étagère (6,5 %), la niche (3 %) et le chargeur (2 %), mesures à l’appui', () => {
+    expect(SHADE_FLOOR).toEqual({ shelf: 0.065, kennel: 0.03, charger: 0.02 });
   });
 
   it('commode : trois tiroirs à deux poignées, poignées en métal devant la façade', () => {

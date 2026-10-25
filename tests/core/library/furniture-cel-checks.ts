@@ -49,12 +49,12 @@ const FLAT_SHADE_MIN = 0.01, SHADE_MIN = 0.08;
 // Plancher d'ombre propre à un meuble (Ruling 24) : l'étagère à fond en panneau de bois plafonne à 7,4 % de face et 6,9 % de dos
 // (le fond lit, 25 000 px sur 28 500, est le dénominateur ; seuls les montants ronds, les chants et les nez des tablettes apportent
 // de l'ombre à 1 px par px). Plancher 6,5 % pour elle seule, 8 % pour tous les autres ; liste figée par un test.
-// Tâche 9, mesures à 1 px par px (lumière du haut-gauche, élévation 46°) : la niche à pignon montre de face (angle 0 : 5,0 %) et de dos
-// (angle 4 : 4,0 %) une façade plate et des pans de toit tournés vers le haut, seul le flanc droit en perspective (un liseré) et les
+// Tâche 9, mesures à 1 px par px (lumière du haut-gauche, élévation 46°) : la niche à pignon montre de face (angle 0 : 4,6 %) et de dos
+// (angle 4 : 3,5 %, tour 1 : dalles du toit refaites) une façade plate et des pans de toit tournés vers le haut, seul le flanc droit en perspective (un liseré) et les
 // arrondis (poteaux, faîtage, encadrement) sont à l'ombre ; le chargeur du robot (10 cm de haut, 40 × 30) n'est presque que dessus
 // et encre (64..81 % d'encre), ses seules surfaces à l'ombre sont les bouts arrondis du plateau, du dosseret et le flanc gauche de la
-// cuvette (angles 1 et 5 : 2,5 et 3,4 %). Planchers posés sous ces mesures ; la liste reste figée par un test.
-export const SHADE_FLOOR: Partial<Record<StandingKind, number>> = { shelf: 0.065, kennel: 0.035, charger: 0.02 };
+// cuvette (angles 1 et 5 : 3,2 et 4,4 % au tour 1). Planchers posés sous ces mesures ; la liste reste figée par un test.
+export const SHADE_FLOOR: Partial<Record<StandingKind, number>> = { shelf: 0.065, kennel: 0.03, charger: 0.02 };
 export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandinave'), life: LifeState = REST_LIFE, fallbackSkip: readonly CelCheck[] = []): void {
   const skip: readonly CelCheck[] = CEL_MODELS[kind] ? [] : fallbackSkip;
   const model = FURNITURE_MODELS[kind];

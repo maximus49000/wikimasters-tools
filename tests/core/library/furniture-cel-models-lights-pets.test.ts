@@ -92,6 +92,52 @@ describe('lampes et coin des animaux en cellulo', () => {
     expect(LIFE_SPECS.basket?.dent?.[0]).toEqual({ at: [x, poi.y, z], r: 12, depth: 3 });
   });
 
+  it('lampadaire arc en Steampunk : la garniture ne transperce pas le dôme (cerclage du modèle à boîtes écarté, redessiné sur le dôme)', () => {
+    const L = lookOf('steampunk');
+    const parts = celPartsOf('arc-lamp', L, REST_LIFE);
+    // Toute pièce en laiton poli (`text`) au-dessus de 120 cm est un cerclage DU dôme : incliné comme lui (ses sommets s'étagent sur
+    // plus de 6 cm de haut) et pas plus à gauche que lui (l'ancien cerclage horizontal, r 16 autour de (−63,5, 151), s'étalait sur
+    // 1,5 cm de haut et sortait de 12 cm à gauche du dôme).
+    const high = parts.filter((P) => P.col === L.tones.text && P.m.v.some((v) => v[1] > 120));
+    expect(high.length).toBeGreaterThan(0);
+    const domeMinX = Math.min(...parts.filter((P) => P.col !== L.tones.text).flatMap((P) => P.m.v.map((v) => v[0])));
+    for (const P of high) {
+      const ys = P.m.v.map((v) => v[1]);
+      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(6);
+      expect(Math.min(...P.m.v.map((v) => v[0]))).toBeGreaterThanOrEqual(domeMinX - 1.5);
+    }
+    // Le reste de la garniture (bandeau, pieds boule, bagues du fût) est bien là.
+    expect(parts.length).toBeGreaterThan(celPartsOf('arc-lamp', look, REST_LIFE).length + 3);
+  });
+
+  it('chargeur : le dosseret repose sur le plateau (aucun bout qui flotte hors du plateau)', () => {
+    const parts = celPartsOf('charger', look, REST_LIFE);
+    const [plate, back] = [parts[0]!, parts[1]!];
+    // Sous chaque sommet bas du dosseret, le plateau est là, à moins de 0,8 cm.
+    const low = back.m.v.filter((v) => v[1] < 3.2);
+    expect(low.length).toBeGreaterThan(0);
+    for (const v of low) expect(topAt([plate], v[0], v[2]), `sommet (${v[0].toFixed(1)}, ${v[2].toFixed(1)})`).toBeGreaterThanOrEqual(v[1] - 0.8);
+  });
+
+  it('niche : le faîtage reste à fleur des pans du toit, pas plus haut qu’eux, sous le plafond de la boîte', () => {
+    const parts = celPartsOf('kennel', look, REST_LIFE);
+    const top = Math.max(...parts.flatMap((P) => P.m.v.map((v) => v[1])));
+    const ridge = parts.find((P) => P.m.v.every((v) => v[1] > 70))!; // la seule pièce entièrement au-dessus des murs
+    const roof = parts.filter((P) => P !== ridge && P.m.v.some((v) => v[1] > 60));
+    const zMaxRoof = Math.max(...roof.flatMap((P) => P.m.v.map((v) => Math.abs(v[2]))));
+    expect(Math.max(...ridge.m.v.map((v) => Math.abs(v[2])))).toBeLessThanOrEqual(zMaxRoof + 0.5); // à fleur des façades du toit
+    expect(Math.max(...ridge.m.v.map((v) => v[1]))).toBeLessThanOrEqual(Math.max(...roof.flatMap((P) => P.m.v.map((v) => v[1]))) + 0.5); // pas de poteau au-dessus du toit
+    expect(top).toBeLessThanOrEqual(FURNITURE_MODELS.kennel.h + 2);
+  });
+
+  it('panier : rebord échancré devant (le coussin se voit), haut derrière et sur les côtés', () => {
+    const parts = celPartsOf('basket', look, REST_LIFE);
+    const wall = parts.filter((P) => P.col !== look.tones.fabricLight);
+    expect(topAt(wall, 0, 20)).toBeLessThan(16); // devant : rebord + boudin sous 16
+    expect(topAt(wall, 0, -20)).toBeGreaterThan(22); // derrière : 21,6 + boudin
+    expect(topAt(wall, 28, 0)).toBeGreaterThan(22); // côtés : pleine hauteur
+  });
+
   it('tous les styles se dessinent dans la boîte du modèle (palette du style, plus le papier de la lanterne)', () => {
     for (const style of STYLE_IDS)
       for (const k of KINDS) {

@@ -3,7 +3,7 @@ import type { LifeState } from '../life-state';
 import type { CelLook } from '../looks';
 import { bent, lathe, leaf, normalize, part, place, smooth, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
 import type { Tone } from '../tone';
-import { CEL_MODELS } from './registry';
+import { CEL_MODELS, CEL_TRIM_KEEP } from './registry';
 
 // Lampes et coin des animaux (G6, tâche 9) : lampadaire (`lamp`), lampadaire arc (porté de la maquette `arcLamp`, l. 284), lanterne en
 // papier (porté de `lantern`, l. 342), panier, gamelle, niche, chargeur du robot. Repère centré (origine au centre de la base, x à
@@ -141,8 +141,13 @@ function arcLamp(look: CelLook): CelPart[] {
   P.push(part(place(lathe([[13, -16.5], [12.6, -15], [5.2, 0], [0, 0]], 28, undefined, { caps: false, center: [0, -4, 0] }), at), T.metal)); // dôme
   P.push(part(place(lathe([[12.2, -16.1], [4.8, -1.2]], 28, undefined, { caps: false, center: [0, -30, 0] }), at), T.shade, { crease: false })); // intérieur (s'allume)
   P.push(part(place(lathe([[0, -11], [3, -10], [3.4, -7], [2.2, -4], [0, -4]], 12), at), T.shade, { crease: false, noshadow: true })); // ampoule
+  // Steampunk : le cerclage de laiton du dôme est redessiné sur le bord du dôme incliné (celui du modèle à boîtes, horizontal à
+  // l'ancienne place du dôme, est écarté par CEL_TRIM_KEEP : il transperçait le nouveau dôme).
+  if (look.style === 'steampunk') P.push(part(place(lathe([[13.1, -16.9], [13.7, -16.4], [13.7, -14.9], [13.2, -14.4]], 28), at), T.text, { crease: false, noshadow: true }));
   return P;
 }
+// Garniture Steampunk du lampadaire arc : tout sauf le cerclage du dôme (le seul cylindre centré sur l'ancien dôme, cx 19 du modèle).
+CEL_TRIM_KEEP['arc-lamp'] = (p) => !(p.shape === 'cyl' && p.cx === 19);
 
 /* ---------- lanterne en papier (porté de la maquette) : chōchin en fuseau à côtes horizontales, anneaux de bois en haut et en bas,
    socle de bois, anse en cordon ---------- */
@@ -165,27 +170,41 @@ function paperLantern(look: CelLook): CelPart[] {
   return P;
 }
 
-/* ---------- panier : vannerie ovale (paroi extérieure galbée, paroi intérieure aux normales rentrantes, fond), cerclage en boudin
-   sur le bord, coussin à creux au fond (spec §6) ---------- */
+/* ---------- panier : corbeille ovale lisse, devant échancré (le rebord descend de
+   21,6 derrière à 13 devant : on voit le coussin), paroi intérieure aux normales rentrantes, boudin sur le bord qui suit
+   l'échancrure, coussin bombé à creux (spec §6) ---------- */
 const OVAL = 0.75; // z / x : 60 × 45
+const BASKET_RIM = 21.6, BASKET_NOTCH = 8.6; // hauteur du rebord derrière ; de combien il descend devant
+// Hauteur du rebord à l'azimut a (a = 0 vers +x, π/2 vers le devant +z) : échancrure en cloche sur le devant.
+const rimH = (a: number): number => BASKET_RIM - BASKET_NOTCH * Math.pow(Math.max(0, Math.sin(a)), 3);
 function basket(look: CelLook, life: LifeState): CelPart[] {
   const T = look.tones;
   const m = FURNITURE_MODELS.basket, poi = m.pois!.find((p) => p.type === 'curl')!;
   const [px, pz] = [poi.x - m.w / 2, m.d / 2 - poi.z];
-  const oval: Deform = (x, y, z) => [x, y, z * OVAL];
+  // Ovale, et le haut de la paroi (y > 4,6, au-dessus du fond) descend vers le devant.
+  const wall: Deform = (x, y, z) => {
+    const a = Math.atan2(z, x), h = rimH(a);
+    return [x, y > 4.6 ? 4.6 + (y - 4.6) * ((h - 4.6) / (BASKET_RIM - 4.6)) : y, z * OVAL];
+  };
+  // Profil extérieur : galbe lisse (parabole, anneaux tous les 1,5 cm). Essayé et retiré : des rangs de tressage (±0,4 puis ±0,6 cm,
+  // pas 3,6-4,4 cm) : la frontière d'ombre devenait une suite de griffures horizontales (leçon du pouf, T5).
+  const outer: [number, number][] = [[0, 0], [24, 0], [27.4, 0.6]];
+  for (let y = 1.5; y < BASKET_RIM; y += 1.5) outer.push([29.6 - 0.0075 * (y - 9) ** 2, y]);
+  outer.push([28.6, BASKET_RIM]);
+  const inner: [number, number][] = [[28, BASKET_RIM]];
+  for (let y = BASKET_RIM - 2; y > 5; y -= 2.5) inner.push([27.6 - 0.006 * (y - 9) ** 2 - 0.5 * ((BASKET_RIM - y) / BASKET_RIM), y]);
+  inner.push([24.6, 4.6], [0, 4.6]);
   const P: CelPart[] = [];
-  const outer = lathe([[0, 0], [24, 0], [27.6, 0.7], [29.2, 3], [29.9, 9], [29.5, 17], [28.6, 21.6]], 40, oval, { caps: false });
-  const inner = inward(lathe([[28, 21.6], [27.4, 14], [26.6, 7.5], [25, 4.6], [0, 4.6]], 40, oval, { caps: false }));
-  P.push(part(merge([outer, inner]), T.warm));
-  // Boudin du bord : tube fermé sur l'ovale (couture derrière).
+  P.push(part(merge([lathe(outer, 48, wall, { caps: false }), inward(lathe(inner, 48, wall, { caps: false }))]), T.warm, { crease: false }));
+  // Boudin du bord : tube fermé qui suit le rebord échancré (couture derrière).
   const ring: Vec3[] = [];
-  for (let k = 0; k <= 26; k++) {
-    const a = -Math.PI / 2 + (2 * Math.PI * k) / 24;
-    ring.push([Math.cos(a) * 28.7, 21.6, Math.sin(a) * 28.7 * OVAL]);
+  for (let k = 0; k <= 50; k++) {
+    const a = -Math.PI / 2 + (2 * Math.PI * k) / 48;
+    ring.push([Math.cos(a) * 28.7, rimH(a), Math.sin(a) * 28.7 * OVAL]);
   }
   P.push(part(tube(ring, 2.3, 10), T.warmDark, { crease: false }));
-  // Coussin : galette ovale posée au fond, dessus à 11 (point de repos), creusée sous l'animal.
-  P.push(part(place(superEll(26.6, 3.4, 20, 0.4, 1, 14, 32, dentOf(life.dent, 3.4, px, pz)), { t: [0, 7.6, 0] }), T.fabricLight));
+  // Coussin : galette ovale bombée posée au fond (sommet à 12,2, à 1,2 du point de repos), creusée sous l'animal.
+  P.push(part(place(superEll(26.8, 4.2, 20.2, 0.5, 1, 14, 32, dentOf(life.dent, 4.2, px, pz)), { t: [0, 8, 0] }), T.fabricLight));
   return P;
 }
 
@@ -232,24 +251,27 @@ function kennel(look: CelLook): CelPart[] {
   frame.push([12.4, 3, zf]);
   P.push(part(tube(frame, 1.3, 8), T.woodDark, { crease: false, noshadow: true }));
   P.push(part(place(superEll(6, 2.1, 0.7, 0.4, 0.3, 6, 16), { t: [0, 45, zf + 0.2] }), T.desk, { crease: false, noshadow: true }));
-  // Toit : deux dalles (plaques épaisses) posées sur les pignons, débordant de 6 cm aux gouttières et de 6 cm devant et derrière,
-  // coins arrondis en plan ; faîtage en rondin aux bouts arrondis par-dessus la jonction.
-  const slope = Math.atan2(KEN_RIDGE_Y - KEN_EAVE_Y, KEN_HALF_W), eaveX = 35, th = 2.8, halfD = 46;
-  const eaveY = KEN_RIDGE_Y - eaveX * Math.tan(slope), L = Math.hypot(eaveX, KEN_RIDGE_Y - eaveY);
+  // Toit : deux dalles épaisses (section rectangulaire extrudée le long du faîte par `prism` : coins arrondis en plan aux seuls bouts,
+  // arête de faîte droite) posées sur les pignons, débordant de 6 cm aux gouttières et devant/derrière ; chaque dalle dépasse le faîte
+  // de `over` (les deux se croisent : pas d'encoche en V) ; faîtage en rondin enfoncé dans le croisement, bouts arrondis à fleur des
+  // façades du toit (de face : un petit embout rond au sommet du pignon, pas un poteau).
+  const slope = Math.atan2(KEN_RIDGE_Y - KEN_EAVE_Y, KEN_HALF_W), eaveX = 35, th = 2.8, halfD = 46, over = 1.4;
+  const eaveY = KEN_RIDGE_Y - eaveX * Math.tan(slope), L = Math.hypot(eaveX, KEN_RIDGE_Y - eaveY), Lp = L + over;
   for (const sx of [-1, 1]) {
-    // Contour dans le sens qui donne au dessus une normale vers le haut (cf. plants.ts, `outline`).
-    const plate = bent(leaf([[-L / 2, -halfD], [-L / 2, halfD], [L / 2, halfD], [L / 2, -halfD]], th), round(8, halfD + 2.5));
-    // rz = −sx·pente : l'axe local x monte vers le faîte ; la normale du dessus (nx, ny) penche vers la gouttière.
-    const nx = sx * Math.sin(slope), ny = Math.cos(slope);
-    const c: Vec3 = [(sx * eaveX) / 2 + nx * (th / 2), (eaveY + KEN_RIDGE_Y) / 2 + ny * (th / 2), 0];
+    const plate = prism([[-Lp / 2, -th / 2], [Lp / 2, -th / 2], [Lp / 2, th / 2], [-Lp / 2, th / 2]], slices(halfD, 9), round(8, halfD + 2.5));
+    // rz = −sx·pente : l'axe local x monte vers le faîte ; la normale du dessus (nx, ny) penche vers la gouttière ; (ux, uy) monte le pan.
+    const nx = sx * Math.sin(slope), ny = Math.cos(slope), ux = -sx * Math.cos(slope), uy = Math.sin(slope);
+    const c: Vec3 = [(sx * eaveX) / 2 + nx * (th / 2) + (ux * over) / 2, (eaveY + KEN_RIDGE_Y) / 2 + ny * (th / 2) + (uy * over) / 2, 0];
     P.push(part(place(plate, { rz: -sx * slope, t: c }), T.door, { creaseThr: 0.8 }));
   }
-  P.push(part(place(lathe([[0, -46.9], [1.4, -46.2], [1.9, -44.5], [1.9, 44.5], [1.4, 46.2], [0, 46.9]], 14), { rx: Math.PI / 2, t: [0, KEN_RIDGE_Y + th / Math.cos(slope) - 0.3, 0] }), T.woodDark, { crease: false }));
+  const ridgeTop = KEN_RIDGE_Y + over * Math.sin(slope) + th * Math.cos(slope); // sommet des lèvres du croisement (74,3)
+  P.push(part(place(lathe([[0, -46.2], [1.6, -45.6], [2.2, -44.4], [2.2, 44.4], [1.6, 45.6], [0, 46.2]], 14), { rx: Math.PI / 2, t: [0, ridgeTop - 2, 0] }), T.woodDark, { crease: false }));
   return P;
 }
 
 /* ---------- chargeur du robot : plateau arrondi creusé d'une cuvette peu profonde (là où le robot se gare : son flanc gauche
-   est à l'ombre, son flanc droit éclairé), dosseret en barre arrondie, deux contacts, voyant vert ---------- */
+   est à l'ombre, son flanc droit éclairé), dosseret = plaque dressée mince aux bouts ronds, posée sur l'arrière du plateau,
+   deux contacts, voyant vert ---------- */
 function charger(look: CelLook): CelPart[] {
   const T = look.tones;
   const P: CelPart[] = [];
@@ -258,10 +280,11 @@ function charger(look: CelLook): CelPart[] {
     const r = Math.hypot(x / 15, (z - 1.5) / 10);
     return [x, y > 0 && r < 1 ? y - 1.6 * (1 - r * r) * Math.min(1, y / 2) : y, z];
   };
-  P.push(part(place(superEll(20, 2, 15, 0.45, 0.8, 14, 40, dish), { t: [0, 2, 0] }), T.metal)); // plateau 0..4
-  P.push(part(place(superEll(16.5, 3.4, 2.8, 0.45, 0.45, 12, 32), { t: [0, 7, -12] }), T.metal)); // dosseret 3,6..10,4, bouts arrondis
+  P.push(part(place(superEll(20, 2, 15, 0.45, 0.6, 14, 40, dish), { t: [0, 2, 0] }), T.metal, { crease: false })); // plateau 0..4, bouts arrondis
+  // Dosseret : 12,5 de demi-largeur (le plateau en fait encore 14,3 à z −13,3), 1,8 d'épaisseur, 2,6..10, pied noyé dans le plateau.
+  P.push(part(place(superEll(12.5, 3.7, 1.8, 0.45, 0.6, 12, 32), { t: [0, 6.3, -11.5] }), T.metal)); // dosseret
   for (const x of [-6, 6]) P.push(part(place(superEll(1.6, 0.5, 1.6, 0.6, 1, 6, 12), { t: [x, 3.6, 4] }), T.door, { crease: false, noshadow: true })); // contacts
-  P.push(part(place(superEll(1.8, 0.8, 0.7, 0.6, 0.6, 6, 12), { t: [0, 7.6, -9] }), T.leaf, { flat: true, noshadow: true, crease: false })); // voyant
+  P.push(part(place(superEll(1.8, 0.8, 0.6, 0.6, 0.6, 6, 12), { t: [0, 8, -9.6] }), T.leaf, { flat: true, noshadow: true, crease: false })); // voyant
   return P;
 }
 
