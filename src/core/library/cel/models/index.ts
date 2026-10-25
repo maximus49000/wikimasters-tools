@@ -1,25 +1,21 @@
 import { FURNITURE_MODELS, STEAMPUNK_TRIM } from '../../furniture-models';
 import { overhangOf, type Model } from '../../furniture-render3d';
-import { itemPieces, type ItemPlacement, type ItemShape } from '../../item-models';
+import { itemPieces, type ItemPlacement } from '../../item-models';
 import type { StandingKind } from '../../library-types';
 import { celFromPieces } from '../convert';
 import type { LifeState } from '../life-state';
 import type { CelLook } from '../looks';
 import type { CelPart } from '../mesh';
 import { WARM_LIT } from '../tone';
+import { CEL_ITEMS, CEL_MODELS } from './registry';
 
 // Dessin 3D cellulo des meubles et des objets portés, par familles (remplis par les tâches suivantes). Un meuble sans dessin propre
 // passe par la conversion de son modèle à boîtes (celFromModel) : il s'affiche tout de même, au même encombrement.
 
-// Pièces d'un meuble dans le repère centré (origine au centre de la base, x à droite, y en haut, z vers le spectateur, cm).
-// L'abat-jour d'une lampe porte la teinte `look.tones.shade` (même objet) : c'est elle qui s'allume.
-export type CelBuilder = (look: CelLook, life: LifeState) => CelPart[];
-export const CEL_MODELS: Partial<Record<StandingKind, CelBuilder>> = {};
+// Familles de dessins (chacune s'inscrit dans les registres à l'import).
+import './seating';
 
-// Pièces d'un objet porté dans un repère centré sur son point de pose (coin bas avant gauche de sa boîte, `pl.x/y/z` ignorés),
-// x à droite, y en haut, z vers le spectateur (cm) : l'hôte de sprites le translate à sa place chez son porteur.
-export type CelItemBuilder = (look: CelLook, pl: ItemPlacement) => CelPart[];
-export const CEL_ITEMS: Partial<Record<ItemShape, CelItemBuilder>> = {};
+export { CEL_ITEMS, CEL_MODELS, type CelBuilder, type CelItemBuilder } from './registry';
 
 // Pièce du surplomb d'un meuble à socle (même règle que overhangOf, sur l'encombrement du maillage) : hors du socle à 0,5 cm près.
 function overhanging(P: CelPart, model: Model): boolean {

@@ -20,25 +20,30 @@ const look = lookOf('scandinave');
 // - 'perch' : dessus praticable au-dessus d'un creux non converti (assise du pouf poire) ou d'un jour entre deux coussins (causeuse).
 const FALLBACK_LIMITS: Partial<Record<(typeof STANDING_KINDS)[number], CelCheck[]>> = {
   shelf: ['shade'], desk: ['shade'], chair: ['shade'], basket: ['shade'], bowl: ['shade'], kennel: ['shade'], 'coffee-table': ['shade'], rug: ['shade'],
-  telescope: ['fill', 'shade'], 'egg-chair': ['fill', 'perch'], 'peacock-chair': ['fill', 'shade'], loveseat: ['perch', 'shade'],
-  charger: ['shade'], 'rocking-chair': ['shade'], 'club-chair': ['shade'], daybed: ['shade'], bench: ['shade'], dresser: ['shade'], 'side-table': ['shade'], 'square-pouf': ['shade'],
+  telescope: ['fill', 'shade'], 'egg-chair': ['fill', 'perch'], 'peacock-chair': ['fill', 'shade'],
+  charger: ['shade'], 'rocking-chair': ['shade'], dresser: ['shade'], 'side-table': ['shade'],
   globe: ['fill'], monstera: ['fill'], strelitzia: ['fill'], palm: ['fill'], cactus: ['fill'], pampas: ['fill'],
-  beanbag: ['perch'],
 };
 
 describe('conversion des modèles à boîtes en maillages cellulo', () => {
-  it('aucun dessin propre encore : tout passe par la conversion', () => expect(Object.keys(CEL_MODELS)).toEqual([]));
+  it('un meuble sans dessin propre passe par la conversion de son modèle, pièce pour pièce', () => {
+    const pending = STANDING_KINDS.filter((k) => !CEL_MODELS[k]);
+    expect(pending.length).toBeGreaterThan(0);
+    for (const k of pending) expect(celPartsOf(k, look, REST_LIFE).length, k).toBe(celFromModel(FURNITURE_MODELS[k], look).length);
+  });
 
   for (const k of STANDING_KINDS) it(`${k} : encombrement, dessus, déterminisme, ombre et encre, ouverture`, () => checkCelModel(k, look, REST_LIFE, FALLBACK_LIMITS[k]));
 
   it('les exemptions du repli ne valent plus pour un meuble redessiné : seuils complets', () => {
-    // Pouf cube exempté d'ombre en repli ; « redessiné » à l'identique (même conversion), il doit échouer au seuil d'ombre complet.
-    expect(() => checkCelModel('square-pouf', look, REST_LIFE, FALLBACK_LIMITS['square-pouf'])).not.toThrow();
-    CEL_MODELS['square-pouf'] = (l) => celFromModel(FURNITURE_MODELS['square-pouf'], l);
+    // Un meuble encore en repli, exempté d'ombre ; « redessiné » à l'identique (même conversion), il doit échouer au seuil d'ombre complet.
+    const k = STANDING_KINDS.find((k) => !CEL_MODELS[k] && FALLBACK_LIMITS[k]?.includes('shade'))!;
+    expect(k).toBeDefined();
+    expect(() => checkCelModel(k, look, REST_LIFE, FALLBACK_LIMITS[k])).not.toThrow();
+    CEL_MODELS[k] = (l) => celFromModel(FURNITURE_MODELS[k], l);
     try {
-      expect(() => checkCelModel('square-pouf', look, REST_LIFE, FALLBACK_LIMITS['square-pouf'])).toThrow(/part d'ombre/);
+      expect(() => checkCelModel(k, look, REST_LIFE, FALLBACK_LIMITS[k])).toThrow(/part d'ombre/);
     } finally {
-      delete CEL_MODELS['square-pouf'];
+      delete CEL_MODELS[k];
     }
   });
 
@@ -81,7 +86,7 @@ describe('conversion des modèles à boîtes en maillages cellulo', () => {
 
   it('clés : version, résolution au quart', () => {
     const s = { kind: 'sofa', angle: 1, style: 'scandinave', side: 'left', cam: 'room', res: 3.1, lit: false, life: '' } as const;
-    expect(spriteKey(s)).toMatch(/^cel1\|/);
+    expect(spriteKey(s)).toMatch(/^cel2\|/);
     expect(spriteKey(s)).toBe(spriteKey({ ...s, res: 2.95 }));
     expect(spriteKey(s)).not.toBe(spriteKey({ ...s, res: 3.25 }));
     expect(spriteKey(s)).not.toBe(spriteKey({ ...s, part: 'base' }));

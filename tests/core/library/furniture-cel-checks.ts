@@ -15,7 +15,7 @@ const ANGLES: Angle[] = [0, 1, 2, 3, 4, 5, 6, 7];
 const hex = (rgba: Uint8ClampedArray, i: number) => '#' + [0, 1, 2].map((k) => rgba[i * 4 + k]!.toString(16).padStart(2, '0')).join('').toUpperCase();
 
 // Plus haute surface des maillages à la verticale de (x, z) (repère centré), ou -Infinity.
-function topAt(parts: readonly CelPart[], x: number, z: number): number {
+export function topAt(parts: readonly CelPart[], x: number, z: number): number {
   let best = -Infinity;
   for (const { m } of parts)
     for (const [a, b, c] of m.t) {

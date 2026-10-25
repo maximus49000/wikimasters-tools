@@ -1,4 +1,5 @@
-// Planche du catalogue : planche.html?kind=<kind|all>&style=<StyleId>&res=1 — kinds × 8 angles, rendus par le moteur seul (canvas).
+// Planche du catalogue : planche.html?kind=<kind|all>&style=<StyleId>&res=1&cell=190 — kinds × 8 angles, rendus par le moteur seul
+// (canvas) ; `cell` = côté d'une case en px (grande case pour juger le détail).
 import { yawOf } from '../../src/core/library/cel/camera';
 import { REST_LIFE } from '../../src/core/library/cel/life-state';
 import { lookOf } from '../../src/core/library/cel/looks';
@@ -15,8 +16,8 @@ const res = Number(q.get('res') ?? 1);
 const kindQ = q.get('kind') ?? 'all';
 const kinds = kindQ === 'all' ? [...STANDING_KINDS] : kindQ.split(',').filter((k): k is StandingKind => (STANDING_KINDS as readonly string[]).includes(k));
 const LABELS = ['0 face', '1 ¾ avant gauche', '2 profil gauche', '3 ¾ arrière gauche', '4 dos', '5 ¾ arrière droit', '6 profil droit', '7 ¾ avant droit'];
-const SHOW = 1.5; // px écran par px de pièce
-const CELL = 190;
+const CELL = Math.max(60, Number(q.get('cell') ?? 190) || 190);
+const SHOW = CELL > 190 ? 4 : 1.5; // px écran par px de pièce (grande case : jusqu'à ×4)
 
 const out = document.getElementById('out')!;
 const table = document.createElement('table');
