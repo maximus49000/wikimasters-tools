@@ -3,7 +3,7 @@ import { deskAtCell, dropTargetFor, type DropTarget, type GhostPx } from './furn
 import { SMALL_ITEM_OF, WINDOW_DEFAULT, isDecoKind, isSmallKind, isStandingKind } from '../core/library/furniture-catalog';
 import { decoDefaultSize, isPanel } from '../core/library/deco';
 import { nextFurnitureId } from '../core/library/library-book';
-import { applyMatrix, rotateAngle, type Angle } from '../core/library/footprint';
+import { applyFace, rotateAngle, type Angle } from '../core/library/footprint';
 import type { FurnitureKind, Layout, Placed, ShelfLevel, StoredDisplay } from '../core/library/library-types';
 import {
   CELL_H, CELL_W, ROWS, angleOf, isStanding, setAngle, firstFreeBoard, hang, moveComputer, moveHung, moveSmall, moveStanding, moveStored, placeComputer, placeSmall,
@@ -207,7 +207,7 @@ function freeEndOf(layout: Layout, shelfId: string, level: ShelfLevel): Spot | n
   const cm = (last ? last.x0Cm + last.wCm + SHELF_GAP_CM : 0) + 0.5;
   const u = cm * (board.local.w / SHELF_INNER_CM);
   const v = board.local.y + board.local.h / 2;
-  const [x, y] = applyMatrix(board.m, u, v);
+  const [x, y] = applyFace(board.face, u, v);
   return spotOfPx(x, y);
 }
 

@@ -1,5 +1,5 @@
 import { WINDOW_DEFAULT, WINDOW_MAX, WINDOW_MIN, depthDefault, layerOf, underOf, wallSizeOf } from './furniture-catalog';
-import { applyMatrix, drawRect, faceFrame, faceLevels, floorCells, invertMatrix, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
+import { applyFace, drawRect, drawSize, faceFrame, faceLevels, floorCells, invertFace, topPoint, type Angle, type FaceFrame, type Matrix } from './footprint';
 import { MAX_PANEL_TEXT, PANEL_MAX, PANEL_MIN, decoDefaultSize, isPanel, type CityTime, type DecoKind, type NeonColor } from './deco';
 import { STANDING_KINDS } from './library-types';
 import { isOnBoard, type DecoPlaced, type Depth, type Layout, type Orientation, type Placed, type Pose, type Posed, type ShelfLevel, type ShelfShape, type SmallItem, type SmallOnBoard, type SmallOnTop, type StandDepth, type StandingKind, type StoredDisplay, type VinylColor, type WallShape } from './library-types';
@@ -7,7 +7,7 @@ import { HOST_TOP, canPutOnTop, computerTopRect, firstFreeTopSpot, topRectsOf, t
 import type { BoxFormat } from '../game/platform-boxes';
 import { ITEM_MODELS, itemFootprintCm, storedModel } from './item-models';
 import { FURNITURE_MODELS } from './furniture-models';
-import { overhangOf, projectOf } from './furniture-render3d';
+import { overhangOf, pieceBounds, projectOf } from './furniture-render3d';
 
 export const ROWS = 18;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
@@ -105,11 +105,35 @@ export function overhangRow(p: Standing): number | null {
 // Première rangée au sol d'un meuble (le fond de son emprise).
 export const floorTopRow = (p: Standing): number => Math.min(...floorCells(p.kind, angleOf(p), p.col, p.row).map((c) => c.row));
 
-// Zone qui reçoit le toucher d'un meuble : tout son rectangle, sauf pour un meuble à socle (lampadaire arc), dont le rectangle est
-// surtout du vide au-dessus des autres meubles : seulement les cases du socle (son dôme et son arc restent touchables là où ils sont peints).
+// Cadre englobant (px du rectangle de dessin à l'échelle 1) des sommets projetés des pièces du modèle tourné, par (meuble, angle).
+const drawnBoxCache = new Map<string, { x0: number; y0: number; x1: number; y1: number }>();
+function drawnBoxOf(kind: StandingKind, angle: Angle): { x0: number; y0: number; x1: number; y1: number } {
+  const key = `${kind}:${angle}`;
+  let b = drawnBoxCache.get(key);
+  if (!b) {
+    const m = FURNITURE_MODELS[kind];
+    const pts = m.pieces.flatMap((q) => {
+      const [x0, x1, y0, y1, z0, z1] = pieceBounds(q);
+      return [x0, x1].flatMap((x) => [y0, y1].flatMap((y) => [z0, z1].map((z) => projectOf(m, angle, [x, y, z]))));
+    });
+    b = { x0: Math.min(...pts.map((q) => q[0])), y0: Math.min(...pts.map((q) => q[1])), x1: Math.max(...pts.map((q) => q[0])), y1: Math.max(...pts.map((q) => q[1])) };
+    drawnBoxCache.set(key, b);
+  }
+  return b;
+}
+
+// Zone qui reçoit le toucher d'un meuble : le cadre englobant de son dessin (en perspective, le haut d'un meuble profond déborde du
+// rectangle de grille), sauf pour un meuble à socle (lampadaire arc), dont le dessin est surtout du vide au-dessus des autres meubles :
+// seulement les cases du socle (son dôme et son arc restent touchables là où ils sont peints).
 export function hitRectOf(p: Standing): PxRect {
   const rect = rectOf(p)!;
-  if (!FURNITURE_MODELS[p.kind].base) return pxRect(rect);
+  if (!FURNITURE_MODELS[p.kind].base) {
+    const r = pxRect(rect);
+    const { w, h } = drawSize(p.kind, angleOf(p));
+    const [sx, sy] = [r.w / (w * CELL_W), r.h / (h * CELL_H)];
+    const b = drawnBoxOf(p.kind, angleOf(p));
+    return { x: r.x + b.x0 * sx, y: r.y + b.y0 * sy, w: (b.x1 - b.x0) * sx, h: (b.y1 - b.y0) * sy };
+  }
   const cells = floorCells(p.kind, angleOf(p), p.col, p.row);
   const [c0, c1] = [Math.min(...cells.map((c) => c.col)), Math.max(...cells.map((c) => c.col))];
   const [r0, r1] = [Math.min(...cells.map((c) => c.row)), Math.max(...cells.map((c) => c.row))];
@@ -563,13 +587,14 @@ function onThisBoard(layout: Layout, id: string | undefined, shelfId: string, le
 }
 
 // Une tablette sur la face projetée : `local` dans le repère de la face (vue de face, px ; du haut du niveau au dessus de sa planche),
-// `m` la matrice vers l'écran, `quad` ses 4 coins à l'écran (parallélogramme en ¾) ; x, y, w, h : son rectangle englobant.
-export type ShelfBoard = PxRect & { level: ShelfLevel; local: PxRect; m: Matrix; quad: [number, number][] };
+// `m` la matrice affine vers l'écran (dessin SVG), `face` le repère exact de la face (homographie : toucher, emplacements), `quad` ses
+// 4 coins à l'écran (quadrilatère en perspective) ; x, y, w, h : son rectangle englobant.
+export type ShelfBoard = PxRect & { level: ShelfLevel; local: PxRect; m: Matrix; face: FaceFrame; quad: [number, number][] };
 // Un objet rangé à sa place : même repère, avec sa position en cm sur la face (x0Cm depuis le bord gauche de la face) et sa largeur.
 export type ShelfItemBox = ShelfBoard & { id: string; order: number; x0Cm: number; wCm: number };
 
-function onScreen(m: Matrix, local: PxRect): PxRect & { quad: [number, number][] } {
-  const quad = ([[local.x, local.y], [local.x + local.w, local.y], [local.x + local.w, local.y + local.h], [local.x, local.y + local.h]] as const).map(([u, v]) => applyMatrix(m, u, v));
+function onScreen(face: FaceFrame, local: PxRect): PxRect & { quad: [number, number][] } {
+  const quad = ([[local.x, local.y], [local.x + local.w, local.y], [local.x + local.w, local.y + local.h], [local.x, local.y + local.h]] as const).map(([u, v]) => applyFace(face, u, v));
   const xs = quad.map((q) => q[0]);
   const ys = quad.map((q) => q[1]);
   return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), quad };
@@ -578,7 +603,7 @@ function onScreen(m: Matrix, local: PxRect): PxRect & { quad: [number, number][]
 export function shelfBoardsIn(frame: FaceFrame): ShelfBoard[] {
   return faceLevels('shelf').slice(0, SHELF_LEVELS.length).map(([top, bottom], i) => {
     const local = { x: 0, y: top * frame.h, w: frame.w, h: (bottom - top) * frame.h };
-    return { level: i as ShelfLevel, local, m: frame.m, ...onScreen(frame.m, local) };
+    return { level: i as ShelfLevel, local, m: frame.m, face: frame, ...onScreen(frame, local) };
   });
 }
 function frameOfShelf(shelf: Placed): FaceFrame | null {
@@ -603,7 +628,7 @@ export function shelfLayoutIn(frame: FaceFrame, layout: Layout, shelfId: string)
       const wCm = boardWidthCm(p);
       const h = Math.min(boardHeightCm(p) * sy, board.local.h);
       const local = { x: x0 * sx, y: board.local.y + board.local.h - h, w: wCm * sx, h };
-      const box: ShelfItemBox = { id: p.id, level: board.level, order, x0Cm: x0, wCm, local, m: frame.m, ...onScreen(frame.m, local) };
+      const box: ShelfItemBox = { id: p.id, level: board.level, order, x0Cm: x0, wCm, local, m: frame.m, face: frame, ...onScreen(frame, local) };
       x0 += wCm + SHELF_GAP_CM;
       return box;
     });
@@ -636,7 +661,7 @@ export function boardAt(layout: Layout, x: number, y: number): { shelfId: string
   for (const p of byDrawOrder(layout, shelves).reverse()) {
     const frame = frameOfShelf(p);
     if (!frame) continue;
-    const [u, v] = invertMatrix(frame.m, x, y);
+    const [u, v] = invertFace(frame, x, y);
     if (u < 0 || u >= frame.w) continue;
     const board = shelfBoardsIn(frame).find((b) => v >= b.local.y && v < b.local.y + b.local.h);
     if (board) return { shelfId: p.id, level: board.level, xCm: (u / frame.w) * SHELF_INNER_CM };

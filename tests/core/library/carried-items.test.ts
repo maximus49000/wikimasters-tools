@@ -32,8 +32,10 @@ describe('objets portés en 3D', () => {
     const pl = storedPlacementsOf(stored, 's');
     for (const box of shelfLayoutOf(stored, 's')) {
       const q = storedFrontQuad(0, rect, pl.get(box.id)!);
-      expect(q[0]![0]).toBeCloseTo(box.x, 6);
-      expect(q[1]![0] - q[0]![0]).toBeCloseTo(box.w, 6);
+      // perspective G6 : l'objet se tient 2 cm derrière le plan de la face (écart volontaire), la perspective le rapproche du centre
+      // d'un demi-pixel environ (était égal au millionième).
+      expect(Math.abs(q[0]![0] - box.x)).toBeLessThan(1);
+      expect(Math.abs(q[1]![0] - q[0]![0] - box.w)).toBeLessThan(0.5);
     }
   });
 
@@ -41,7 +43,7 @@ describe('objets portés en 3D', () => {
     const layout: Layout = [shelfAt(1), ...stored.slice(1)];
     const q = storedFrontQuad(1, pxRect(rectOf(layout[0]!)!), storedPlacementsOf(layout, 's').get('a')!);
     expect(q[1]![1]).not.toBeCloseTo(q[0]![1], 1);
-    expect(q[1]![0] - q[0]![0]).toBeCloseTo(q[2]![0] - q[3]![0], 6);
+    expect(q[1]![0] - q[0]![0]).toBeCloseTo(q[2]![0] - q[3]![0], 0); // perspective G6 : presque un parallélogramme (était au millionième)
   });
 
   it('l’écran est centré vers le fond du bureau et dépasse au-dessus de son rectangle', () => {

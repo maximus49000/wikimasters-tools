@@ -5,22 +5,23 @@
 // notification) : jusqu'à ce que la disposition reçue change pour cet objet ou que l'écriture se termine, l'objet reste dessiné là où on
 // l'a lâché (`pending`, un par objet), il ne saute pas ; les glissés suivants se valident contre la disposition avec ces attentes appliquées.
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { dropOnTop, moveOnTop, topToScreen, type ArrangeFrame } from '../../core/library/arrange';
+import { dropOnTop, moveOnTop, screenToTop, topToScreen, type ArrangeFrame } from '../../core/library/arrange';
 import type { Layout } from '../../core/library/library-types';
 
 // Un toucher qui bouge de moins de 4 px n'est pas un glissé.
 const SLOP_PX = 4;
 
-// Projection affine du plateau pour un cadre : origine et images écran (px) des axes x et z, calculées une fois par cadre
-// (le glissé et les ombres ne refont aucune projection).
-export type TopAxes = { o: [number, number]; ex: [number, number]; ez: [number, number] };
+// Projection du plateau pour un cadre : origine et images écran (px) des axes x et z au coin avant gauche, et le cadre lui-même.
+// La vue plongeante est en perspective (G6) : un point du plateau passe par la projection exacte (topToScreen), les axes ne donnent
+// que l'orientation locale.
+export type TopAxes = { o: [number, number]; ex: [number, number]; ez: [number, number]; frame: ArrangeFrame };
 export function axesOf(f: ArrangeFrame): TopAxes {
   const o = topToScreen(f, 0, 0);
   const x = topToScreen(f, 1, 0);
   const z = topToScreen(f, 0, 1);
-  return { o, ex: [x[0] - o[0], x[1] - o[1]], ez: [z[0] - o[0], z[1] - o[1]] };
+  return { o, ex: [x[0] - o[0], x[1] - o[1]], ez: [z[0] - o[0], z[1] - o[1]], frame: f };
 }
-export const topPx = (a: TopAxes, x: number, z: number): [number, number] => [a.o[0] + x * a.ex[0] + z * a.ez[0], a.o[1] + x * a.ex[1] + z * a.ez[1]];
+export const topPx = (a: TopAxes, x: number, z: number): [number, number] => topToScreen(a.frame, x, z);
 
 // Objet tenu : place visée (cm, coin avant gauche, arrondie au cm), validité, et translation px depuis sa place d'origine.
 export type TopDrag = { id: string; x: number; z: number; ok: boolean; tx: number; ty: number };
@@ -91,14 +92,15 @@ export function useTopDrag({ layout, hostIds, frame, rotated, onMove, onTap, can
       h.moving = true;
       // Objet pas armé : le doigt a bougé, ce n'est plus un toucher, et rien ne se déplace.
       if (h.tapOnly) return;
-      // Déplacement écran → cm sur le plan du plateau (système 2 × 2 des axes).
-      const det = a.ex[0] * a.ez[1] - a.ez[0] * a.ex[1];
-      const x = Math.round(h.x0 + (dX * a.ez[1] - a.ez[0] * dY) / det);
-      const z = Math.round(h.z0 + (a.ex[0] * dY - a.ex[1] * dX) / det);
+      // Déplacement écran → cm sur le plan du plateau : la place de départ déplacée du doigt, ramenée sur le plateau (inverse exact de la
+      // perspective) ; tous les plateaux d'une vue ne diffèrent que par l'origine, sans effet sur ce calcul.
+      const p0 = topPx(a, h.x0, h.z0);
+      const t = screenToTop(a.frame, p0[0] + dX, p0[1] + dY);
+      const [x, z] = [Math.round(t.x), Math.round(t.z)];
       const ok = dropOnTop(live.current.layout, hostId, h.id, x, z).ok;
       // L'objet se pose sur la place visée (au cm), pas sous le doigt au px près : l'empreinte et l'objet coïncident.
-      const [cx, cz] = [x - h.x0, z - h.z0];
-      dragRef.current = { id: h.id, x, z, ok, tx: cx * a.ex[0] + cz * a.ez[0], ty: cx * a.ex[1] + cz * a.ez[1] };
+      const p1 = topPx(a, x, z);
+      dragRef.current = { id: h.id, x, z, ok, tx: p1[0] - p0[0], ty: p1[1] - p0[1] };
       setDrag(dragRef.current);
     };
     const end = (): { h: Held; d: TopDrag | null } | null => {

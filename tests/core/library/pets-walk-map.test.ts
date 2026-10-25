@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CELL_H } from '../../../src/core/library/room-grid';
-import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, projectOf } from '../../../src/core/library/furniture-render3d';
+import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import type { Layout } from '../../../src/core/library/library-types';
 import { buildWalkMap, cellOf, groundLeg, groundPath, isFree, standPoint, toSegments } from '../../../src/core/library/pets/walk-map';
 
@@ -27,10 +28,13 @@ describe('buildWalkMap', () => {
     expect(plat!.id).toBe('a');
     expect(plat!.top).toBe(54);
     // Bas du rectangle (ligne 18) − hauteur de l'assise − profondeur du milieu des coussins qui remonte.
-    expect(plat!.y).toBeCloseTo(18 * CELL_H - 54 * PX_PER_CM_Y - 35 * DEPTH_PX_PER_CM, 6);
-    const off = (300 - 200 * PX_PER_CM_X) / 2; // 200 cm centrés dans 10 colonnes
-    expect(plat!.x0).toBeCloseTo(60 + off + 22 * PX_PER_CM_X + 6, 6);
-    expect(plat!.x1).toBeCloseTo(60 + off + 178 * PX_PER_CM_X - 6, 6);
+    // perspective G6 : projection du milieu des coussins (était 18 × CELL_H − 54 × PX_PER_CM_Y − 35 × DEPTH_PX_PER_CM = 417,31, et les bords
+    // 60 + décalage + 22 / 178 × PX_PER_CM_X ± 6).
+    const at = (x: number) => projectOf(FURNITURE_MODELS.sofa, 0, [x, 54, 35]);
+    expect(plat!.y).toBeCloseTo(12 * CELL_H + at(100)[1], 0);
+    expect(plat!.y).toBeCloseTo(419.86, 2); // perspective G6
+    expect(plat!.x0).toBeCloseTo(60 + at(22)[0] + 6, 0);
+    expect(plat!.x1).toBeCloseTo(60 + at(178)[0] - 6, 0);
   });
 
   it('plateformes à la hauteur réelle des dessus : chaise 48, table basse 45, bureau 75, étagère 180 ; rien sur une lampe', () => {

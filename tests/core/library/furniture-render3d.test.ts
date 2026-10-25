@@ -1,7 +1,9 @@
 // tests/core/library/furniture-render3d.test.ts
 import { describe, expect, it } from 'vitest';
-import { DEPTH_PX_PER_CM, FACE_CAMERA, PLUNGE_CAMERA, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, leafHalf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, projectOf, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, HEIGHT_PX_PER_CM, FACE_CAMERA, PLUNGE_CAMERA, PX_PER_CM_X, PX_PER_CM_Y, frontFaceOf, leafHalf, localPointOf, occluderBoxesOf, perchOf, pieceBounds, poisOf3d, projectOf, renderModel, type Model, type Piece } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
+import { ROOM_CAMERA } from '../../../src/core/library/cel/camera';
+import { applyHomography, homographyOf } from '../../../src/core/library/footprint';
 
 const CELL_W = 30;
 const CELL_H = 510 / 18;
@@ -176,7 +178,7 @@ describe('nouvelles formes (prisme, tige, feuillage, globe)', () => {
       const xs = renderModel(disc, a).shapes.flatMap((s) => ('points' in s ? s.points.map((p) => p[0]) : []));
       return Math.max(...xs) - Math.min(...xs);
     };
-    expect(width(0)).toBeCloseTo(20 * PX_PER_CM_X, 0);
+    expect(width(0)).toBeCloseTo(29.68, 1); // perspective G6 (était 20 × PX_PER_CM_X = 28,57 : l'avant, plus proche, est grossi)
     expect(width(2)).toBeLessThan(3 * PX_PER_CM_X);
     for (const a of ANGLES) inRect(renderModel(disc, a));
   });
@@ -268,7 +270,7 @@ describe('nouvelles formes (prisme, tige, feuillage, globe)', () => {
     const pot: Model = { w: 40, d: 40, h: 30, pieces: [{ shape: 'cyl', cx: 20, cz: 20, y: 0, r: 12, r2: 18, h: 30, fill: 'warm' }] };
     const top = renderModel(pot, 0).shapes.find((s) => s.kind === 'poly' && s.shade === 1.12)!;
     const xs = 'points' in top ? top.points.map((p) => p[0]) : [];
-    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(36 * PX_PER_CM_X, 0);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(52.0, 1); // perspective G6 (était 36 × PX_PER_CM_X = 51,43)
     expect(pieceBounds(pot.pieces[0]!)).toEqual([2, 38, 0, 30, 2, 38]);
   });
   it('corps ronds en cellulo : silhouette lisse encrée, ombre nette sans trait côté droit, contour repassé par-dessus', () => {
@@ -365,21 +367,12 @@ describe('occulteurs et dessus praticable (lumière, animaux)', () => {
     for (const a of ANGLES) {
       const perch = perchOf(sofa, a)!;
       expect(perch.x1 - perch.x0, `angle ${a}`).toBeGreaterThan(40);
-      // Point écran à la hauteur de l'assise → point du modèle (rotation inverse) : il doit tomber dans le rectangle des coussins.
-      const t = (a * Math.PI) / 4;
-      const [c, s] = [Math.cos(t), Math.sin(t)];
-      const turn = (x: number, z: number): [number, number] => [100 + (x - 100) * c + (z - 45) * s, 45 - (x - 100) * s + (z - 45) * c];
-      const base = [[0, 0], [200, 0], [200, 90], [0, 90]].map(([x, z]) => turn(x!, z!));
-      const [minX, minZ] = [Math.min(...base.map((q) => q[0])), Math.min(...base.map((q) => q[1]))];
-      const traceW = Math.max(...base.map((q) => q[0])) - minX;
-      const r = renderModel(sofa, a);
-      const offX = (r.cols * CELL_W - traceW * PX_PER_CM_X) / 2;
+      // Point écran à la hauteur de l'assise → point du modèle : inverse exact de la projection sur le plan y = assise (homographie,
+      // perspective G6 ; avant : rotation inverse de la projection affine).
+      const plane: [number, number][] = [[0, 0], [200, 0], [200, 90], [0, 90]];
+      const toModel = homographyOf(plane.map(([x, z]) => projectOf(sofa, a, [x, p.y, z])), plane);
       for (const x of [perch.x0, (perch.x0 + perch.x1) / 2, perch.x1]) {
-        const lx = (x - offX) / PX_PER_CM_X + minX;
-        const lz = (r.rows * CELL_H - p.y * PX_PER_CM_Y - perch.y) / DEPTH_PX_PER_CM + minZ;
-        // Rotation inverse autour du centre de la base.
-        const [dx, dz] = [lx - 100, lz - 45];
-        const [mx, mz] = [100 + dx * c - dz * s, 45 + dx * s + dz * c];
+        const [mx, mz] = applyHomography(toModel, x, perch.y);
         expect(mx, `angle ${a}`).toBeGreaterThanOrEqual(p.x - 1e-6);
         expect(mx, `angle ${a}`).toBeLessThanOrEqual(p.x + p.w + 1e-6);
         expect(mz, `angle ${a}`).toBeGreaterThanOrEqual(p.z - 1e-6);
@@ -405,9 +398,13 @@ describe('faces décorées (décalques) et couleurs propres', () => {
     expect(s?.kind).toBe('poly');
     if (s?.kind !== 'poly' || !s.decal) return;
     const { tl, tr, bl, w, h } = s.decal;
-    expect(tr[0] - tl[0]).toBeCloseTo(14 * PX_PER_CM_X, 6);
+    // perspective G6 : les coins sont la projection exacte (était 14 × PX_PER_CM_X et 12,5 × PX_PER_CM_Y).
+    expect(tl).toEqual(projectOf(card, 0, [0, 12.5, 0]));
+    expect(tr).toEqual(projectOf(card, 0, [14, 12.5, 0]));
+    expect(bl).toEqual(projectOf(card, 0, [0, 0, 0]));
+    expect(tr[0] - tl[0]).toBeCloseTo(20.11, 2); // perspective G6 (était 20)
     expect(tr[1]).toBeCloseTo(tl[1], 6);
-    expect(bl[1] - tl[1]).toBeCloseTo(12.5 * PX_PER_CM_Y, 6);
+    expect(bl[1] - tl[1]).toBeCloseTo(12.5 * HEIGHT_PX_PER_CM, 0); // perspective G6 (était 12,5 × PX_PER_CM_Y)
     expect([w, h]).toEqual([14, 12.5]);
   });
   it('un décalque sur une face cachée n’est pas émis ; la face gauche se voit de profil droit (angle 6)', () => {
@@ -572,7 +569,7 @@ describe('boîte penchée (lean)', () => {
 
 describe('caméra', () => {
   it('FACE_CAMERA reprend les constantes de la pièce', () => {
-    expect(FACE_CAMERA).toEqual({ pxPerCmX: PX_PER_CM_X, pxPerCmY: PX_PER_CM_Y, depthPxPerCm: DEPTH_PX_PER_CM });
+    expect(FACE_CAMERA).toBe(ROOM_CAMERA); // perspective G6 (était { pxPerCmX, pxPerCmY, depthPxPerCm })
   });
   it('la caméra de face (explicite ou par défaut) donne le même rendu et la même projection', () => {
     for (const a of ANGLES) {

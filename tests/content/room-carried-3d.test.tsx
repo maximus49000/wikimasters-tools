@@ -12,7 +12,7 @@ import { drawSize } from '../../src/core/library/footprint';
 import { FURNITURE_MODELS } from '../../src/core/library/furniture-models';
 import { openingOf } from '../../src/core/library/furniture-render3d';
 import type { Layout, Room } from '../../src/core/library/library-types';
-import { pxRect, rectOf } from '../../src/core/library/room-grid';
+import { hitRectOf, pxRect, rectOf } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -109,7 +109,9 @@ describe('écran et petits objets en 3D', () => {
     const want = placementRectPx('desk', 1, deskRect, computerPlacement('pc'));
     const hit = pc.querySelector(':scope > rect[fill="transparent"]')!;
     expect(Number(hit.getAttribute('y'))).toBeCloseTo(want.y, 1);
-    expect(Number(hit.getAttribute('y'))).toBeLessThan(deskRect.y);
+    // perspective G6 : la profondeur tassée, le haut de l'écran ne dépasse plus du rectangle de grille, mais toujours du dessin du bureau
+    // (zone de toucher du bureau : cadre de son dessin ; était : au-dessus de deskRect.y).
+    expect(Number(hit.getAttribute('y'))).toBeLessThan(hitRectOf(desk(1) as never).y);
     expect(Number(hit.getAttribute('height'))).toBeCloseTo(want.h, 1);
     // La carte de l'écran se touche sur la vitre.
     const glass = pts(c.querySelector('[data-screen="pc"] > polygon[fill="transparent"]')!.getAttribute('points'));

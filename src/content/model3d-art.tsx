@@ -309,7 +309,8 @@ export const Model3DArt = memo(Model3DArtImpl, (a, b) => a.kind === b.kind && a.
   && a.content === b.content && itemsKey(a.items) === itemsKey(b.items) && a.part === b.part && a.camera === b.camera);
 
 // Géométrie d'un objet seul, dans son propre repère, par (forme, présentation, angle, Steampunk, couleur) : la même pour tous les objets
-// de même forme, où qu'ils soient posés (la projection est affine : poser l'objet revient à translater son dessin).
+// de même forme, où qu'ils soient posés (dans la pièce, poser l'objet revient à translater son dessin : un petit objet garde sa perspective
+// à moins d'un px près ; sous une autre caméra, voir hostedItemGeometry).
 // La couleur propre du corps (dos d'un livre) n'entre pas dans la clé : le corps est marqué `body` et coloré au dessin (bodyColor).
 const BODY = '#B0D1E5';
 function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean, box?: BoxFormat, cam: Camera = FACE_CAMERA, flat = false): Geometry {
@@ -326,6 +327,21 @@ function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, stea
     const own = m.pieces.find((q) => q.tag === 'body')?.color;
     const shapes = g.shapes.map((d): Drawn => (d.color === BODY ? { ...d, body: true, ...(own ? { color: own } : {}) } : d));
     return { ...g, shapes, origin: projectOf(model, angle, [0, 0, 0], cam) };
+  });
+}
+
+// Géométrie d'un objet posé, projeté à sa place dans la mise en page de son porteur : exacte sous la caméra plongeante (forte
+// perspective : l'objet translaté s'écarterait de quelques px) ; peu d'objets par vue (zoom, Modifier), la place entre dans la clé.
+function hostedItemGeometry(host: 'desk' | 'shelf', pl: ItemPlacement, angle: Angle, steampunk: boolean, cam: Camera): Geometry {
+  const display = pl.display ?? 'cover';
+  return cached(`hosted:${host}:${pl.shape}:${display}:${angle}:${steampunk ? 1 : 0}:${pl.box ?? ''}:${pl.flat ? 'flat' : ''}:${pl.x},${pl.y},${pl.z}${cameraKey(cam)}`, () => {
+    const m = itemModel(pl.shape, steampunk, pl.box);
+    const pieces = itemPieces({ key: 'item', shape: pl.shape, display, x: pl.x, y: pl.y, z: pl.z, color: BODY, ...(pl.box && { box: pl.box }), ...(pl.flat && { flat: true as const }) }, steampunk);
+    const g = geometryFrom({ ...FURNITURE_MODELS[host], pieces }, angle, false, cam);
+    const own = m.pieces.find((q) => q.tag === 'body')?.color;
+    const shapes = g.shapes.map((d): Drawn => (d.color === BODY ? { ...d, body: true, ...(own ? { color: own } : {}) } : d));
+    // Origine = le point de pose : la translation de CarriedItem3D est nulle.
+    return { ...g, shapes, origin: hostNativePx(host, angle, [pl.x, pl.y, pl.z], cam) };
   });
 }
 
@@ -354,7 +370,7 @@ type CarriedProps = { host: 'desk' | 'shelf'; angle: Angle; rect: PxRect; placem
 // Objet porté (carte rangée, écran, petit objet) dessiné à sa place dans le repère de son porteur tourné (`rect` : rectangle du porteur) :
 // même angle, même échelle, même ombrage que le meuble ; sa géométrie est celle de l'objet seul, translatée.
 function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content, steampunk = false, camera }: CarriedProps): ReactElement {
-  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.box, camera, pl.flat === true);
+  const g = camera && camera !== FACE_CAMERA ? hostedItemGeometry(host, pl, angle, steampunk, camera) : itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.box, camera, pl.flat === true);
   const { w, h } = drawSize(host, angle, camera);
   const [hx, hy] = hostNativePx(host, angle, [pl.x, pl.y, pl.z], camera);
   const [ox, oy] = g.origin ?? [0, 0];

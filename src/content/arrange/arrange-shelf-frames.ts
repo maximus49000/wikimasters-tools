@@ -1,6 +1,6 @@
 // Cadres de la vue Modifier d'une étagère (px du calque paysage) : le meuble entier de face, une tablette zoomée, le dessus en plongée ;
 // et les conversions doigt ↔ tablette que le glissé (use-board-drag) et les tests partagent. Repères en cm du meuble, jamais de l'écran.
-import { applyMatrix, drawSize, faceFrame, invertMatrix, type FaceFrame } from '../../core/library/footprint';
+import { applyFace, drawSize, faceFrame, invertFace, type FaceFrame } from '../../core/library/footprint';
 import { carriedPlacementOf, placementRectPx } from '../../core/library/carried-items';
 import type { Layout, ShelfLevel } from '../../core/library/library-types';
 import { CELL_H, CELL_W, SHELF_INNER_CM, isShelfLevel, shelfBoardsIn, type PxRect, type ShelfBoard } from '../../core/library/room-grid';
@@ -40,7 +40,7 @@ export function wholeFrameFor(ids: string[], layout: Layout, layer: { w: number;
 }
 // Point de la face (px natifs, repère local de la face) de la bibliothèque `i` → px du calque.
 export function wholeFacePx(f: WholeFrame, i: number, u: number, v: number): [number, number] {
-  const [x, y] = applyMatrix(f.face.m, u, v);
+  const [x, y] = applyFace(f.face, u, v);
   return [f.ox + (x + i * f.art.w) * f.scale, f.oy + (y + f.pad) * f.scale];
 }
 // Point à `xCm` du bord gauche d'une tablette (à 60 % de sa hauteur), px du calque : là où on la touche ou lâche.
@@ -54,7 +54,7 @@ export function wholeAim(f: WholeFrame, lx: number, ly: number): BoardAim | null
   const v = (ly - f.oy) / f.scale - f.pad;
   const i = Math.floor(u / f.art.w);
   if (i < 0 || i >= f.ids.length) return null;
-  const [fu, fv] = invertMatrix(f.face.m, u - i * f.art.w, v);
+  const [fu, fv] = invertFace(f.face, u - i * f.art.w, v);
   if (fu < 0 || fu >= f.face.w) return null;
   const board = f.boards.find((b) => fv >= b.local.y && fv < b.local.y + b.local.h);
   return board ? { kind: 'board', shelfId: f.ids[i]!, level: board.level, xCm: (fu / f.face.w) * SHELF_INNER_CM } : null;

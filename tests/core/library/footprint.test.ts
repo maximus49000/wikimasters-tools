@@ -131,8 +131,9 @@ describe('face visible', () => {
     const big = { x: 10, y: 20, w: w * 30 * 2, h: h * (510 / 18) * 2 };
     const face = frontFaceRect(0, big, 'shelf')!;
     // Face du modèle : x 3 cm (+ 2 cm : 80 cm centrés dans 4 colonnes de 21 cm) → 5 × 30/21 px, largeur 74 cm → 74 × 30/21 px, × 2.
-    expect(face.x).toBeCloseTo(10 + ((5 * 30) / 21) * 2);
-    expect(face.w).toBeCloseTo(((74 * 30) / 21) * 2);
+    // perspective G6 : le haut de la face, plus proche de la caméra, s'élargit (était 10 + 5 × 30/21 × 2 = 24,29 et 74 × 30/21 × 2 = 211,43).
+    expect(face.x).toBeCloseTo(14.19, 2); // perspective G6
+    expect(face.w).toBeCloseTo(231.61, 2); // perspective G6
     expect(face.y + face.h).toBeLessThanOrEqual(big.y + big.h);
     expect(face.y).toBeGreaterThanOrEqual(big.y);
     for (const a of [2, 3, 4, 5, 6] as const) expect(frontFaceRect(a, big, 'shelf')).toBeNull();
@@ -147,8 +148,10 @@ describe('face visible', () => {
     const big1 = { x: 10, y: 20, w: r1.w * 30 * 2, h: r1.h * (510 / 18) * 2 };
     const f1 = frontFaceRect(1, big1, 'shelf')!;
     const c45 = Math.SQRT1_2;
-    expect(f1.w).toBeCloseTo(((74 * c45 * 30) / 21) * 2, 3);
-    expect(f1.x).toBeCloseTo(10 + ((3 * c45 + (84 - 110 * c45) / 2) * 30 / 21) * 2, 3);
+    // perspective G6 : valeurs de la projection en perspective (étaient 74 × cos 45° × 30/21 × 2 = 149,50 et 10 + 5,23 × 30/21 × 2 = 24,95).
+    expect(c45).toBeCloseTo(0.7071, 4);
+    expect(f1.w).toBeCloseTo(160.09, 2); // perspective G6
+    expect(f1.x).toBeCloseTo(20.40, 2); // perspective G6
     expect(f1.y).toBeGreaterThanOrEqual(big1.y);
     expect(f1.y + f1.h).toBeLessThanOrEqual(big1.y + big1.h);
     // À 7, miroir de 1 : même largeur, collée au bord droit symétriquement.
