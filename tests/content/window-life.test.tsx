@@ -5,7 +5,8 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SIREN_LOOK_S, WindowLifeLayer, bakeHooks, sirenLook, sirenPresent, sirenSegments } from '../../src/content/window-life';
+import { SIREN_LOOK_S, WindowLifeLayer, bakeHooks, sirenLook, sirenPresent, sirenSegments, windowOutfit } from '../../src/content/window-life';
+import { cityDwellings } from '../../src/core/library/city/households';
 import type { Schedule, Segment } from '../../src/core/library/city/schedules';
 import { sharedSceneLife, type SceneLife } from '../../src/content/use-scene-life';
 import { FigureContext, FigureRegistry } from '../../src/content/figure/figure-host';
@@ -71,6 +72,24 @@ function watch(el: Element): () => number {
 const shown = (layer: Element): Element[] => [...layer.querySelectorAll('[data-wl-fig]')].filter((g) => g.getAttribute('display') !== 'none');
 
 describe('calque de la vie derrière les fenêtres', () => {
+  it('windowOutfit : jamais de jupe ni de robe pour un homme, jamais chauve pour une femme', () => {
+    const seen = { f: new Set<string>(), m: new Set<string>() };
+    for (const seed of [1, 2, 3, 4, 5]) {
+      for (const d of cityDwellings(cityFacades(1440, H, seed), seed)) {
+        d.hh.members.forEach((mem, i) => {
+          const o = windowOutfit(d, i);
+          expect(o).toEqual(windowOutfit(d, i));
+          seen[mem.who.sex].add(o.bottom);
+          if (mem.who.sex === 'm') {
+            expect(['skirt', 'dress'], `${d.id}#${i}`).not.toContain(o.bottom);
+            expect(['long', 'bun'], `${d.id}#${i}`).not.toContain(o.hair);
+          } else expect(o.hair, `${d.id}#${i}`).not.toBe('bald');
+        });
+      }
+    }
+    expect(seen.f.has('skirt') || seen.f.has('dress')).toBe(true);
+  });
+
   it('nœuds constants de 6 h à 2 h (aucune création ni suppression)', () => {
     const m = mount(1080);
     m.render({ minutes: 6 * 60 });

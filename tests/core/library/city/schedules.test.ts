@@ -4,6 +4,8 @@ import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling, type HouseholdType } from '../../../../src/core/library/city/households';
 import { dayDraw, sceneDay, type SceneDay } from '../../../../src/core/library/city/scene-day';
 import { buildSchedule, type Schedule, type Segment } from '../../../../src/core/library/city/schedules';
+import { decorTasks, halloweenPlan } from '../../../../src/core/library/city/halloween';
+import { dayNumber } from '../../../../src/core/library/city/shops/hours';
 import { sunTimes, type SunTimes } from '../../../../src/core/library/sky';
 
 const SEED = 7;
@@ -335,5 +337,53 @@ describe('emplois du temps', () => {
       for (const a of as) max = Math.max(max, as.filter((b) => b.t0 <= a.t0 && b.t1 > a.t0).length);
       expect(s.maxActors).toBe(max);
     }
+  });
+
+  it('enfants (adolescents compris) : départ à l’école en semaine, jamais parmi les adultes du soir', () => {
+    const fams = [1, 2, 3, 4, 5].flatMap((s) => cityDwellings(cityFacades(1440, 340, s), s)).filter((d) => d.hh.type === 'famille');
+    const tuesday = dayOf({ y: 2026, m: 10, d: 13 });
+    const ages = new Set<number>();
+    for (const d of fams) {
+      const draw = dayDraw(d, tuesday, SEED);
+      if (draw.presence === 'sick' || draw.presence === 'away') continue;
+      const s = buildSchedule(d, tuesday, draw);
+      d.hh.members.forEach((mem, m) => {
+        if (!mem.kid) return;
+        ages.add(mem.who.age);
+        expect(s.segments.some((g) => g.k === 'depart' && g.m === m && g.t < 600), `${d.id}#${m} (${mem.who.age} ans)`).toBe(true);
+        expect(acts(s).some((a) => a.m === m && a.room === 'salon' && (a.choreo === 'tv' || a.choreo === 'read')), `${d.id}#${m} le soir`).toBe(false);
+      });
+    }
+    expect(ages.has(12) || ages.has(13) || ages.has(14)).toBe(true);
+    expect(ages.has(15) || ages.has(16) || ages.has(17)).toBe(true);
+  });
+
+  it('Halloween : un décor n’est jamais posé ni retiré par un enfant', () => {
+    let gestures = 0;
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const facades = cityFacades(1440, 340, seed);
+      const dws = cityDwellings(facades, seed);
+      const plan = halloweenPlan(dws, facades, seed, 2026, VAC);
+      const days = new Set(plan.items.flatMap((i) => [i.install, i.remove]));
+      for (const it of plan.items) expect(dws.find((d) => d.id === it.dwelling)!.hh.members[it.m]?.kid ?? false).toBe(false);
+      for (const day of days) {
+        const t = new Date(day * 86_400_000);
+        const ymd = { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
+        expect(dayNumber(ymd)).toBe(day);
+        const ctx = dayContext(ymd, VAC);
+        const sd = sceneDay({ ...ctx, holidayWeek: ctx.kind === 'holiday' || ymd.m === 10 }, dry, seed);
+        for (const d of dws) {
+          if (d.hh.type !== 'famille') continue;
+          const tasks = decorTasks(plan, d.id, ymd);
+          if (!tasks.length) continue;
+          for (const a of acts(buildSchedule(d, sd, dayDraw(d, sd, seed), tasks))) {
+            if (a.choreo !== 'decorLean' && a.choreo !== 'decorBalcony') continue;
+            gestures++;
+            expect(d.hh.members[a.m]!.kid, `${d.id}#${a.m}`).toBe(false);
+          }
+        }
+      }
+    }
+    expect(gestures).toBeGreaterThan(0);
   });
 });

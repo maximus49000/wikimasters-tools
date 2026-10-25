@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Lever des habitants</title>
+<style>
+  :root { --fond: #FBF7EE; --encre: #2A2A3A; }
+  html, body { margin: 0; background: var(--fond); }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: var(--encre); }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+<script src="modele.js"></script>
+<script>
+'use strict';
+const M = window.Modele;
+const Q = new URLSearchParams(location.search);
+const PLANCHE = Q.get('planche') || 'mardi';
+const FONT = "'Segoe UI', Arial, sans-serif";
+const COUL = {
+  sommeil: ['#34405E', '#FFFFFF', 'sommeil'],
+  maison: ['#F3E7CC', '#5A4A2E', 'chez soi, éveillé'],
+  prep: ['#F2C14E', '#3A2E10', 'préparation'],
+  trajet: ['#A9B3BE', '#1E2630', 'trajet'],
+  travail: ['#4F7CAC', '#FFFFFF', 'travail'],
+  pause: ['#BFD3E6', '#1E3550', 'pause déjeuner (pas du travail)'],
+  ecole: ['#5FA055', '#FFFFFF', 'école, collège, cours'],
+  accomp: ['#E8853D', '#FFFFFF', 'emmener / chercher un enfant'],
+  sortie: ['#8E5BA6', '#FFFFFF', 'sortie du soir (bar, boîte, resto)'],
+  dehors: ['#8CC7B5', '#1E3A32', 'dehors en journée (courses, parc…)'],
+  rdv: ['#D04E3C', '#FFFFFF', 'rendez-vous'],
+  nounou: ['#C98B5E', '#FFFFFF', 'nounou chez la famille'],
+  ailleurs: ['#E4E1DA', '#8A867C', 'hors de l’immeuble'],
+};
+const LUM = { on: '#FFD45C', nuit: '#2B3150', jour: '#CFE0EE' };
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const cv = document.createElement('canvas').getContext('2d');
+const tw = (txt, size, w = 400) => { cv.font = `${w} ${size}px ${FONT}`; return cv.measureText(txt).width; };
+function wrap(txt, size, max, w = 400) {
+  const words = txt.split(' '), lines = [];
+  let cur = '';
+  for (const wd of words) { const t = cur ? cur + ' ' + wd : wd; if (tw(t, size, w) > max && cur) { lines.push(cur); cur = wd; } else cur = t; }
+  if (cur) lines.push(cur);
+  return lines;
+}
+const T = (x, y, txt, size, o = {}) => `<text x="${x}" y="${y}" font-family="${FONT}" font-size="${size}" font-weight="${o.w || 400}" fill="${o.fill || '#2A2A3A'}" text-anchor="${o.anchor || 'start'}"${o.italic ? ' font-style="italic"' : ''}>${esc(txt)}</text>`;
+const R = (x, y, w, h, fill, o = '') => `<rect x="${x}" y="${y}" width="${Math.max(0, w)}" height="${h}" fill="${fill}" ${o}/>`;
+
+// Géométrie commune d'une frise 5 h → 5 h.
+const WIDTH = 2400, MX = 28, LW = 700;
+const X0 = MX + LW + 12, X1 = WIDTH - MX;
+const H0 = 300, H1 = 1740; // minutes depuis 0 h du jour
+const xOf = (m) => X0 + ((m - H0) / (H1 - H0)) * (X1 - X0);
+
+function legende(y, kinds) {
+  let x = MX, s = '';
+  for (const k of kinds) {
+    const [bg, , lab] = COUL[k];
+    const w = 34 + tw(lab, 22) + 34;
+    if (x + w > WIDTH - MX) { x = MX; y += 40; }
+    s += R(x, y, 28, 28, bg, `rx="4" stroke="#00000033"`) + T(x + 36, y + 22, lab, 22);
+    x += w;
+  }
+  y += 40;
+  // Fenêtres
+  x = MX;
+  s += R(x, y, 28, 14, LUM.on, 'stroke="#00000033"') + T(x + 36, y + 14, 'fenêtre allumée', 20);
+  x += 220;
+  s += R(x, y, 28, 14, LUM.nuit, '') + T(x + 36, y + 14, 'fenêtre éteinte (nuit)', 20);
+  x += 270;
+  s += R(x, y, 28, 14, LUM.jour, '') + T(x + 36, y + 14, 'éteinte (jour : on n’allume pas)', 20);
+  x += 380;
+  s += `<line x1="${x + 10}" y1="${y - 6}" x2="${x + 10}" y2="${y + 22}" stroke="#111" stroke-width="4"/>` + T(x + 24, y + 14, 'lever (heure + explication à gauche)', 20);
+  return { s, y: y + 34 };
+}
+
+function axe(y, iso) {
+  const sol = M.soleil(iso);
+  let s = '';
+  // bande ciel
+  s += R(X0, y, X1 - X0, 16, '#1E2340');
+  s += R(xOf(sol.lever), y, xOf(sol.coucher) - xOf(sol.lever), 16, '#9CC6E8');
+  s += R(xOf(sol.lever + 1440), y, xOf(H1) - xOf(sol.lever + 1440), 16, '#9CC6E8');
+  for (let h = 5; h <= 29; h++) {
+    const x = xOf(h * 60);
+    s += `<line x1="${x}" y1="${y + 16}" x2="${x}" y2="${y + 26}" stroke="#555" stroke-width="2"/>`;
+    s += T(x, y + 50, `${h % 24} h`, 22, { anchor: 'middle', w: h % 6 === 0 ? 700 : 400 });
+  }
+  s += T(xOf(sol.lever), y - 6, `soleil ${M.hm(sol.lever)}`, 18, { anchor: 'middle', fill: '#6A5A20' });
+  s += T(xOf(sol.coucher), y - 6, `nuit ${M.hm(sol.coucher)}`, 18, { anchor: 'middle', fill: '#3A3A6A' });
+  return s;
+}
+function grille(y0, y1) {
+  let s = '';
+  for (let h = 5; h <= 29; h++) { const x = xOf(h * 60); s += `<line x1="${x}" y1="${y0}" x2="${x}" y2="${y1}" stroke="#00000018" stroke-width="${h % 6 === 0 ? 2 : 1}"/>`; }
+  return s;
+}
+
+// Une rangée de frise pour (personne, jour). Retourne le SVG.
+function rangee(p, iso, y, h, avecLever = true) {
+  const base = M.IDX[iso] * 1440;
+  let s = '';
+  const by = y + 26, bh = 42;
+  for (const g of M.segments(p, base + H0, base + H1)) {
+    const a = g.a - base, b = g.b - base;
+    const [bg, fg] = COUL[g.k];
+    const x = xOf(a), w = xOf(b) - xOf(a);
+    s += R(x, by, w + 0.6, bh, bg, g.k === 'ailleurs' ? 'fill-opacity="0.8"' : '');
+    let lab = g.lab || (g.k === 'sommeil' ? 'sommeil' : g.k === 'maison' ? '' : '');
+    if (g.k === 'sortie') lab = `${g.lab} → ${M.hm(b)}`;
+    if (g.k === 'pause') lab = w > 150 ? 'pause déjeuner' : 'pause';
+    if (lab) {
+      if (tw(lab, 18, 600) + 10 < w) s += T(x + w / 2, by + bh / 2 + 6, lab, 18, { anchor: 'middle', fill: fg, w: 600 });
+      else if (g.k === 'sortie' && tw(g.lab, 16, 600) + 6 < w) s += T(x + w / 2, by + bh / 2 + 6, g.lab, 16, { anchor: 'middle', fill: fg, w: 600 });
+    }
+  }
+  s += R(X0, by, X1 - X0, bh, 'none', 'stroke="#00000030"');
+  const info = M.INFO[p.id][iso];
+  if (avecLever && info && info.lever != null) {
+    const x = xOf(info.lever);
+    s += `<line x1="${x}" y1="${by - 4}" x2="${x}" y2="${by + bh + 2}" stroke="#111" stroke-width="4"/>`;
+    s += `<path d="M${x - 8},${by - 12} L${x + 8},${by - 12} L${x},${by - 2} Z" fill="#111"/>`;
+    s += T(x + 12, by - 4, M.hm(info.lever), 20, { w: 700 });
+  }
+  return s;
+}
+
+function lumiereBande(lg, iso, y) {
+  const base = M.IDX[iso] * 1440;
+  const L = M.lumieres(lg, base + H0, base + H1);
+  let s = '';
+  const lane = 17;
+  s += T(MX + 20, y + 15, 'fenêtres vues de la rue :', 18, { fill: '#6A5A3A', italic: true });
+  lg.pieces.forEach((room, i) => {
+    const yy = y + i * lane;
+    s += T(X0 - 10, yy + 14, room, 17, { anchor: 'end', fill: '#6A5A3A' });
+    for (const seg of L[room]) {
+      const a = seg.a - base, b = seg.b - base;
+      let fill = LUM.on;
+      if (!seg.on) {
+        // découpe nuit / jour
+        const sol = M.soleil(iso);
+        const parts = [[a, b]];
+        for (const [pa, pb] of parts) {
+          for (const [ja, jb, f] of [[H0, sol.lever + 20, LUM.nuit], [sol.lever + 20, sol.coucher - 20, LUM.jour], [sol.coucher - 20, sol.lever + 1440 + 20, LUM.nuit], [sol.lever + 1460, H1, LUM.jour]]) {
+            const qa = Math.max(pa, ja), qb = Math.min(pb, jb);
+            if (qb > qa) s += R(xOf(qa), yy + 1, xOf(qb) - xOf(qa) + 0.6, lane - 3, f);
+          }
+        }
+        continue;
+      }
+      s += R(xOf(a), yy + 1, xOf(b) - xOf(a) + 0.6, lane - 3, fill);
+    }
+  });
+  return { s, h: lg.pieces.length * lane + 6 };
+}
+
+function titreLogement(lg) {
+  const ad = lg.membres.filter((m) => m.statut !== 'enfant').length, en = lg.membres.length - ad;
+  const genre = { famille: `famille${lg.famille ? ' ' + lg.famille : ''} : ${ad} adultes, ${en} enfant${en > 1 ? 's' : ''}`, retraite: ad > 1 ? 'couple de retraités' : 'retraité' + (lg.membres[0].f ? 'e' : '') + ' seul' + (lg.membres[0].f ? 'e' : ''), couple: 'jeune couple sans enfant', coloc: `colocation (${ad})`, solo: 'personne seule', etudiant: 'étudiante seule' }[lg.type];
+  return `${lg.nom} — ${genre}${lg.nounou ? ' · nounou : Fatou (vient de l’extérieur)' : ''}`;
+}
+
+function plancheJour(iso) {
+  const j = M.jourCtx(iso);
+  const titre = j.titre.charAt(0).toUpperCase() + j.titre.slice(1);
+  let s = '', y = 30;
+  s += T(MX, y + 40, `${titre} — un immeuble parisien heure par heure`, 46, { w: 700 });
+  y += 62;
+  s += T(MX, y + 30, `12 logements, 25 habitants + la nounou des Martin. Frise de 5 h à 5 h le lendemain (retours de nuit). Chaque lever est tiré CE jour-là pour CETTE personne.`, 24, { fill: '#5A5040' });
+  y += 50;
+  const lg0 = legende(y, ['sommeil', 'maison', 'prep', 'trajet', 'travail', 'pause', 'ecole', 'accomp', 'sortie', 'dehors', 'rdv', 'nounou', 'ailleurs']);
+  s += lg0.s; y = lg0.y + 30;
+  s += axe(y, iso);
+  const yAxe = y; y += 64;
+  const yGrid = y;
+  const RH = 78;
+  let body = '';
+  for (const lg of M.LOGEMENTS) {
+    body += R(MX, y, WIDTH - 2 * MX, 40, '#E9DFC8', 'rx="6"') + T(MX + 14, y + 29, titreLogement(lg), 25, { w: 700 });
+    y += 46;
+    const gens = lg.membres.slice();
+    if (lg.nounou) gens.push(M.NOUNOU);
+    for (const p of gens) {
+      const info = M.INFO[p.id][iso];
+      body += T(MX + 20, y + 26, M.etiquette(p), 23, { w: 600 });
+      let expl = info ? info.expl : '';
+      if (info && info.nuitCourte) expl += ` — nuit courte : ${M.duree(info.nuitAvant)}`;
+      const lines = wrap('lever : ' + expl, 19, LW - 30).slice(0, 2);
+      if (info && info.travail) lines.push(...wrap(info.travail, 19, LW - 30).map((l) => ({ l })));
+      lines.forEach((l, i) => { body += typeof l === 'string' ? T(MX + 20, y + 49 + i * 21, l, 19, { fill: '#5A5040' }) : T(MX + 20, y + 49 + i * 21, l.l, 19, { fill: '#1E3F6A', w: 600 }); });
+      body += rangee(p, iso, y, RH - 6, p !== M.NOUNOU);
+      y += Math.max(RH, 40 + lines.length * 21);
+    }
+    const lb = lumiereBande(lg, iso, y);
+    body += lb.s; y += lb.h + 22;
+  }
+  s += grille(yGrid, y) + body;
+  s += axe(y + 10, iso).replace(/soleil [^<]*|nuit [^<]*/g, '');
+  y += 80;
+  return { svg: s, h: y };
+}
+
+function plancheSemaine() {
+  const gens = ['yasmine', 'julie', 'sarah', 'monique', 'camille'].map((id) => M.TOUS.find((p) => p.id === id));
+  const days = M.DAYS.slice(1, 8);
+  let s = '', y = 30;
+  s += T(MX, y + 40, 'Une semaine pour 5 habitants — du lundi 2 au dimanche 8 novembre 2026', 46, { w: 700 });
+  y += 62;
+  s += T(MX, y + 30, 'Jours travaillés : lever stable (travail − trajet − préparation, à quelques minutes près), horaires conformes au Code du travail. Jours libres : lever tiré chaque jour, rattrapage après une sortie.', 24, { fill: '#5A5040' });
+  y += 50;
+  const lg0 = legende(y, ['sommeil', 'maison', 'prep', 'trajet', 'travail', 'pause', 'ecole', 'accomp', 'sortie', 'dehors', 'rdv', 'nounou']);
+  s += lg0.s; y = lg0.y + 30;
+  s += axe(y, days[3]);
+  y += 64;
+  const y0 = y;
+  let body = '';
+  const RH = 70;
+  const role = { sarah: 'serveuse, horaires coupés (repos dimanche + lundi)', yasmine: 'parent non-cadre', julie: 'cadre, parent (nounou le soir)', monique: 'retraitée', camille: 'jeune célibataire qui sort' };
+  for (const p of gens) {
+    const t = M.T[p.id];
+    const detail = p.coupe ? `mar. → sam., trajet ${t.trajet} min (${t.mode}), préparation ~${t.prep} min, sommeil ${M.duree(t.sommeil)}` : t.debut != null ? `travail ${M.hm(t.debut)}${p.statut === 'cadre' ? ' (± 15 min selon le jour)' : ''}, ${M.duree(t.eff)} effectives, trajet ${t.trajet} min (${t.mode}), préparation ~${t.prep} min, sommeil ${M.duree(t.sommeil)}` : `sommeil ${M.duree(t.sommeil)}, lève-tôt ${Math.round(t.leveTot * 100)} % des jours (tiré chaque matin)`;
+    body += R(MX, y, WIDTH - 2 * MX, 44, '#E9DFC8', 'rx="6"') + T(MX + 14, y + 31, `${M.etiquette(p)} — ${p.logement.nom} — ${role[p.id]}`, 26, { w: 700 });
+    body += T(WIDTH - MX - 14, y + 31, detail, 19, { anchor: 'end', fill: '#5A5040' });
+    y += 50;
+    for (const iso of days) {
+      const j = M.jourCtx(iso);
+      const info = M.INFO[p.id][iso];
+      const wk = j.weekend || j.ferie;
+      const debutRangee = body.length;
+      body += T(MX + 14, y + 26, `${j.titre.split(' ').slice(0, 2).join(' ')}`, 22, { w: 700 });
+      body += T(MX + 150, y + 26, `lever ${M.hm(info.lever)}`, 22, { w: 700, fill: '#111' });
+      body += T(MX + 300, y + 26, `nuit d’avant ${M.duree(info.nuitAvant)}${info.nuitCourte ? ' (courte !)' : ''}`, 19, { fill: info.nuitCourte ? '#B03020' : '#5A5040', w: info.nuitCourte ? 700 : 400 });
+      const lines = wrap(info.expl, 19, LW - 30).slice(0, 2);
+      if (info.travail) lines.push(...wrap(info.travail, 19, LW - 30).map((l) => ({ l })));
+      const hh = Math.max(RH, 40 + lines.length * 20);
+      if (wk) body = body.slice(0, debutRangee) + R(MX, y, LW + 4, hh - 4, '#F1EAF6', 'rx="4"') + body.slice(debutRangee);
+      lines.forEach((l, i) => { body += typeof l === 'string' ? T(MX + 14, y + 48 + i * 20, l, 19, { fill: '#5A5040' }) : T(MX + 14, y + 48 + i * 20, l.l, 19, { fill: '#1E3F6A', w: 600 }); });
+      body += rangee(p, iso, y, RH - 6, true);
+      y += hh;
+    }
+    y += 18;
+  }
+  s += grille(y0, y) + body;
+  return { svg: s, h: y + 30 };
+}
+
+function plancheMardiPorte() {
+  const iso = '2026-11-03', base = M.IDX[iso] * 1440;
+  const ev = M.porte(base + H0, base + H1).map((e) => ({ ...e, m: e.t - base }));
+  let s = '', y = 30;
+  s += T(MX, y + 40, 'La porte de l’immeuble — mardi 3 novembre 2026', 46, { w: 700 });
+  y += 62;
+  s += T(MX, y + 30, 'Qui sort (au-dessus de l’axe) et qui rentre (en dessous). Les départs s’étalent de 6 h 00 à 10 h ; ceux qui passent ensemble sont regroupés. Sarah (serveuse, horaires coupés) rentre pendant sa coupure.', 24, { fill: '#5A5040' });
+  y += 60;
+  const panels = [
+    { a: H(5, 45), b: H(11, 15), titre: 'Matin' },
+    { a: H(14, 20), b: H(20, 15), titre: 'Après-midi : coupure de Sarah, sorties d’école, la nounou, les retours' },
+    { a: H(19, 30), b: H(29), titre: 'Soir et nuit' },
+  ];
+  function H(h, m = 0) { return h * 60 + m; }
+  for (const pn of panels) {
+    const px0 = MX + 10, px1 = WIDTH - MX - 10;
+    const xo = (m) => px0 + ((m - pn.a) / (pn.b - pn.a)) * (px1 - px0);
+    const list = ev.filter((e) => e.m >= pn.a && e.m <= pn.b);
+    s += T(MX, y + 30, pn.titre, 30, { w: 700 });
+    y += 44;
+    // lanes
+    const lanes = { sort: [], entre: [] };
+    const placed = [];
+    for (const e of list) {
+      const noms = e.qui.map((p) => p.prenom).join(' + ');
+      const txt = `${M.hm(e.m)} ${noms}`;
+      const w = tw(txt, 21, 600) + 14;
+      const x = Math.min(xo(e.m) - 6, WIDTH - MX - w);
+      const L = lanes[e.sens];
+      let li = L.findIndex((end) => end < x);
+      if (li < 0) { li = L.length; L.push(0); }
+      L[li] = x + w + 6;
+      placed.push({ e, txt, w, x, li });
+    }
+    const LH = 34;
+    const nUp = Math.max(1, lanes.sort.length), nDn = Math.max(1, lanes.entre.length);
+    const axeY = y + nUp * LH + 20;
+    // axe
+    s += R(px0, axeY - 5, px1 - px0, 10, '#8A7A60', 'rx="5"');
+    for (let h = Math.ceil(pn.a / 60); h * 60 <= pn.b; h++) {
+      const x = xo(h * 60);
+      s += `<line x1="${x}" y1="${axeY - 12}" x2="${x}" y2="${axeY + 12}" stroke="#5A4A30" stroke-width="2"/>`;
+      s += R(x - 34, axeY - 15, 68, 30, '#FBF7EE', 'rx="8" stroke="#8A7A60" stroke-width="2"') + T(x, axeY + 8, `${h % 24} h`, 22, { anchor: 'middle', w: 700 });
+    }
+    let lignes = '', boites = '';
+    for (const pl of placed) {
+      const up = pl.e.sens === 'sort';
+      const ly = up ? axeY - 20 - (pl.li + 1) * LH : axeY + 20 + pl.li * LH;
+      const tx = xo(pl.e.m);
+      const nounou = pl.e.qui.includes(M.NOUNOU);
+      const nuit = pl.e.m > 1440 + 60;
+      const col = nounou ? '#C98B5E' : nuit ? '#8E5BA6' : up ? '#D06A2A' : '#3F8A3A';
+      lignes += `<line x1="${tx}" y1="${up ? ly + LH - 6 : ly}" x2="${tx}" y2="${up ? axeY - 6 : axeY + 6}" stroke="${col}" stroke-width="3"/>`;
+      lignes += `<circle cx="${tx}" cy="${axeY}" r="7" fill="${col}"/>`;
+      boites += R(pl.x, ly, pl.w, LH - 6, col, 'rx="6" stroke="#FBF7EE" stroke-width="2"') + T(pl.x + 7, ly + LH - 14, pl.txt, 21, { w: 600, fill: '#FFFFFF' });
+    }
+    s += lignes + boites;
+    y = axeY + 20 + nDn * LH + 30;
+  }
+  // légende
+  let x = MX;
+  for (const [c, l] of [['#D06A2A', 'sort'], ['#3F8A3A', 'rentre'], ['#C98B5E', 'la nounou Fatou (avec les enfants Martin à l’aller)'], ['#8E5BA6', 'retour de nuit (Chloé, boîte, 4 h 00)']]) {
+    s += R(x, y, 28, 28, c, 'rx="5"') + T(x + 36, y + 22, l, 22);
+    x += 36 + tw(l, 22) + 40;
+  }
+  return { svg: s, h: y + 60 };
+}
+
+const P = PLANCHE === 'mardi' ? plancheJour('2026-11-03') : PLANCHE === 'samedi' ? plancheJour('2026-11-07') : PLANCHE === 'semaine' ? plancheSemaine() : plancheMardiPorte();
+document.getElementById('out').innerHTML = `<svg id="planche" xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${P.h}" viewBox="0 0 ${WIDTH} ${P.h}"><rect width="100%" height="100%" fill="#FBF7EE"/>${P.svg}</svg>`;
+window.__done = true;
+</script>
+</body>
+</html>
