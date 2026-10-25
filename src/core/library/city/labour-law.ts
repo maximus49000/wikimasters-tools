@@ -19,8 +19,8 @@ const mondayOf = (n: number) => n - (weekdayOf(n) - 1)
 export function checkLabourLaw(days: readonly { iso: string; shifts: readonly Shift[] }[], split: boolean, who: string): string[] {
   const errors: string[] = []
   if (!days.length) return errors
-  const first = dayNumber(days[0].iso)
-  const last = dayNumber(days[days.length - 1].iso)
+  const first = dayNumber(days[0]!.iso)
+  const last = dayNumber(days[days.length - 1]!.iso)
   const weekTotals = new Map<number, number>()
   const worked: [number, number][] = [] // minutes absolues depuis le premier jour
   let prevEnd: number | null = null
@@ -30,14 +30,14 @@ export function checkLabourLaw(days: readonly { iso: string; shifts: readonly Sh
     if (!sv.length) continue
     const where = `${who} ${day.iso}`
     const eff = sv.reduce((t, [a, b]) => t + b - a, 0)
-    const span = sv[sv.length - 1][1] - sv[0][0]
+    const span = sv[sv.length - 1]![1] - sv[0]![0]
     if (eff > LAW.dayMax) errors.push(`${where} : ${hm(eff)} de travail effectif (> 10 h)`)
     for (const [a, b] of sv) if (b - a > LAW.noBreakMax) errors.push(`${where} : ${hm(b - a)} sans pause (> 6 h)`)
-    for (let i = 1; i < sv.length; i++) if (sv[i][0] - sv[i - 1][1] < LAW.breakMin) errors.push(`${where} : pause < 20 min`)
+    for (let i = 1; i < sv.length; i++) if (sv[i]![0] - sv[i - 1]![1] < LAW.breakMin) errors.push(`${where} : pause < 20 min`)
     if (span > (split ? LAW.splitSpanMax : LAW.spanMax)) errors.push(`${where} : amplitude ${hm(span)}`)
     const abs = sv.map(([a, b]): [number, number] => [(n - first) * 1440 + a, (n - first) * 1440 + b])
     if (prevEnd !== null) {
-      const rest = abs[0][0] - prevEnd
+      const rest = abs[0]![0] - prevEnd
       if (rest < LAW.dailyRest) errors.push(`${where} : repos quotidien ${hm(rest)} (< 11 h)`)
     }
     prevEnd = abs[abs.length - 1]![1]
