@@ -1,6 +1,7 @@
 import { hashString, mulberry32 } from '../scene-world';
 import type { Facade } from './facades';
 import type { Home } from './facade-layout';
+import { identityOf, kidSize, type Identity } from './identity';
 
 // Foyers fixes par logement (port de `householdFor` / `makeHousehold` de docs/superpowers/maquettes/vie-etages/src/02-layout.js,
 // spec 2026-10-19 « vie au-dessus de la rue ») : qui habite chaque logement des façades du chantier 1, tiré de la graine de
@@ -9,8 +10,10 @@ import type { Home } from './facade-layout';
 
 export type HouseholdType = 'couple' | 'famille' | 'retraite' | 'etudiant' | 'coloc' | 'solo';
 export type Room = 'cuisine' | 'chambre' | 'salon';
-// size : relative à la taille d'un adulte (0,66 × hauteur d'étage) ; enfants 0,62 (cadet 0,7), retraités 0,94, étudiants 0,97.
-export type Member = { kid: boolean; size: number; shirt: string; pants: string; skin: string };
+// size : relative à la taille d'un adulte (0,66 × hauteur d'étage) ; enfants selon l'âge (≤ 5 ans 0,58, 6–10 ans 0,64,
+// 11–14 ans 0,8, 15–17 ans 0,92), retraités 0,94, étudiants 0,97. who : identité (prénom, âge, statut…, voir identity.ts).
+export type Member = { kid: boolean; size: number; shirt: string; pants: string; skin: string; who: Identity };
+type Drawn = Omit<Member, 'who'>;
 // smoker : 40 % des couples et des personnes seules (coloc et étudiant fument selon leur emploi du temps) ; sapin : 55 % ;
 // late : couche-tard, 50 % des étudiants ; seed : graine propre au foyer.
 export type Household = { type: HouseholdType; members: Member[]; smoker: boolean; sapin: boolean; late: boolean; seed: number };
@@ -35,11 +38,12 @@ const SKINS = ['#F2C9A0', '#D9A070', '#8A5A3A', '#F6D8B8', '#C8906A'];
 const CLIMB = { base: 0.35, perFloor: 0.22 } as const;
 
 const pick = <T>(list: readonly T[], rng: () => number): T => list[Math.floor(rng() * list.length)]!;
-const member = (rng: () => number, size = 1, kid = false): Member => ({ kid, size, shirt: pick(SHIRTS, rng), pants: pick(PANTS, rng), skin: pick(SKINS, rng) });
+const member = (rng: () => number, size = 1, kid = false): Drawn => ({ kid, size, shirt: pick(SHIRTS, rng), pants: pick(PANTS, rng), skin: pick(SKINS, rng) });
 
 // Membres selon le type (ordre des tirages de la maquette), puis drapeaux du foyer (toujours tirés, dans le même ordre).
-function makeHousehold(type: HouseholdType, rng: () => number): Household {
-  const members: Member[] = [];
+// Les tailles d'enfant tirées ici (0,62 / 0,7) sont remplacées par celles de l'âge dans `householdFor`.
+function makeHousehold(type: HouseholdType, rng: () => number): Omit<Household, 'members'> & { members: Drawn[] } {
+  const members: Drawn[] = [];
   if (type === 'couple') members.push(member(rng), member(rng));
   else if (type === 'famille') {
     members.push(member(rng), member(rng), member(rng, 0.62, true));
@@ -65,7 +69,10 @@ export function householdFor(home: Home, seed: number): Household {
   const r = rng();
   let type: HouseholdType = r < 0.25 ? 'couple' : r < 0.45 ? 'famille' : r < 0.63 ? 'retraite' : r < 0.75 ? 'etudiant' : r < 0.85 ? 'coloc' : 'solo';
   if (home.bays.length === 1 && (type === 'famille' || type === 'coloc')) type = 'etudiant';
-  return makeHousehold(type, rng);
+  const drawn = makeHousehold(type, rng);
+  // Identité sur un flux à part (tirages ci-dessus inchangés) ; la taille d'un enfant suit son âge.
+  const who = identityOf(drawn);
+  return { ...drawn, members: drawn.members.map((m, i) => ({ ...m, size: m.kid ? kidSize(who[i]!.age) : m.size, who: who[i]! })) };
 }
 
 // Pièces le long des travées du logement : 1 → salon ; 2 → cuisine, salon ; 3 et plus → cuisine, chambre(s), salon.

@@ -124,7 +124,7 @@ export const FAMILLES: Famille[] = [
       ...lib(
         'city-facades.*', 'city-lots.*', 'city-zones.*', 'city-metrics.*', 'city-doors.*', 'city-doorway.*', 'city-lamps.*', 'outside-camera.*',
         'city/hall-lights.*', 'city/night-light.*', 'city/window-lights.*', 'city/facade-layout.*', 'paint/paint-city-*', 'paint/paint-hill.*',
-        'city/households.*', 'city/scene-day.*', 'city/fireworks-show.*', 'city/schedules.*', 'city/home-state.*', 'city/window-choreo.*', 'city/roof-life.*',
+        'city/households.*', 'city/identity.*', 'city/scene-day.*', 'city/fireworks-show.*', 'city/schedules.*', 'city/home-state.*', 'city/window-choreo.*', 'city/roof-life.*',
       ),
     ],
   },
