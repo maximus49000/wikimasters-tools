@@ -44,7 +44,8 @@ const PERCH_COVER: Partial<Record<StandingKind, number>> = { 'egg-chair': 40 };
 // Meuble plat (tapis : h ≤ FLAT_H cm) : sous une lumière du haut, une nappe ne peut montrer d'ombre propre que sur ses bords (ourlet,
 // franges) ; à 1 px par px ils tiennent sur 1 à 3 px. Le plancher d'ombre de (d) descend à 1 % : il exige encore des bords modelés à
 // chaque angle (un tapis sans ourlet est à 0 %), le plafond et l'encre restent ceux de tous les meubles.
-const FLAT_H = 5, FLAT_SHADE_MIN = 0.01, SHADE_MIN = 0.08;
+export const FLAT_H = 5;
+const FLAT_SHADE_MIN = 0.01, SHADE_MIN = 0.08;
 export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandinave'), life: LifeState = REST_LIFE, fallbackSkip: readonly CelCheck[] = []): void {
   const skip: readonly CelCheck[] = CEL_MODELS[kind] ? [] : fallbackSkip;
   const model = FURNITURE_MODELS[kind];

@@ -1,5 +1,5 @@
 import type { CelLook, CelVariant } from '../looks';
-import { bent, lathe, part, place, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
+import { bent, lathe, part, place, superEll, tube, type CelPart, type Deform, type Vec3 } from '../mesh';
 import type { Tone } from '../tone';
 import { CEL_MODELS } from './registry';
 
@@ -41,68 +41,93 @@ function knob(col: Tone, x: number, y: number, z: number): CelPart {
   const m = lathe([[0, -0.6], [1.7, -0.6], [2.1, 0], [1.6, 0.45], [0, 0.6]], 14);
   return part(place(m, { rx: Math.PI / 2, t: [x, y, z] }), col, { crease: false, noshadow: true });
 }
-// Plaque cintrée en plan : construite plate (orientation juste), puis déformée par `bent` (normales recalculées).
-const bowed = (m: Mesh, d: Deform): Mesh => bent(m, d);
 
-/* ---------- étagère : quatre montants ronds aux coins, flancs en panneau en retrait, socle en retrait sous la tablette basse,
-   tablettes à arêtes adoucies, dessus en bourrelet, fond en lames bombées (à clin) cintré vers l'arrière ---------- */
-const POST_R = 3.2, POST_X = 38.3, POST_Z = 11.8;
+/* ---------- étagère : quatre montants ronds aux coins (ils portent le dessus), flancs en panneau en retrait, socle en retrait sous la
+   tablette basse, tablettes à chant rond, dessus en bourrelet, fond en panneau de bois à peine bombé (cintré par bent()) ---------- */
+const POST_R = 3.4, POST_X = 38.5, POST_Z = 11.6;
 function shelf(look: CelLook): CelPart[] {
   const T = look.tones, W = T.wood, D = T.woodDark;
   const P: CelPart[] = [];
-  // Montants : colonnes à léger renflement, du sol au dessous du dessus (177).
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.push(part(place(lathe([[2.9, 0], [POST_R, 50], [POST_R, 130], [2.9, 175]], 16), { t: [sx * POST_X, 0, sz * POST_Z] }), W, { crease: false }));
-  // Flancs : panneaux en retrait entre les montants (silhouette encrée des montants devant eux).
-  for (const sx of [-1, 1]) P.push(part(place(superEll(0.7, 84.5, POST_Z, 0.2, 0.2, 6, 16), { t: [sx * 36.6, 92.5, 0] }), W));
-  // Socle en retrait (2 cm) et tablette basse qui le coiffe (dessus 8 = premier niveau des objets rangés).
-  P.push(part(place(superEll(36, 3, 12.5, 0.3, 0.3, 6, 20), { t: [0, 3, 0] }), W)); // 0..6
-  // Tablettes (58..61 et 118..121), chant en bourrelet (le dessous du chant prend l'ombre), visibles à travers l'ouverture.
-  for (const y of [59.5, 119.5]) P.push(part(place(superEll(36, 1.5, 13.5, 0.7, 0.3, 8, 20), { t: [0, y, 1] }), W, { interior: true }));
-  P.push(part(place(superEll(36.5, 1.2, 13.8, 0.7, 0.3, 8, 20), { t: [0, 6.8, 0.7] }), W)); // tablette basse 5,6..8
+  // Montants : colonnes à léger renflement, du sol jusque DANS le dessus (178,5 : ils le portent, pas de jour entre les deux).
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.push(part(place(lathe([[3, 0], [POST_R, 50], [POST_R, 130], [3, 178.5]], 16), { t: [sx * POST_X, 0, sz * POST_Z] }), W, { crease: false }));
+  // Flancs : panneaux minces en retrait entre les montants (silhouette encrée des montants devant eux). Les bouts d'une plaque
+  // superellipsoïde se resserrent sur le dernier centimètre : ils sont noyés dans la tablette basse (4..8) et dans le dessus (177..180).
+  for (const sx of [-1, 1]) P.push(part(place(superEll(0.8, 86, POST_Z, 0.1, 0.2, 20, 16), { t: [sx * 36.4, 92.5, 0] }), W)); // e1 0,1 et 20 rangs : coins francs, pas de chanfrein aux bouts
+  // Socle : en retrait de 2 cm devant, jusqu'au dos derrière (il reçoit le bas du panneau du fond) ; la tablette basse le coiffe
+  // (dessus 8 = premier niveau des objets rangés) et couvre le bas des flancs.
+  P.push(part(place(superEll(36, 3, 13.75, 0.3, 0.3, 6, 20), { t: [0, 3, -1.25] }), W)); // 0..6
+  P.push(part(place(superEll(37.5, 1.5, 13.8, 0.3, 0.3, 8, 20), { t: [0, 6.5, 0.7] }), W)); // tablette basse 5..8
+  // Tablettes (58..61 et 118..121, dessus = niveaux des objets rangés) à arêtes adoucies, avec un NEZ rond (boudin r 3 le long du
+  // chant avant, d'un montant à l'autre, 1 cm sous le dessus : le dessus reste plan à 0,5 cm près jusqu'au nez) : la tablette se lit épaisse et son dessous de nez prend l'ombre à tous les angles de face.
+  for (const y of [59.5, 119.5]) {
+    P.push(part(place(superEll(36, 1.5, 13.5, 0.3, 0.3, 8, 20), { t: [0, y, 1] }), W, { interior: true }));
+    P.push(part(tube([[-36, y - 1, 12], [0, y - 1, 12], [36, y - 1, 12]], 3, 14), W, { interior: true, crease: false }));
+  }
+  P.push(part(tube([[-36, 5.5, 12], [0, 5.5, 12], [36, 5.5, 12]], 3, 14), W, { crease: false })); // nez de la tablette basse (2,5..8,5)
   // Dessus en bourrelet (177..180, dessus praticable 180) : au-dessus de l'œil, son dessous arrondi se lit en ombre à tous les angles.
-  P.push(part(place(superEll(41, 1.5, 15, 0.8, 0.3, 10, 28), { t: [0, 178.5, 0] }), W));
-  // Fond : panneau de 13 lames horizontales rectangulaires, bombées en hauteur des deux côtés (lentille de 2 cm au milieu : le bas de
-  // chaque lame tourne vers le sol et prend l'ombre, de face comme de dos), l'ensemble cintré en plan (0,7 cm vers l'arrière au milieu).
-  // Pas de traverses au dos : entre les montants, rien ne peut tenir dans les 2 cm du fond sans entrer dans l'ouverture ni dépasser. Le fond se lit en volume à travers l'ouverture et vu de dos, sans jamais être une plaque nue.
-  const clap: Deform = (x, y, z) => [x, y, z - 0.7 * (1 - (x / 36) ** 2) + Math.sign(z) * 0.4 * (1 - (y / 6.5) ** 2)];
-  for (let i = 0; i < 13; i++) P.push(part(place(bowed(superEll(36, 6.5, 0.6, 0.18, 0.18, 12, 24), clap), { t: [0, 14.5 + i * 13, -14] }), D, { interior: true }));
+  P.push(part(place(superEll(41.5, 1.5, 15, 0.8, 0.3, 10, 28), { t: [0, 178.5, 0] }), W));
+  // Fond : un panneau de bois (Ruling 23) en quatre planches jointives verticales : plaque mince à peine bombée vers l'arrière (0,7 cm
+  // au milieu, cintrée par bent()), entre les montants arrière, du socle au dessus (bouts noyés dedans), et trois joints en V sur chaque
+  // face (deux chanfreins de 2,2 cm à 40° par joint) : le chanfrein tourné vers la droite prend l'ombre, l'autre la lumière — c'est le
+  // dessin des planches, et c'est de là que vient le modelé du fond, pas d'un bombé.
+  const bowZ = (x: number): number => -0.7 * (1 - (x / 36) ** 2);
+  P.push(part(place(bent(superEll(36, 86, 0.8, 0.1, 0.2, 20, 24), (x, y, z) => [x, y, z + bowZ(x)]), { t: [0, 92.5, -14] }), D, { interior: true })); // coins francs (e1 0,1, 20 rangs)
+  const CH = (40 * Math.PI) / 180;
+  for (const xg of [-18, 0, 18])
+    for (const face of [1, -1])
+      for (const side of [-1, 1]) {
+        // Chanfrein : bande mince tournée de 40° autour de y, sa normale regarde vers le fond du joint.
+        P.push(part(place(superEll(1.1, 84.5, 0.25, 0.2, 0.2, 6, 8), { ry: -side * face * CH, t: [xg + side * 0.85, 92.5, -14 + bowZ(xg) + face * 0.45] }), D, { interior: true, crease: false }));
+      }
   return P;
 }
 
-/* ---------- bureau : plateau à bord adouci, ceinture avec un tiroir central à bouton, quatre pieds tournés (variante du style)
-   et entretoises en H (le dos du bureau n'est pas un vide : une traverse ronde entre les pieds arrière) ---------- */
+/* ---------- bureau : plateau à bord adouci, ceinture aux coins (elle reçoit les pieds) avec un tiroir central à bouton, quatre pieds
+   tournés (variante du style) qui montent jusque sous le plateau, entretoises en H (le dos : une traverse ronde entre les pieds arrière) ---------- */
 function desk(look: CelLook): CelPart[] {
   const T = look.tones;
   const P: CelPart[] = [];
-  P.push(...legs(look, T.leg, 54, 24, 66));
-  P.push(part(place(superEll(60, 1.5, 30, 0.45, 0.3, 8, 28), { t: [0, 73.5, 0] }), T.desk)); // plateau 72..75
-  P.push(part(place(superEll(53, 2.5, 25.5, 0.3, 0.3, 6, 24), { t: [0, 68.5, 0] }), T.wood)); // ceinture 66..71
-  P.push(part(place(superEll(22, 2, 0.8, 0.5, 0.4, 6, 16), { t: [0, 68.5, 25.9] }), T.desk)); // façade du tiroir
-  P.push(knob(T.metal, 0, 68.5, 26.6));
+  P.push(...legs(look, T.leg, 54, 24, 72.5)); // jusque dans le plateau
+  P.push(part(place(superEll(60, 1.5, 30, 0.45, 0.3, 12, 32), { t: [0, 73.5, 0] }), T.desk)); // plateau 72..75
+  P.push(part(place(superEll(55.5, 2.5, 25.8, 0.2, 0.15, 6, 32), { t: [0, 68.5, 0] }), T.wood)); // ceinture 66..71, aux coins jusqu'aux pieds
+  P.push(part(place(superEll(22, 1.9, 0.8, 0.2, 0.15, 6, 24), { t: [0, 68.5, 26.2] }), T.desk)); // façade du tiroir (rectangle, 0,4 cm devant)
+  P.push(knob(T.metal, 0, 68.5, 26.9));
   P.push(rod([-54, 18, -24], [54, 18, -24], 1.5, T.leg)); // traverse arrière
   for (const sx of [-1, 1]) P.push(rod([sx * 54, 18, -24], [sx * 54, 18, 24], 1.5, T.leg)); // entretoises latérales
   return P;
 }
 
-/* ---------- commode ventrue : caisson au galbe horizontal (superellipse e2 0,6 : façade, flancs et dos bombés, jamais une plaque),
-   trois tiroirs bombés affleurants qui épousent le galbe (plaques cintrées), deux boutons plats par tiroir, plateau galbé, pieds tournés ---------- */
-const DR_A = 48, DR_C = 21, DR_E = 0.6;
-// Profondeur de la façade du caisson à l'abscisse x (superellipse |x/a|^(2/e) + |z/c|^(2/e) = 1).
-const dresserFront = (x: number): number => DR_C * Math.max(0, 1 - Math.abs(x / DR_A) ** (2 / DR_E)) ** (DR_E / 2);
+/* ---------- commode ventrue : caisson au galbe horizontal (superellipse e2 0,55 : façade, flancs et dos bombés), arêtes hautes et
+   basses adoucies mais lisibles (e1 0,2), trois tiroirs bombés affleurants qui épousent le galbe dans les deux sens (plaques cintrées),
+   deux boutons plats par tiroir, plateau galbé, dos en panneau (plaque cintrée sur le galbe du dos, encadrée), plinthe, pieds tournés
+   sous l'emprise du caisson ---------- */
+const DR_A = 48, DR_B = 35, DR_C = 21, DR_E1 = 0.2, DR_E = 0.55, DR_Y = 43;
+// Profondeur de la façade du caisson au point (x, y) (y dans le repère du meuble) : section horizontale de la superellipsoïde à cette
+// hauteur (demi-axes réduits par cos(eta)^e1), puis superellipse |x/a'|^(2/e2) + |z/c'|^(2/e2) = 1.
+function dresserFront(x: number, y: number): number {
+  const sy = Math.min(1, Math.abs((y - DR_Y) / DR_B) ** (1 / DR_E1));
+  const k = Math.sqrt(Math.max(0, 1 - sy * sy)) ** DR_E1;
+  return DR_C * k * Math.max(0, 1 - Math.abs(x / (DR_A * k)) ** (2 / DR_E)) ** (DR_E / 2);
+}
 function dresser(look: CelLook): CelPart[] {
   const T = look.tones;
   const P: CelPart[] = [];
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.push(part(place(lathe([[2.3, 0], [1.9, 8]], 12), { t: [sx * 43, 0, sz * 15.5] }), T.leg, { crease: false }));
-  P.push(part(place(superEll(DR_A, 35, DR_C, 0.3, DR_E, 12, 72), { t: [0, 43, 0] }), T.wood)); // caisson 8..78 (72 colonnes : le galbe ne fait pas de facettes encrées entre les tiroirs)
-  // Tiroirs : façades rectangulaires presque affleurantes (0,3 cm devant le caisson, toujours devant ses facettes : un joint encré,
-  // pas d'oreilles de profil),
-  // plaques minces cintrées sur le galbe de la façade ET bombées en hauteur (0,55 cm : le bas de chaque tiroir tourne vers le sol et
-  // prend l'ombre, le haut vers la lumière).
-  const follow: Deform = (x, y, z) => [x, y, z + dresserFront(x) + 0.3 + 0.55 * (1 - (y / 9.2) ** 2)];
-  for (const y of [21.5, 43.5, 65.5]) {
-    P.push(part(place(bowed(superEll(43, 9.2, 0.6, 0.25, 0.25, 14, 28), follow), { t: [0, y, 0] }), T.desk));
-    for (const x of [-15, 15]) P.push(knob(T.metal, x, y, dresserFront(x) + 1.45));
+  // Pieds sous l'emprise du caisson (le galbe ne couvre pas les coins du modèle), montés jusque dans le caisson.
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.push(part(place(lathe([[2.4, 0], [2, 11]], 12), { t: [sx * 38, 0, sz * 11] }), T.leg, { crease: false }));
+  P.push(part(place(superEll(DR_A, DR_B, DR_C, DR_E1, DR_E, 16, 72), { t: [0, DR_Y, 0] }), T.wood)); // caisson 8..78 (72 colonnes : pas de facettes encrées)
+  // Plinthe : bandeau sombre sous le caisson, en retrait de 2 cm, qui relie les pieds (un meuble, pas un sac posé sur des godets).
+  P.push(part(place(superEll(42, 2.5, 16, 0.2, 0.5, 6, 48), { t: [0, 9.5, 0] }), T.woodDark)); // 7..12
+  // Tiroirs : façades rectangulaires presque affleurantes (0,3 cm devant le caisson, devant ses facettes : un joint encré, pas
+  // d'oreilles de profil), plaques minces cintrées sur le galbe de la façade dans les DEUX sens (elles suivent aussi l'arrondi haut
+  // et bas du caisson) et bombées en hauteur (0,4 cm : le bas de chaque tiroir tourne vers le sol et prend l'ombre).
+  for (const yc of [21.5, 43.5, 65.5]) {
+    const follow: Deform = (x, y, z) => [x, y, z + dresserFront(x, yc + y) + 0.3 + 0.4 * (1 - (y / 9.2) ** 2)];
+    P.push(part(place(bent(superEll(43, 9.2, 0.6, 0.2, 0.2, 14, 28), follow), { t: [0, yc, 0] }), T.desk));
+    for (const x of [-15, 15]) P.push(knob(T.metal, x, yc, dresserFront(x, yc) + 1.3));
   }
+  // Dos en panneau : plaque sombre cintrée sur le galbe du dos (0,3 cm derrière le caisson), encadrée par 3 cm de caisson tout autour.
+  const back: Deform = (x, y, z) => [x, y, z - dresserFront(x, DR_Y + y) - 0.3];
+  P.push(part(place(bent(superEll(44, 31, 0.6, 0.12, 0.2, 20, 28), back), { t: [0, DR_Y, 0] }), T.woodDark)); // coins francs
   P.push(part(place(superEll(50, 2, 22.5, 0.4, DR_E, 8, 72), { t: [0, 80, 0] }), T.woodDark)); // plateau 78..82
   return P;
 }
@@ -173,7 +198,7 @@ function rug(look: CelLook): CelPart[] {
   // Bordure tissée : quatre bandes plates posées sur la nappe (0,35 cm au-dessus : pas de bataille de profondeur, pas d'encre), 5 cm de large à 8 cm du bord.
   const band = (a: number, c: number, x: number, z: number): CelPart => part(place(superEll(a, 0.3, c, 0.3, 0.2, 4, 12), { t: [x, 1.25, z] }), B, { flat: true, noshadow: true });
   const bx = hw - 8, bz = hd - 8;
-  P.push(band(bx, 2.5, 0, bz), band(bx, 2.5, 0, -bz), band(2.5, bz, bx, 0), band(2.5, bz, -bx, 0));
+  P.push(band(bx, 2.5, 0, bz), band(bx, 2.5, 0, -bz), band(2.5, bz - 5.2, bx, 0), band(2.5, bz - 5.2, -bx, 0)); // les latérales s'arrêtent avant les autres (pas de chevauchement)
   if (look.variant.pattern === 'diamonds') for (const x of [-45, -22.5, 0, 22.5, 45]) P.push(part(place(superEll(7, 0.3, 7, 1, 1, 4, 4), { ry: Math.PI / 4, t: [x, 1.25, 0] }), B, { flat: true, noshadow: true }));
   if (look.variant.pattern === 'stripes') for (const x of [-60, -30, 0, 30, 60]) P.push(band(3, bz - 10, x, 0));
   // Ourlet roulotté : un boudin le long du bord (sa face du dessous prend l'ombre : le tapis a une épaisseur lisible).

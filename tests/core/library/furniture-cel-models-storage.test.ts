@@ -5,8 +5,8 @@ import { lookOf, type CelLook } from '../../../src/core/library/cel/looks';
 import { CEL_MODELS, celPartsOf } from '../../../src/core/library/cel/models';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import { levelsOf } from '../../../src/core/library/furniture-render3d';
-import { STYLE_IDS } from '../../../src/core/library/library-types';
-import { checkCelModel, topAt } from './furniture-cel-checks';
+import { STANDING_KINDS, STYLE_IDS } from '../../../src/core/library/library-types';
+import { checkCelModel, FLAT_H, topAt } from './furniture-cel-checks';
 
 const KINDS = ['shelf', 'desk', 'dresser', 'side-table', 'coffee-table', 'rug'] as const;
 const look = lookOf('scandinave');
@@ -73,6 +73,10 @@ describe('rangements, tables et tapis en cellulo', () => {
     expect(Math.max(...vs.map((v) => Math.abs(v[0])))).toBeLessThanOrEqual(102);
     expect(Math.max(...vs.map((v) => Math.abs(v[2])))).toBeLessThanOrEqual(72);
     expect(Math.min(...vs.map((v) => v[1]))).toBeGreaterThanOrEqual(-0.01);
+  });
+
+  it('la règle « meuble plat » du contrôle (plancher d’ombre 1 %) ne concerne que le tapis', () => {
+    expect(STANDING_KINDS.filter((k) => FURNITURE_MODELS[k].h <= FLAT_H)).toEqual(['rug']);
   });
 
   it('commode : trois tiroirs à deux poignées, poignées en métal devant la façade', () => {
