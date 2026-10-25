@@ -59,6 +59,8 @@ describe('journée de travail', () => {
       if (!w) continue;
       total++;
       if (w.long) long++;
+      expect(Math.abs(w.start - traitsOf(a.d.hh, a.m).work!.start)).toBeLessThanOrEqual(15);
+      expect(w.start % 5).toBe(0);
       expect(w.end).toBeLessThanOrEqual(1170);
       expect(w.shifts).toHaveLength(2);
       const lunch = w.shifts[0]![1];
@@ -142,7 +144,11 @@ describe('journée de travail', () => {
         expect(dw.drop).toBe(true);
         expect(dw.start).toBeGreaterThanOrEqual(500 + w.commute);
         if (dw.start > w.start) moved++;
-        if (cadre) expect(dw.end).toBeLessThanOrEqual(1170);
+        if (cadre) {
+          expect(dw.end).toBeLessThanOrEqual(1170);
+          expect(dw.shifts[0]![1]).toBeGreaterThanOrEqual(720);
+          expect(dw.shifts[0]![1]).toBeLessThanOrEqual(780);
+        }
         expect(checkLabourLaw([{ iso: day.iso, shifts: dw.shifts }], split, a.d.id)).toEqual([]);
         days.push({ iso: day.iso, shifts: dw.shifts });
       }
