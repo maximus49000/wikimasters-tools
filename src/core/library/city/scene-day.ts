@@ -3,13 +3,12 @@ import type { SunTimes } from '../sky';
 import { addDays, type DayContext, type DayKind, type FestivityId, type YMD } from './calendar';
 import { fireworksShow, type FireworksShow } from './fireworks-show';
 import type { Dwelling, Room } from './households';
-import { awayState } from './leave-plan';
 
 // Jour de scène et tirage du jour de chaque logement (spec 2026-10-19 « vie au-dessus de la rue » §5.1 : « aléatoire et
 // imprévisible, mais logique »). Le contexte du jour (soleil, pluie, saison, vacances, fêtes, feux) ne dépend que de la date,
 // de la météo et de la graine ; le tirage d'un logement ne dépend que de (logement, date, graine) : aucune heure, aucun état.
-// L'absence (départ en vacances) vient des congés des actifs (leave-plan.ts, `awayState`) : parti du samedi au dimanche.
-// Les horaires types de notes.md §Emploi du temps deviennent des tendances autour desquelles on tire les décalages ci-dessous.
+// L'absence (départ en vacances) et les horaires viennent des journées de chaque habitant (person-day.ts) ; le tirage du
+// jour ne donne plus que les invités du dîner, les scènes facultatives et l'ordre des extinctions.
 
 export type SceneDay = {
   iso: string; weekday: number; weekend: boolean; kind: DayKind; schoolHoliday: boolean; month: number;
@@ -77,52 +76,32 @@ export function sceneDay(day: DayContext, weather: { precip: number; snow: boole
   };
 }
 
-// normal ; away : parti (vacances, week-end ailleurs), logement éteint ; sick : malade, reste à la maison (pas de départ) ;
-// guests : 1-2 invités au dîner, extinction plus tardive ; late : rentré tard du travail.
-export type Presence = 'normal' | 'away' | 'sick' | 'guests' | 'late';
 // water : arroser (retraité) ; rug : battre le tapis (retraité) ; look : regarder la rue (fenêtre ou balcon) ; smoke : cigarette
 // au balcon ou à la fenêtre (fumeur) ; party : fête de la coloc (samedi) ; tv sinon read : soirée télé, ou lecture à la lampe
 // chaude au salon ; kidWindow : enfant à la fenêtre (famille).
 export type OptionalScene = 'water' | 'rug' | 'look' | 'smoke' | 'party' | 'tv' | 'read' | 'kidWindow';
-// Décalages en minutes autour des horaires types : wake (lever), back (retour), evening (dîner, télé), bed (coucher).
-// offOrder : ordre des extinctions des pièces ; rng : graine entière pour les tirages en aval (emplois du temps).
-export type DayDraw = { presence: Presence; wake: number; back: number; evening: number; bed: number; optional: Record<OptionalScene, boolean>; offOrder: Room[]; rng: number };
+// guests : invités au dîner ce soir (visitors.ts, `dayVisits`, en reçoit 1 ou 2) ; optional : scènes facultatives accordées,
+// posées dans le temps libre de qui est concerné (schedules.ts) ; offOrder : ordre des extinctions des pièces au coucher ;
+// rng : graine entière des petits tirages des emplois du temps. Les horaires (lever, sorties, coucher) ne viennent plus de
+// ce tirage mais des journées de chaque habitant (person-day.ts).
+export type DayDraw = { guests: boolean; optional: Record<OptionalScene, boolean>; offOrder: Room[]; rng: number };
 
-// Probabilités de présence par jour : sick, guests, late (l'absence vient des congés, leave-plan.ts).
-const SICK = 0.03;
-const GUESTS = { friSat: 0.15, other: 0.06, extra: [45, 90] } as const;
-const LATE = { p: 0.12, extra: [60, 150] } as const;
-// Amplitudes (± minutes, uniformes).
-// Lever : ±50 le week-end et les jours fériés.
-const SPREAD = { wakeWeek: 25, wakeWeekend: 50, back: 45, evening: 40, bed: 35 } as const;
+// Probabilité d'un dîner avec invités : vendredi et samedi, autres jours.
+const GUESTS = { friSat: 0.15, other: 0.06 } as const;
 const OPTIONAL = { water: 0.7, rug: 0.35, look: 0.55, smoke: 0.85, party: 0.65, tv: 0.75, kidWindow: 0.6 } as const;
-
-const spread = (r: number, amp: number): number => (2 * r - 1) * amp;
-const between = (r: number, [a, b]: readonly [number, number]): number => a + r * (b - a);
-
-const ymdOf = (iso: string): YMD => ({ y: +iso.slice(0, 4), m: +iso.slice(5, 7), d: +iso.slice(8, 10) });
 
 export function dayDraw(d: Dwelling, day: SceneDay, seed: number): DayDraw {
   const rng = mulberry32(seed ^ hashString(day.iso) ^ d.key ^ hashString('day'));
   const { type, smoker } = d.hh;
   // Tous les nombres sont tirés dans le même ordre quoi qu'il arrive : la pluie ou le jour de la semaine ne font que masquer
-  // une scène, sans décaler les autres tirages du logement. Le premier tirage (ancienne absence du jour) est gardé pour ne
-  // pas décaler les suivants ; l'absence vient du tirage de la semaine.
-  rng();
-  const rSick = rng(), rGuests = rng(), rLate = rng(), rLateExtra = rng(), rGuestsExtra = rng();
-  const rWake = rng(), rBack = rng(), rEvening = rng(), rBed = rng();
+  // une scène, sans décaler les autres tirages du logement. Les tirages de l'ancien décalage par foyer (absence, malade,
+  // rentré tard, lever, retour, soirée, coucher) restent consommés, inutilisés, pour ne pas décaler les suivants.
+  rng(); rng();
+  const rGuests = rng();
+  for (let i = 0; i < 7; i++) rng();
   const rWater = rng(), rRug = rng(), rLook = rng(), rSmoke = rng(), rParty = rng(), rTv = rng(), rKid = rng();
 
-  const workday = !day.weekend && day.kind !== 'public-holiday';
-  const pGuests = day.weekday === 5 || day.weekday === 6 ? GUESTS.friSat : GUESTS.other;
-  const presence: Presence =
-    awayState(d, seed, ymdOf(day.iso), []).state === 'away' ? 'away' : rSick < SICK ? 'sick' : rGuests < pGuests ? 'guests' : workday && rLate < LATE.p ? 'late' : 'normal';
-
-  const wake = spread(rWake, !workday ? SPREAD.wakeWeekend : SPREAD.wakeWeek);
-  const back = spread(rBack, SPREAD.back) + (presence === 'late' ? between(rLateExtra, LATE.extra) : 0);
-  const evening = spread(rEvening, SPREAD.evening);
-  const bed = spread(rBed, SPREAD.bed) + (presence === 'guests' ? between(rGuestsExtra, GUESTS.extra) : 0);
-
+  const guests = rGuests < (day.weekday === 5 || day.weekday === 6 ? GUESTS.friSat : GUESTS.other);
   const retired = type === 'retraite';
   const tv = rTv < OPTIONAL.tv;
   const optional: Record<OptionalScene, boolean> = {
@@ -142,5 +121,5 @@ export function dayDraw(d: Dwelling, day: SceneDay, seed: number): DayDraw {
     const j = Math.floor(rng() * (i + 1));
     [offOrder[i], offOrder[j]] = [offOrder[j]!, offOrder[i]!];
   }
-  return { presence, wake, back, evening, bed, optional, offOrder, rng: Math.floor(rng() * 4294967296) };
+  return { guests, optional, offOrder, rng: Math.floor(rng() * 4294967296) };
 }

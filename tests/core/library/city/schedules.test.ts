@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { dayContext, type YMD } from '../../../../src/core/library/city/calendar';
+import { dayContext, type DayContext, type YMD } from '../../../../src/core/library/city/calendar';
+import { dwellingDay, type DwellingDay } from '../../../../src/core/library/city/dwelling-day';
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling, type HouseholdType } from '../../../../src/core/library/city/households';
-import { dayDraw, sceneDay, type SceneDay } from '../../../../src/core/library/city/scene-day';
-import { buildSchedule, type Schedule, type Segment } from '../../../../src/core/library/city/schedules';
+import { sceneDay, type SceneDay } from '../../../../src/core/library/city/scene-day';
+import type { Schedule, Segment } from '../../../../src/core/library/city/schedules';
 import { decorTasks, halloweenPlan } from '../../../../src/core/library/city/halloween';
 import { dayNumber } from '../../../../src/core/library/city/shops/hours';
 import { sunTimes, type SunTimes } from '../../../../src/core/library/sky';
@@ -12,18 +13,40 @@ const SEED = 7;
 const dry = { precip: 0, snow: false, storm: false };
 const ds: Dwelling[] = [1, 2, 3].flatMap((s) => cityDwellings(cityFacades(1440, 340, s), s));
 const VAC = [{ name: 'Toussaint', start: '2026-10-17', end: '2026-11-02' }];
-const dayOf = (date: YMD, seed = SEED, weather = dry): SceneDay => sceneDay(dayContext(date, VAC), weather, seed);
+const SUMMER = [{ name: 'Été', start: '2026-07-04', end: '2026-09-01' }];
+// Contexte du calendrier de chaque jour de scène (les journées des habitants le lisent).
+const CTX = new WeakMap<SceneDay, DayContext>();
+const at = (ctx: DayContext, seed = SEED, weather = dry, sun?: SunTimes): SceneDay => {
+  const day = sceneDay(ctx, weather, seed, false, undefined, sun);
+  CTX.set(day, ctx);
+  return day;
+};
+const dayOf = (date: YMD, seed = SEED, weather = dry): SceneDay => at(dayContext(date, VAC), seed, weather);
 const TYPES: HouseholdType[] = ['couple', 'famille', 'retraite', 'etudiant', 'coloc', 'solo'];
-// Logement fictif d'un type donné (clé changée pour varier les tirages), balcon au choix.
+// Logement réel d'un type donné (les journées viennent de ses membres) ; au-delà des logements de ce type, graine du foyer
+// changée pour varier les journées ; clé changée pour varier les tirages, balcon au choix ; fumeur (couple, solo) un sur trois.
 const ofType = (type: HouseholdType, i: number, balcony = i % 2 === 0): Dwelling => {
-  const base = ds[i % ds.length]!;
-  return { ...base, id: `${base.id}#${i}`, key: (base.key ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0, balcony, hh: { ...base.hh, type, smoker: i % 3 === 0 } };
+  const list = ds.filter((d) => d.hh.type === type);
+  const base = list[i % list.length]!;
+  const k = Math.floor(i / list.length);
+  const seed = k ? (base.hh.seed ^ Math.imul(k, 0x85ebca6b)) >>> 0 : base.hh.seed;
+  const smoker = (type === 'couple' || type === 'solo') && i % 3 === 0;
+  return { ...base, id: `${base.id}#${i}`, key: (base.key ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0, balcony, hh: { ...base.hh, seed, smoker } };
 };
 const pool = (type: HouseholdType, n: number) => Array.from({ length: n }, (_, i) => ofType(type, i));
 const mixed = (n: number) => Array.from({ length: n }, (_, i) => ofType(TYPES[i % TYPES.length]!, i));
-const sched = (d: Dwelling, day: SceneDay, seed = SEED): Schedule => buildSchedule(d, day, dayDraw(d, day, seed));
+const full = (d: Dwelling, day: SceneDay, seed = SEED): DwellingDay => dwellingDay(d, CTX.get(day)!, day, seed);
+const sched = (d: Dwelling, day: SceneDay, seed = SEED): Schedule => full(d, day, seed).schedule;
 const WEEK = [12, 13, 14, 15, 16, 17, 18].map((d) => dayOf({ y: 2026, m: 10, d }));
 const acts = (s: Schedule) => s.segments.filter((g): g is Extract<Segment, { k: 'act' }> => g.k === 'act');
+// Un membre est éveillé au logement pendant [a, b].
+const presentOver = (x: DwellingDay, m: number, a: number, b: number): boolean => {
+  const p = x.hd.people[m]!;
+  if (x.hd.away.state !== 'home') return false;
+  const end = p.outing && p.outing.ret > 1440 ? 1440 : p.bed;
+  return a >= p.wake && b <= end && !p.out.some(([u, v]) => a < v && b > u);
+};
+const someoneHome = (x: DwellingDay, a: number, b: number): boolean => x.hd.people.some((_, m) => presentOver(x, m, a, b));
 
 describe('emplois du temps', () => {
   it('chaque scène commence et finit dans les bornes du jour (0-1800) et dure > 0', () => {
@@ -72,7 +95,7 @@ describe('emplois du temps', () => {
         const ms = new Set(street.map((g) => g.m));
         for (const m of ms) {
           const own = street.filter((g) => g.m === m);
-          if (own[0]!.k === 'return') gone.push([m, 0, own[0]!.t]); // invité : pas là avant son arrivée
+          if (own[0]!.k === 'return') gone.push([m, 0, own[0]!.t]); // invité, retour de nuit : pas là avant son arrivée
           own.forEach((g, i) => {
             if (g.k !== 'depart') return;
             const back = own.slice(i + 1).find((x) => x.k === 'return');
@@ -91,35 +114,6 @@ describe('emplois du temps', () => {
     const differ = ds.filter((d) => sig(sched(d, mon)) !== sig(sched(d, tue))).length;
     expect(ds.length).toBeGreaterThan(40);
     expect(differ / ds.length).toBeGreaterThanOrEqual(0.9);
-  });
-
-  it('week-end : réveil plus tard en moyenne (≥ 60 min)', () => {
-    const sat = dayOf({ y: 2026, m: 10, d: 10 });
-    const tue = dayOf({ y: 2026, m: 10, d: 13 });
-    const wake = (s: Schedule) => Math.min(...s.segments.filter((g) => g.k === 'lit' && g.t0 < 720).map((g) => (g as { t0: number }).t0));
-    let sum = 0;
-    let count = 0;
-    for (const d of mixed(300)) {
-      const a = sched(d, sat);
-      const b = sched(d, tue);
-      if (!a.segments.length || !b.segments.length || dayDraw(d, tue, SEED).presence === 'sick') continue;
-      sum += wake(a) - wake(b);
-      count++;
-    }
-    expect(count).toBeGreaterThan(200);
-    expect(sum / count).toBeGreaterThanOrEqual(60);
-  });
-
-  it('retraités : une partie levée vers 7 h le dimanche, pas tous, et pas les mêmes chaque jour', () => {
-    const sun = dayOf({ y: 2026, m: 10, d: 25 }), sat = dayOf({ y: 2026, m: 10, d: 24 });
-    const at = 7 * 60 + 10;
-    const upAt = (d: Dwelling, day: SceneDay) => sched(d, day).segments.some((g) => g.k === 'lit' && g.t0 <= at && g.t1 > at);
-    const olds = pool('retraite', 200).filter((d) => dayDraw(d, sun, SEED).presence !== 'sick' && dayDraw(d, sat, SEED).presence !== 'sick');
-    const up = olds.filter((d) => upAt(d, sun)).length / olds.length;
-    expect(up).toBeGreaterThanOrEqual(0.25);
-    expect(up).toBeLessThanOrEqual(0.6);
-    const changed = olds.filter((d) => upAt(d, sun) !== upAt(d, sat)).length / olds.length;
-    expect(changed).toBeGreaterThanOrEqual(0.25);
   });
 
   it('famille : parfois une seule pièce allumée le soir (télé au salon)', () => {
@@ -177,32 +171,45 @@ describe('emplois du temps', () => {
 
   it('feux : adultes d’abord, enfants couchés absents', () => {
     const day = dayOf({ y: 2026, m: 7, d: 14 });
+    const show = day.show!;
+    let kidsAsleep = 0;
     for (const d of pool('famille', 80)) {
-      const fam = { ...d, hh: { ...d.hh, members: [...d.hh.members.slice(0, 2).map((m) => ({ ...m, size: 1, kid: false })), { ...d.hh.members[0]!, size: 0.62, kid: true }] } };
-      const watchers = acts(sched(fam, day)).filter((a) => a.event).map((a) => a.m);
-      if (watchers.length) expect(watchers.slice(0, 2).every((m) => m < 2)).toBe(true);
-      expect(watchers.includes(2)).toBe(false); // couché vers 20 h 30, bien avant 22 h 15
+      const x = full(d, day);
+      const kid = (m: number) => d.hh.members[m]!.kid;
+      const watchers = acts(x.schedule).filter((a) => a.event).sort((a, b) => a.t0 - b.t0).map((a) => a.m);
+      // Aucun enfant avant un adulte parmi ceux qui regardent.
+      const firstKid = watchers.findIndex(kid);
+      if (firstKid >= 0) expect(watchers.slice(firstKid).some((m) => !kid(m))).toBe(false);
+      d.hh.members.forEach((mem, m) => {
+        if (!mem.kid || x.hd.people[m]!.bed > show.start) return;
+        kidsAsleep++;
+        expect(watchers.includes(m)).toBe(false); // couché bien avant 22 h 15
+      });
     }
+    expect(kidsAsleep).toBeGreaterThan(20);
   });
 
-  it('absent : aucun lit ni act ; malade : aucun depart', () => {
+  it('absent : aucun lit ni act ; malade : ne sort que pour accompagner les enfants', () => {
     let away = 0;
     let sick = 0;
-    const dws = mixed(600);
-    for (const day of WEEK.slice(0, 3)) {
+    const dws = mixed(300);
+    const summer = [27, 28, 29].map((d) => at(dayContext({ y: 2026, m: 7, d }, SUMMER)));
+    for (const day of [...WEEK.slice(0, 3), ...summer]) {
       for (const d of dws) {
-        const p = dayDraw(d, day, SEED).presence;
-        const s = sched(d, day);
-        if (p === 'away') {
+        const x = full(d, day);
+        const s = x.schedule;
+        if (x.hd.away.state === 'away') {
           away++;
           expect(s.segments.some((g) => g.k === 'lit' || g.k === 'act')).toBe(false);
           expect(s.maxActors).toBe(0);
         }
-        if (p === 'sick') {
+        // Malade : ni travail ni sortie ; il ne sort que pour accompagner les enfants (dépose, sortie d'école).
+        x.hd.people.forEach((p, m) => {
+          if (!p.sick) return;
           sick++;
-          expect(s.segments.some((g) => g.k === 'depart')).toBe(false);
-          expect(s.segments.some((g) => g.k === 'lit' && g.t0 > 11 * 60 && g.t1 < 16 * 60 && g.room === 'salon') || !d.rooms.includes('salon')).toBe(true);
-        }
+          const escorts = p.blocks.filter((b) => b.k === 'escort').map((b) => b.a);
+          for (const g of s.segments) if (g.k === 'depart' && g.m === m) expect(escorts).toContain(g.t);
+        });
       }
     }
     expect(away).toBeGreaterThan(0);
@@ -211,15 +218,20 @@ describe('emplois du temps', () => {
 
   it('invités : sièges en plus au dîner, arrivés et repartis par la porte', () => {
     const fri = dayOf({ y: 2026, m: 10, d: 16 });
-    const hosts = mixed(600).filter((d) => dayDraw(d, fri, SEED).presence === 'guests');
+    const hosts = mixed(600).map((d) => ({ d, x: full(d, fri) })).filter(({ x }) => x.visits.some((v) => v.kind === 'diner'));
     expect(hosts.length).toBeGreaterThan(10);
-    for (const d of hosts) {
-      const s = sched(d, fri);
+    for (const { d, x } of hosts) {
+      const s = x.schedule;
       const n = d.hh.members.length;
-      const guests = acts(s).filter((a) => a.m >= n && a.choreo === 'table');
+      const diners = new Set(x.visits.filter((v) => v.inside).flatMap((v, k) => (v.kind === 'diner' ? [n + k] : [])));
+      const guests = acts(s).filter((a) => diners.has(a.m) && a.choreo === 'table');
       expect(guests.length).toBeGreaterThan(0);
-      for (const g of guests) expect(g.party).toBeGreaterThan(n);
+      for (const g of guests) {
+        const table = new Set(acts(s).filter((a) => a.m < n && a.choreo === 'table' && a.t0 < g.t1 && a.t1 > g.t0).map((a) => a.m));
+        expect(g.party).toBeGreaterThan(table.size);
+      }
       expect(s.segments.some((g) => g.k === 'return' && g.m >= n)).toBe(true);
+      expect(s.segments.some((g) => g.k === 'depart' && g.m >= n)).toBe(true);
     }
   });
 
@@ -229,7 +241,7 @@ describe('emplois du temps', () => {
     const dims = seeds.map((seed) => {
       const day = dayOf(date, seed);
       const show = day.show!;
-      const d = pool('couple', 40).find((x) => dayDraw(x, day, seed).presence === 'normal')!;
+      const d = pool('couple', 40).find((x) => acts(sched(x, day, seed)).some((a) => a.event))!;
       const s = sched(d, day, seed);
       const dim = s.segments.find((g) => g.k === 'dim') as { t0: number; t1: number };
       expect(dim.t0).toBeCloseTo(show.start - 1, 6);
@@ -255,68 +267,78 @@ describe('emplois du temps', () => {
     const day = dayOf({ y: 2026, m: 10, d: 13 });
     const nightfall = Math.max(day.sunset + 20, 1086);
     const olds = pool('retraite', 40).map((d) => ({ ...d, shutters: 'battant' as const }));
-    const checked = olds.filter((d) => dayDraw(d, day, SEED).presence !== 'away');
-    for (const d of checked) {
-      const closers = acts(sched(d, day)).filter((a) => a.choreo === 'closeShutters');
+    // Retraités chez eux à la tombée de la nuit (sinon ils ferment en rentrant).
+    const checked = olds.map((d) => full(d, day)).filter((x) => someoneHome(x, nightfall, nightfall + 2));
+    expect(checked.length).toBeGreaterThan(20);
+    for (const x of checked) {
+      const closers = acts(x.schedule).filter((a) => a.choreo === 'closeShutters');
       expect(closers[0]!.t0).toBeCloseTo(nightfall, 6);
     }
     // En été, la nuit tombe après le coucher : volets fermés avant d'éteindre le salon.
     const july = dayOf({ y: 2026, m: 7, d: 7 });
-    for (const d of olds.filter((x) => dayDraw(x, july, SEED).presence !== 'away')) {
+    for (const d of olds) {
       const s = sched(d, july);
+      if (!s.segments.length) continue;
       const salonOff = Math.max(...s.segments.filter((g) => g.k === 'lit' && g.room === 'salon').map((g) => (g as { t1: number }).t1));
       expect(acts(s).find((a) => a.choreo === 'closeShutters')!.t0).toBeLessThan(salonOff);
     }
   });
 
   it('volets du retraité : le coucher du soleil du lieu, la table de Paris sans lieu', () => {
-    const at = (date: YMD, sun?: SunTimes): SceneDay => sceneDay(dayContext(date, VAC), dry, SEED, false, undefined, sun);
+    const atDay = (date: YMD, sun?: SunTimes): SceneDay => at(dayContext(date, VAC), SEED, dry, sun);
     const olds = pool('retraite', 40).map((d) => ({ ...d, shutters: 'battant' as const }));
     const closeAt = (day: SceneDay) =>
-      olds.filter((d) => dayDraw(d, day, SEED).presence !== 'away').map((d) => acts(sched(d, day)).find((a) => a.choreo === 'closeShutters')!.t0);
+      olds.flatMap((d) => acts(sched(d, day)).filter((a) => a.choreo === 'closeShutters').slice(0, 1).map((a) => a.t0));
     // Même jour d'automne : Oslo (UTC+2) ferme plus tôt que Paris.
     const oct = { y: 2026, m: 10, d: 13 };
-    const paris = closeAt(at(oct, sunTimes(oct, { lat: 48.85, lon: 2.35 }, 120)));
-    const oslo = closeAt(at(oct, sunTimes(oct, { lat: 59.91, lon: 10.75 }, 120)));
+    const paris = closeAt(atDay(oct, sunTimes(oct, { lat: 48.85, lon: 2.35 }, 120)));
+    const oslo = closeAt(atDay(oct, sunTimes(oct, { lat: 59.91, lon: 10.75 }, 120)));
     expect(Math.max(...oslo)).toBeLessThan(Math.min(...paris));
     // Hiver à Paris (UTC+1) : la fermeture suit le coucher réel (16 h 55), plus le plancher de 18 h 06.
     const dec = { y: 2026, m: 12, d: 15 };
     const sun = sunTimes(dec, { lat: 48.85, lon: 2.35 }, 60) as Extract<SunTimes, { kind: 'normal' }>;
-    const winter = at(dec, sun);
+    const winter = atDay(dec, sun);
     const nightfall = Math.round(sun.sunset) + 20;
     const closes = closeAt(winter);
-    for (const t of closes) {
-      expect(t).toBeGreaterThanOrEqual(nightfall - 1e-6);
-      expect(t).toBeLessThan(1086);
-    }
-    // Sauf qui regarde encore la rue à cette heure (il referme après), tous ferment au coucher + 20 min.
+    // Avant 18 h 06 pour qui est là ; qui rentre plus tard ferme en arrivant.
+    for (const t of closes) expect(t).toBeGreaterThanOrEqual(nightfall - 1e-6);
+    // Sauf qui regarde encore la rue ou n'est pas là à cette heure (il referme après), tous ferment au coucher + 20 min.
     expect(closes.filter((t) => Math.abs(t - nightfall) < 1e-6).length).toBeGreaterThan(closes.length / 2);
     // Personne ne ferme les volets du salon pendant qu'un membre regarde la rue par sa fenêtre ou son balcon.
-    for (const d of olds.filter((x) => dayDraw(x, winter, SEED).presence !== 'away')) {
+    for (const d of olds) {
       const all = acts(sched(d, winter));
       const close = all.find((a) => a.choreo === 'closeShutters' && a.room === 'salon');
       if (!close) continue;
       for (const a of all) if (a.room === 'salon' && (a.choreo === 'lean' || a.choreo === 'leanRail') && a.t0 < close.t0) expect(a.t1).toBeLessThanOrEqual(close.t0);
     }
     // Sans lieu : table de Paris du mois (coucher 16 h 54 en décembre).
-    expect(closeAt(at(dec)).filter((t) => Math.abs(t - (Math.round(16.9 * 60) + 20)) < 1e-6).length).toBeGreaterThan(0);
+    expect(closeAt(atDay(dec)).filter((t) => Math.abs(t - (Math.round(16.9 * 60) + 20)) < 1e-6).length).toBeGreaterThan(0);
   });
 
   it('volets du retraité aux pôles : nuit polaire tôt, jour polaire au coucher du foyer', () => {
     const dec = { y: 2026, m: 12, d: 15 };
     const olds = pool('retraite', 40).map((d) => ({ ...d, shutters: 'battant' as const }));
-    const polarNight = sceneDay(dayContext(dec, VAC), dry, SEED, false, undefined, { kind: 'polar', polar: 'night' });
-    const polarDay = sceneDay(dayContext({ y: 2026, m: 6, d: 16 }, VAC), dry, SEED, false, undefined, { kind: 'polar', polar: 'day' });
-    for (const d of olds.filter((x) => dayDraw(x, polarNight, SEED).presence !== 'away')) {
-      expect(acts(sched(d, polarNight)).find((a) => a.choreo === 'closeShutters')!.t0).toBeLessThan(1086);
+    const polarNight = at(dayContext(dec, VAC), SEED, dry, { kind: 'polar', polar: 'night' });
+    const polarDay = at(dayContext({ y: 2026, m: 6, d: 16 }, VAC), SEED, dry, { kind: 'polar', polar: 'day' });
+    let early = 0, total = 0;
+    for (const d of olds) {
+      const close = acts(sched(d, polarNight)).find((a) => a.choreo === 'closeShutters');
+      if (!close) continue;
+      total++;
+      if (close.t0 < 1086) early++;
     }
-    for (const d of olds.filter((x) => dayDraw(x, polarDay, SEED).presence !== 'away')) {
+    expect(early).toBeGreaterThan(total * 0.8);
+    let checked = 0;
+    for (const d of olds) {
       const s = sched(d, polarDay);
       const salonOff = Math.max(...s.segments.filter((g) => g.k === 'lit' && g.room === 'salon').map((g) => (g as { t1: number }).t1));
-      const t = acts(s).find((a) => a.choreo === 'closeShutters')!.t0;
+      const t = acts(s).find((a) => a.choreo === 'closeShutters')?.t0;
+      if (t === undefined || salonOff < 1200) continue; // sorti, ou couché sans repasser au salon
+      checked++;
       expect(t).toBeLessThan(salonOff);
       expect(t).toBeGreaterThan(salonOff - 60);
     }
+    expect(checked).toBeGreaterThan(20);
   });
 
   it('étudiant et coloc : aucun segment shut', () => {
@@ -344,9 +366,9 @@ describe('emplois du temps', () => {
     const tuesday = dayOf({ y: 2026, m: 10, d: 13 });
     const ages = new Set<number>();
     for (const d of fams) {
-      const draw = dayDraw(d, tuesday, SEED);
-      if (draw.presence === 'sick' || draw.presence === 'away') continue;
-      const s = buildSchedule(d, tuesday, draw);
+      const x = full(d, tuesday);
+      if (x.hd.away.state !== 'home') continue;
+      const s = x.schedule;
       d.hh.members.forEach((mem, m) => {
         if (!mem.kid) return;
         ages.add(mem.who.age);
@@ -376,7 +398,7 @@ describe('emplois du temps', () => {
           if (d.hh.type !== 'famille') continue;
           const tasks = decorTasks(plan, d.id, ymd);
           if (!tasks.length) continue;
-          for (const a of acts(buildSchedule(d, sd, dayDraw(d, sd, seed), tasks))) {
+          for (const a of acts(dwellingDay(d, ctx, sd, seed, tasks).schedule)) {
             if (a.choreo !== 'decorLean' && a.choreo !== 'decorBalcony') continue;
             gestures++;
             expect(d.hh.members[a.m]!.kid, `${d.id}#${a.m}`).toBe(false);

@@ -5,8 +5,9 @@ import { DECOR_SCENE, decorLit, decorShown, decorSwitch, decorTasks, halloweenPl
 import { cityDwellings } from '../../../../src/core/library/city/households';
 import { homeState } from '../../../../src/core/library/city/home-state';
 import { awayState } from '../../../../src/core/library/city/leave-plan';
-import { dayDraw, sceneDay } from '../../../../src/core/library/city/scene-day';
-import { buildSchedule, type Schedule, type Segment } from '../../../../src/core/library/city/schedules';
+import { dwellingDay } from '../../../../src/core/library/city/dwelling-day';
+import { sceneDay } from '../../../../src/core/library/city/scene-day';
+import type { Schedule, Segment } from '../../../../src/core/library/city/schedules';
 import { dayNumber } from '../../../../src/core/library/city/shops/hours';
 import { windowPose } from '../../../../src/core/library/city/window-choreo';
 
@@ -121,7 +122,7 @@ function scheduleOn(c: (typeof cities)[number], plan: ReturnType<typeof planOf>,
   const ctx = dayContext(ymd, VAC);
   const sd = sceneDay({ ...ctx, holidayWeek: ctx.kind === 'holiday' || ymd.m === 10 }, dry, c.seed);
   const d = c.dwellings.find((x) => x.id === it.dwelling)!;
-  return buildSchedule(d, sd, dayDraw(d, sd, c.seed), decorTasks(plan, d.id, ymd));
+  return dwellingDay(d, ctx, sd, c.seed, decorTasks(plan, d.id, ymd)).schedule;
 }
 
 describe('gestes de pose et de retrait', () => {

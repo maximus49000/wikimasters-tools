@@ -387,7 +387,9 @@ describe('calque de la vie derrière les fenêtres', () => {
       for (const g of dry.today.get(d.id)!.segments) {
         if (g.k !== 'act' || g.where !== 'balcony' || g.choreo !== 'leanRail' || g.t1 - g.t0 < 4 || g.t0 < 480 || g.t1 > 1380) continue;
         const rainy = wet.today.get(d.id)!.segments.some((s) => s.k === 'act' && s.where === 'balcony' && s.t0 < g.t1 && s.t1 > g.t0);
-        if (!rainy) {
+        // Et le membre n'enchaîne pas une autre scène juste après (le pantin doit disparaître à la fin de celle-ci).
+        const next = wet.today.get(d.id)!.segments.some((s) => s.k === 'act' && s.m === g.m && s.t0 < Math.ceil(g.t1) + 2 && s.t1 > g.t1);
+        if (!rainy && !next) {
           found = { id: d.id, m: g.m, t0: g.t0, t1: g.t1 };
           break;
         }

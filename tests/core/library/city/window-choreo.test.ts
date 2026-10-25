@@ -3,8 +3,8 @@ import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
 import { homeState, type Actor } from '../../../../src/core/library/city/home-state';
 import { dayContext } from '../../../../src/core/library/city/calendar';
-import { dayDraw, sceneDay } from '../../../../src/core/library/city/scene-day';
-import { buildSchedule } from '../../../../src/core/library/city/schedules';
+import { dwellingDay } from '../../../../src/core/library/city/dwelling-day';
+import { sceneDay } from '../../../../src/core/library/city/scene-day';
 import type { Choreo, Where } from '../../../../src/core/library/city/schedules';
 import { WINDOW_ARM_POSES, windowPose, type WindowPose } from '../../../../src/core/library/city/window-choreo';
 import { YAW_FRONT, YAW_LEFT, YAW_RIGHT } from '../../../../src/core/library/figure/gait';
@@ -196,7 +196,8 @@ describe('poses des pantins de fenêtre', () => {
       const facades = cityFacades(W, H, seed);
       const dws = cityDwellings(facades, seed).filter((d) => d.balcony);
       for (const date of [{ y: 2026, m: 7, d: 14 }, { y: 2026, m: 6, d: 9 }, { y: 2026, m: 6, d: 13 }]) {
-        const day = sceneDay(dayContext(date, []), { precip: 0, snow: false, storm: false }, seed);
+        const ctx = dayContext(date, []);
+        const day = sceneDay(ctx, { precip: 0, snow: false, storm: false }, seed);
         for (const d of dws) {
           const f = facades[d.facade]!;
           const layout = f.layout!;
@@ -205,7 +206,7 @@ describe('poses des pantins de fenêtre', () => {
           const level = layout.levels[salon.level];
           const balconnet = level?.balcony === 'balconnet';
           const [x0, x1] = balconnet ? [salon.x - 1.2, salon.x + salon.w + 1.2] : [salon.x - salon.w * 0.5, Math.min(layout.x + layout.w - 1, salon.x + salon.w * 2.2)];
-          const sched = buildSchedule(d, day, dayDraw(d, day, seed));
+          const sched = dwellingDay(d, ctx, day, seed).schedule;
           for (const g of sched.segments) {
             if (g.k !== 'act' || g.where !== 'balcony') continue;
             for (let m = g.t0; m < g.t1; m += 0.05) {

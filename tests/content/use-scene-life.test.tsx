@@ -8,8 +8,8 @@ import { cityFacades, type Facade } from '../../src/core/library/city/facades';
 import { cityDwellings } from '../../src/core/library/city/households';
 import { gullMinutes } from '../../src/core/library/city/gulls';
 import type { CityContext } from '../../src/core/library/city/intensity';
-import { dayDraw, sceneDay } from '../../src/core/library/city/scene-day';
-import { buildSchedule } from '../../src/core/library/city/schedules';
+import { dwellingDay } from '../../src/core/library/city/dwelling-day';
+import { sceneDay } from '../../src/core/library/city/scene-day';
 import { homeState } from '../../src/core/library/city/home-state';
 import { skyAt, sunTimes } from '../../src/core/library/sky';
 import { CityScene } from '../../src/content/scene-city';
@@ -63,8 +63,8 @@ describe('vie des logements de la scène', () => {
     expect(life.day).toEqual(sd);
     const prev = sceneDay(dayContext(addDays(DATE, -1), []), { precip: 0, snow: false, storm: false }, 5);
     const d0 = dwellings[0]!;
-    expect(life.today.get(d0.id)).toEqual(buildSchedule(d0, sd, dayDraw(d0, sd, 5)));
-    expect(life.yesterday.get(d0.id)).toEqual(buildSchedule(d0, prev, dayDraw(d0, prev, 5)));
+    expect(life.today.get(d0.id)).toEqual(dwellingDay(d0, day, sd, 5).schedule);
+    expect(life.yesterday.get(d0.id)).toEqual(dwellingDay(d0, dayContext(addDays(DATE, -1), []), prev, 5).schedule);
   });
 
   it('semaine de vacances : `holidayWeek` du contexte transmis au jour de scène et à la veille', () => {

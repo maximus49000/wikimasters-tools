@@ -93,11 +93,18 @@ export function roomTimeline(d: Dwelling, hd: HouseholdDays, meals: HouseholdMea
   // Une grille de minutes par personne : 0 = absent, sinon code de l'activité (« home » avant peinture).
   const grids = new Map<number, Uint8Array>();
   const free = new Map<number, Cells>();
-  const add = (m: number, cells: Cells): void => { free.set(m, cells); grids.set(m, Uint8Array.from(cells, (v) => (v ? HOME : 0))); };
+  // Boucles simples (calcul du jour sur Android) : pas de `Uint8Array.from` à rappel, code de l'activité calculé une fois.
+  const add = (m: number, cells: Cells): void => {
+    free.set(m, cells);
+    const g = new Uint8Array(HORIZON);
+    for (let t = 0; t < HORIZON; t++) if (cells[t]) g[t] = HOME;
+    grids.set(m, g);
+  };
   // Peint sur les minutes encore « home » (priorité décroissante par ordre d'appel).
   const paint = (m: number, a: number, b: number, w: RoomSpan['what']): void => {
     const g = grids.get(m)!;
-    for (let t = Math.max(0, Math.floor(a)); t < Math.min(HORIZON, b); t++) if (g[t] === HOME) g[t] = code(w);
+    const c = code(w);
+    for (let t = Math.max(0, Math.floor(a)); t < Math.min(HORIZON, b); t++) if (g[t] === HOME) g[t] = c;
   };
   // Un repas n'est pris que par qui est au logement depuis au moins 10 min à l'heure du repas.
   const eats = (m: number, t: number): boolean => freeFor(free.get(m)!, Math.max(0, t - MEAL.settle), t + 1);

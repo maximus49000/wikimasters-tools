@@ -6,8 +6,9 @@ import { decorTasks, halloweenPlanFor, type HwPlan } from '../core/library/city/
 import { homeState, type HomeState } from '../core/library/city/home-state';
 import { cityDwellings, type Dwelling } from '../core/library/city/households';
 import type { CityContext } from '../core/library/city/intensity';
-import { dayDraw, sceneDay, type SceneDay } from '../core/library/city/scene-day';
-import { buildSchedule, type LightTone, type Schedule } from '../core/library/city/schedules';
+import { dwellingDay } from '../core/library/city/dwelling-day';
+import { sceneDay, type SceneDay } from '../core/library/city/scene-day';
+import type { LightTone, Schedule } from '../core/library/city/schedules';
 import type { SunTimes } from '../core/library/sky';
 
 // Vie des logements d'une scène Ville (spec 2026-10-19 « vie au-dessus de la rue » §5.1) : foyers des façades, emplois du
@@ -23,7 +24,7 @@ export type SceneLife = { dwellings: Dwelling[]; today: Map<string, Schedule>; y
 type Weather = { precip: number; snow: boolean; storm: boolean };
 
 const schedulesOf = (dwellings: readonly Dwelling[], day: SceneDay, seed: number, ctx: DayContext, plan: HwPlan | null): Map<string, Schedule> =>
-  new Map(dwellings.map((d) => [d.id, buildSchedule(d, day, dayDraw(d, day, seed), decorTasks(plan, d.id, ctx.date))]));
+  new Map(dwellings.map((d) => [d.id, dwellingDay(d, ctx, day, seed, decorTasks(plan, d.id, ctx.date)).schedule]));
 
 // Calcul pur (tests, cache) : la veille vient de `day.yesterday` (useCityDay, mêmes périodes de vacances), à défaut d'un
 // contexte sans périodes ; même météo que le jour (celle de la veille n'est pas connue), aucun déménagement. `sun` : lever et
@@ -31,7 +32,7 @@ const schedulesOf = (dwellings: readonly Dwelling[], day: SceneDay, seed: number
 // Paris (`sceneDay`).
 export function buildSceneLife(facades: readonly Facade[], day: DayContext, weather: Weather, seed: number, moving: boolean, dwellings = cityDwellings(facades, seed), sun?: SunTimes): SceneLife {
   const today = sceneDay(day, weather, seed, moving, day.holidayWeek, sun);
-  const prevCtx = day.yesterday ?? dayContext(addDays(day.date, -1), []);
+  const prevCtx: DayContext = { ...(day.yesterday ?? dayContext(addDays(day.date, -1), [])), periods: day.yesterday?.periods ?? day.periods };
   const prev = sceneDay(prevCtx, weather, seed, false, prevCtx.holidayWeek, sun);
   const periods = day.periods ?? [];
   const plan = halloweenPlanFor(day.date, dwellings, facades, seed, periods);

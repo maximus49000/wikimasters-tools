@@ -3,8 +3,9 @@ import { addDays, dayContext, type YMD } from '../../../../src/core/library/city
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
 import { cullAnimated, homeState, litShare, MAX_ANIM, trackValue, type HomeState } from '../../../../src/core/library/city/home-state';
-import { dayDraw, sceneDay } from '../../../../src/core/library/city/scene-day';
-import { buildSchedule, type Schedule, type Segment } from '../../../../src/core/library/city/schedules';
+import { dwellingDay } from '../../../../src/core/library/city/dwelling-day';
+import { sceneDay } from '../../../../src/core/library/city/scene-day';
+import type { Schedule, Segment } from '../../../../src/core/library/city/schedules';
 import { windowsLitFraction } from '../../../../src/core/library/city/window-lights';
 
 const W = 1440;
@@ -14,8 +15,8 @@ const VAC = [{ name: 'Toussaint', start: '2026-10-17', end: '2026-11-02' }];
 const TUESDAY: YMD = { y: 2026, m: 10, d: 13 };
 const dwellingsOf = (seed: number): Dwelling[] => cityDwellings(cityFacades(W, H, seed), seed);
 const scheduleOf = (d: Dwelling, date: YMD, seed: number): Schedule => {
-  const day = sceneDay(dayContext(date, VAC), dry, seed);
-  return buildSchedule(d, day, dayDraw(d, day, seed));
+  const ctx = dayContext(date, VAC);
+  return dwellingDay(d, ctx, sceneDay(ctx, dry, seed), seed).schedule;
 };
 // Logement fictif à trois pièces (volets au choix) et emplois du temps écrits à la main.
 const base = dwellingsOf(3).find((d) => d.rooms.length === 3)!;
@@ -182,20 +183,32 @@ describe('état d\'un logement à la minute', () => {
     expect(st.curt).toEqual({ cuisine: 0, chambre: 0, salon: 1 });
   });
 
-  it('part allumée proche de la courbe horaire', () => {
+  // Depuis les journées de chacun (tâche 10), une pièce n'est allumée que si quelqu'un y est : la part allumée suit la
+  // forme de la courbe horaire (soirée haute, nuit noire) sans la dépasser (une famille à 21 h n'allume que le salon).
+  it('part allumée : forme de la courbe horaire, jamais au-dessus', () => {
     const day = { weekday: 2, kind: 'school' as const };
     const rows: string[] = [];
-    let worst = 0;
+    const share: Record<number, number> = {};
     for (const h of [7, 8, 20, 21, 23, 1, 3]) {
       const m = h * 60;
+      let sum = 0;
       for (const seed of [1, 2, 3, 4, 5]) {
         const items = dwellingsOf(seed).map((d) => ({ d, today: scheduleOf(d, TUESDAY, seed), yesterday: scheduleOf(d, addDays(TUESDAY, -1), seed) }));
-        const share = litShare(items, m), want = windowsLitFraction(m, day);
-        rows.push(`${h} h graine ${seed} : ${share.toFixed(3)} / ${want.toFixed(3)}`);
-        worst = Math.max(worst, Math.abs(share - want));
+        const s = litShare(items, m), want = windowsLitFraction(m, day);
+        rows.push(`${h} h graine ${seed} : ${s.toFixed(3)} / ${want.toFixed(3)}`);
+        expect(s, rows.join('\n')).toBeLessThanOrEqual(want + 0.05);
+        sum += s;
       }
+      share[h] = sum / 5;
     }
-    expect(worst, rows.join('\n')).toBeLessThanOrEqual(0.12);
+    const msg = rows.join('\n');
+    expect(share[20]!, msg).toBeGreaterThan(0.5);
+    expect(share[21]!, msg).toBeGreaterThan(0.35);
+    expect(share[20]!, msg).toBeGreaterThan(share[8]!);
+    expect(share[8]!, msg).toBeGreaterThan(share[7]!);
+    expect(share[23]!, msg).toBeGreaterThan(share[1]!);
+    expect(share[1]!, msg).toBeGreaterThanOrEqual(share[3]!);
+    expect(share[3]!, msg).toBeLessThanOrEqual(0.02);
   });
 });
 
