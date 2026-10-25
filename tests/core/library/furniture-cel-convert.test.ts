@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { REST_LIFE } from '../../../src/core/library/cel/life-state';
 import { lookOf } from '../../../src/core/library/cel/looks';
 import { CEL_MODELS, celItemPartsOf, celPartsOf } from '../../../src/core/library/cel/models';
+import { celFromModel } from '../../../src/core/library/cel/convert';
 import { spriteKey } from '../../../src/core/library/cel/sprite-key';
 import { WARM_LIT } from '../../../src/core/library/cel/tone';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
@@ -29,6 +30,17 @@ describe('conversion des modèles à boîtes en maillages cellulo', () => {
   it('aucun dessin propre encore : tout passe par la conversion', () => expect(Object.keys(CEL_MODELS)).toEqual([]));
 
   for (const k of STANDING_KINDS) it(`${k} : encombrement, dessus, déterminisme, ombre et encre, ouverture`, () => checkCelModel(k, look, REST_LIFE, FALLBACK_LIMITS[k]));
+
+  it('les exemptions du repli ne valent plus pour un meuble redessiné : seuils complets', () => {
+    // Pouf cube exempté d'ombre en repli ; « redessiné » à l'identique (même conversion), il doit échouer au seuil d'ombre complet.
+    expect(() => checkCelModel('square-pouf', look, REST_LIFE, FALLBACK_LIMITS['square-pouf'])).not.toThrow();
+    CEL_MODELS['square-pouf'] = (l) => celFromModel(FURNITURE_MODELS['square-pouf'], l);
+    try {
+      expect(() => checkCelModel('square-pouf', look, REST_LIFE, FALLBACK_LIMITS['square-pouf'])).toThrow(/part d'ombre/);
+    } finally {
+      delete CEL_MODELS['square-pouf'];
+    }
+  });
 
   it('lampe allumée : l’abat-jour est lumineux ; éteinte, aucune pièce lumineuse', () => {
     const lit = celPartsOf('lamp', look, REST_LIFE, { lit: true });

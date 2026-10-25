@@ -12,15 +12,19 @@ export type PaintedSprite = { url: string; box: { x: number; y: number; w: numbe
 export const BLANK_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
 // Canvas partagé, en mémoire (`willReadFrequently` : pas sur le GPU, toDataURL n'attend pas la relecture des pixels, comme les
-// pantins). null sans canvas 2D ; sous jsdom, pas même d'appel (getContext y signale « Not implemented »).
+// pantins). null quand getContext ne rend pas de contexte 2D (jsdom, navigateur limité) ou lève.
 let surface: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null | undefined;
 function getSurface(): typeof surface {
   if (surface !== undefined) return surface;
   surface = null;
-  if (typeof document === 'undefined' || (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom'))) return surface;
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (ctx) surface = { canvas, ctx };
+  if (typeof document === 'undefined') return surface;
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (ctx) surface = { canvas, ctx };
+  } catch {
+    surface = null;
+  }
   return surface;
 }
 

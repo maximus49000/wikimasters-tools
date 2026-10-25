@@ -90,6 +90,25 @@ describe('sprites cellulo dans la pièce (Ghibli)', () => {
       expect(ghibli).toEqual({ cd: decalChain(k, 'Daft_Punk', 'image'), book: decalChain(k, 'Dune', 'text') });
     });
 
+    it('l’image peinte n’est jamais assombrie : aucun voile hors du cadre d’un décor (tranche de livre de profil)', () => {
+      // Étagère tournée : la tranche du livre est sur un côté ombré (dim > 0).
+      const layout: Layout = [{ id: 's', kind: 'shelf', col: 2, row: 4, angle: 1 }, { id: 'b', kind: 'stored', shape: 'book', shelfId: 's', level: 0, order: 0, slug: 'Dune' }];
+      const reg = new SpriteRegistry('test', { schedule: (cb) => void queue.push(cb) });
+      const room: Room = { id: 'r1', name: 'P', style: 'scandinave', scene: 'city', orientation: 'landscape', cols: 24, pets: [], layout };
+      const c = document.createElement('div');
+      document.body.append(c);
+      root = createRoot(c);
+      act(() => root!.render(<SpriteContext.Provider value={reg}><RoomView room={room} editing={false} cellsActive={false} selectedId={null} blink={[]} onCell={() => undefined} onPick={() => undefined} cards={CARDS} /></SpriteContext.Provider>));
+      flush();
+      const item = c.querySelector('[data-card="Dune"] [data-item3d]')!;
+      expect(item.querySelector('image[data-sprite-image]')).not.toBeNull();
+      // Côté ombré : le titre est atténué (transparence), pas l'image recouverte d'un voile.
+      expect(item.querySelector('text')!.closest('g[opacity]')).not.toBeNull();
+      // Aucun polygone noir (l'ancien voile couvrait toute la face à boîtes, par-dessus l'image) ; un voile éventuel est sous la matrice du décor.
+      expect(item.querySelectorAll('polygon[fill="#000000"]').length).toBe(0);
+      for (const r of item.querySelectorAll('[fill="#000000"]')) expect(r.closest('g[transform^="matrix"]')).not.toBeNull();
+    });
+
     it('attributs, zone de toucher et contour de sélection inchangés', () => {
       const c = mount({ editing: true, selectedId: 'so' });
       flush();

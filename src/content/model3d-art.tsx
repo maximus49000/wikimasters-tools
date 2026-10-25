@@ -318,12 +318,15 @@ function Decals({ g, palette, content, bodyColor }: Omit<DrawProps, 'lit' | 'lam
     if (s.tag !== 'polygon' || !s.decal) return null;
     const d = s.decal;
     const color = (s.body && bodyColor) || (s.color ?? palette[s.fill]);
+    // L'image peinte n'est jamais assombrie : l'atténuation d'un côté ombré ne porte que sur le décor lui-même. Décor partiel
+    // (titre de tranche, pages) : rendu plus transparent ; décor plein (couverture, écran, dos, façade) : voile limité à son cadre.
+    const partial = d.role === 'spine' || d.role === 'pages';
     return (
-      <g key={i}>
-        <g transform={d.m}>
+      <g key={i} transform={d.m}>
+        <g {...(partial && d.dim > 0 && { opacity: Math.round((1 - d.dim) * 100) / 100 })}>
           <DecalArt d={d} content={content?.[d.item]} color={color} />
         </g>
-        {d.dim > 0 && <polygon points={s.points} fill="#000000" opacity={d.dim} pointerEvents="none" />}
+        {!partial && d.dim > 0 && <rect data-decal-dim="" width={d.w} height={d.h} fill="#000000" opacity={d.dim} pointerEvents="none" />}
       </g>
     );
   };

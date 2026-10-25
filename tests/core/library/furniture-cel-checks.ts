@@ -4,7 +4,7 @@ import { ROOM_CAMERA, yawOf } from '../../../src/core/library/cel/camera';
 import { REST_LIFE, type LifeState } from '../../../src/core/library/cel/life-state';
 import { lookOf, type CelLook } from '../../../src/core/library/cel/looks';
 import type { CelPart, Vec3 } from '../../../src/core/library/cel/mesh';
-import { celPartsOf } from '../../../src/core/library/cel/models';
+import { CEL_MODELS, celPartsOf } from '../../../src/core/library/cel/models';
 import { renderCel } from '../../../src/core/library/cel/raster';
 import type { Angle } from '../../../src/core/library/footprint';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
@@ -35,9 +35,11 @@ function topAt(parts: readonly CelPart[], x: number, z: number): number {
 // propre entre 8 % et 65 % des pixels opaques et encre > 0,5 % ; (e) modèle à face : aucun sommet d'une pièce non `interior` dans
 // la boîte d'ouverture (face rétrécie de 2 cm, de z = 0 au fond moins 2 cm).
 // `skip` : critères écartés pour ce meuble, chacun avec sa raison chez l'appelant ('fill' : dimensions ≥ 85 % ; 'perch' : (b) ;
-// 'shade' : part d'ombre de (d), l'encre restant contrôlée). Le reste est toujours vérifié.
+// 'shade' : part d'ombre de (d), l'encre restant contrôlée). Le reste est toujours vérifié. Les exemptions ne valent que pour le
+// dessin de repli (conversion du modèle à boîtes) : un meuble redessiné (CEL_MODELS) passe toujours les seuils complets.
 export type CelCheck = 'fill' | 'perch' | 'shade';
-export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandinave'), life: LifeState = REST_LIFE, skip: readonly CelCheck[] = []): void {
+export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandinave'), life: LifeState = REST_LIFE, fallbackSkip: readonly CelCheck[] = []): void {
+  const skip: readonly CelCheck[] = CEL_MODELS[kind] ? [] : fallbackSkip;
   const model = FURNITURE_MODELS[kind];
   const parts = celPartsOf(kind, look, life);
   const vs: Vec3[] = parts.flatMap((P) => P.m.v);
