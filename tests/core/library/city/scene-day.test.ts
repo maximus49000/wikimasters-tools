@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { dayContext, type YMD } from '../../../../src/core/library/city/calendar';
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling, type HouseholdType } from '../../../../src/core/library/city/households';
+import { awayState } from '../../../../src/core/library/city/leave-plan';
 import { dayDraw, sceneDay, type Presence, type SceneDay } from '../../../../src/core/library/city/scene-day';
 
 const SEED = 7;
@@ -9,6 +10,7 @@ const dry = { precip: 0, snow: false, storm: false };
 const rain = { precip: 1.2, snow: false, storm: false };
 const ds: Dwelling[] = [1, 2, 3].flatMap((s) => cityDwellings(cityFacades(1440, 340, s), s));
 const VAC = [{ name: 'Toussaint', start: '2026-10-17', end: '2026-11-02' }];
+const SUMMER = [{ name: 'Été', start: '2026-07-04', end: '2026-09-01' }];
 const dayOf = (date: YMD, weather = dry, periods = VAC): SceneDay => sceneDay(dayContext(date, periods), weather, SEED);
 // Logement fictif d'un type donné, à balcon (la présence et les scènes ne lisent que le foyer, les pièces et le balcon).
 const ofType = (type: HouseholdType, i: number, extra: Partial<Dwelling['hh']> = {}): Dwelling => {
@@ -102,7 +104,7 @@ describe('tirage du jour', () => {
     expect(wideWake).toBeGreaterThan(ds.length * 0.3);
   });
 
-  it('vacances scolaires : plus de familles absentes', () => {
+  it('vacances scolaires : semaine de vacances fournie par l’appelant ; familles parties pendant leurs congés d’été, jamais en période scolaire', () => {
     const holiday = dayOf({ y: 2026, m: 10, d: 20 });
     const school = dayOf({ y: 2026, m: 10, d: 13 });
     expect(holiday.kind).toBe('holiday');
@@ -113,29 +115,32 @@ describe('tirage du jour', () => {
     const satVac = sceneDay(dayContext({ y: 2026, m: 10, d: 24 }, VAC), dry, SEED, false, true);
     expect(satVac.kind).toBe('weekend');
     expect(satVac.holidayWeek).toBe(true);
-    const fams = pool('famille', 200);
+    // L'absence vient des congés (leave-plan.ts) : familles réelles (leurs membres décident des semaines de CP).
+    const fams = ds.filter((d) => d.hh.type === 'famille');
+    expect(fams.length).toBeGreaterThan(10);
     const share = (day: SceneDay) => fams.filter((d) => dayDraw(d, day, SEED).presence === 'away').length / fams.length;
-    expect(share(holiday)).toBeGreaterThan(0.2);
-    expect(share(satVac)).toBeGreaterThan(0.2);
-    expect(share(school)).toBeLessThan(0.08);
+    expect(share(dayOf({ y: 2026, m: 7, d: 29 }, dry, SUMMER))).toBeGreaterThan(0.15);
+    expect(share(school)).toBe(0);
   });
 
-  it('absent toute la semaine, week-end compris', () => {
-    const week = (d: number) => sceneDay(dayContext({ y: 2026, m: 10, d }, VAC), dry, SEED, false, true);
-    const mon = week(19);
-    const days = [20, 21, 22, 23, 24, 25].map(week);
-    const all = [...ds.slice(0, 100), ...pool('famille', 100)];
-    expect(all.length).toBe(200);
+  it('parti du samedi au dimanche suivant, sans trou', () => {
+    // Semaine du lundi 27 juillet 2026 : samedi 25 départ (ou déjà parti), dimanche 26 → samedi 1er août parti.
+    const on = (d: number, m = 7) => sceneDay({ ...dayContext({ y: 2026, m, d }, SUMMER), periods: SUMMER }, dry, SEED);
+    const mon = on(27);
+    const days = [on(26), on(28), on(29), on(30), on(31), on(1, 8)];
     let away = 0;
-    for (const d of all) {
-      const isAway = dayDraw(d, mon, SEED).presence === 'away';
-      if (isAway) away++;
-      for (const day of days) expect(dayDraw(d, day, SEED).presence === 'away').toBe(isAway);
+    for (const d of ds) {
+      if (dayDraw(d, mon, SEED).presence !== 'away') continue;
+      away++;
+      for (const day of days) expect(dayDraw(d, day, SEED).presence).toBe('away');
+      // Samedi d'avant : départ dans la journée (présent jusque-là) ou déjà parti.
+      expect(['leaves', 'away']).toContain(awayState(d, SEED, { y: 2026, m: 7, d: 25 }, SUMMER).state);
+      expect(['returns', 'away']).toContain(awayState(d, SEED, { y: 2026, m: 8, d: 2 }, SUMMER).state);
     }
-    expect(away).toBeGreaterThan(20);
-    // Semaine suivante (lundi 26) : nouveau tirage.
-    const next = sceneDay(dayContext({ y: 2026, m: 10, d: 26 }, VAC), dry, SEED, false, true);
-    expect(all.some((d) => (dayDraw(d, mon, SEED).presence === 'away') !== (dayDraw(d, next, SEED).presence === 'away'))).toBe(true);
+    expect(away).toBeGreaterThan(5);
+    // Semaine suivante : nouveau tirage, certains rentrent.
+    const next = on(3, 8);
+    expect(ds.some((d) => (dayDraw(d, mon, SEED).presence === 'away') !== (dayDraw(d, next, SEED).presence === 'away'))).toBe(true);
   });
 
   it('invités surtout le vendredi et le samedi soir, rentrés tard seulement en semaine', () => {

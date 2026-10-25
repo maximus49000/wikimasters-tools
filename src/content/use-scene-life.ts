@@ -31,7 +31,8 @@ const schedulesOf = (dwellings: readonly Dwelling[], day: SceneDay, seed: number
 // Paris (`sceneDay`).
 export function buildSceneLife(facades: readonly Facade[], day: DayContext, weather: Weather, seed: number, moving: boolean, dwellings = cityDwellings(facades, seed), sun?: SunTimes): SceneLife {
   const today = sceneDay(day, weather, seed, moving, day.holidayWeek, sun);
-  const prevCtx = day.yesterday ?? dayContext(addDays(day.date, -1), []);
+  // La veille garde les périodes du jour (départs en vacances de `dayDraw`).
+  const prevCtx: DayContext = { ...(day.yesterday ?? dayContext(addDays(day.date, -1), [])), ...(day.periods ? { periods: day.periods } : {}) };
   const prev = sceneDay(prevCtx, weather, seed, false, prevCtx.holidayWeek, sun);
   const periods = day.periods ?? [];
   const plan = halloweenPlanFor(day.date, dwellings, facades, seed, periods);

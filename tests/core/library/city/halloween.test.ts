@@ -4,7 +4,8 @@ import { cityFacades } from '../../../../src/core/library/city/facades';
 import { DECOR_SCENE, decorLit, decorShown, decorSwitch, decorTasks, halloweenPlan, halloweenPlanFor, halloweenYear, type HwItem } from '../../../../src/core/library/city/halloween';
 import { cityDwellings } from '../../../../src/core/library/city/households';
 import { homeState } from '../../../../src/core/library/city/home-state';
-import { awayInWeek, dayDraw, isoWeek, sceneDay } from '../../../../src/core/library/city/scene-day';
+import { awayState } from '../../../../src/core/library/city/leave-plan';
+import { dayDraw, sceneDay } from '../../../../src/core/library/city/scene-day';
 import { buildSchedule, type Schedule, type Segment } from '../../../../src/core/library/city/schedules';
 import { dayNumber } from '../../../../src/core/library/city/shops/hours';
 import { windowPose } from '../../../../src/core/library/city/window-choreo';
@@ -79,13 +80,27 @@ describe('plan des décors d’Halloween', () => {
         expect(it.remove).toBeGreaterThanOrEqual(dayNumber(date(11, 1)));
         expect(it.remove).toBeLessThanOrEqual(dayNumber(date(11, 15)));
         const d = byId.get(it.dwelling)!;
-        const day = new Date(it.install * 86_400_000);
-        const ymd = { y: day.getUTCFullYear(), m: day.getUTCMonth() + 1, d: day.getUTCDate() };
-        const ctx = dayContext(ymd, VAC);
-        const { week, thursday } = isoWeek(ymd, ctx.weekday);
-        expect(awayInWeek(d, c.seed, week, true, thursday.m)).toBe(false);
+        for (const n of [it.install, ...(it.remove < dayNumber(date(11, 15)) ? [it.remove] : [])]) {
+          const day = new Date(n * 86_400_000);
+          const ymd = { y: day.getUTCFullYear(), m: day.getUTCMonth() + 1, d: day.getUTCDate() };
+          expect(awayState(d, c.seed, ymd, VAC).state).not.toBe('away');
+        }
       }
     });
+  });
+
+  it('Halloween : aucun décor posé un jour away', () => {
+    let checked = 0;
+    cities.forEach((c, i) => {
+      const byId = new Map(c.dwellings.map((d) => [d.id, d]));
+      for (const it of planOf(i).items) {
+        const day = new Date(it.install * 86_400_000);
+        const ymd = { y: day.getUTCFullYear(), m: day.getUTCMonth() + 1, d: day.getUTCDate() };
+        expect(awayState(byId.get(it.dwelling)!, c.seed, ymd, VAC).state).not.toBe('away');
+        checked++;
+      }
+    });
+    expect(checked).toBeGreaterThan(20);
   });
 
   it('les tâches d’un jour : poses le jour de pose, retraits le jour de retrait', () => {
@@ -104,7 +119,7 @@ function scheduleOn(c: (typeof cities)[number], plan: ReturnType<typeof planOf>,
   const t = new Date(day * 86_400_000);
   const ymd = { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
   const ctx = dayContext(ymd, VAC);
-  const sd = sceneDay({ ...ctx, holidayWeek: ctx.kind === 'holiday' || ymd.m === 10 }, dry, c.seed);
+  const sd = sceneDay({ ...ctx, holidayWeek: ctx.kind === 'holiday' || ymd.m === 10, periods: VAC }, dry, c.seed);
   const d = c.dwellings.find((x) => x.id === it.dwelling)!;
   return buildSchedule(d, sd, dayDraw(d, sd, c.seed), decorTasks(plan, d.id, ymd));
 }

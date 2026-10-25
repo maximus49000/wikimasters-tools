@@ -1,13 +1,14 @@
 import { hashString, mulberry32 } from '../scene-world';
 import type { SunTimes } from '../sky';
-import { addDays, type DayContext, type DayKind, type FestivityId, type YMD } from './calendar';
+import { addDays, type DayContext, type DayKind, type FestivityId, type HolidayPeriod, type YMD } from './calendar';
 import { fireworksShow, type FireworksShow } from './fireworks-show';
 import type { Dwelling, Room } from './households';
+import { awayState } from './leave-plan';
 
 // Jour de scène et tirage du jour de chaque logement (spec 2026-10-19 « vie au-dessus de la rue » §5.1 : « aléatoire et
 // imprévisible, mais logique »). Le contexte du jour (soleil, pluie, saison, vacances, fêtes, feux) ne dépend que de la date,
 // de la météo et de la graine ; le tirage d'un logement ne dépend que de (logement, date, graine) : aucune heure, aucun état.
-// L'absence (vacances, week-end ailleurs) est tirée une fois par semaine ISO : un foyer parti l'est du lundi au dimanche.
+// L'absence (départ en vacances) vient des congés des actifs (leave-plan.ts, `awayState`) : parti du samedi au dimanche.
 // Les horaires types de notes.md §Emploi du temps deviennent des tendances autour desquelles on tire les décalages ci-dessous.
 
 export type SceneDay = {
@@ -20,6 +21,8 @@ export type SceneDay = {
   holidayWeek: boolean;
   week: number; // semaine ISO, année × 100 + numéro (graine de l'absence)
   weekMonth: number; // mois du jeudi de la semaine ISO (juillet-août : plus d'absences)
+  // Périodes de vacances connues (`DayContext.periods`), pour les départs en vacances (`awayState`) ; absentes : aucune.
+  periods?: readonly HolidayPeriod[];
 };
 
 // Lever / coucher de Paris le 15 de chaque mois, en heures (SUNS de docs/superpowers/maquettes/vie-etages/src/03-temps.js).
@@ -73,6 +76,7 @@ export function sceneDay(day: DayContext, weather: { precip: number; snow: boole
     holidayWeek: holidayWeek ?? day.kind === 'holiday',
     week,
     weekMonth: thursday.m,
+    ...(day.periods ? { periods: day.periods } : {}),
   };
 }
 
@@ -87,8 +91,7 @@ export type OptionalScene = 'water' | 'rug' | 'look' | 'smoke' | 'party' | 'tv' 
 // offOrder : ordre des extinctions des pièces ; rng : graine entière pour les tirages en aval (emplois du temps).
 export type DayDraw = { presence: Presence; wake: number; back: number; evening: number; bed: number; optional: Record<OptionalScene, boolean>; offOrder: Room[]; rng: number };
 
-// Probabilités de présence : away (par semaine), puis par jour sick, guests, late.
-const AWAY = { base: 0.03, holidayFamily: 0.3, holidayOther: 0.12, summer: 1.5 } as const;
+// Probabilités de présence par jour : sick, guests, late (l'absence vient des congés, leave-plan.ts).
 const SICK = 0.03;
 const GUESTS = { friSat: 0.15, other: 0.06, extra: [45, 90] } as const;
 const LATE = { p: 0.12, extra: [60, 150] } as const;
@@ -100,14 +103,7 @@ const OPTIONAL = { water: 0.7, rug: 0.35, look: 0.55, smoke: 0.85, party: 0.65, 
 const spread = (r: number, amp: number): number => (2 * r - 1) * amp;
 const between = (r: number, [a, b]: readonly [number, number]): number => a + r * (b - a);
 
-// Foyer parti toute la semaine ISO `week` (vacances, week-end ailleurs) : un tirage par semaine, plus probable en vacances
-// scolaires (familles surtout) et l'été. Relu hors de `dayDraw` par les décors d'Halloween (qui est là le jour de la pose).
-export function awayInWeek(d: Pick<Dwelling, 'key' | 'hh'>, seed: number, week: number, holidayWeek: boolean, weekMonth: number): boolean {
-  const rAway = mulberry32(seed ^ hashString('away') ^ d.key ^ week)();
-  let pAway = holidayWeek ? (d.hh.type === 'famille' ? AWAY.holidayFamily : AWAY.holidayOther) : AWAY.base;
-  if (weekMonth === 7 || weekMonth === 8) pAway *= AWAY.summer;
-  return rAway < pAway;
-}
+const ymdOf = (iso: string): YMD => ({ y: +iso.slice(0, 4), m: +iso.slice(5, 7), d: +iso.slice(8, 10) });
 
 export function dayDraw(d: Dwelling, day: SceneDay, seed: number): DayDraw {
   const rng = mulberry32(seed ^ hashString(day.iso) ^ d.key ^ hashString('day'));
@@ -123,7 +119,7 @@ export function dayDraw(d: Dwelling, day: SceneDay, seed: number): DayDraw {
   const workday = !day.weekend && day.kind !== 'public-holiday';
   const pGuests = day.weekday === 5 || day.weekday === 6 ? GUESTS.friSat : GUESTS.other;
   const presence: Presence =
-    awayInWeek(d, seed, day.week, day.holidayWeek, day.weekMonth) ? 'away' : rSick < SICK ? 'sick' : rGuests < pGuests ? 'guests' : workday && rLate < LATE.p ? 'late' : 'normal';
+    awayState(d, seed, ymdOf(day.iso), day.periods ?? []).state === 'away' ? 'away' : rSick < SICK ? 'sick' : rGuests < pGuests ? 'guests' : workday && rLate < LATE.p ? 'late' : 'normal';
 
   const wake = spread(rWake, !workday ? SPREAD.wakeWeekend : SPREAD.wakeWeek);
   const back = spread(rBack, SPREAD.back) + (presence === 'late' ? between(rLateExtra, LATE.extra) : 0);
