@@ -89,7 +89,7 @@ function standHeight(): number {
   return standH;
 }
 
-// Tenue d'intérieur d'un membre du foyer (couleurs du foyer, coupe tirée de sa graine) ; invité (m au-delà des membres) :
+// Tenue d'intérieur d'un membre du foyer (couleurs du foyer, coupe tirée de sa graine, selon son sexe) ; invité (m au-delà des membres) :
 // tenue d'un passant ordinaire tirée de la clé du logement et de m, sans chapeau ni sac. Tirages déterministes.
 const pick = <T,>(list: readonly T[], r: () => number): T => list[Math.floor(r() * list.length)]!;
 export function windowOutfit(d: Dwelling, m: number): Outfit {
@@ -100,14 +100,21 @@ export function windowOutfit(d: Dwelling, m: number): Outfit {
   }
   const r = mulberry32(d.hh.seed ^ hashString('window-member') ^ m);
   const old = d.hh.type === 'retraite';
+  // Coupe et bas selon le sexe (même flux) : femme — long, chignon, court, jupe ou robe permises ; homme — court ou chauve
+  // (court seulement pour un garçon), pantalon ou jean (short pour un garçon).
+  const f = mem.who.sex === 'f';
+  const hairs = f ? (['long', 'bun', 'short'] as const) : mem.kid ? (['short'] as const) : (['short', 'short', 'bald'] as const);
+  const bottoms = mem.kid
+    ? (f ? (['pants', 'shorts', 'skirt'] as const) : (['pants', 'shorts'] as const))
+    : f ? (['pants', 'jeans', 'skirt', 'dress'] as const) : (['pants', 'jeans', 'pants'] as const);
   return {
     skin: mem.skin,
-    hair: pick(mem.kid ? (['short', 'long', 'bun'] as const) : (['short', 'long', 'bun', 'short', 'bald'] as const), r),
+    hair: pick(hairs, r),
     hairColor: old ? '#9A9A9A' : pick(['#3B2A1E', '#111111', '#6B3A1E', '#8A5A2B', '#C9A24A'] as const, r),
     hatColor: '#000000',
     top: pick(['tee', 'sweater', 'shirt'] as const, r),
     topColor: mem.shirt,
-    bottom: pick(mem.kid ? (['pants', 'shorts', 'skirt'] as const) : (['pants', 'jeans', 'skirt', 'pants'] as const), r),
+    bottom: pick(bottoms, r),
     bottomColor: mem.pants,
     accessory: 'none',
     accessoryColor: '#000000',

@@ -1,6 +1,7 @@
 import { hashString, mulberry32 } from '../scene-world';
 import type { Facade } from './facades';
 import type { Home } from './facade-layout';
+import { nannyFor, type Visitor } from './id-card';
 import { identityOf, kidSize, type Identity } from './identity';
 
 // Foyers fixes par logement (port de `householdFor` / `makeHousehold` de docs/superpowers/maquettes/vie-etages/src/02-layout.js,
@@ -15,8 +16,8 @@ export type Room = 'cuisine' | 'chambre' | 'salon';
 export type Member = { kid: boolean; size: number; shirt: string; pants: string; skin: string; who: Identity };
 type Drawn = Omit<Member, 'who'>;
 // smoker : 40 % des couples et des personnes seules (coloc et étudiant fument selon leur emploi du temps) ; sapin : 55 % ;
-// late : couche-tard, 50 % des étudiants ; seed : graine propre au foyer.
-export type Household = { type: HouseholdType; members: Member[]; smoker: boolean; sapin: boolean; late: boolean; seed: number };
+// late : couche-tard, 50 % des étudiants ; seed : graine propre au foyer ; nanny : nounou de la famille (voir id-card.ts).
+export type Household = { type: HouseholdType; members: Member[]; smoker: boolean; sapin: boolean; late: boolean; seed: number; nanny: Visitor | null };
 export type Dwelling = {
   id: string; // `${facade}:${home}` (même clé que `data-home` du calque des fenêtres)
   facade: number; home: number; key: number; // index dans `facades`, index dans `facade.homes`, `Home.key`
@@ -42,7 +43,7 @@ const member = (rng: () => number, size = 1, kid = false): Drawn => ({ kid, size
 
 // Membres selon le type (ordre des tirages de la maquette), puis drapeaux du foyer (toujours tirés, dans le même ordre).
 // Les tailles d'enfant tirées ici (0,62 / 0,7) sont remplacées par celles de l'âge dans `householdFor`.
-function makeHousehold(type: HouseholdType, rng: () => number): Omit<Household, 'members'> & { members: Drawn[] } {
+function makeHousehold(type: HouseholdType, rng: () => number): Omit<Household, 'members' | 'nanny'> & { members: Drawn[] } {
   const members: Drawn[] = [];
   if (type === 'couple') members.push(member(rng), member(rng));
   else if (type === 'famille') {
@@ -70,9 +71,12 @@ export function householdFor(home: Home, seed: number): Household {
   let type: HouseholdType = r < 0.25 ? 'couple' : r < 0.45 ? 'famille' : r < 0.63 ? 'retraite' : r < 0.75 ? 'etudiant' : r < 0.85 ? 'coloc' : 'solo';
   if (home.bays.length === 1 && (type === 'famille' || type === 'coloc')) type = 'etudiant';
   const drawn = makeHousehold(type, rng);
-  // Identité sur un flux à part (tirages ci-dessus inchangés) ; la taille d'un enfant suit son âge.
+  // Identité sur un flux à part (tirages ci-dessus inchangés) ; la taille d'un enfant suit son âge ; la nounou ensuite (son
+  // propre flux, d'après les traits de journée des parents).
   const who = identityOf(drawn);
-  return { ...drawn, members: drawn.members.map((m, i) => ({ ...m, size: m.kid ? kidSize(who[i]!.age) : m.size, who: who[i]! })) };
+  const hh: Household = { ...drawn, members: drawn.members.map((m, i) => ({ ...m, size: m.kid ? kidSize(who[i]!.age) : m.size, who: who[i]! })), nanny: null };
+  hh.nanny = nannyFor(hh);
+  return hh;
 }
 
 // Pièces le long des travées du logement : 1 → salon ; 2 → cuisine, salon ; 3 et plus → cuisine, chambre(s), salon.
