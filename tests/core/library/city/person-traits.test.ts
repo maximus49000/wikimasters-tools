@@ -6,6 +6,8 @@ import { traitsOf } from '../../../../src/core/library/city/person-traits';
 const dwellingsOf = (seed: number): Dwelling[] => cityDwellings(cityFacades(1440, 340, seed), seed);
 const people = [1, 2, 3, 4, 5].flatMap((s) => dwellingsOf(s).flatMap((d) => d.hh.members.map((m, i) => ({ hh: d.hh, m, i }))));
 const inRange = (v: number, lo: number, hi: number) => v >= lo && v <= hi;
+// Pause déjeuner comptée dans l'amplitude d'une journée continue (min).
+const LUNCH = 90;
 
 describe('traits de journée des habitants', () => {
   it('bornes de chaque trait', () => {
@@ -17,7 +19,8 @@ describe('traits de journée des habitants', () => {
       const sleepLo = w.status === 'enfant' ? (age <= 5 ? 690 : age < 11 ? 630 : 570) : w.status === 'retraite' ? 390 : w.status === 'etudiant' ? 450 : 420;
       const sleepHi = w.status === 'enfant' ? sleepLo : w.status === 'retraite' ? 450 : w.status === 'etudiant' ? 510 : 480;
       expect(inRange(t.sleep, sleepLo, sleepHi), `sommeil ${w.status} ${t.sleep}`).toBe(true);
-      if (w.status !== 'enfant') {
+      if (w.status === 'enfant') expect(t.bedtime, `coucher enfant ${age} ans`).toBe(age < 11 ? 1230 : 1290);
+      else {
         const [lo, hi] = age >= 65 || w.status === 'retraite' ? [1320, 1395] : age < 35 && !hh.members.some((x) => x.who.status === 'enfant') ? [1425, 1485] : [1365, 1425];
         expect(inRange(t.bedtime, lo, hi), `coucher ${age} ans ${t.bedtime}`).toBe(true);
       }
@@ -75,8 +78,11 @@ describe('traits de journée des habitants', () => {
       const w = traitsOf(hh, i).work;
       if (!w) continue;
       expect(w.effective).toBeLessThanOrEqual(600);
-      if (w.split) expect(w.split.b[1] - w.split.a[0]).toBeLessThanOrEqual(780);
-      else expect(w.effective + 90).toBeLessThanOrEqual(660);
+      if (w.split) {
+        const { a, b } = w.split;
+        expect(a[1] - a[0] + (b[1] - b[0])).toBe(w.effective);
+        expect(b[1] - a[0]).toBeLessThanOrEqual(780);
+      } else expect(w.effective + LUNCH).toBeLessThanOrEqual(660);
     }
   });
 
