@@ -20,17 +20,20 @@ const GROUPS = [0, 1, 2] as const;
 
 // Empreintes relevées sur le code d'avant la PR (84487e6a) : par tranche, hashString des opérations puis des remplissages.
 // Graine 1 : dernière tranche (x = 1080-1440) relevée après le retrait de l'ancien platane du plan (x = 1155, 2026-10-24),
-// seule différence voulue ; les graines 7 et 42 n'en ont pas.
+// seule différence voulue ; les graines 7 et 42 n'en ont pas. Toutes relevées à nouveau après l'alignement des fosses en
+// boulevard puis après l'écart minimal de 34 px (arbres de la rue V5, tâche 1, 2026-10-24 : fosses déplacées dans chaque tranche, colline inchangée ; seule la graine 7 a bougé au 2e relevé : dernière tranche).
+// Relevées encore après le carré de terre des fosses (tâche 3 : bordure + terre dans la tranche, plus de grille sur le béton,
+// ombre du fût allongée à la bordure) : toutes les tranches (chacune a des fosses), seul le code de la rue a changé.
 const BEFORE: Record<string, string> = {
-  '1-juillet': '821800046,958022570,760199162,3294745383,3285840245,1397877546,1628411022,774098042',
-  '1-novembre': '3993050480,2430551989,1930797025,3237551720,4189720420,2427994441,1316596370,4057775010',
-  '1-neige': '3045791054,373178868,4289225642,4028256833,2430070735,3983511342,3583379940,1152513239',
-  '7-juillet': '188072306,1275093231,2681598686,20046748,3979555753,2887139062,2733052765,1226708624',
-  '7-novembre': '3224852175,745542990,2815322977,3794716034,3306646370,1137517590,2702359992,1723382114',
-  '7-neige': '1793052309,3029658051,759251719,3159175387,3511050554,3951747802,2991591161,1384417842',
-  '42-juillet': '2211228051,2973474071,1383226187,2358834021,2963578857,1729374932,2046285607,1889415671',
-  '42-novembre': '1135302335,80276910,478708535,2077043971,690254004,3871165529,3283356046,1751959352',
-  '42-neige': '384619360,528145490,302486911,3622583629,827833294,1839865869,36747235,1956923592',
+  '1-juillet': '431429720,2651167681,3165554119,2296335660,3821020363,1877171718,2510428731,3512358799',
+  '1-novembre': '1549747174,2373032673,4041572797,1362000795,3328751826,1351790967,4031420366,406051726',
+  '1-neige': '257960980,2600017795,1940153268,78223882,3221107136,4046739581,4234872019,315982605',
+  '7-juillet': '1947061167,2019324488,1772180022,1578408995,1172947082,2830612714,341158931,3583953859',
+  '7-novembre': '888718203,260205992,3454517300,218652077,3868185285,2359866576,1077301210,656276304',
+  '7-neige': '1962123612,692309573,1608515451,28408619,1194219093,3166754651,689904178,2170816868',
+  '42-juillet': '2367159012,2742813369,1454145404,4212253929,2499521057,2525063333,2896439972,654345317',
+  '42-novembre': '253897123,1627403496,2864602840,3511841582,3905704966,4077320639,1472772718,618151749',
+  '42-neige': '3050447902,3580099493,2852401440,3659500483,1626366491,55209550,2564397702,645693276',
 };
 
 const run = (plan: ReturnType<typeof cityPaintPlan>, t: number, D: ReturnType<typeof fondMoment>, part?: HillPart): RecordingCtx => {
@@ -69,8 +72,8 @@ function interleaves(all: string[], base: string[], canopies: string[][]): boole
 }
 
 describe('colline au vent : tranche peinte en parties', () => {
-  it('PAINT_VERSION vaut 15', () => {
-    expect(PAINT_VERSION).toBe(15);
+  it('PAINT_VERSION vaut 16', () => {
+    expect(PAINT_VERSION).toBe(16);
   });
 
   for (const seed of [1, 7, 42]) {

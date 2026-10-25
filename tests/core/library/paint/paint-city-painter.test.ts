@@ -213,8 +213,8 @@ describe('peintre de tranche', () => {
     expect(found).toBeGreaterThan(0);
   });
 
-  it('PAINT_VERSION vaut 15', () => {
-    expect(PAINT_VERSION).toBe(15);
+  it('PAINT_VERSION vaut 16', () => {
+    expect(PAINT_VERSION).toBe(16);
   });
 
   it('tranches : aucun volet ni rideau peint (le calque de la vie aux fenêtres les dessine)', () => {

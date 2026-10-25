@@ -3,18 +3,22 @@ import { INK, TAU, disc, fillRect, light, pick, shade } from './cel';
 import type { CityPaintPlan } from './city-plan';
 import { hexRgb, mixRgb, rgba, type Rgb } from './color';
 import { bedState, bloomOf, fondRng, foliageOf, leavesOnGround, slotHours, sweptKey, type FondMoment } from './fond-time';
-import { treeModelOf, type TreeModel } from './hill-trees';
 import type { PaintCtx } from './paint-ctx';
-import type { RueItem, RuePit } from './rue-verte-plan';
+import { PIT_DEPTH, type RueItem, type RuePit } from './rue-verte-plan';
 
 // Verdure de la rue principale peinte dans les tranches (port de la maquette fond-ville, `03b-rue-verte.js` `paintRueVerdure`) :
-// feuilles mortes, herbe entre les pavés, pots devant les portes, bacs et parterres, grimpantes, fosses (grille en fonte,
-// pied fleuri, flaque quand il pleut, ombre portée du fût). Calendrier réel : `bedState` (parterres des jardiniers),
-// `foliageOf` / `bloomOf` (grimpantes, bouquet des bacs hauts), `leavesOnGround` (balayage à 7 h 30).
-// Les arbres eux-mêmes (fût, rameaux, houppier) ne sont PAS peints ici : calque animé au vent (`rueTreeModel` + hill-trees).
+// feuilles mortes, herbe entre les pavés, pots devant les portes, bacs et parterres, grimpantes, fosses (carré de terre à
+// bordure de pierre, pied fleuri, flaque quand il pleut, ombre portée du fût). Calendrier réel : `bedState` (parterres des
+// jardiniers), `foliageOf` / `bloomOf` (grimpantes, bouquet des bacs hauts), `leavesOnGround` (balayage à 7 h 30).
+// Les arbres eux-mêmes (squelette, feuillage) ne sont PAS peints ici : calque animé au vent (`rue-sprites.ts`, modèle V5 de
+// `rue-trees.ts`) ; la lèvre de terre et la grille / l'herbe du carré y sont peintes aussi, PAR-DESSUS le pied du fût.
 
-// Grille de fosse (perspective).
-const PIT = { w: 8, h: 3.2 } as const;
+// Carré de terre d'une fosse (maquette rue-arbres-naturels, notes §2) : PIT.w × PIT.h, du haut (pied − 52 % de la profondeur,
+// perspective) jusqu'à curb − 0,4 ; bordure de pierre de 0,8 px autour. Repère : le pied du fût `v.y` (= curb − 2,99).
+export const PIT = { w: 14, h: PIT_DEPTH } as const;
+export const pitTopOf = (v: Pick<RuePit, 'y'>): number => v.y - PIT.h * 0.52;
+// Bordure de la chaussée sous la fosse (fin de l'ombre portée du fût).
+const curbOf = (v: Pick<RuePit, 'y'>): number => pitTopOf(v) + PIT.h + 0.4;
 // Fleurs de saison (pieds d'arbres, bacs, parterres, pots).
 const FLOWERS: Record<'spring' | 'summer' | 'autumn' | 'winter', readonly string[]> = {
   spring: ['#E8456B', '#F6C62E', '#F28CB4', '#FFFFFF'], // tulipes
@@ -23,19 +27,13 @@ const FLOWERS: Record<'spring' | 'summer' | 'autumn' | 'winter', readonly string
   winter: ['#B890C0', '#C8A0C8', '#8A6A5A'], // bruyères, sol paillé
 };
 const LEAF_COLORS = ['#C87A2A', '#E0A040', '#A85A30', '#D8B050', '#B86A28'];
-// Écorce des arbres de rue (pour le calque des arbres).
-export const RUE_BARK: Record<string, Rgb> = { platane: hexRgb('#C8B898'), tilleul: hexRgb('#8A7A66'), marronnier: hexRgb('#7A6654'), cerisier: hexRgb('#6A5A54'), jeune: hexRgb('#A89880') };
-export const rueBark = (v: RuePit): Rgb => RUE_BARK[v.young ? 'jeune' : v.species]!;
+// Écorce d'un jeune arbre au tuteur (calque des arbres).
+export const YOUNG_BARK: Rgb = hexRgb('#A89880');
 // Densité de la maquette : 3 600 feuilles par unité de `leavesOnGround` sur 1 440 px. Le tapis est tiré par bande de
 // LEAF_BAND px (graine + numéro de bande) : il ne dépend pas de la largeur de la pièce (agrandir la pièce ne repeint pas
 // les premières tranches).
 const LEAVES_PER_PX = 3600 / 1440;
 export const LEAF_BAND = 120;
-
-// Modèle d'un arbre de rue (squelette fixe : fût = v.h, ramure = 2 × r, 4 niveaux, ≤ 60 touffes de rayon 0,3 r ; jeune :
-// 3 niveaux, 20 touffes de 0,42 r, fût de 0,7 px).
-export const rueTreeModel = (v: RuePit): TreeModel =>
-  treeModelOf('rue' + Math.round(v.x), v.species, { x: v.x, y: v.y }, v.h, v.r * 2, v.young ? 3 : 4, v.r * (v.young ? 0.42 : 0.3), v.young ? 20 : 60, v.young ? 0.7 : 1.3 + v.r * 0.07);
 
 // Pluie : chaussée mouillée, flaques au pied des arbres (0 sec, 1 mouillé).
 export const rueWet = (D: Pick<FondMoment, 'meteo'>): number => (D.meteo.precip > 0 ? 1 : 0);
@@ -81,7 +79,8 @@ export function rueMomentKey(plan: Pick<CityPaintPlan, 'seed' | 'rue'>, items: r
 export function rueSpan(v: RueItem): [number, number] {
   switch (v.kind) {
     case 'pit':
-      return [v.x - PIT.w / 2 - 1.5 - v.r * 0.15 - 6, v.x + 1.4 + v.h * 0.22 + 7 + v.r * 0.15];
+      // Bordure (± 7,8), flaque (5 + 0,15 r autour de x + 1), ombre portée du fût (jusqu'à x + 1,6 + 0,2 h).
+      return [v.x - PIT.w / 2 - 0.8 - 1.5, v.x + Math.max(PIT.w / 2 + 0.8, 1.6 + v.h * 0.2, 6 + v.r * 0.15) + 1.5];
     case 'bac':
     case 'parterre':
       return [v.x0 - 1.5, v.x1 + 3];
@@ -230,24 +229,12 @@ export function paintRueVerdure(ctx: PaintCtx, plan: CityPaintPlan, items: reado
       paintClimber(ctx, v.x, v.top, v.bottom, v.plant, v.flowerSeed, D);
       continue;
     }
-    // Fosse : grille en fonte, terre nue si vide, sinon pied fleuri, flaque sous la pluie et ombre portée du fût.
+    // Fosse : carré de terre (bordure + terre), puis, plantée, pied fleuri, flaque sous la pluie et ombre portée du fût. La
+    // lèvre de terre et la grille (ou l'herbe) sont dans le calque des arbres, devant le pied du fût (`paintPitFront`).
     if (v.kind !== 'pit') continue;
+    paintPitBack(ctx, v);
+    if (v.empty) continue;
     const { x, y } = v;
-    fillRect(ctx, '#4A4238', x - PIT.w / 2, y - PIT.h / 2, PIT.w, PIT.h);
-    ctx.strokeStyle = '#8A8070';
-    ctx.lineWidth = 0.35;
-    ctx.beginPath();
-    for (let k = -3; k <= 3; k++) {
-      ctx.moveTo(x + k * 1.1, y - PIT.h / 2 + 0.3);
-      ctx.lineTo(x + k * 1.1, y + PIT.h / 2 - 0.3);
-    }
-    ctx.moveTo(x - PIT.w / 2 + 0.3, y);
-    ctx.lineTo(x + PIT.w / 2 - 0.3, y);
-    ctx.stroke();
-    if (v.empty) {
-      fillRect(ctx, '#7A6450', x - 1.2, y - 0.8, 2.4, 1.6);
-      continue;
-    }
     if (v.flowers) paintFlowersRow(ctx, x - 3.4, x + 3.6, y + 0.4, D, v.flowerSeed, 1.3);
     if (wet) {
       ctx.fillStyle = 'rgba(60,70,110,0.22)';
@@ -259,14 +246,87 @@ export function paintRueVerdure(ctx: PaintCtx, plan: CityPaintPlan, items: reado
       ctx.ellipse(x - 0.5, y + 1.1, 2.5, 0.5, 0, 0, TAU);
       ctx.fill();
     }
+    // Ombre portée du fût, de la terre jusqu'au-delà de la bordure (soleil en haut à gauche, maquette `paintPitFront` ; gardée
+    // dans la tranche : sous les passants et les voitures).
+    const curb = curbOf(v);
     ctx.fillStyle = 'rgba(70,50,130,0.26)';
     ctx.beginPath();
-    ctx.moveTo(x - 1, y);
-    ctx.lineTo(x + 1.4, y);
-    ctx.lineTo(x + 1.4 + v.h * 0.22, y + 1.8);
-    ctx.lineTo(x - 1 + v.h * 0.22, y + 1.8);
+    ctx.moveTo(x - 1.2, y + 0.6);
+    ctx.lineTo(x + 1.6, y + 0.6);
+    ctx.lineTo(x + 1.6 + v.h * 0.2, curb + 1.8);
+    ctx.lineTo(x - 1.2 + v.h * 0.2, curb + 1.8);
     ctx.closePath();
     ctx.fill();
+  }
+}
+
+// Fond du carré de terre (maquette `paintPitBack`) : bordure de pierre et sa face avant, trait encré, terre en deux tons,
+// 9 mottes. Fosse vide : rien d'autre (P1 terre nue). Jamais de grille sur le béton.
+function paintPitBack(ctx: PaintCtx, v: RuePit): void {
+  const x0 = v.x - PIT.w / 2;
+  const y0 = pitTopOf(v);
+  fillRect(ctx, '#CDBDA0', x0 - 0.8, y0 - 0.8, PIT.w + 1.6, PIT.h + 1.4);
+  fillRect(ctx, '#B8A68A', x0 - 0.8, y0 + PIT.h - 0.2, PIT.w + 1.6, 0.8);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(x0 - 0.8, y0 - 0.8, PIT.w + 1.6, PIT.h + 1.4);
+  fillRect(ctx, '#5A4634', x0, y0, PIT.w, PIT.h);
+  fillRect(ctx, '#7A5E44', x0 + 0.4, y0 + 0.6, PIT.w - 0.8, PIT.h - 1.2);
+  const r = mulberry32(hashString('terre' + Math.round(v.x)));
+  ctx.fillStyle = '#6A5038';
+  for (let i = 0; i < 9; i++) ctx.fillRect(x0 + 0.8 + r() * (PIT.w - 2), y0 + 0.8 + r() * (PIT.h - 1.8), 1 + r(), 0.5);
+}
+
+// Devant du carré, peint dans la couche fixe de l'arbre APRÈS le fût (maquette `paintPitFront`) : lèvre de terre devant le
+// collet (le fût s'enfonce de 0,8 px), puis la finition : 'grille' (P2, fonte ajourée : 3 anneaux, 10 barreaux, reflet,
+// rognée au carré) ou 'herbe' (P3, brins hors ± 2,6 px du fût et 6 points) ; 'terre' (P1) : rien.
+export function paintPitFront(ctx: PaintCtx, v: RuePit): void {
+  const { x, y } = v;
+  const x0 = x - PIT.w / 2;
+  const y0 = pitTopOf(v);
+  ctx.fillStyle = '#6A5038';
+  ctx.beginPath();
+  ctx.ellipse(x, y + 0.9, 3.6, 0.9, 0, 0, Math.PI);
+  ctx.fill();
+  if (v.finish === 'grille') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y0, PIT.w, PIT.h);
+    ctx.clip();
+    ctx.strokeStyle = '#3E3A3A';
+    ctx.lineWidth = 0.55;
+    for (const rr of [2.4, 4.4, 6.4]) {
+      ctx.beginPath();
+      ctx.ellipse(x, y + 0.3, rr, rr * 0.38, 0, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 0.45;
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = (k * TAU) / 10;
+      ctx.moveTo(x + Math.cos(a) * 2.2, y + 0.3 + Math.sin(a) * 0.85);
+      ctx.lineTo(x + Math.cos(a) * 7, y + 0.3 + Math.sin(a) * 2.7);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = '#8A8478';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 0.05, 6.4, 2.4, 0, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.stroke();
+    ctx.restore();
+  } else if (v.finish === 'herbe') {
+    const r = mulberry32(hashString('herbe' + Math.round(x)));
+    ctx.strokeStyle = '#5E9A50';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (let gx = x0 + 0.8; gx < x0 + PIT.w - 0.6; gx += 1.1 + r() * 0.8) {
+      if (Math.abs(gx - x) < 2.6) continue;
+      const gy = y0 + 1 + r() * (PIT.h - 1.6);
+      ctx.moveTo(gx, gy + 0.6);
+      ctx.lineTo(gx + (r() - 0.5) * 1.2, gy - 1.2 - r() * 0.8);
+    }
+    ctx.stroke();
+    for (let i = 0; i < 6; i++) disc(ctx, hexRgb('#56A844'), x0 + 1 + r() * (PIT.w - 2), y0 + 0.8 + r() * (PIT.h - 1.2), 0.55);
   }
 }
 
