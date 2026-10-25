@@ -12,7 +12,7 @@ import { traitsOf } from './person-traits';
 export type Visitor = { id: string; who: Identity; quarter: string; job: string };
 export type IdCard = {
   first: string; age: number; job: string;
-  situation: { kind: 'celibataire' } | { kind: 'couple'; with: string };
+  situation: { kind: 'celibataire' } | { kind: 'couple'; with: string } | { kind: 'enfant'; of: string[] }; // enfant : prénoms des parents
   children: { first: string; age: number }[];
   quarter: string | null; // null : habite ici
 };
@@ -70,7 +70,8 @@ function cardOf(who: Identity, members: readonly { who: Identity }[], quarter: s
     first: who.first,
     age: who.age,
     job: jobLabel(who),
-    situation: who.partner === null ? { kind: 'celibataire' } : { kind: 'couple', with: members[who.partner]!.who.first },
+    situation: who.parents.length ? { kind: 'enfant', of: who.parents.map((p) => members[p]!.who.first) }
+      : who.partner === null ? { kind: 'celibataire' } : { kind: 'couple', with: members[who.partner]!.who.first },
     children: who.children.map((c) => ({ first: members[c]!.who.first, age: members[c]!.who.age })),
     quarter,
   };

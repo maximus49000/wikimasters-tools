@@ -30,12 +30,13 @@ describe("carte d'identité des habitants", () => {
     }
   });
 
-  it("carte d'un enfant : pas de conjoint, pas d'enfants, crèche avant 3 ans puis métier scolaire selon l'âge", () => {
+  it("carte d'un enfant : enfant de ses deux parents (prénoms), pas d'enfants, crèche avant 3 ans puis métier scolaire selon l'âge", () => {
     const kids = many.flatMap((d) => d.hh.members.map((m, i) => ({ d, m, i })).filter((x) => x.m.who.status === 'enfant'));
     expect(new Set(kids.map((k) => SCHOOL(k.m.who.age, true))).size).toBe(4);
     for (const { d, m, i } of kids) {
       const card = idCardOf(d, i);
-      expect(card.situation).toEqual({ kind: 'celibataire' });
+      expect(card.situation).toEqual({ kind: 'enfant', of: m.who.parents.map((p) => d.hh.members[p]!.who.first) });
+      expect(m.who.parents.length).toBe(2);
       expect(card.children).toEqual([]);
       expect(card.job).toBe(SCHOOL(m.who.age, m.who.sex === 'f'));
     }
