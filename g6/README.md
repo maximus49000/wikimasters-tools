@@ -385,3 +385,49 @@
 ### style-scandinave_h-21_nostore-1.png
 
 ![style-scandinave_h-21_nostore-1.png](09-lampes-animaux/style-scandinave_h-21_nostore-1.png)
+
+## 09-lampes-animaux-r1
+
+### kind-arc_lamp_style-steampunk_res-3_cell-700.png
+
+![kind-arc_lamp_style-steampunk_res-3_cell-700.png](09-lampes-animaux-r1/kind-arc_lamp_style-steampunk_res-3_cell-700.png)
+
+### kind-basket_bowl_kennel_charger_style-scandinave_res-2.png
+
+![kind-basket_bowl_kennel_charger_style-scandinave_res-2.png](09-lampes-animaux-r1/kind-basket_bowl_kennel_charger_style-scandinave_res-2.png)
+
+### kind-basket_bowl_kennel_charger_style-steampunk_res-2.png
+
+![kind-basket_bowl_kennel_charger_style-steampunk_res-2.png](09-lampes-animaux-r1/kind-basket_bowl_kennel_charger_style-steampunk_res-2.png)
+
+### kind-basket_style-scandinave_res-1_cell-1000_angles-0_2.png
+
+![kind-basket_style-scandinave_res-1_cell-1000_angles-0_2.png](09-lampes-animaux-r1/kind-basket_style-scandinave_res-1_cell-1000_angles-0_2.png)
+
+### kind-basket_style-scandinave_res-3_cell-700.png
+
+![kind-basket_style-scandinave_res-3_cell-700.png](09-lampes-animaux-r1/kind-basket_style-scandinave_res-3_cell-700.png)
+
+### kind-charger_style-scandinave_res-3_cell-700.png
+
+![kind-charger_style-scandinave_res-3_cell-700.png](09-lampes-animaux-r1/kind-charger_style-scandinave_res-3_cell-700.png)
+
+### kind-kennel_style-scandinave_res-1_cell-1000_angles-0_4.png
+
+![kind-kennel_style-scandinave_res-1_cell-1000_angles-0_4.png](09-lampes-animaux-r1/kind-kennel_style-scandinave_res-1_cell-1000_angles-0_4.png)
+
+### kind-kennel_style-scandinave_res-3_cell-700.png
+
+![kind-kennel_style-scandinave_res-3_cell-700.png](09-lampes-animaux-r1/kind-kennel_style-scandinave_res-3_cell-700.png)
+
+### kind-lamp_arc_lamp_paper_lantern_style-steampunk_res-2.png
+
+![kind-lamp_arc_lamp_paper_lantern_style-steampunk_res-2.png](09-lampes-animaux-r1/kind-lamp_arc_lamp_paper_lantern_style-steampunk_res-2.png)
+
+### style-scandinave_h-10_nostore-1.png
+
+![style-scandinave_h-10_nostore-1.png](09-lampes-animaux-r1/style-scandinave_h-10_nostore-1.png)
+
+### style-scandinave_h-21_nostore-1.png
+
+![style-scandinave_h-21_nostore-1.png](09-lampes-animaux-r1/style-scandinave_h-21_nostore-1.png)
