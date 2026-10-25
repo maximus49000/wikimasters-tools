@@ -2,7 +2,7 @@ import { FURNITURE_MODELS } from '../../furniture-models';
 import type { StandingKind } from '../../library-types';
 import type { LifeState } from '../life-state';
 import type { CelLook, CelVariant } from '../looks';
-import { lathe, part, place, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
+import { lathe, normalize, part, place, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
 import type { Tone } from '../tone';
 import { CEL_MODELS } from './registry';
 
@@ -49,6 +49,35 @@ function legProfile(legs: CelVariant['legs'], h: number): [number, number][] {
     default: return [[2.6, 0], [2.2, h]];
   }
 }
+// Cintre un maillage DÉJÀ construit (plaque mince : traverse, barreau, éventail) : applique la déformation aux sommets puis recalcule les
+// normales lissées à partir des faces, en gardant le sens des triangles. Les constructeurs (`superEll`, `lathe`) orientent leurs
+// triangles « vers l'extérieur du centre » : sur une plaque mince et large, une face cintrée loin du centre peut être jugée tournée
+// vers l'intérieur et se retrouver à l'envers (taches d'ombre, faces éclairées à contresens). Ici la plaque est construite plate,
+// orientée juste, puis cintrée.
+function bent(m: Mesh, d: Deform): Mesh {
+  const v = m.v.map(([x, y, z]) => d(x, y, z));
+  const nn: Vec3[] = v.map(() => [0, 0, 0]);
+  for (const [a, b, c] of m.t) {
+    const A = v[a]!, B = v[b]!, C = v[c]!;
+    const u: Vec3 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], w: Vec3 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+    const N: Vec3 = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    for (const i of [a, b, c]) nn[i] = [nn[i]![0] + N[0], nn[i]![1] + N[1], nn[i]![2] + N[2]];
+  }
+  // Sommets confondus (pôles, couture) soudés : normales continues.
+  const groups = new Map<string, number[]>();
+  v.forEach((q, i) => {
+    const k = q.map((c) => Math.round(c * 100)).join(',');
+    const g = groups.get(k);
+    if (g) g.push(i);
+    else groups.set(k, [i]);
+  });
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    const sum = ids.reduce<Vec3>((acc, i) => [acc[0] + nn[i]![0], acc[1] + nn[i]![1], acc[2] + nn[i]![2]], [0, 0, 0]);
+    for (const i of ids) nn[i] = sum;
+  }
+  return { v, n: nn.map(normalize), t: m.t };
+}
 // Barreau rond entre deux points (tube droit).
 const rod = (a: Vec3, b: Vec3, r: number, col: Tone): CelPart => part(tube([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], b], r, 8), col, { crease: false });
 
@@ -59,11 +88,15 @@ const RUNNER_X = 26.5, RUNNER_R = 1.75;
 
 /** Les deux patins seuls (tubes en arc), pour le contrôle du dessin de profil. */
 export function rockingRunners(look: CelLook): CelPart[] {
+  // Barre droite tournée (bouts effilés en pointe, pas de « roulettes »), puis cintrée le long de l'arc par `bent` (normales recalculées).
+  const prof: [number, number][] = [[0.7, 0], [1.3, 3]];
+  for (let y = 8; y <= 84.1; y += 4.75) prof.push([RUNNER_R, y]); // anneaux rapprochés : l'arc est échantillonné sur toute sa longueur
+  prof.push([1.3, 89], [0.7, 92]);
+  const bar = lathe(prof, 10);
   const out: CelPart[] = [];
   for (const sx of [-1, 1]) {
-    const pts: Vec3[] = [];
-    for (let z = -46; z <= 46.1; z += 4.6) pts.push([sx * RUNNER_X, runnerY(z), z]);
-    out.push(part(tube(pts, RUNNER_R, 10), look.tones.woodDark, { crease: false }));
+    const arc: Deform = (x, y, z) => [sx * RUNNER_X + x, runnerY(y - 46) + z, y - 46];
+    out.push(part(bent(bar, arc), look.tones.woodDark, { crease: false }));
   }
   return out;
 }
@@ -81,11 +114,11 @@ function rockingChair(look: CelLook, life: LifeState): CelPart[] {
   P.push(part(place(superEll(25.5, 5.5, 20, 0.5, 0.5, 16, 30, dentOf(life.dent, 5.5, 0, 1.5, px, pz)), { t: [0, 46.3, 1.5] }), T.fabric)); // galette bombée 40,8..51,8
   // Dossier : deux montants inclinés vers l'arrière, traverse haute bombée, traverse basse, cinq barreaux légèrement cintrés.
   for (const sx of [-1, 1]) P.push(part(tube([[sx * 25.5, 43, -19], [sx * 25, 75, -22], [sx * 24.5, 101, -26]], 1.9, 10), W, { crease: false }));
-  P.push(part(place(superEll(27.5, 3.4, 2.7, 0.3, 0.3, 8, 20), { t: [0, 100, -26] }), W, { crease: false })); // sommet 103,4
+  P.push(part(place(superEll(27.5, 3.4, 2.7, 0.6, 0.6, 8, 20), { t: [0, 100, -26] }), W, { crease: false })); // sommet 103,4, bouts ronds
   P.push(part(place(superEll(26, 1.7, 1.5, 0.6, 0.6, 6, 16), { t: [0, 53, -19.6] }), W, { crease: false }));
   for (const sx of [-1, 1]) P.push(rod([sx * 24.5, 22, 17], [sx * 24.5, 22, -17], 1.3, W)); // entretoises entre les pieds
   const bow: Deform = (x, y, z) => [x, y, z - 1.1 * Math.cos((Math.PI * y) / 44)]; // barreau cintré (ventre vers le dos)
-  for (let i = -2; i <= 2; i++) P.push(part(place(superEll(2, 22, 0.9, 0.3, 0.6, 10, 10, bow), { rx: -0.075, t: [i * 9, 76, -22.4] }), W, { crease: false }));
+  for (let i = -2; i <= 2; i++) P.push(part(place(bent(superEll(2, 22, 0.9, 0.3, 0.6, 10, 10), bow), { rx: -0.075, t: [i * 9, 76, -22.4] }), W, { crease: false }));
   // Accoudoirs : du montant vers l'avant, posés sur un montant avant rond.
   for (const sx of [-1, 1]) {
     P.push(part(tube([[sx * 26.2, 72, -21.5], [sx * 27.6, 71, 0], [sx * 28.2, 70, 16]], 1.9, 10), W, { crease: false }));
@@ -109,13 +142,14 @@ function chair(look: CelLook, life: LifeState): CelPart[] {
   for (const sx of [-1, 1]) P.push(rod([sx * 18.6, 15, 20], [sx * 18.6, 15, -20], 1.1, T.leg));
   P.push(rod([-18.6, 19, -2], [18.6, 19, -2], 1.1, T.leg));
   // Montants du dossier, qui prolongent les pieds arrière et s'inclinent vers l'arrière.
-  for (const sx of [-1, 1]) P.push(part(tube([[sx * 19.5, 44, -20], [sx * 19.3, 66, -22], [sx * 19, 86, -24.5]], 1.8, 10), W, { crease: false }));
-  // Traverses cintrées : les bouts viennent vers l'avant (autour du dos), légèrement penchées en arrière.
-  const CURL = 0.012; // les bouts des traverses viennent de 5 cm vers l'avant : le dos enveloppe l'assis, et de face le quart droit prend l'ombre
+  // Traverses cintrées : les bouts viennent vers l'avant (autour du dos), légèrement penchées en arrière ; elles finissent DANS les
+  // montants (demi-longueur = l'axe du montant), et les montants passent là où arrivent les bouts cintrés (z −17,5 → −20).
+  const CURL = 0.012, HALF = 19.5; // les bouts viennent de 4,6 cm vers l'avant : le dos enveloppe l'assis, et de face le quart droit prend l'ombre
+  for (const sx of [-1, 1]) P.push(part(tube([[sx * 19.5, 44, -17.5], [sx * 19.3, 66, -18.5], [sx * 19, 89.2, -20.2]], 1.8, 10), W, { crease: false })); // ils coiffent la traverse haute (88)
   const curl: Deform = (x, y, z) => [x, y, z + CURL * x * x];
-  const comb: Deform = (x, y, z) => [x, y * (1 - 0.3 * (x / 21) ** 2), z + CURL * x * x]; // la traverse haute s'amincit vers ses bouts
-  P.push(part(place(superEll(21, 5, 1.9, 0.55, 0.5, 8, 24, comb), { rx: -0.1, t: [0, 83, -24] }), W)); // traverse haute 78..88
-  P.push(part(place(superEll(20, 2.5, 1.6, 0.5, 0.45, 6, 24, curl), { rx: -0.1, t: [0, 68, -22.8] }), W)); // traverse médiane
+  const comb: Deform = (x, y, z) => [x, y * (1 - 0.3 * (x / HALF) ** 2), z + CURL * x * x]; // la traverse haute s'amincit vers ses bouts
+  P.push(part(place(bent(superEll(HALF, 5, 1.9, 0.55, 0.5, 8, 24), comb), { rx: -0.1, t: [0, 83, -24] }), W)); // traverse haute 78..88, bouts à z −19,4
+  P.push(part(place(bent(superEll(HALF, 2.5, 1.6, 0.5, 0.45, 6, 24), curl), { rx: -0.1, t: [0, 68, -22.8] }), W)); // traverse médiane, bouts à z −18,2
   for (const x of [-8, 0, 8]) P.push(part(place(lathe([[1, 0], [1.3, 17], [1, 32]], 8), { rx: -0.1, t: [x, 46, -21.8 + CURL * x * x] }), W, { crease: false })); // fuseaux
   return P;
 }
@@ -185,9 +219,12 @@ function eggChair(look: CelLook, life: LifeState): CelPart[] {
 /* ---------- fauteuil paon : pied en sablier, assise ronde adoucie, coussin à creux, dossier en éventail (galette plate à bord
    rond, resserrée en col vers l'assise) cintré autour de l'assis et bombé au dos, bordé d'un jonc, treillis de rotin en relief sur
    les deux faces (rayons et anneaux) ---------- */
-const FAN_Z = -24, FAN_CURL = 0.0045, FAN_C: [number, number] = [0, 88], FAN_RX = 44.5, FAN_RY = 47.5, FAN_BULGE = 4;
-// Cintrage en plan : les bouts viennent vers l'avant.
-const fanZ = (x: number): number => FAN_Z + FAN_CURL * x * x;
+const FAN_Z = -18, FAN_LEAN = 0.08, FAN_CURL = 0.0018, FAN_C: [number, number] = [0, 88], FAN_RX = 44.5, FAN_RY = 47.5, FAN_BULGE = 4;
+// L'éventail est dessiné dans son repère (plan z = 0 au pied, x à droite, y en haut) puis penché en arrière de FAN_LEAN et posé à FAN_Z :
+// de face, sa normale s'écarte franchement du seuil d'ombre (une face verticale est à 0,04 du seuil : la moindre courbure la tachait).
+const fanPose = (m: Mesh): Mesh => place(m, { rx: -FAN_LEAN, t: [0, 0, FAN_Z] });
+// Cintrage en plan (repère de l'éventail) : les bouts viennent vers l'avant.
+const fanZ = (x: number): number => FAN_CURL * x * x;
 // Forme de l'éventail : point du disque (repère de l'éventail, centre FAN_C) → col resserré vers l'assise (demi-largeur 21 en bas).
 const fanXY = (x: number, y: number): [number, number] => {
   const u = Math.min(1, Math.max(0, (y + FAN_RY) / (FAN_RY - 24))), sm = u * u * (3 - 2 * u); // resserrement progressif (lisse) du col
@@ -202,19 +239,23 @@ function peacockChair(look: CelLook, life: LifeState): CelPart[] {
   P.push(part(place(lathe([[24, 0], [23.5, 1.5], [17, 6], [11, 14], [9.5, 21], [11, 28], [16, 36], [22, 41], [25, 43]], 28), { t: [0, 0, zc] }), T.woodDark)); // sablier
   P.push(part(place(lathe([[25, 42], [27.5, 43.5], [27.5, 45], [26, 46.5], [0, 46.5]], 36), { t: [0, 0, zc] }), T.wood)); // assise 42..46,5
   P.push(part(place(superEll(25, 2, 25, 0.4, 1, 12, 36, dentOf(life.dent, 2, 0, zc, px, pz)), { t: [0, 48, zc] }), T.fabric)); // coussin, dessus 50
-  // Éventail : galette plate (3 cm) à bord rond, col vers l'assise, cintrée en plan, dos bombé ; le sommet est à 135,5.
-  const fan: Deform = (x, y, z) => {
-    const [fx, fy] = fanXY(x, y);
-    return [fx, fy, z + FAN_CURL * fx * fx - (z < 0 ? fanBulge(fx, fy) : 0)];
+  // Éventail : disque plat (3 cm) à bord rond fait au tour (anneaux réguliers : faces planes aux normales exactes, pas de taches
+  // d'ombre), étiré en ellipse (même silhouette que le jonc), col vers l'assise, cintré en plan, dos bombé ; sommet à 135,5.
+  // Repère du tour : axe y = épaisseur (→ −z monde après rx −π/2), z = hauteur (→ y monde).
+  const flat: Deform = (x, y, z) => {
+    const [fx, fy] = fanXY(x, (z * FAN_RY) / FAN_RX);
+    return [fx, y, fy];
   };
-  P.push(part(place(superEll(FAN_RX, FAN_RY, 1.5, 0.4, 1, 20, 56, fan), { t: [FAN_C[0], FAN_C[1], FAN_Z] }), T.wood));
+  const fan: Deform = (x, y, z) => [x, y - FAN_CURL * x * x + (y > 0 ? fanBulge(x, z) : 0), z];
+  const disc: [number, number][] = [[0, -1.5], [10, -1.5], [20, -1.5], [29, -1.5], [36, -1.5], [40.5, -1.35], [43, -0.9], [44.2, -0.4], [44.5, 0], [44.2, 0.4], [43, 0.9], [40.5, 1.35], [36, 1.5], [29, 1.5], [20, 1.5], [10, 1.5], [0, 1.5]];
+  P.push(part(fanPose(place(bent(lathe(disc, 56, flat, { caps: false }), fan), { rx: -Math.PI / 2, t: [FAN_C[0], FAN_C[1], 0] })), T.wood));
   // Jonc du bord.
   const edge: Vec3[] = [];
   for (let i = 0; i <= 56; i++) {
     const a = (2 * Math.PI * i) / 56, [fx, fy] = fanXY(FAN_RX * Math.cos(a), FAN_RY * Math.sin(a));
     edge.push([fx, FAN_C[1] + fy, fanZ(fx)]);
   }
-  P.push(part(tube(edge, 1.7, 8), T.woodDark, { crease: false }));
+  P.push(part(fanPose(tube(edge, 1.7, 8)), T.woodDark, { crease: false }));
   // Treillis de rotin en relief sur les deux faces : rayons depuis le hub et anneaux concentriques (c'est le dessin du paon, et vu de
   // dos le treillis rond prend la lumière là où une plaque serait toute en ombre).
   const faces: ((x: number, h: number) => number)[] = [(x) => fanZ(x) + 1.5 + 0.3, (x, h) => fanZ(x) - 1.5 - fanBulge(x, h - FAN_C[1]) - 0.3];
@@ -227,7 +268,7 @@ function peacockChair(look: CelLook, life: LifeState): CelPart[] {
         const r = 10 + (s / 4) * (L - 10);
         pts.push([sx * r, 46 + cy * r, front(sx * r, 46 + cy * r)]);
       }
-      P.push(part(tube(pts, 0.9, 6), T.woodDark, { crease: false, noshadow: true }));
+      P.push(part(fanPose(tube(pts, 0.9, 6)), T.woodDark, { crease: false, noshadow: true }));
     }
     for (const R of [14, 24, 34]) {
       const ring: Vec3[] = [];
@@ -236,7 +277,7 @@ function peacockChair(look: CelLook, life: LifeState): CelPart[] {
         const a = (-span + (2 * span * i) / 16) * (Math.PI / 180), x = R * Math.sin(a), h = 88 + R * Math.cos(a);
         ring.push([x, h, front(x, h)]);
       }
-      P.push(part(tube(ring, 0.9, 6), T.woodDark, { crease: false, noshadow: true }));
+      P.push(part(fanPose(tube(ring, 0.9, 6)), T.woodDark, { crease: false, noshadow: true }));
     }
   }
   return P;
