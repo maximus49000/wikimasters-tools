@@ -20,7 +20,10 @@ export type WorkTraits = {
 export type SchoolKind = 'creche' | 'ecole' | 'college' | 'fac';
 export type PersonTraits = {
   work: WorkTraits | null; sleep: number; bedtime: number; earlyP: number;
-  school: null | { kind: SchoolKind; start: number[]; autonomous: boolean };
+  // Trajet (min), à pied si court, préparation (min) et pause déjeuner (cadre 45–90, sinon 30) : pour tous, actif ou non.
+  commute: number; walk: boolean; prep: number; pause: number;
+  // `end` : fin des cours, lundi → vendredi, -1 sans cours.
+  school: null | { kind: SchoolKind; start: number[]; end: number[]; autonomous: boolean };
 };
 
 const RTT: Record<Contract, number> = { '35h': 0, '39h': 11, forfait: 11, 'fonction-publique': 15, hcr: 0, particulier: 0 };
@@ -34,6 +37,11 @@ type Rng = () => number;
 // Entier tiré dans [lo, hi], arrondi au multiple de 5 (comme la maquette).
 const int5 = (rng: Rng, lo: number, hi: number): number => Math.round((lo + rng() * (hi - lo)) / 5) * 5;
 const pick = <T>(list: readonly T[], rng: Rng): T => list[Math.floor(rng() * list.length)]!;
+
+// Flux du jour nommé : (graine du foyer, membre, date ISO, usage) → même suite, sans état d'un jour à l'autre.
+export function dayRng(seed: number, m: number, iso: string, use: string): () => number {
+  return mulberry32((seed ^ hashString(iso + '|' + use) ^ Math.imul(m + 1, 0x9e3779b1)) >>> 0);
+}
 
 const cache = new WeakMap<Household, PersonTraits[]>();
 
@@ -52,7 +60,8 @@ function draw(hh: Household, m: number): PersonTraits {
   let work: WorkTraits | null = null;
   let start = 0;
   let effective = 0;
-  if (status === 'cadre') { start = int5(rng, 510, 570); effective = int5(rng, 450, 510); rng(); }
+  let pause = 30;
+  if (status === 'cadre') { start = int5(rng, 510, 570); effective = int5(rng, 450, 510); pause = int5(rng, 45, 90); }
   else if (status === 'non-cadre') { start = int5(rng, 390, 480); effective = int5(rng, 420, 465); }
   else { rng(); rng(); }
   const commute = int5(rng, 10, 50);
@@ -77,7 +86,7 @@ function draw(hh: Household, m: number): PersonTraits {
   else if (!parent && age < 35) bedtime = int5(rng, 1425, 1485);
   else bedtime = int5(rng, 1365, 1425);
   const earlyP = status === 'retraite' ? 0.15 + 0.7 * rng() : 0;
-  let school: PersonTraits['school'] = null;
+  let school: null | Omit<NonNullable<PersonTraits['school']>, 'end'> = null;
   if (status === 'enfant') {
     school = age < CRECHE_AGE
       ? { kind: 'creche', start: Array.from({ length: 5 }, () => CRECHE_START), autonomous: false }
@@ -87,5 +96,13 @@ function draw(hh: Household, m: number): PersonTraits {
   } else if (status === 'etudiant') {
     school = { kind: 'fac', start: Array.from({ length: 5 }, () => (rng() < 0.2 ? -1 : int5(rng, 480, 660))), autonomous: true };
   }
-  return { work, sleep, bedtime, earlyP, school };
+  // Fin des cours : tirée après tout le reste pour ne pas bouger les traits du lot 1.
+  if (school) {
+    const { kind, start } = school;
+    const end = start.map((s, d) => s === -1 ? -1
+      : kind === 'college' ? (d === 2 ? 720 : Math.min(s + int5(rng, 390, 480), 1050))
+        : Math.min(s + int5(rng, 180, 480), 1110));
+    return { work, sleep, bedtime, earlyP, commute, walk: commute <= 15, prep, pause, school: { ...school, end } };
+  }
+  return { work, sleep, bedtime, earlyP, commute, walk: commute <= 15, prep, pause, school: null };
 }

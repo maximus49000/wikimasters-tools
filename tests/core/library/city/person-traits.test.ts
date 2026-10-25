@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
-import { traitsOf } from '../../../../src/core/library/city/person-traits';
+import lot1 from '../fixtures/person-traits-lot1.json';
+import { dayRng, traitsOf } from '../../../../src/core/library/city/person-traits';
 
 const dwellingsOf = (seed: number): Dwelling[] => cityDwellings(cityFacades(1440, 340, seed), seed);
 const people = [1, 2, 3, 4, 5].flatMap((s) => dwellingsOf(s).flatMap((d) => d.hh.members.map((m, i) => ({ hh: d.hh, m, i }))));
@@ -96,5 +97,58 @@ describe('traits de journée des habitants', () => {
     expect(traitsOf(structuredClone(hh), i)).toEqual(traitsOf(hh, i));
     const sleeps = new Set(people.map(({ hh: h, i: j }) => traitsOf(h, j).sleep));
     expect(sleeps.size).toBeGreaterThan(3);
+  });
+
+  it('traits du lot 1 inchangés', () => {
+    for (const seed of [1, 2, 3]) {
+      const now = dwellingsOf(seed).flatMap((d) => d.hh.members.map((_, i) => {
+        const { commute, walk, prep, pause, ...t } = traitsOf(d.hh, i) as Record<string, any>;
+        void commute; void walk; void prep; void pause;
+        if (t.school) { const { end, ...sc } = t.school; void end; t.school = sc; }
+        return JSON.parse(JSON.stringify(t));
+      }));
+      expect(now).toEqual((lot1 as unknown as Record<string, unknown[]>)[seed]);
+    }
+  });
+
+  it('trajet et préparation pour tous, pause cadre dans [45, 90], 30 sinon', () => {
+    for (const { hh, m, i } of people) {
+      const t = traitsOf(hh, i);
+      expect(inRange(t.commute, 10, 50)).toBe(true);
+      expect(t.walk).toBe(t.commute <= 15);
+      expect(inRange(t.prep, 30, 60)).toBe(true);
+      if (m.who.status === 'cadre') expect(inRange(t.pause, 45, 90), `pause ${t.pause}`).toBe(true);
+      else expect(t.pause).toBe(30);
+    }
+  });
+
+  it('fin des cours après le début, collège fini à 12 h le mercredi', () => {
+    let seen = 0;
+    for (const { hh, i } of people) {
+      const sc = traitsOf(hh, i).school;
+      if (!sc) continue;
+      expect(sc.end).toHaveLength(5);
+      sc.start.forEach((s, d) => {
+        const e = sc.end[d]!;
+        if (s === -1) return void expect(e).toBe(-1);
+        expect(e).toBeGreaterThan(s);
+        seen++;
+        if (sc.kind === 'college') {
+          if (d === 2) expect(e).toBe(720);
+          else { expect(e).toBeLessThanOrEqual(1050); expect(e).toBeGreaterThanOrEqual(Math.min(s + 390, 1050)); }
+        } else if (sc.kind === 'fac') { expect(e).toBeLessThanOrEqual(1110); expect(e).toBeGreaterThanOrEqual(Math.min(s + 180, 1110)); }
+      });
+    }
+    expect(seen).toBeGreaterThan(20);
+  });
+
+  it('dayRng : mêmes arguments même suite, usage différent autre suite', () => {
+    const a = dayRng(42, 0, '2026-10-25', 'lever');
+    const b = dayRng(42, 0, '2026-10-25', 'lever');
+    const c = dayRng(42, 0, '2026-10-25', 'sortie');
+    const sa = [a(), a(), a()];
+    expect([b(), b(), b()]).toEqual(sa);
+    expect([c(), c(), c()]).not.toEqual(sa);
+    expect(dayRng(42, 1, '2026-10-25', 'lever')()).not.toBe(sa[0]);
   });
 });
