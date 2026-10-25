@@ -108,6 +108,18 @@ describe('emplois du temps', () => {
     expect(sum / count).toBeGreaterThanOrEqual(60);
   });
 
+  it('retraités : une partie levée vers 7 h le dimanche, pas tous, et pas les mêmes chaque jour', () => {
+    const sun = dayOf({ y: 2026, m: 10, d: 25 }), sat = dayOf({ y: 2026, m: 10, d: 24 });
+    const at = 7 * 60 + 10;
+    const upAt = (d: Dwelling, day: SceneDay) => sched(d, day).segments.some((g) => g.k === 'lit' && g.t0 <= at && g.t1 > at);
+    const olds = pool('retraite', 200).filter((d) => dayDraw(d, sun, SEED).presence !== 'sick' && dayDraw(d, sat, SEED).presence !== 'sick');
+    const up = olds.filter((d) => upAt(d, sun)).length / olds.length;
+    expect(up).toBeGreaterThanOrEqual(0.25);
+    expect(up).toBeLessThanOrEqual(0.6);
+    const changed = olds.filter((d) => upAt(d, sun) !== upAt(d, sat)).length / olds.length;
+    expect(changed).toBeGreaterThanOrEqual(0.25);
+  });
+
   it('famille : parfois une seule pièce allumée le soir (télé au salon)', () => {
     const tue = dayOf({ y: 2026, m: 10, d: 13 });
     const fams = pool('famille', 100).map((d) => ({ ...d, rooms: ['cuisine', 'chambre', 'salon'] as Dwelling['rooms'] }));
