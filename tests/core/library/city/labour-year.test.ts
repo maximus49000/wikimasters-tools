@@ -18,7 +18,7 @@ describe('droit du travail sur un an', () => {
   it('droit du travail sur 2026 pour 3 graines', { timeout: 180_000 }, () => {
     const errors: string[] = [];
     const alone: string[] = [];
-    let actives = 0, nannies = 0;
+    let actives = 0, nannies = 0, nannyDays = 0;
     for (const seed of [1, 2, 3]) {
       for (const d of cityDwellings(cityFacades(1440, 340, seed), seed)) {
         const { hh } = d;
@@ -31,6 +31,7 @@ describe('droit du travail sur un an', () => {
             work[p.m]!.push({ iso: day.iso, shifts });
             if (!shifts.length) continue;
             const who = `${seed}:${d.id}:${p.m}`;
+            if (leavePlanOf(hh, p.m, 2026).has(day.iso)) errors.push(`${who} ${day.iso} : service un jour de CP ou de RTT`);
             if (day.weekday === 0 || HOLIDAYS[day.iso]) errors.push(`${who} ${day.iso} : service un dimanche ou un jour férié`);
             if (day.weekday === 6 && hh.members[p.m]!.who.contract !== 'hcr') errors.push(`${who} ${day.iso} : service le samedi hors restauration`);
           }
@@ -48,6 +49,8 @@ describe('droit du travail sur un an', () => {
           }
           const ns = hd.nanny?.shifts ?? [];
           nanny.push({ iso: day.iso, shifts: ns });
+          if (ns.length && nannyLeavePlan(hh, 2026).has(day.iso)) errors.push(`${seed}:${d.id} nounou ${day.iso} : service un jour de congé`);
+          if (ns.length) nannyDays++;
           if (ns.length && (day.weekday === 0 || HOLIDAYS[day.iso])) errors.push(`${seed}:${d.id} nounou ${day.iso} : un dimanche ou un jour férié`);
         }
         hh.members.forEach((_, m) => {
@@ -67,6 +70,7 @@ describe('droit du travail sur un an', () => {
     }
     expect(actives).toBeGreaterThan(300);
     expect(nannies).toBeGreaterThan(20);
+    expect(nannyDays).toBeGreaterThan(1000);
     expect(errors.slice(0, 20)).toEqual([]);
     expect(alone.slice(0, 20)).toEqual([]);
   });

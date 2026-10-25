@@ -37,7 +37,8 @@ export type PersonDay = {
   duty: Duty | null; school: SchoolDay | null; outing: Outing | null; appointment: Appointment | null; sick: boolean;
   blocks: Block[]; out: [number, number][];
 };
-export type NannyVisit = { arrive: number; leave: number; reason: 'sortie' | 'soir' };
+// matin : garde avant l'ouverture de l'accueil du matin ; sortie : sortie d'école ; soir : garde du samedi soir.
+export type NannyVisit = { arrive: number; leave: number; reason: 'matin' | 'sortie' | 'soir' };
 export type NannyDay = { visitor: Visitor; visits: NannyVisit[]; shifts: Shift[] };
 export type HouseholdDays = { iso: string; away: { state: AwayState; at?: number }; people: PersonDay[]; run: SchoolRun | null; nanny: NannyDay | null };
 
@@ -86,6 +87,27 @@ function nannyAvailable(hh: Household, day: DayContext): boolean {
   return nannyLeavePlan(hh, isoYear).get(key) !== 'CP';
 }
 
+const near = (day: DayContext, k: number): DayContext => ({ ...dayContext(addDays(day.date, k), [...(day.periods ?? [])]), periods: day.periods });
+
+// Centre de loisirs : vacances scolaires, jour ouvré, tous les parents des écoliers au travail.
+function centreDay(hh: Household, day: DayContext, duties: readonly (Duty | null)[]): boolean {
+  if (!workingDay(day) || day.schoolOn) return false;
+  const pupils = hh.members.flatMap((_, m) => (traitsOf(hh, m).school?.kind === 'ecole' ? [m] : []));
+  const parents = [...new Set(pupils.flatMap((m) => hh.members[m]!.who.parents))].filter((p) => hh.members[p]);
+  return pupils.length > 0 && parents.length > 0 && parents.every((p) => workOf(duties[p]));
+}
+
+// Fin de la sortie d'école gardée par la nounou ce jour-là (sans garde du matin, qui n'y change rien), sinon −∞. Sert au repos
+// quotidien avant une garde du matin le lendemain ; sans récursion (la veille de la veille n'est jamais lue).
+function nannyPickupEnd(d: Dwelling, day: DayContext, seed: number): number {
+  const { hh } = d;
+  if (!hh.nanny || awayState(d, seed, day.date, day.periods ?? []).state !== 'home') return -Infinity;
+  const duties0 = hh.members.map((_, m) => dutyOf(hh, m, day));
+  const runDay: DayContext = centreDay(hh, day, duties0) ? { ...day, schoolOn: true } : day;
+  const pickup = schoolRunOf(hh, runDay, duties0, Infinity).run?.pickup;
+  return pickup?.by === 'nanny' ? pickup.until : -Infinity;
+}
+
 function planOf(d: Dwelling, day: DayContext, seed: number): Plan {
   const { hh } = d;
   const away = awayState(d, seed, day.date, day.periods ?? []);
@@ -111,11 +133,9 @@ function planOf(d: Dwelling, day: DayContext, seed: number): Plan {
   const duties0 = hh.members.map((_, m) => dutyOf(hh, m, day));
   const sick = hh.members.map((x, m) => duties0[m]?.kind === 'sick' || (!duties0[m] && x.who.status !== 'enfant' && sickOn(hh, m, day.iso)));
   // Centre de loisirs : vacances scolaires, jour ouvré, tous les parents des écoliers au travail.
-  const pupils = hh.members.flatMap((_, m) => (traitsOf(hh, m).school?.kind === 'ecole' ? [m] : []));
-  const pupilParents = [...new Set(pupils.flatMap((m) => hh.members[m]!.who.parents))].filter((p) => hh.members[p]);
-  const centre = workingDay(day) && !day.schoolOn && pupils.length > 0 && pupilParents.length > 0 && pupilParents.every((p) => workOf(duties0[p]));
+  const centre = centreDay(hh, day, duties0);
   const runDay: DayContext = centre ? { ...day, schoolOn: true } : day;
-  const { run, duties } = schoolRunOf(hh, runDay, duties0);
+  const { run, duties } = schoolRunOf(hh, runDay, duties0, () => nannyPickupEnd(d, near(day, -1), seed));
   const schools = hh.members.map((_, m) => {
     const kind = traitsOf(hh, m).school?.kind;
     if (kind === 'ecole' || kind === 'creche') return schoolDayOf(hh, m, runDay);
@@ -149,20 +169,20 @@ function planOf(d: Dwelling, day: DayContext, seed: number): Plan {
   // Petits (crèche, école, centre) : départ commun avec qui dépose, ou avec le dernier parent qui part (accueil du matin).
   const little = hh.members.map((_, m) => m).filter((m) => schools[m] && !schools[m]!.autonomous);
   let kidDep = 0, dropEnd = 0;
+  const morning = run?.morning;
   if (run && little.length) {
     const firstStart = Math.min(...little.map((m) => schools[m]!.start));
     dropEnd = Math.max(...little.map((m) => schools[m]!.start));
-    if (run.drop !== null) kidDep = firstStart - SCHOOL.walk;
-    else {
-      const parents = [...new Set(little.flatMap((m) => hh.members[m]!.who.parents))].filter((p) => workOf(duties[p]));
-      kidDep = parents.length ? Math.max(...parents.map((p) => workOf(duties[p])!.start - workOf(duties[p])!.commute)) : firstStart - SCHOOL.walk;
-    }
+    kidDep = morning ? morning.dep : firstStart - SCHOOL.walk;
+  }
+  if (morning?.by === 'nanny') {
+    nanny.visits.unshift({ arrive: morning.arrive, leave: morning.dep, reason: 'matin' });
+    nanny.shifts.unshift([morning.arrive, morning.dep + SCHOOL.walk]);
   }
   const homeAt = (): number => (pickup && (pickup.by === 'garderie' || (pickup.by === 'parent' && pickup.at !== undefined)) ? pickup.at! : SCHOOL.nannyHome);
   const escortName = run?.drop !== null && run?.drop !== undefined ? first(run.drop) : null;
-  const accueil = run?.drop === null
-    ? hh.members.map((_, m) => m).filter((m) => workOf(duties[m]) && workOf(duties[m])!.start - workOf(duties[m])!.commute === kidDep)[0]
-    : undefined;
+  const morningLabel = !morning ? '' : morning.by === 'nanny' ? `accueil du matin avec ${hh.nanny!.who.first}`
+    : morning.by === 'accueil' ? `accueil du matin avec ${first(morning.m)}` : `chez les grands-parents, avec ${first(morning.m)}`;
 
   hh.members.forEach((x, m) => {
     const t = traitsOf(hh, m);
@@ -178,9 +198,10 @@ function planOf(d: Dwelling, day: DayContext, seed: number): Plan {
         return;
       }
       const place = s.kind === 'creche' ? 'crèche' : centre ? 'centre de loisirs' : 'école';
-      const by = escortName ?? (accueil !== undefined ? `accueil du matin avec ${first(accueil)}` : 'accueil du matin');
+      const by = escortName ?? morningLabel;
       ob[m] = { lever: kidDep - DAY.kidPrep, dep: kidDep, strict: true, why: `${place} ${hm(s.start)} − ${hm(s.start - kidDep)} − ${DAY.kidPrep} min = ${hm(kidDep - DAY.kidPrep)} (${by})` };
-      const escEnd = run!.drop !== null ? s.start : kidDep + SCHOOL.walk;
+      // Fin de l'accompagnement : à l'école (dépose, grands-parents qui l'y conduisent) ou à l'accueil du matin.
+      const escEnd = run!.drop !== null || morning?.by === 'grands-parents' ? s.start : kidDep + SCHOOL.walk;
       add(m, kidDep, escEnd, 'escort', escortName ? `avec ${escortName}` : by);
       const home = homeAt();
       const end = home - SCHOOL.walk;
@@ -274,9 +295,12 @@ function eveningOf(d: Dwelling, plan: Plan, next: Plan, seed: number): Evening {
     // Jeunes enfants : un adulte reste, sinon la nounou vient (si elle peut), sinon pas de sortie.
     const stays = hh.members.some((x, m) => x.who.status !== 'enfant' && !g.includes(m));
     if (young && !stays) {
-      if (nanny || plan.nanny.visits.length || !nannyAvailable(hh, plan.day)) continue;
-      // Samedi soir : seulement si elle n'a pas gardé le vendredi, sinon son repos de 35 h de la semaine serait coupé.
-      if (plan.day.weekday === 6 && planOf(d, { ...dayContext(addDays(plan.day.date, -1), [...(plan.day.periods ?? [])]), periods: plan.day.periods }, seed).nanny.shifts.length) continue;
+      // Garde du soir : le samedi seulement (un soir de semaine couperait son repos de 11 h avant une garde du matin).
+      if (plan.day.weekday !== 6 || nanny || plan.nanny.visits.length || !nannyAvailable(hh, plan.day)) continue;
+      // Et seulement si elle n'a pas travaillé le vendredi (sortie d'école, garde du matin, ni garde du soir si un jour on en
+      // permet en semaine) : sinon son repos hebdomadaire de 35 h d'affilée dans la semaine serait coupé.
+      const friday = planOf(d, near(plan.day, -1), seed);
+      if (friday.nanny.shifts.length || eveningOf(d, friday, plan, seed).nanny) continue;
       const r = dayRng(hh.seed, hh.members.length, plan.day.iso, 'nounou');
       const [lo, hi] = DAY.nannyLeave;
       nanny = { arrive: dep - 10, leave: o.ret + lo + Math.floor(r() * (hi - lo + 1)), reason: 'soir' };
@@ -296,7 +320,17 @@ function bedOf(hh: Household, m: number, plan: Plan, next: Plan, outing: Outing 
   if (isKid(hh, m)) {
     const eve = !!ob2?.strict;
     const anchor = 1440 + (eve ? ob2!.lever : DAY.bed.kidAnchor) - t.sleep;
-    return Math.max(anchor + int5(r, -DAY.bed.kidNoise, DAY.bed.kidNoise) + (eve ? 0 : DAY.bed.kidFree), dayEnd + DAY.bed.kidAfterDay);
+    let bed = Math.max(anchor + int5(r, -DAY.bed.kidNoise, DAY.bed.kidNoise) + (eve ? 0 : DAY.bed.kidFree), dayEnd + DAY.bed.kidAfterDay);
+    // Jamais couché avant qu'un adulte soit rentré (obligations seules : deux parents en service le samedi soir…) ; il
+    // revient alors avec le premier adulte rentré.
+    if (!plan.gone && isYoung(hh, m)) {
+      const adults = hh.members.map((_, a) => a).filter((a) => !isKid(hh, a));
+      const allOut = subtract(adults.reduce<Span[]>((acc, a) => intersect(acc, outOf(plan.blocks[a]!)), [[-Infinity, Infinity]]),
+        plan.nanny.visits.map((v): Span => [v.arrive, v.leave]));
+      const span = allOut.find(([a, b]) => a <= bed && b > bed);
+      if (span) bed = span[1] + DAY.bed.kidAfterDay;
+    }
+    return bed;
   }
   if (outing) return outing.ret + int5(r, DAY.bed.outing[0], DAY.bed.outing[1]);
   const habit = t.bedtime + int5(r, -DAY.bed.noise, DAY.bed.noise) + (!ob2 ? DAY.bed.free : 0);
@@ -388,8 +422,12 @@ export function householdDays(d: Dwelling, day: DayContext, seed: number): House
   if (home && young.length && !young.some((k) => plan.schools[k])) {
     const pars = hh.members.map((_, m) => m).filter((m) => !isKid(hh, m) && !workOf(plan.duties[m]) && !plan.ob[m]?.strict);
     if (pars.length) {
+      // Celui qui a le moins de sommeil à rattraper (coucher de la veille + besoin le plus tôt) ; à égalité, tirage.
       const r = dayRng(hh.seed, 0, day.iso, 'garde');
-      const g = pars[Math.floor(r() * pars.length)]!;
+      const need = (m: number): number => prevBed[m]! + traitsOf(hh, m).sleep;
+      const best = Math.min(...pars.map(need));
+      const tied = pars.filter((m) => need(m) - best < 30);
+      const g = tied[Math.floor(r() * tied.length)]!;
       const kw = Math.min(...young.map((k) => wake[k]!));
       const L = kw + int5(r, 0, 10);
       if (L < wake[g]!) {
@@ -398,17 +436,42 @@ export function householdDays(d: Dwelling, day: DayContext, seed: number): House
       }
     }
   }
+  // Jour d'école : un adulte au logement est debout au plus tard au réveil des petits (il les réveille). D'abord qui les
+  // dépose, puis un adulte sans travail, puis le plus tôt levé ; il garde son départ (préparation plus longue).
+  const pupilsUp = young.filter((k) => plan.ob[k]?.strict);
+  if (home && pupilsUp.length) {
+    const kw = Math.min(...pupilsUp.map((k) => wake[k]!));
+    const atHome = hh.members.map((_, m) => m).filter((m) => !isKid(hh, m) && !outOf(plan.blocks[m]!).some(([a, b]) => kw >= a && kw < b));
+    if (atHome.length && !atHome.some((m) => wake[m]! <= kw)) {
+      const order = (m: number): number => (plan.run?.drop === m ? 0 : !workOf(plan.duties[m]) ? 1 : 2);
+      const g = atHome.slice().sort((a, b) => order(a) - order(b) || wake[a]! - wake[b]!)[0]!;
+      wake[g] = kw - int5(dayRng(hh.seed, g, day.iso, 'reveil'), 0, 10);
+      why[g] = `réveille ${pupilsUp.map((k) => hh.members[k]!.who.first).join(' et ')} à ${hm(kw)} — ${why[g]}`;
+    }
+  }
 
   // 2. Blocs hors du logement : obligations, sorties de la famille, sorties de jour, sortie du soir.
   const blocks = plan.blocks.map((list) => list.map((b) => ({ ...b })));
+  // Retour de nuit : la sortie de la veille qui finit après minuit occupe le début du jour.
+  hh.members.forEach((_, m) => {
+    const o = evePrev.outing[m];
+    if (o && o.ret > 1440) blocks[m]!.unshift({ a: 0, b: o.ret - 1440, k: 'outing', label: o.kind });
+  });
   if (home) {
     const fam = familyErrands(hh, day);
-    if (fam.all) for (const list of blocks) list.push({ ...fam.all });
-    if (fam.one) {
-      // Courses d'un adulte : jamais avant 40 min après son lever (durée gardée).
+    const fine = (m: number): boolean => isKid(hh, m) || !plan.sick[m];
+    if (fam.all) {
+      // Parc tous ensemble (sauf un adulte malade) : au plus tôt 40 min après le dernier levé (rattrapage compris).
+      const goers = hh.members.map((_, m) => m).filter(fine);
+      const a = Math.max(fam.all.a, ...goers.map((m) => wake[m]! + 40));
+      for (const m of goers) blocks[m]!.push({ ...fam.all, a, b: a + fam.all.b - fam.all.a });
+    }
+    if (fam.one && fine(fam.one.m)) {
+      // Courses d'un adulte : jamais avant 40 min après son lever (durée gardée), ni sur sa sortie du soir.
       const { m, b } = fam.one;
       const a = Math.max(b.a, wake[m]! + 40);
-      blocks[m]!.push({ ...b, a, b: a + b.b - b.a });
+      const o = eve.outing[m];
+      if (!o || a + b.b - b.a + DAY.outingAfter <= o.dep) blocks[m]!.push({ ...b, a, b: a + b.b - b.a });
     }
     const pickup = plan.run?.pickup;
     hh.members.forEach((x, m) => {
@@ -432,18 +495,20 @@ export function householdDays(d: Dwelling, day: DayContext, seed: number): House
         const alone = subtract(intersect(subtract([[wake[k]!, bed[k]!]], outOf(blocks[k]!)), allOut), nannySpans);
         if (!alone.length) break;
         const t0 = alone[0]![0];
-        // Sortie d'un adulte en cours à t0 (de sa porte à son retour), sans travail ni cours : l'enfant part avec lui.
-        const cands = adults.flatMap((a) => outOf(blocks[a]!).filter(([x, y]) => x <= t0 && y > t0)
-          .filter(([x, y]) => !blocks[a]!.some((b) => NO_FOLLOW.has(b.k) && b.b > x && b.a < y)).map((span) => ({ a, span })));
-        const t1 = alone[0]![1];
-        if (!cands.length) {
-          // Personne à suivre (parents au travail un samedi sans école) : gardé chez les grands-parents, emmené par l'adulte
-          // qui part à t0, ramené par celui qui rentre à t1.
-          blocks[k]!.push({ a: t0, b: t1, k: 'out', label: 'chez les grands-parents' });
+        // L'adulte qui part exactement à t0 (sortie sans travail ni cours) emmène l'enfant jusqu'à son retour.
+        const leaving = adults.flatMap((a) => outOf(blocks[a]!).filter(([x]) => x === t0).map((span) => ({ a, span })));
+        const cands = leaving.filter(({ a, span: [x, y] }) => !blocks[a]!.some((b) => NO_FOLLOW.has(b.k) && b.b > x && b.a < y));
+        if (cands.length) {
+          const { a, span } = cands.sort((p, q) => p.span[1] - q.span[1])[0]!;
+          blocks[k]!.push({ a: t0, b: span[1], k: 'out', label: `avec ${hh.members[a]!.who.first}` });
           continue;
         }
-        const { a, span } = cands.sort((p, q) => q.span[0] - p.span[0])[0]!;
-        blocks[k]!.push({ a: Math.max(span[0], t0), b: span[1], k: 'out', label: `avec ${hh.members[a]!.who.first}` });
+        // Sinon chez les grands-parents : emmené par l'adulte qui part à t0, ramené par le premier adulte rentré (fin de
+        // l'absence de tous, sans la borner au coucher : jamais couché seul).
+        const all = subtract(intersect(subtract([[t0, Infinity]], outOf(blocks[k]!)), allOut), nannySpans);
+        const t1 = Math.min(all[0]?.[1] ?? alone[0]![1], 1800);
+        const by = leaving[0] ? `, avec ${hh.members[leaving[0].a]!.who.first}` : '';
+        blocks[k]!.push({ a: t0, b: t1, k: 'out', label: `chez les grands-parents${by}` });
       }
     }
   }

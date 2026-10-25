@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, dayContext, type DayContext, type YMD } from '../../../../src/core/library/city/calendar';
+import { addDays, dayContext, isoDate, type DayContext, type YMD } from '../../../../src/core/library/city/calendar';
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
 import { checkLabourLaw, LAW } from '../../../../src/core/library/city/labour-law';
@@ -28,7 +28,8 @@ describe('journée de chaque habitant', () => {
     const weekly = new Map<string, number[]>();
     for (const r of ROWS) {
       r.hd.people.forEach((p) => {
-        if (p.duty?.kind !== 'work' || p.duty.w.drop) return;
+        // Qui dépose les enfants ou les réveille (lever avancé, même départ) : hors de ce contrôle.
+        if (p.duty?.kind !== 'work' || p.duty.w.drop || p.why.startsWith('réveille')) return;
         const w = p.duty.w;
         expect(p.wake, `${r.d.id} ${r.day.iso} ${p.m}`).toBe(w.start - w.commute - w.prep);
         expect(p.prepEnd).toBe(w.start - w.commute);
@@ -108,17 +109,31 @@ describe('journée de chaque habitant', () => {
     expect(n).toBeGreaterThan(3);
   });
 
-  it('minorité : ≥ 80 % des veilles d\'obligation couchées à temps (lever − coucher ≥ besoin − 30)', () => {
-    let n = 0, ok = 0;
+  it('85 % : veilles de travail sans sortie où l’heure habituelle ne suffit pas, couchées à temps entre 75 et 95 %', () => {
+    const byKey = new Map(ROWS.map((r) => [`${r.seed}|${r.d.id}|${r.day.iso}`, r]));
+    let eves = 0, breaks = 0, enough = 0, lateQuiet = 0, lateClub = 0, clubEves = 0;
     for (const r of ROWS) {
+      const next = byKey.get(`${r.seed}|${r.d.id}|${isoDate(addDays(r.day.date, 1))}`);
+      if (!next || !home(r) || !home(next)) continue;
       r.hd.people.forEach((p) => {
-        if (p.duty?.kind !== 'work') return;
-        n++;
-        if (p.wake - p.prevBed >= traitsOf(r.d.hh, p.m).sleep - 30) ok++;
+        const q = next.hd.people[p.m]!;
+        if (q.duty?.kind !== 'work') return;
+        eves++;
+        const t = traitsOf(r.d.hh, p.m);
+        const slept = q.wake - (p.bed - 1440);
+        if (slept < t.sleep - 30) { if (p.outing) lateClub += p.outing.kind === 'boite' ? 1 : 0; else lateQuiet++; }
+        if (p.outing?.kind === 'boite') clubEves++;
+        if (p.outing || 1440 + q.wake - t.bedtime >= t.sleep - 30) return;
+        breaks++;
+        if (slept >= t.sleep - 30) enough++;
       });
     }
-    expect(ok / n).toBeGreaterThanOrEqual(0.8);
-    expect(ok).toBeLessThan(n); // une minorité se couche trop tard (sortie la veille) et se lève quand même
+    expect(breaks).toBeGreaterThan(200);
+    expect(enough / breaks).toBeGreaterThanOrEqual(0.75);
+    expect(enough / breaks).toBeLessThanOrEqual(0.95);
+    expect(lateQuiet).toBeGreaterThan(0); // couché tard sans sortie avant un jour travaillé
+    expect(lateClub).toBeGreaterThan(0); // boîte la veille d'un jour travaillé, debout quand même
+    expect(clubEves / eves).toBeLessThan(0.2);
   });
 
   it('profondeur 1 : prevBed de J = bed de J − 1 − 1440 pour tous, 60 jours', () => {
@@ -199,7 +214,8 @@ describe('journée de chaque habitant', () => {
         const where = `${r.seed} ${r.d.id} ${r.day.iso} ${p.m}`;
         expect(p.wake, where).toBeGreaterThan(p.prevBed);
         expect(p.dressAt, where).toBeGreaterThanOrEqual(p.wake);
-        if (p.out.length) expect(p.dressAt, where).toBeLessThan(p.out[0]![0]);
+        const firstOut = p.out.find(([a]) => a > 0); // hors retour de nuit de la veille
+        if (firstOut) expect(p.dressAt, where).toBeLessThan(firstOut[0]);
         expect(p.undressAt, where).toBeLessThan(p.bed);
         expect(p.blocks.some((b) => b.b > p.dressAt - 1 && b.a < p.dressAt + 1), where).toBe(false);
         if (r.hd.away.state === 'home') expect(inside(p.out, p.undressAt), where).toBe(false);
@@ -229,20 +245,148 @@ describe('journée de chaque habitant', () => {
     expect(pushed).toBeGreaterThan(0); // des départs repoussés par la fin du travail (restauration, cadres tardifs…)
   });
 
-  it('accueil du matin (aucun parent pour la dépose) : les petits partent avec le dernier parent qui s’en va', () => {
-    let n = 0;
+  it('matin sans parent pour la dépose : accueil à 7 h 30 avec le dernier parent, sinon nounou, sinon grands-parents', () => {
+    const seen = { accueil: 0, nanny: 0, 'grands-parents': 0 };
+    const open = SCHOOL.careOpen - SCHOOL.walk;
     for (const r of ROWS) {
+      const kids = r.hd.people.filter((k) => k.school && !k.school.autonomous);
+      // Aucun petit ne part avant l'ouverture de l'accueil, sauf chez les grands-parents avec un adulte.
+      for (const k of kids) {
+        const dep = k.out.find(([a]) => a > 0)![0];
+        if (dep >= open) continue;
+        expect(k.blocks.find((b) => b.a === dep)!.label, `${r.d.id} ${r.day.iso}`).toContain('chez les grands-parents');
+        expect(r.hd.people.some((a) => status(r, a.m) !== 'enfant' && a.out.some(([x]) => x === dep))).toBe(true);
+      }
+      const mo = r.hd.run?.morning;
       if (!r.hd.run || r.hd.run.drop !== null) continue;
+      expect(mo).toBeDefined();
+      seen[mo!.by]++;
       const parents = r.hd.people.filter((p) => status(r, p.m) !== 'enfant');
-      const lastDep = Math.max(...parents.map((p) => p.out[0]?.[0] ?? -1));
-      for (const k of r.hd.people) {
-        if (!k.school || k.school.autonomous) continue;
-        n++;
-        expect(k.out[0]![0]).toBe(lastDep);
-        expect(k.why).toContain('accueil du matin');
+      const lastDep = Math.max(...parents.map((p) => p.out.find(([a]) => a > 0)?.[0] ?? -1));
+      for (const k of kids) {
+        const dep = k.out.find(([a]) => a > 0)![0];
+        expect(k.wake).toBe(dep - 40);
+        if (mo!.by === 'accueil') { expect(dep).toBe(lastDep); expect(dep).toBeGreaterThanOrEqual(open); expect(k.why).toContain('accueil du matin'); }
+        if (mo!.by === 'grands-parents') { expect(dep).toBe(lastDep); expect(dep).toBeLessThan(open); }
+        if (mo!.by === 'nanny') {
+          expect(dep).toBe(open);
+          const v = r.hd.nanny!.visits.find((x) => x.reason === 'matin')!;
+          expect(v).toEqual({ arrive: lastDep - 10, leave: open, reason: 'matin' });
+          expect(r.hd.nanny!.shifts[0]).toEqual([lastDep - 10, SCHOOL.careOpen]);
+        }
       }
     }
-    expect(n).toBeGreaterThan(0);
+    expect(seen.accueil + seen.nanny + seen['grands-parents']).toBeGreaterThan(0);
+  });
+
+  it('retour de nuit : jamais au logement entre minuit et le retour d’une boîte qui finit après minuit', () => {
+    let n = 0;
+    for (const { seed, dwellings } of TOWNS) {
+      for (const d of dwellings) {
+        let prev = householdDays(d, NOVEMBER[0]!, seed);
+        for (let i = 1; i < NOVEMBER.length; i++) {
+          const cur = householdDays(d, NOVEMBER[i]!, seed);
+          cur.people.forEach((p) => {
+            const o = prev.people[p.m]!.outing;
+            if (!o || o.ret <= 1440) return;
+            n++;
+            expect(p.out[0]![0]).toBe(0);
+            expect(p.out[0]![1]).toBeGreaterThanOrEqual(o.ret - 1440);
+            expect(p.blocks[0]).toMatchObject({ a: 0, b: o.ret - 1440, k: 'outing' });
+          });
+          prev = cur;
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(20);
+  });
+
+  it('jour d’école : un adulte au logement est debout au réveil des petits', () => {
+    let n = 0;
+    for (const r of ROWS) {
+      const kids = r.hd.people.filter((k) => k.school && !k.school.autonomous && r.d.hh.members[k.m]!.who.age < 11);
+      if (!kids.length || !home(r)) continue;
+      const kw = Math.min(...kids.map((k) => k.wake));
+      const adults = r.hd.people.filter((p) => status(r, p.m) !== 'enfant' && !inside(p.out, kw));
+      if (!adults.length) continue;
+      n++;
+      expect(adults.some((a) => a.wake <= kw), `${r.d.id} ${r.day.iso}`).toBe(true);
+    }
+    expect(n).toBeGreaterThan(200);
+  });
+
+  it('jour libre : le parent qui se lève avec les petits est celui qui a le moins de sommeil à rattraper', () => {
+    let n = 0;
+    for (const r of ROWS) {
+      const g = r.hd.people.find((p) => p.why.includes('se lève avec'));
+      if (!g) continue;
+      n++;
+      const need = (p: (typeof r.hd.people)[number]) => p.prevBed + traitsOf(r.d.hh, p.m).sleep;
+      const others = r.hd.people.filter((p) => p !== g && status(r, p.m) !== 'enfant' && p.duty?.kind !== 'work' && p.prepEnd === null);
+      for (const o of others) expect(need(g) - need(o)).toBeLessThan(30);
+    }
+    expect(n).toBeGreaterThan(20);
+  });
+
+  it('centre de loisirs : jour de vacances, parents au travail → écoliers accompagnés comme un jour d’école', () => {
+    let n = 0;
+    const july = Array.from({ length: 10 }, (_, i) => ctx(addDays({ y: 2026, m: 7, d: 13 }, i))).filter((day) => day.weekday >= 1 && day.weekday <= 5 && !day.publicHoliday);
+    for (const { seed, dwellings } of TOWNS) {
+      for (const d of dwellings) {
+        for (const day of july) {
+          const hd = householdDays(d, day, seed);
+          for (const k of hd.people) {
+            if (!k.blocks.some((b) => b.label === 'centre de loisirs')) continue;
+            n++;
+            expect(day.schoolOn).toBe(false);
+            expect(k.school?.kind).toBe('ecole');
+            const parents = d.hh.members[k.m]!.who.parents;
+            expect(parents.every((p) => hd.people[p]!.duty?.kind === 'work')).toBe(true);
+            expect(hd.run).not.toBeNull();
+            expect(k.out.some(([a, b]) => a <= 500 && b >= SCHOOL.pickup)).toBe(true);
+          }
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(10);
+  });
+
+  it('chez les grands-parents : emmené par l’adulte qui part, ramené par le premier qui rentre (samedis de deux parents en restauration)', () => {
+    const seed = 25;
+    const d = cityDwellings(cityFacades(1440, 340, seed), seed).find((x) => x.id === '52:3')!;
+    let n = 0;
+    for (let i = 0; i < 60; i++) {
+      const day = ctx(addDays({ y: 2026, m: 1, d: 3 }, i));
+      const hd = householdDays(d, day, seed);
+      const adults = hd.people.filter((p) => d.hh.members[p.m]!.who.status !== 'enfant');
+      for (const k of hd.people) {
+        for (const b of k.blocks.filter((x) => x.label.startsWith('chez les grands-parents'))) {
+          n++;
+          const span = k.out.find(([a, e]) => a <= b.a && e >= b.b)!;
+          // Départ avec un adulte qui sort à la même minute ; retour quand le premier adulte est rentré, avant le coucher.
+          expect(adults.some((a) => a.out.some(([x]) => x === span[0]))).toBe(true);
+          expect(adults.some((a) => a.out.some(([, e]) => e === span[1]))).toBe(true);
+          expect(adults.every((a) => inside(a.out, span[1] - 1))).toBe(true);
+          expect(span[1]).toBeLessThan(k.bed);
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(3);
+  });
+
+  it('adultes sans travail malades : ni rendez-vous, ni cours, ni sortie', () => {
+    let n = 0;
+    for (const r of ROWS) {
+      for (const p of r.hd.people) {
+        if (!p.sick || p.duty) continue;
+        n++;
+        expect(p.appointment).toBeNull();
+        expect(p.school).toBeNull();
+        expect(p.outing).toBeNull();
+        expect(p.blocks.filter((b) => b.a > 0 && (b.k === 'out' || b.k === 'rdv' || b.k === 'class' || b.k === 'outing'))).toEqual([]);
+      }
+    }
+    expect(n).toBeGreaterThan(10);
   });
 
   it('foyer away : out = [[0, 1800]] pour tous ; leaves : départs communs à at', () => {
@@ -253,7 +397,7 @@ describe('journée de chaque habitant', () => {
       seen[state]++;
       for (const p of r.hd.people) {
         if (state === 'away') expect(p.out).toEqual([[0, 1800]]);
-        if (state === 'leaves') expect(p.out).toEqual([[at, 1800]]);
+        if (state === 'leaves') expect(p.out.at(-1)).toEqual([at, 1800]);
         if (state === 'returns') expect(p.out[0]).toEqual([0, at]);
       }
       expect(r.hd.run).toBeNull();
