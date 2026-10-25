@@ -172,7 +172,8 @@ function clippedArea(poly: [number, number][], x0: number, x1: number, z0: numbe
 }
 
 // `scaleAt` : px écran par cm au point donné (la perspective grossit ce qui est proche) ; `cp`, `sp` : cosinus et sinus de l'inclinaison.
-type Layout3d = { f: Frame; cam: Camera; cols: number; rows: number; depthRows: number; toPx: (p: V3) => [number, number]; scaleAt: (p: V3) => number; cp: number; sp: number };
+// `depth0` : profondeur caméra du point d'ancrage (ramenée à 0 avant la projection) ; `anchor` : vue du point d'ancrage (px).
+type Layout3d = { f: Frame; cam: Camera; cols: number; rows: number; depthRows: number; toPx: (p: V3) => [number, number]; scaleAt: (p: V3) => number; cp: number; sp: number; depth0: number; anchor: [number, number] };
 
 // Taille du rectangle de dessin et passage d'un point du modèle aux px du rectangle (origine en haut à gauche) : SEUL endroit où la
 // projection est définie. Perspective de la maquette G6 : le milieu avant de la trace tournée (point d'ancrage A) tombe au milieu du bas
@@ -206,7 +207,7 @@ function layoutOf(model: Model, angle: Angle, cam: Camera = FACE_CAMERA): Layout
     return [ox + q[0], oy + q[1]];
   };
   const scaleAt = (p: V3): number => (cam.scale * cam.f) / (cam.f - view(p)[2]);
-  return { f, cam, cols, rows, depthRows, toPx, scaleAt, cp: Math.cos(cam.pitch), sp: Math.sin(cam.pitch) };
+  return { f, cam, cols, rows, depthRows, toPx, scaleAt, cp: Math.cos(cam.pitch), sp: Math.sin(cam.pitch), depth0: a3[2], anchor: [anchor[0], anchor[1]] };
 }
 
 // Mise en page mise en cache par (modèle, angle, caméra) : projectOf est appelé point par point (objets portés, lumière, toucher).
@@ -941,6 +942,16 @@ const shiftOf = (model: Model, angle: Angle): { f: Frame; dx: number } => {
   const trace = footprint(model, L.f);
   return { f: L.f, dx: (L.cols * 21 - Math.max(...trace.map((p) => p[0]))) / 2 };
 };
+
+// Cadre d'un sprite cellulo (cel/raster) qui tombe exactement sur le dessin du modèle : `cam` est la caméra équivalente dont la
+// profondeur 0 passe par le point d'ancrage (focale f + depth0, échelle réduite d'autant : la vue de layoutOf à l'identique pour les
+// maillages du repère centré de cel/camera) ; `anchor` : vue du point d'ancrage (px de pièce, relatifs au pixel de l'origine du
+// sprite) ; `cols`, `rows` : taille du rectangle de dessin, dont le milieu du bas est le point d'ancrage.
+export function spriteFrameOf(model: Model, angle: Angle, cam: Camera = FACE_CAMERA): { cam: Camera; anchor: [number, number]; cols: number; rows: number } {
+  const L = cachedLayout(model, angle, cam);
+  const f = cam.f + L.depth0;
+  return { cam: { ...cam, f, scale: (cam.scale * cam.f) / f }, anchor: L.anchor, cols: L.cols, rows: L.rows };
+}
 
 // Point du modèle → px du rectangle de dessin (même projection que le dessin).
 export function projectOf(model: Model, angle: Angle, p: V3t, cam: Camera = FACE_CAMERA): [number, number] {

@@ -15,6 +15,9 @@ export const normalize = (a: Vec3): Vec3 => scale(a, 1 / (Math.hypot(a[0], a[1],
 
 const mk = (): Mesh => ({ v: [], n: [], t: [] });
 const sgnpow = (w: number, e: number): number => Math.sign(w) * Math.pow(Math.abs(w), e);
+// cos(π/2) vaut 6e-17 en flottant : élevé à une petite puissance (coussin carré, e = 0,15) il donnerait 0,4 % du demi-axe, soit un
+// petit trou au pôle et aux coutures. Les zéros de la trigonométrie sont ramenés à 0.
+const trig = (v: number): number => (Math.abs(v) < 1e-12 ? 0 : v);
 const faceNormal = (m: Mesh, [a, b, c]: [number, number, number]): Vec3 => cross(sub(m.v[b]!, m.v[a]!), sub(m.v[c]!, m.v[a]!));
 
 // Oriente les triangles vers l'extérieur (vu de `center`) et calcule des normales lissées, sommets confondus soudés.
@@ -56,9 +59,9 @@ export function superEll(a: number, b: number, c: number, e1: number, e2: number
     const eta = -Math.PI / 2 + (Math.PI * i) / nu;
     for (let j = 0; j <= nv; j++) {
       const om = -Math.PI + (2 * Math.PI * j) / nv;
-      const x = a * sgnpow(Math.cos(eta), e1) * sgnpow(Math.cos(om), e2);
+      const x = a * sgnpow(trig(Math.cos(eta)), e1) * sgnpow(trig(Math.cos(om)), e2);
       const y = b * sgnpow(Math.sin(eta), e1);
-      const z = c * sgnpow(Math.cos(eta), e1) * sgnpow(Math.sin(om), e2);
+      const z = c * sgnpow(trig(Math.cos(eta)), e1) * sgnpow(trig(Math.sin(om)), e2);
       m.v.push(deform ? deform(x, y, z) : [x, y, z]);
     }
   }

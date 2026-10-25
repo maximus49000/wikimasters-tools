@@ -38,7 +38,11 @@ const SHADOW_ID = -1;
 type Projected = { x: Float64Array; y: Float64Array; z: Float64Array };
 type Pass = { pts: Projected; normals: Float64Array | null; tris: readonly [number, number, number][]; id: number };
 
-export function celJob(parts: readonly CelPart[], view: CelView): { step(budgetMs: number, now?: () => number): boolean; image(): CelImage } {
+/** Cadre de l'image (taille et pixel de l'origine), connu dès la projection, avant tout tracé. */
+export type CelFrame = Omit<CelImage, 'rgba'>;
+export type CelJob = { step(budgetMs: number, now?: () => number): boolean; image(): CelImage; frame(): CelFrame };
+
+export function celJob(parts: readonly CelPart[], view: CelView): CelJob {
   const { px, ss } = view;
   const thr = view.thr ?? -0.18, thrD = view.thrD ?? 2.2;
   const shadow = view.shadow === undefined ? DEFAULT_SHADOW : view.shadow;
@@ -93,11 +97,22 @@ export function celJob(parts: readonly CelPart[], view: CelView): { step(budgetM
   const W = Math.ceil(maxX) - Math.floor(minX) + 2 * MARGIN, H = Math.ceil(maxY) - Math.floor(minY) + 2 * MARGIN;
   const w = W * ss, h = H * ss, OX = ox * ss, OY = oy * ss;
 
-  const depth = new Float32Array(w * h).fill(-1e9);
-  const id = new Int32Array(w * h);
-  const nx = new Float32Array(w * h), ny = new Float32Array(w * h), nz = new Float32Array(w * h);
-  const E = new Uint8Array(w * h); // 0 rien, 1 arête, 2 silhouette
-  const internal = new Uint8ClampedArray(w * h * 4);
+  // Tampons alloués à la première tranche : le cadre (frame) se lit sans eux.
+  let depth!: Float32Array, id!: Int32Array, nx!: Float32Array, ny!: Float32Array, nz!: Float32Array;
+  let E!: Uint8Array; // 0 rien, 1 arête, 2 silhouette
+  let internal!: Uint8ClampedArray, out!: Uint8ClampedArray;
+  let allocated = false;
+  function alloc(): void {
+    allocated = true;
+    depth = new Float32Array(w * h).fill(-1e9);
+    id = new Int32Array(w * h);
+    nx = new Float32Array(w * h);
+    ny = new Float32Array(w * h);
+    nz = new Float32Array(w * h);
+    E = new Uint8Array(w * h);
+    internal = new Uint8ClampedArray(w * h * 4);
+    out = ss === 1 ? internal : new Uint8ClampedArray(W * H * 4);
+  }
   const tones = parts.map((P) => ({ base: hexRgb(P.col.base), shade: hexRgb(P.col.shade), hi: hexRgb(P.col.hi) }));
   const ink = hexRgb(INK);
   const shadowRgb: Rgb | null = shadow ? hexRgb(shadow.color) : null;
@@ -166,7 +181,7 @@ export function celJob(parts: readonly CelPart[], view: CelView): { step(budgetM
     if (P.crease === false) return;
     const dn = nx[i]! * nx[j]! + ny[i]! * ny[j]! + nz[i]! * nz[j]!;
     const l = Math.hypot(nx[i]!, ny[i]!, nz[i]!) * Math.hypot(nx[j]!, ny[j]!, nz[j]!) || 1;
-    if (dn / l < (P.creaseThr || 0.62)) {
+    if (dn / l < (P.creaseThr ?? 0.62)) {
       setE(i, 1);
       setE(j, 1);
     }
@@ -190,12 +205,18 @@ export function celJob(parts: readonly CelPart[], view: CelView): { step(budgetM
         }
         c = t === 0 ? T.base : t === 1 ? T.shade : T.hi;
       }
-      if (c) internal.set([c[0], c[1], c[2], alpha], i * 4);
+      if (c) {
+        // Écriture directe des 4 octets : aucun tableau créé par pixel (boucle chaude, Android).
+        const o = i * 4;
+        internal[o] = c[0];
+        internal[o + 1] = c[1];
+        internal[o + 2] = c[2];
+        internal[o + 3] = alpha;
+      }
     }
   }
 
   // Réduction par moyenne de blocs ss × ss (couleur pondérée par l'opacité).
-  const out = ss === 1 ? internal : new Uint8ClampedArray(W * H * 4);
   function downRow(Y: number): void {
     const n = ss * ss;
     for (let X = 0; X < W; X++) {
@@ -210,7 +231,11 @@ export function celJob(parts: readonly CelPart[], view: CelView): { step(budgetM
           sb += internal[i + 2]! * al;
         }
       if (!sa) continue;
-      out.set([Math.round(sr / sa), Math.round(sg / sa), Math.round(sb / sa), Math.round(sa / n)], (Y * W + X) * 4);
+      const o = (Y * W + X) * 4;
+      out[o] = Math.round(sr / sa);
+      out[o + 1] = Math.round(sg / sa);
+      out[o + 2] = Math.round(sb / sa);
+      out[o + 3] = Math.round(sa / n);
     }
   }
 
@@ -218,6 +243,7 @@ export function celJob(parts: readonly CelPart[], view: CelView): { step(budgetM
   let phase: 'tri' | 'edge' | 'color' | 'down' | 'done' = 'tri';
   let pi = 0, ti = 0, row = 0;
   function unit(): void {
+    if (!allocated) alloc();
     if (phase === 'tri') {
       for (let n = 0; n < TRIS_PER_UNIT && phase === 'tri'; n++) {
         const pass = passes[pi];
@@ -263,6 +289,7 @@ export function celJob(parts: readonly CelPart[], view: CelView): { step(budgetM
       while (phase !== 'done') unit();
       return { w: W, h: H, rgba: out, ox, oy };
     },
+    frame: () => ({ w: W, h: H, ox, oy }),
   };
 }
 
