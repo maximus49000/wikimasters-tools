@@ -19,9 +19,9 @@ const look = lookOf('scandinave');
 //   anneaux du globe non convertis, pot plus étroit que la boîte) ;
 // - 'perch' : dessus praticable au-dessus d'un creux non converti (assise du pouf poire) ou d'un jour entre deux coussins (causeuse).
 const FALLBACK_LIMITS: Partial<Record<(typeof STANDING_KINDS)[number], CelCheck[]>> = {
-  shelf: ['shade'], desk: ['shade'], chair: ['shade'], basket: ['shade'], bowl: ['shade'], kennel: ['shade'], 'coffee-table': ['shade'], rug: ['shade'],
-  telescope: ['fill', 'shade'], 'egg-chair': ['fill', 'perch'], 'peacock-chair': ['fill', 'shade'],
-  charger: ['shade'], 'rocking-chair': ['shade'], dresser: ['shade'], 'side-table': ['shade'],
+  shelf: ['shade'], desk: ['shade'], basket: ['shade'], bowl: ['shade'], kennel: ['shade'], 'coffee-table': ['shade'], rug: ['shade'],
+  telescope: ['fill', 'shade'],
+  charger: ['shade'], dresser: ['shade'], 'side-table': ['shade'],
   globe: ['fill'], monstera: ['fill'], strelitzia: ['fill'], palm: ['fill'], cactus: ['fill'], pampas: ['fill'],
 };
 
@@ -86,7 +86,7 @@ describe('conversion des modèles à boîtes en maillages cellulo', () => {
 
   it('clés : version, résolution au quart', () => {
     const s = { kind: 'sofa', angle: 1, style: 'scandinave', side: 'left', cam: 'room', res: 3.1, lit: false, life: '' } as const;
-    expect(spriteKey(s)).toMatch(/^cel4\|/);
+    expect(spriteKey(s)).toMatch(/^cel5\|/);
     expect(spriteKey(s)).toBe(spriteKey({ ...s, res: 2.95 }));
     expect(spriteKey(s)).not.toBe(spriteKey({ ...s, res: 3.25 }));
     expect(spriteKey(s)).not.toBe(spriteKey({ ...s, part: 'base' }));

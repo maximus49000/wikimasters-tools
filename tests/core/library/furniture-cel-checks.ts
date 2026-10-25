@@ -38,6 +38,9 @@ export function topAt(parts: readonly CelPart[], x: number, z: number): number {
 // 'shade' : part d'ombre de (d), l'encre restant contrôlée). Le reste est toujours vérifié. Les exemptions ne valent que pour le
 // dessin de repli (conversion du modèle à boîtes) : un meuble redessiné (CEL_MODELS) passe toujours les seuils complets.
 export type CelCheck = 'fill' | 'perch' | 'shade';
+// Meubles dont l'assise est sous une coque (fauteuil œuf) : la coque au-dessus du dessus praticable n'est pas « le dessus » ;
+// on ne regarde que les surfaces jusqu'à cette hauteur au-dessus du perch (cm).
+const PERCH_COVER: Partial<Record<StandingKind, number>> = { 'egg-chair': 40 };
 export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandinave'), life: LifeState = REST_LIFE, fallbackSkip: readonly CelCheck[] = []): void {
   const skip: readonly CelCheck[] = CEL_MODELS[kind] ? [] : fallbackSkip;
   const model = FURNITURE_MODELS[kind];
@@ -56,7 +59,9 @@ export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandi
   const p = model.perch;
   if (p && !skip.includes('perch')) {
     const [x, z] = [p.x + p.w / 2 - model.w / 2, model.d / 2 - (p.z + p.d / 2)];
-    expect(Math.abs(topAt(parts, x, z) - p.y), `${kind} : dessus praticable`).toBeLessThanOrEqual(1.5);
+    const cover = PERCH_COVER[kind];
+    const seat = cover === undefined ? parts : parts.map((P) => ({ ...P, m: { ...P.m, t: P.m.t.filter(([a, b, c]) => Math.max(P.m.v[a]![1], P.m.v[b]![1], P.m.v[c]![1]) <= p.y + cover) } }));
+    expect(Math.abs(topAt(seat, x, z) - p.y), `${kind} : dessus praticable`).toBeLessThanOrEqual(1.5);
   }
   // (c) et (d) Rendu aux 8 angles (1 px par px de pièce, sans suréchantillonnage : couleurs exactes).
   const shades = new Set(parts.map((P) => P.col.shade.toUpperCase()));
