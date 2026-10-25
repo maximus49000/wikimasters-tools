@@ -60,7 +60,7 @@ describe('jour d’école', () => {
     const ferie = YEAR.find((d) => d.publicHoliday && d.weekday >= 1 && d.weekday <= 5)!;
     const weekend = YEAR.find((d) => d.weekday === 6)!;
     for (const { hh, m } of creche) {
-      expect(schoolDayOf(hh, m, holiday)).toMatchObject({ kind: 'creche', start: SCHOOL.crecheStart, autonomous: false });
+      expect(schoolDayOf(hh, m, holiday)).toMatchObject({ kind: 'creche', start: SCHOOL.crecheStart, end: SCHOOL.crecheEnd, autonomous: false });
       expect(schoolDayOf(hh, m, ferie)).toBeNull();
       expect(schoolDayOf(hh, m, weekend)).toBeNull();
     }
@@ -168,6 +168,8 @@ describe('dépose et sortie d’école', () => {
     let n = 0;
     for (const { hh, run, duties, day } of runs) {
       if (!hh.nanny || nannyOff(hh, day)) continue;
+      // Crèche seule : le premier parent rentré (test plus bas).
+      if (hh.members.every((_, m) => { const k = schoolDayOf(hh, m, day); return !k || k.autonomous || k.kind === 'creche'; })) continue;
       const parents = parentsOf(hh);
       const late = parents.every((m) => workOf(duties[m]!) && back(duties[m]!) > SCHOOL.pickup - SCHOOL.walk);
       if (!late) { expect(run!.pickup.by).toBe('parent'); continue; }
@@ -230,6 +232,54 @@ describe('dépose et sortie d’école', () => {
       expect(run!.pickup).toEqual({ by: 'parent', m: off[0] });
     }
     expect(n).toBeGreaterThan(0);
+  });
+
+  it('crèche seule, deux parents rentrés après 16 h 20 → le premier rentré, ≤ 18 h 30, ni nounou ni journée écourtée', () => {
+    let n = 0;
+    for (const hh of families) {
+      if (!hh.members.some((_, m) => traitsOf(hh, m).school?.kind === 'creche')) continue;
+      const parents = parentsOf(hh);
+      for (const day of YEAR) {
+        const kids = hh.members.map((_, m) => schoolDayOf(hh, m, day)).filter((s) => s && !s.autonomous);
+        if (!kids.length || kids.some((s) => s!.kind !== 'creche')) continue;
+        const raw = dutiesOf(hh, day);
+        const { run, duties } = schoolRunOf(hh, day, raw);
+        const late = parents.every((m) => workOf(duties[m]!) && back(duties[m]!) > SCHOOL.pickup - SCHOOL.walk);
+        if (!late) continue;
+        const p = run!.pickup;
+        expect(p.by, `${hh.seed} ${day.iso}`).toBe('parent');
+        if (p.by !== 'parent') continue;
+        const first = Math.min(...parents.map((m) => back(duties[m]!)));
+        expect(back(duties[p.m]!)).toBe(first);
+        expect(p.at).toBe(Math.max(first, SCHOOL.pickup));
+        if (back(raw[p.m]!) > SCHOOL.crecheEnd) continue;
+        n++;
+        expect(p.at).toBeLessThanOrEqual(SCHOOL.crecheEnd);
+        // Journée du parent qui va chercher : celle d'après la dépose, non écourtée.
+        for (const m of parents) if (m !== run!.drop) expect(duties[m]).toEqual(raw[m]);
+        if (p.m !== run!.drop) expect(workOf(duties[p.m]!)!.end).toBe(workOf(raw[p.m]!)!.end);
+      }
+    }
+    expect(n).toBeGreaterThan(10);
+  });
+
+  it('garderie : parent sans service avant la fermeture → heure réelle de son retour, journée intacte', () => {
+    const hh = families.filter(little).find((x) => !x.nanny && parentsOf(x).every((m) => traitsOf(x, m).work))!;
+    expect(hh).toBeDefined();
+    const day = schoolDays.find((d) => d.weekday === 2)!;
+    const raw = dutiesOf(hh, day);
+    // Deux parents qui ne commencent qu'à 18 h 20 (services fabriqués), 30 min de trajet.
+    const late = (m: number): Duty => {
+      const w = workOf(raw[m]!) ?? workOf(dutiesOf(hh, schoolDays.find((d) => workOf(dutyOf(hh, m, d)))!)[m]!)!;
+      return { kind: 'work', w: { ...w, shifts: [[1100, 1300]], start: 1100, end: 1300, effective: 200, commute: 30, split: false } };
+    };
+    const duties = raw.map((d, m) => (parentsOf(hh).includes(m) ? late(m) : d));
+    const { run, duties: out } = schoolRunOf(hh, day, duties);
+    const p = run!.pickup;
+    expect(p.by).toBe('garderie');
+    if (p.by !== 'garderie') return;
+    expect(workOf(out[p.m]!)!.shifts).toEqual([[1100, 1300]]);
+    expect(p.at).toBe(back(out[p.m]!));
   });
 
   it('est déterministe', () => {

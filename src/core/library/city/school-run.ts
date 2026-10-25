@@ -9,7 +9,8 @@ import { withDrop, type Duty, type WorkDay } from './work-day';
 // École et logistique des enfants (port de `ecoleDuJour`, `coursDuJour` et de la logistique `LOG` de la maquette « lever des
 // habitants », notes § École, § Dépose, § Sortie d'école, § Nounou). Un seul parent suffit à la dépose, un seul à la sortie.
 // - École (3–10 ans) : 8 h 20 – 16 h 30 les jours d'école ; le mercredi, centre de loisirs l'après-midi, sortie à 16 h 30.
-// - Crèche (moins de 3 ans) : 8 h 30 – 16 h 30, tous les jours ouvrés, vacances scolaires comprises.
+// - Crèche (moins de 3 ans) : 8 h 30 – 18 h 30, tous les jours ouvrés, vacances scolaires comprises ; cherchée par le premier
+//   parent rentré (sans nounou ni garderie), sauf si un frère ou une sœur sort de l'école : on les cherche ensemble.
 // - Collège, lycée (11 ans et plus) et études supérieures : seuls, horaires des traits ; la fac, les jours ouvrés seulement.
 // - Dépose : un parent libre ; sinon un cadre, qui décale son arrivée (`withDrop`) ; sinon un non-cadre qui commence assez tard.
 // - Sortie : un parent libre ou rentré à 16 h 20 ; sinon la nounou (si elle n'est pas en congé) jusqu'au retour du premier
@@ -17,13 +18,13 @@ import { withDrop, type Duty, type WorkDay } from './work-day';
 
 export const SCHOOL = {
   drop: 500, pickup: 990, walk: 10, kidPrep: 40, garderieMax: 1110, nannyArrive: 965, nannyHome: 1000,
-  nannyLeave: [5, 10], collegeWalk: 15, crecheStart: 510, autonomousAge: 11,
+  nannyLeave: [5, 10], collegeWalk: 15, crecheStart: 510, crecheEnd: 1110, autonomousAge: 11,
 } as const;
 
 export type SchoolDay = { kind: SchoolKind; start: number; end: number; autonomous: boolean; wednesday: boolean };
-// parent : le membre `m` va chercher à 16 h 30 ; nanny : la nounou, jusqu'à `until`, relayée par le membre `relay` ;
+// parent : le membre `m` va chercher à 16 h 30 (crèche : à `at`, à son retour) ; nanny : la nounou, jusqu'à `until`, relayée par le membre `relay` ;
 // garderie : le membre `m` passe à la garderie à `at`.
-export type Pickup = { by: 'parent'; m: number } | { by: 'nanny'; until: number; relay: number } | { by: 'garderie'; m: number; at: number };
+export type Pickup = { by: 'parent'; m: number; at?: number } | { by: 'nanny'; until: number; relay: number } | { by: 'garderie'; m: number; at: number };
 // `drop` : membre qui dépose (null : accueil du matin, aucun parent disponible).
 export type SchoolRun = { drop: number | null; pickup: Pickup };
 
@@ -38,7 +39,7 @@ export function schoolDayOf(hh: Household, m: number, day: DayContext): SchoolDa
   const wednesday = day.weekday === 3;
   if (kind === 'creche') {
     if (!workingDay(day)) return null;
-    return { kind, start: SCHOOL.crecheStart, end: SCHOOL.pickup, autonomous: false, wednesday: false };
+    return { kind, start: SCHOOL.crecheStart, end: SCHOOL.crecheEnd, autonomous: false, wednesday: false };
   }
   if (kind === 'ecole') {
     if (!day.schoolOn) return null;
@@ -54,7 +55,8 @@ export function schoolDayOf(hh: Household, m: number, day: DayContext): SchoolDa
 const workOf = (d: Duty | null | undefined): WorkDay | null => (d?.kind === 'work' ? d.w : null);
 const backHome = (w: WorkDay): number => w.end + w.commute;
 
-// Fin du travail avancée pour être rentré (en passant par la garderie) à `at` : services coupés à `at − trajet`.
+// Fin du travail avancée pour être rentré (en passant par la garderie) à `at` : services coupés à `at − trajet`. Aucun service
+// avant : journée intacte (l'heure de passage est alors celle du vrai retour, voir `schoolRunOf`).
 function endBy(w: WorkDay, at: number): WorkDay {
   const end = at - w.commute;
   if (w.end <= end) return w;
@@ -91,6 +93,15 @@ export function schoolRunOf(hh: Household, day: DayContext, duties: readonly (Du
   else {
     const first = parents.slice().sort((a, b) => backHome(workOf(out[a])!) - backHome(workOf(out[b])!))[0]!;
     const back = backHome(workOf(out[first])!);
+    if (kids.every(({ s }) => s.kind === 'creche')) {
+      // Crèche seule : le premier parent rentré passe la chercher ; après 18 h 30, il quitte son travail plus tôt.
+      let at = Math.max(back, SCHOOL.pickup);
+      if (at > SCHOOL.crecheEnd) {
+        out[first] = { kind: 'work', w: endBy(workOf(out[first])!, SCHOOL.crecheEnd) };
+        at = Math.max(SCHOOL.pickup, backHome(workOf(out[first])!));
+      }
+      return { run: { drop, pickup: { by: 'parent', m: first, at } }, duties: out };
+    }
     const isoYear = Math.floor(isoWeek(day.date, day.weekday).week / 100);
     const nanny = !!hh.nanny && nannyLeavePlan(hh, isoYear).get(day.iso) !== 'CP';
     if (nanny) {
@@ -99,7 +110,8 @@ export function schoolRunOf(hh: Household, day: DayContext, duties: readonly (Du
     } else {
       const at = Math.max(SCHOOL.pickup, Math.min(back, SCHOOL.garderieMax));
       out[first] = { kind: 'work', w: endBy(workOf(out[first])!, at) };
-      pickup = { by: 'garderie', m: first, at };
+      // Aucun service avant la fermeture (journée intacte) : l'heure de passage reste celle du vrai retour.
+      pickup = { by: 'garderie', m: first, at: Math.max(at, backHome(workOf(out[first])!)) };
     }
   }
   return { run: { drop, pickup }, duties: out };
