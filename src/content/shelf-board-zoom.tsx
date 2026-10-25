@@ -1,6 +1,6 @@
 // Dessin provisoire Opus : Fable n'est pas passé (gel jusqu'au 2026-10-17), reprise Fable prévue.
 import { useRef, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react';
-import type { Matrix } from '../core/library/footprint';
+import type { FaceFrame } from '../core/library/footprint';
 import { FURNITURE_MODELS } from '../core/library/furniture-models';
 import type { Layout, ShelfLevel, StyleId } from '../core/library/library-types';
 import { SHELF_INNER_CM, SHELF_LEVELS, displayOf, isLit, isShelfLevel, shelfBoardsIn, shelfLayoutIn, type BoardItem, type PxRect, type ShelfItemBox } from '../core/library/room-grid';
@@ -41,7 +41,12 @@ export type ShelfBoardProps = {
 };
 
 // Face de l'étagère en cm (repère identité) : tablettes et objets rangés y gardent leurs mesures réelles (mêmes calculs que la pièce).
-export const BOARD_FACE = { w: SHELF_INNER_CM, h: FURNITURE_MODELS.shelf.face!.h, m: [1, 0, 0, 1, 0, 0] as Matrix };
+const BOARD_H_CM = FURNITURE_MODELS.shelf.face!.h;
+// Repère identité (la face vue de face, en cm) : matrice et homographie identité.
+export const BOARD_FACE: FaceFrame = {
+  w: SHELF_INNER_CM, h: BOARD_H_CM, m: [1, 0, 0, 1, 0, 0], hom: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  quad: [[0, 0], [SHELF_INNER_CM, 0], [SHELF_INNER_CM, BOARD_H_CM], [0, BOARD_H_CM]],
+};
 const FACE = BOARD_FACE;
 export const POST_CM = 3; // montants (bords et entre deux bibliothèques)
 const PLANK_CM = 2;

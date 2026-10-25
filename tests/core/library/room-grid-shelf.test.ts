@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { faceFrame, frontFaceRect, invertMatrix } from '../../../src/core/library/footprint';
+import { faceFrame, frontFaceRect, invertFace } from '../../../src/core/library/footprint';
+import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
+import { projectOf } from '../../../src/core/library/furniture-render3d';
 import type { Layout, Placed } from '../../../src/core/library/library-types';
 import {
   CELL_H, CELL_W, SHELF_FULL_MESSAGE, SHELF_INNER_CM, boardAt, boardItems, dropOnShelf, firstFreeBoard, moveStored, placeStanding, pxRect, rectOf,
@@ -117,17 +119,17 @@ describe('positions sur la face projetée', () => {
   const items: Layout = [front, cd(0, 0, 0), cd(1, 1, 0, { display: 'spine' }), { ...cd(2, 2, 0), shape: 'dvd' }];
 
   it('de face : chaque objet posé sur sa tablette, à sa largeur réelle', () => {
-    const face = frontFaceRect(0, pxRect(rectOf(front)!), 'shelf')!;
-    const k = face.h / 169;
-    const at = (cm: number) => face.y + (177 - cm) * k;
+    const rect = pxRect(rectOf(front)!);
+    // perspective G6 : positions attendues = projection des points de la face (était une règle de trois sur le rectangle de la face).
+    const at = (x: number, cm: number): [number, number] => { const [px, py] = projectOf(FURNITURE_MODELS.shelf, 0, [3 + x, cm, 0]); return [rect.x + px, rect.y + py]; };
     const boxes = shelfLayoutOf(items, 'f1');
     expect(boxes).toHaveLength(3);
-    [121, 61, 8].forEach((cm, i) => expect(boxes[i]!.y + boxes[i]!.h).toBeCloseTo(at(cm), 1));
-    const sx = face.w / 74;
-    expect(boxes[0]!.w).toBeCloseTo(14 * sx, 3);
-    expect(boxes[0]!.x).toBeCloseTo(face.x, 3);
-    expect(boxes[1]!.w).toBeCloseTo(1 * sx, 3);
-    expect(boxes[2]!.h).toBeCloseTo(19 * k, 3);
+    [121, 61, 8].forEach((cm, i) => expect(boxes[i]!.y + boxes[i]!.h).toBeCloseTo(at(0, cm)[1], 1));
+    // CD de face (14 cm) contre le bord gauche de la tablette du haut ; la tranche (1 cm) à la suite ; DVD (19 cm de haut) en bas.
+    expect(boxes[0]!.quad[3]![0]).toBeCloseTo(at(0, 121)[0], 3);
+    expect(boxes[0]!.quad[2]![0] - boxes[0]!.quad[3]![0]).toBeCloseTo(at(14, 121)[0] - at(0, 121)[0], 3);
+    expect(boxes[1]!.quad[2]![0] - boxes[1]!.quad[3]![0]).toBeCloseTo(at(1, 61)[0] - at(0, 61)[0], 3);
+    expect(boxes[2]!.quad[3]![1] - boxes[2]!.quad[0]![1]).toBeCloseTo(at(0, 8)[1] - at(0, 27)[1], 3);
   });
 
   it('¾ : positions dans le parallélogramme de la face ; aucune de profil ni de dos', () => {
@@ -142,7 +144,7 @@ describe('positions sur la face projetée', () => {
         for (const [x, y] of b.quad) {
           expect(x).toBeGreaterThanOrEqual(box.x - 1e-6); expect(x).toBeLessThanOrEqual(box.x + box.w + 1e-6);
           expect(y).toBeGreaterThanOrEqual(box.y - 1e-6); expect(y).toBeLessThanOrEqual(box.y + box.h + 1e-6);
-          const [u, v] = invertMatrix(frame.m, x, y);
+          const [u, v] = invertFace(frame, x, y); // perspective G6 : repère exact de la face (était invertMatrix(frame.m))
           expect(u).toBeGreaterThanOrEqual(-1e-6); expect(u).toBeLessThanOrEqual(frame.w + 1e-6);
           expect(v).toBeGreaterThanOrEqual(-1e-6); expect(v).toBeLessThanOrEqual(frame.h + 1e-6);
         }

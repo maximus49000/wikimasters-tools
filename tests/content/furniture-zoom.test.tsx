@@ -61,7 +61,7 @@ describe('calque du zoom', () => {
     // Même géométrie que dans la pièce : le rangement par largeur sur la face du modèle (2e objet de la tablette du haut).
     const want = shelfLayoutIn(faceFrame('shelf', 0, { x: 0, y: 0, w: w * CELL_W, h: h * CELL_H })!, room.layout, 's').find((b) => b.id === 'c2')!;
     const hit = container.querySelector('[data-zoom-card="Inconnue"] rect[fill="transparent"]')!;
-    expect(Number(hit.getAttribute('x'))).toBeCloseTo(want.x, 1);
+    expect(Number(hit.getAttribute('x'))).toBeCloseTo(want.x, 0); // perspective G6 : objet 2 cm derrière la face (était au dixième de px)
     // (sa hauteur : la face avant de l'objet en 3D, voir « zoom : objets en 3D ».)
     expect(Number(hit.getAttribute('width'))).toBeCloseTo(want.w, 1);
   });

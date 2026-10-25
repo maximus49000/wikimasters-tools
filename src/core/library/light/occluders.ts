@@ -1,6 +1,6 @@
 import { drawSize, localPointAt, occludersAt, perchAt, type Angle } from '../footprint';
 import { FURNITURE_MODELS } from '../furniture-models';
-import { CELL_H, CELL_W, DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, occluderBoxesOf, openingOf, pieceBounds, type Piece } from '../furniture-render3d';
+import { CELL_H, CELL_W, DEPTH_PX_PER_CM, HEIGHT_PX_PER_CM, PX_PER_CM_X, occluderBoxesOf, openingOf, pieceBounds, type Piece } from '../furniture-render3d';
 import { SHELF_GAP_CM, angleOf, boardItems, boardWidthCm, isLamp, isLit, isStanding, pxRect, rectOf } from '../room-grid';
 import { boardPlacement, computerPlacement, placementBounds, posedPlacement, smallPlacement, storedPlacement } from '../carried-items';
 import { itemPieces, type ItemPlacement } from '../item-models';
@@ -17,7 +17,7 @@ export type LampSource = { id: string; x: number; d: number; z: number; box: str
 export const kOf = (g: Geom): number => g.floorH / (g.wallH * ROOM_DEPTH_FACTOR);
 
 // Repère « lumière » d'un meuble posé (cm, cf. occluderBoxesOf) → monde : x px = bord gauche du rectangle + x cm (centrage compris),
-// hauteur px = y cm × PX_PER_CM_Y, profondeur = bord avant (le bas du rectangle écran) − z cm × DEPTH_PX_PER_CM / k.
+// hauteur px = y cm × HEIGHT_PX_PER_CM (hauteur écran d'un cm dans la perspective de la pièce), profondeur = bord avant (le bas du rectangle écran) − z cm × DEPTH_PX_PER_CM / k.
 type Frame = { kind: Exclude<StandingKind, 'rug'>; angle: Angle; r: PxRect; dFront: number; sx: number; sy: number; k: number };
 type HostFrame = Frame & { kind: 'desk' | 'shelf' };
 
@@ -32,7 +32,7 @@ function frameOf(p: Placed | undefined, g: Geom): Frame | null {
   return { kind: p.kind, angle, r, dFront: Math.max(0, (r.y + r.h - g.wallH) / k), sx: r.w / (w * CELL_W), sy: r.h / (h * CELL_H), k };
 }
 const wx = (f: Frame, x: number): number => f.r.x + x * PX_PER_CM_X * f.sx;
-const wz = (f: Frame, y: number): number => y * PX_PER_CM_Y * f.sy;
+const wz = (f: Frame, y: number): number => y * HEIGHT_PX_PER_CM * f.sy;
 const wd = (f: Frame, z: number): number => f.dFront - (z * DEPTH_PX_PER_CM * f.sy) / f.k;
 
 // Bureau ou étagère qui porte l'écran ou un petit objet.

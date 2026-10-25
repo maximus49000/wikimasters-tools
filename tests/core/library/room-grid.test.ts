@@ -22,7 +22,7 @@ import {
 } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
 import { byDrawOrder, footBottom, hitRectOf, overhangRow } from '../../../src/core/library/room-grid';
-import { overhangOf } from '../../../src/core/library/furniture-render3d';
+import { overhangOf, pieceBounds, projectOf } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import { drawSize, floorCells } from '../../../src/core/library/footprint';
 
@@ -192,8 +192,18 @@ describe('meuble à socle (lampadaire arc tourné)', () => {
     const hit = hitRectOf(lamp);
     expect(hit.w).toBeLessThan(full.w / 2);
     expect(hit.y + hit.h).toBeCloseTo(full.y + full.h, 5);
+    // perspective G6 : sans socle, le cadre englobant du dessin (était tout le rectangle) ; il contient chaque coin de chaque pièce.
     const sofa = { id: 's', kind: 'sofa', col: 2, row: 10 } as never;
-    expect(hitRectOf(sofa)).toEqual(pxRect(rectOf(sofa)!));
+    const r = pxRect(rectOf(sofa)!);
+    const sh = hitRectOf(sofa);
+    expect(sh.y).toBeGreaterThan(r.y);
+    expect(sh.y + sh.h).toBeLessThanOrEqual(r.y + r.h + 1e-6);
+    const m = FURNITURE_MODELS.sofa;
+    for (const [x0, x1, y0, y1, z0, z1] of m.pieces.map(pieceBounds)) for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) {
+      const [px, py] = projectOf(m, 0, [x, y, z]);
+      expect(r.x + px).toBeGreaterThanOrEqual(sh.x - 1e-6); expect(r.x + px).toBeLessThanOrEqual(sh.x + sh.w + 1e-6);
+      expect(r.y + py).toBeGreaterThanOrEqual(sh.y - 1e-6); expect(r.y + py).toBeLessThanOrEqual(sh.y + sh.h + 1e-6);
+    }
   });
 });
 

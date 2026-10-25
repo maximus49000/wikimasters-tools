@@ -112,15 +112,17 @@ describe('CarriedItem3D', () => {
         const box = screenBox(c);
         const want = placementRectPx('shelf', angle, rect, pl);
         if (display === 'spine') {
-          expect(box.x0, `${angle} ${display}`).toBeCloseTo(want.x, 0);
-          expect(box.x1).toBeCloseTo(want.x + want.w, 0);
-          expect(box.y0).toBeCloseTo(want.y, 0);
-          expect(box.y1).toBeCloseTo(want.y + want.h, 0);
+          // perspective G6 : dans la pièce, l'objet est son propre dessin translaté (rendu à l'échelle de son propre ancrage) : jusqu'à
+          // 1,5 px de sa pose exacte sur une tablette haute (était au demi-px).
+          expect(Math.abs(box.x0 - want.x), `${angle} ${display}`).toBeLessThan(1.5);
+          expect(Math.abs(box.x1 - want.x - want.w)).toBeLessThan(1.5);
+          expect(Math.abs(box.y0 - want.y)).toBeLessThan(1.5);
+          expect(Math.abs(box.y1 - want.y - want.h)).toBeLessThan(1.5);
         } else {
           // De face, le boîtier penche sur son présentoir : l'encombrement (boîte droite autour des pièces penchées) entoure son dessin de près.
           const gaps = [box.x0 - want.x, want.x + want.w - box.x1, box.y0 - want.y, want.y + want.h - box.y1];
           for (const g of gaps) {
-            expect(g, `${angle} ${display}`).toBeGreaterThan(-0.5);
+            expect(g, `${angle} ${display}`).toBeGreaterThan(-1.5); // perspective G6 (était −0,5 : dessin translaté, cf. ci-dessus)
             expect(g, `${angle} ${display}`).toBeLessThan(3);
           }
         }

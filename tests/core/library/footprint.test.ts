@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { drawRect, drawSize, floorCells, floorOffsets, frontFaceRect, isAngle, poisAt, rotateAngle } from '../../../src/core/library/footprint';
 import { sizeOf } from '../../../src/core/library/furniture-catalog';
+import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
+import { projectOf } from '../../../src/core/library/furniture-render3d';
 
 const keys = (cells: { col: number; row: number }[]) => cells.map((c) => `${c.col}-${c.row}`).sort();
 const ANGLES = [0, 1, 2, 3, 4, 5, 6, 7] as const;
@@ -124,6 +126,17 @@ describe('points d’intérêt', () => {
   });
 });
 
+// Rectangle englobant attendu de la face avant de l'étagère : ses 4 coins projetés (projectOf), mis à l'échelle de `rect`.
+function faceBox(angle: 0 | 1, rect: { x: number; y: number; w: number; h: number }) {
+  const m = FURNITURE_MODELS.shelf;
+  const f = m.face!;
+  const { w, h } = drawSize('shelf', angle);
+  const [sx, sy] = [rect.w / (w * 30), rect.h / (h * (510 / 18))];
+  const pts = [[f.x, f.y], [f.x + f.w, f.y], [f.x + f.w, f.y + f.h], [f.x, f.y + f.h]].map(([x, y]) => projectOf(m, angle, [x!, y!, 0]));
+  const xs = pts.map((p) => rect.x + p[0] * sx);
+  return { x: Math.min(...xs), w: Math.max(...xs) - Math.min(...xs), y: Math.min(...pts.map((p) => rect.y + p[1] * sy)) };
+}
+
 describe('face visible', () => {
   it('avec le meuble : face projetée du modèle, mise à l’échelle et décalée dans le rectangle', () => {
     // Étagère de face : 4 × 10 cases = 120 × 283,3 px ; rectangle deux fois plus grand, décalé de (10, 20).
@@ -131,8 +144,10 @@ describe('face visible', () => {
     const big = { x: 10, y: 20, w: w * 30 * 2, h: h * (510 / 18) * 2 };
     const face = frontFaceRect(0, big, 'shelf')!;
     // Face du modèle : x 3 cm (+ 2 cm : 80 cm centrés dans 4 colonnes de 21 cm) → 5 × 30/21 px, largeur 74 cm → 74 × 30/21 px, × 2.
-    expect(face.x).toBeCloseTo(10 + ((5 * 30) / 21) * 2);
-    expect(face.w).toBeCloseTo(((74 * 30) / 21) * 2);
+    // perspective G6 : rectangle englobant des 4 coins projetés de la face, mis à l'échelle (était 10 + 5 × 30/21 × 2 et 74 × 30/21 × 2).
+    const want = faceBox(0, big);
+    expect(face.x).toBeCloseTo(want.x, 6);
+    expect(face.w).toBeCloseTo(want.w, 6);
     expect(face.y + face.h).toBeLessThanOrEqual(big.y + big.h);
     expect(face.y).toBeGreaterThanOrEqual(big.y);
     for (const a of [2, 3, 4, 5, 6] as const) expect(frontFaceRect(a, big, 'shelf')).toBeNull();
@@ -147,8 +162,12 @@ describe('face visible', () => {
     const big1 = { x: 10, y: 20, w: r1.w * 30 * 2, h: r1.h * (510 / 18) * 2 };
     const f1 = frontFaceRect(1, big1, 'shelf')!;
     const c45 = Math.SQRT1_2;
-    expect(f1.w).toBeCloseTo(((74 * c45 * 30) / 21) * 2, 3);
-    expect(f1.x).toBeCloseTo(10 + ((3 * c45 + (84 - 110 * c45) / 2) * 30 / 21) * 2, 3);
+    // perspective G6 : rectangle englobant des 4 coins projetés (étaient 74 × cos 45° × 30/21 × 2 et 10 + 5,23 × 30/21 × 2) ; à peu près
+    // la largeur affine (cos 45°), à 10 % près.
+    const want1 = faceBox(1, big1);
+    expect(f1.w).toBeCloseTo(want1.w, 6);
+    expect(f1.x).toBeCloseTo(want1.x, 6);
+    expect(Math.abs(f1.w / (((74 * c45 * 30) / 21) * 2) - 1)).toBeLessThan(0.1);
     expect(f1.y).toBeGreaterThanOrEqual(big1.y);
     expect(f1.y + f1.h).toBeLessThanOrEqual(big1.y + big1.h);
     // À 7, miroir de 1 : même largeur, collée au bord droit symétriquement.
