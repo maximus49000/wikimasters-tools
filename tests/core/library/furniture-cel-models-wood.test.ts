@@ -4,8 +4,7 @@ import { ROOM_CAMERA, yawOf } from '../../../src/core/library/cel/camera';
 import { REST_LIFE } from '../../../src/core/library/cel/life-state';
 import { lookOf } from '../../../src/core/library/cel/looks';
 import { CEL_MODELS, celPartsOf } from '../../../src/core/library/cel/models';
-import { bent, EGG_HOOK, RUN_R, rockingRunners, SAG_BOARD, TASSEL_PIVOT } from '../../../src/core/library/cel/models/wood';
-import { superEll } from '../../../src/core/library/cel/mesh';
+import { EGG_HOOK, RUN_R, rockingRunners, SAG_BOARD, TASSEL_PIVOT } from '../../../src/core/library/cel/models/wood';
 import { renderCel } from '../../../src/core/library/cel/raster';
 import { LIFE_SPECS } from '../../../src/core/library/furniture-life-specs';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
@@ -70,18 +69,6 @@ describe('bois, bascule, suspension et arbre à chat en cellulo', () => {
     const ys = rockingRunners(look).flatMap((P) => P.m.v.map((v) => v[1]));
     expect(Math.min(...ys)).toBeLessThanOrEqual(0.5);
     expect(Math.max(...ys)).toBeGreaterThanOrEqual(8);
-  });
-
-  it('bent garde les normales vers l’extérieur, même quand la déformation est un miroir ou un échange d’axes', () => {
-    const ball = superEll(10, 6, 4, 0.5, 0.5, 10, 16);
-    const outward = (m: ReturnType<typeof bent>) => {
-      const c = m.v.reduce((a, v) => [a[0] + v[0] / m.v.length, a[1] + v[1] / m.v.length, a[2] + v[2] / m.v.length], [0, 0, 0]);
-      return m.v.filter((v, i) => (v[0] - c[0]) * m.n[i]![0] + (v[1] - c[1]) * m.n[i]![1] + (v[2] - c[2]) * m.n[i]![2] > 0).length / m.v.length;
-    };
-    expect(outward(bent(ball, (x, y, z) => [x, y + 0.02 * x * x, z]))).toBeGreaterThan(0.95); // cintrage
-    expect(outward(bent(ball, (x, y, z) => [-x, y, z]))).toBeGreaterThan(0.95); // miroir
-    expect(outward(bent(ball, (x, y, z) => [x + 30, -z, y]))).toBeGreaterThan(0.95); // rotation (échange d'axes sans miroir)
-    expect(outward(bent(ball, (x, y, z) => [x, z, y]))).toBeGreaterThan(0.95); // échange d'axes (miroir)
   });
 
   it('les patins du rocking-chair sont éclairés comme le reste du meuble (pas tout à l’ombre aux angles 3 et 7)', () => {

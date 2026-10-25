@@ -177,6 +177,52 @@ export function leaf(outline: [number, number][], th = 0.5, deform?: Deform, cen
   return m;
 }
 
+// Cintre un maillage DÉJÀ construit (plaque mince : traverse, barreau, éventail) : applique la déformation aux sommets puis recalcule les
+// normales lissées à partir des faces, en gardant le sens des triangles. Les constructeurs (`superEll`, `lathe`) orientent leurs
+// triangles « vers l'extérieur du centre » : sur une plaque mince et large, une face cintrée loin du centre peut être jugée tournée
+// vers l'intérieur et se retrouver à l'envers (taches d'ombre, faces éclairées à contresens). Ici la plaque est construite plate,
+// orientée juste, puis cintrée.
+// Si la déformation retourne l'orientation (déterminant de sa jacobienne négatif : miroir, échange d'axes), l'ordre des sommets de
+// chaque triangle est inversé pour que les normales restent tournées vers l'extérieur. Les familles de meubles cintrent leurs plaques minces avec cette aide (traverses, éventail, fond d'étagère, tapis roulotté).
+export function bent(m: Mesh, d: Deform): Mesh {
+  const v = m.v.map(([x, y, z]) => d(x, y, z));
+  const t = deformFlips(m, d) ? m.t.map(([a, b, c]): [number, number, number] => [a, c, b]) : m.t;
+  const nn: Vec3[] = v.map(() => [0, 0, 0]);
+  for (const [a, b, c] of t) {
+    const A = v[a]!, B = v[b]!, C = v[c]!;
+    const u: Vec3 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], w: Vec3 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+    const N: Vec3 = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    for (const i of [a, b, c]) nn[i] = [nn[i]![0] + N[0], nn[i]![1] + N[1], nn[i]![2] + N[2]];
+  }
+  // Sommets confondus (pôles, couture) soudés : normales continues.
+  const groups = new Map<string, number[]>();
+  v.forEach((q, i) => {
+    const k = q.map((c) => Math.round(c * 100)).join(',');
+    const g = groups.get(k);
+    if (g) g.push(i);
+    else groups.set(k, [i]);
+  });
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    const sum = ids.reduce<Vec3>((acc, i) => [acc[0] + nn[i]![0], acc[1] + nn[i]![1], acc[2] + nn[i]![2]], [0, 0, 0]);
+    for (const i of ids) nn[i] = sum;
+  }
+  return { v, n: nn.map(normalize), t };
+}
+// Signe de la jacobienne de `d`, estimé par différences finies au centre et aux huit coins de la boîte du maillage (majorité des signes).
+function deformFlips(m: Mesh, d: Deform): boolean {
+  const lo: Vec3 = [Infinity, Infinity, Infinity], hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const p of m.v) for (let k = 0; k < 3; k++) (lo[k] = Math.min(lo[k]!, p[k]!)), (hi[k] = Math.max(hi[k]!, p[k]!));
+  const h = Math.max(1e-3, 0.01 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]));
+  const det = (x: number, y: number, z: number): number => {
+    const o = d(x, y, z), X = d(x + h, y, z), Y = d(x, y + h, z), Z = d(x, y, z + h);
+    const a: Vec3 = [X[0] - o[0], X[1] - o[1], X[2] - o[2]], b: Vec3 = [Y[0] - o[0], Y[1] - o[1], Y[2] - o[2]], c: Vec3 = [Z[0] - o[0], Z[1] - o[1], Z[2] - o[2]];
+    return a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]);
+  };
+  let vote = Math.sign(det((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2));
+  for (const x of [lo[0], hi[0]]) for (const y of [lo[1], hi[1]]) for (const z of [lo[2], hi[2]]) vote += Math.sign(det(x, y, z));
+  return vote < 0;
+}
 // Catmull-Rom : k points par segment, le dernier point gardé.
 export function smooth(pts: Vec3[], k: number): Vec3[] {
   if (pts.length < 3) return pts;

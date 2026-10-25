@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { place, part, superEll } from '../../../src/core/library/cel/mesh';
+import { bent, place, part, superEll } from '../../../src/core/library/cel/mesh';
 import { celJob, renderCel } from '../../../src/core/library/cel/raster';
 import { ROOM_CAMERA } from '../../../src/core/library/cel/camera';
 import { tone } from '../../../src/core/library/cel/tone';
@@ -48,5 +48,16 @@ describe('moteur cellulo', () => {
     let clock = 0;
     while (!job.step(1, () => (clock += 0.4)));
     expect(job.image().rgba).toEqual(renderCel(ball(), view).rgba);
+  });
+  it('bent garde les normales vers l’extérieur, même quand la déformation est un miroir ou un échange d’axes', () => {
+    const ball = superEll(10, 6, 4, 0.5, 0.5, 10, 16);
+    const outward = (m: ReturnType<typeof bent>) => {
+      const c = m.v.reduce((a, v) => [a[0] + v[0] / m.v.length, a[1] + v[1] / m.v.length, a[2] + v[2] / m.v.length], [0, 0, 0]);
+      return m.v.filter((v, i) => (v[0] - c[0]) * m.n[i]![0] + (v[1] - c[1]) * m.n[i]![1] + (v[2] - c[2]) * m.n[i]![2] > 0).length / m.v.length;
+    };
+    expect(outward(bent(ball, (x, y, z) => [x, y + 0.02 * x * x, z]))).toBeGreaterThan(0.95); // cintrage
+    expect(outward(bent(ball, (x, y, z) => [-x, y, z]))).toBeGreaterThan(0.95); // miroir
+    expect(outward(bent(ball, (x, y, z) => [x + 30, -z, y]))).toBeGreaterThan(0.95); // rotation (échange d'axes sans miroir)
+    expect(outward(bent(ball, (x, y, z) => [x, z, y]))).toBeGreaterThan(0.95); // échange d'axes (miroir)
   });
 });
