@@ -319,3 +319,69 @@
 ### kind-monstera_style-scandinave_res-3_cell-700.png
 
 ![kind-monstera_style-scandinave_res-3_cell-700.png](08-plantes-r2/kind-monstera_style-scandinave_res-3_cell-700.png)
+
+## 09-lampes-animaux
+
+### kind-arc_lamp_style-scandinave_res-3_cell-700.png
+
+![kind-arc_lamp_style-scandinave_res-3_cell-700.png](09-lampes-animaux/kind-arc_lamp_style-scandinave_res-3_cell-700.png)
+
+### kind-arc_lamp_style-scandinave_res-3_cell-700_lit-0.png
+
+![kind-arc_lamp_style-scandinave_res-3_cell-700_lit-0.png](09-lampes-animaux/kind-arc_lamp_style-scandinave_res-3_cell-700_lit-0.png)
+
+### kind-basket_bowl_kennel_charger_style-scandinave_res-2.png
+
+![kind-basket_bowl_kennel_charger_style-scandinave_res-2.png](09-lampes-animaux/kind-basket_bowl_kennel_charger_style-scandinave_res-2.png)
+
+### kind-basket_style-scandinave_res-3_cell-700.png
+
+![kind-basket_style-scandinave_res-3_cell-700.png](09-lampes-animaux/kind-basket_style-scandinave_res-3_cell-700.png)
+
+### kind-bowl_style-scandinave_res-3_cell-700.png
+
+![kind-bowl_style-scandinave_res-3_cell-700.png](09-lampes-animaux/kind-bowl_style-scandinave_res-3_cell-700.png)
+
+### kind-charger_style-scandinave_res-3_cell-700.png
+
+![kind-charger_style-scandinave_res-3_cell-700.png](09-lampes-animaux/kind-charger_style-scandinave_res-3_cell-700.png)
+
+### kind-kennel_style-scandinave_res-3_cell-700.png
+
+![kind-kennel_style-scandinave_res-3_cell-700.png](09-lampes-animaux/kind-kennel_style-scandinave_res-3_cell-700.png)
+
+### kind-lamp_arc_lamp_paper_lantern_style-scandinave_res-2.png
+
+![kind-lamp_arc_lamp_paper_lantern_style-scandinave_res-2.png](09-lampes-animaux/kind-lamp_arc_lamp_paper_lantern_style-scandinave_res-2.png)
+
+### kind-lamp_arc_lamp_paper_lantern_style-scandinave_res-2_lit-0.png
+
+![kind-lamp_arc_lamp_paper_lantern_style-scandinave_res-2_lit-0.png](09-lampes-animaux/kind-lamp_arc_lamp_paper_lantern_style-scandinave_res-2_lit-0.png)
+
+### kind-lamp_arc_lamp_paper_lantern_style-steampunk_res-2.png
+
+![kind-lamp_arc_lamp_paper_lantern_style-steampunk_res-2.png](09-lampes-animaux/kind-lamp_arc_lamp_paper_lantern_style-steampunk_res-2.png)
+
+### kind-lamp_style-scandinave_res-3_cell-700.png
+
+![kind-lamp_style-scandinave_res-3_cell-700.png](09-lampes-animaux/kind-lamp_style-scandinave_res-3_cell-700.png)
+
+### kind-lamp_style-scandinave_res-3_cell-700_lit-0.png
+
+![kind-lamp_style-scandinave_res-3_cell-700_lit-0.png](09-lampes-animaux/kind-lamp_style-scandinave_res-3_cell-700_lit-0.png)
+
+### kind-paper_lantern_style-scandinave_res-3_cell-700.png
+
+![kind-paper_lantern_style-scandinave_res-3_cell-700.png](09-lampes-animaux/kind-paper_lantern_style-scandinave_res-3_cell-700.png)
+
+### kind-paper_lantern_style-scandinave_res-3_cell-700_lit-0.png
+
+![kind-paper_lantern_style-scandinave_res-3_cell-700_lit-0.png](09-lampes-animaux/kind-paper_lantern_style-scandinave_res-3_cell-700_lit-0.png)
+
+### style-scandinave_h-10_nostore-1.png
+
+![style-scandinave_h-10_nostore-1.png](09-lampes-animaux/style-scandinave_h-10_nostore-1.png)
+
+### style-scandinave_h-21_nostore-1.png
+
+![style-scandinave_h-21_nostore-1.png](09-lampes-animaux/style-scandinave_h-21_nostore-1.png)
