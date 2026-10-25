@@ -4,7 +4,7 @@ import { dwellingDay, type DwellingDay } from '../../../../src/core/library/city
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling, type HouseholdType } from '../../../../src/core/library/city/households';
 import { sceneDay, type SceneDay } from '../../../../src/core/library/city/scene-day';
-import type { Schedule, Segment } from '../../../../src/core/library/city/schedules';
+import { visitIndices, type Schedule, type Segment } from '../../../../src/core/library/city/schedules';
 import { decorTasks, halloweenPlan } from '../../../../src/core/library/city/halloween';
 import { dayNumber } from '../../../../src/core/library/city/shops/hours';
 import { sunTimes, type SunTimes } from '../../../../src/core/library/sky';
@@ -264,7 +264,8 @@ describe('emplois du temps', () => {
     for (const { d, x } of hosts) {
       const s = x.schedule;
       const n = d.hh.members.length;
-      const diners = new Set(x.visits.filter((v) => v.inside).flatMap((v, k) => (v.kind === 'diner' ? [n + k] : [])));
+      const idx = visitIndices(x.visits, n);
+      const diners = new Set(x.visits.flatMap((v, i) => (v.kind === 'diner' ? [idx[i]!] : [])));
       const guests = acts(s).filter((a) => diners.has(a.m) && a.choreo === 'table');
       expect(guests.length).toBeGreaterThan(0);
       for (const g of guests) {

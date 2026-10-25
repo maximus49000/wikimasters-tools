@@ -3,10 +3,20 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as personDay from '../../src/core/library/city/person-day';
+import * as schedulesMod from '../../src/core/library/city/schedules';
+import * as visitorsMod from '../../src/core/library/city/visitors';
 
 vi.mock('../../src/core/library/city/person-day', async (orig) => {
   const actual = await orig<typeof import('../../src/core/library/city/person-day')>();
   return { ...actual, householdDays: vi.fn(actual.householdDays) };
+});
+vi.mock('../../src/core/library/city/visitors', async (orig) => {
+  const actual = await orig<typeof import('../../src/core/library/city/visitors')>();
+  return { ...actual, dayVisits: vi.fn(actual.dayVisits) };
+});
+vi.mock('../../src/core/library/city/schedules', async (orig) => {
+  const actual = await orig<typeof import('../../src/core/library/city/schedules')>();
+  return { ...actual, occupiedRooms: vi.fn(actual.occupiedRooms) };
 });
 import { buildSceneLife, sceneMinute, sharedSceneLife, useSceneLife, type SceneLife } from '../../src/content/use-scene-life';
 import { addDays, dayContext, holidayWeekOf, type DayContext, type HolidayPeriod } from '../../src/core/library/city/calendar';
@@ -223,6 +233,31 @@ describe('vie des logements de la scène', () => {
     const fresh = buildSceneLife(facades, { ...next, yesterday: day }, { precip: 0, snow: false, storm: false }, 5, false);
     expect(tomorrow.yesterday).toEqual(fresh.yesterday);
     expect(tomorrow.prevVisits).toEqual(fresh.prevVisits);
+  });
+
+  it('bascule humide / sec : ni visites ni pièces occupées recalculées, seul l’emploi du temps est refait', () => {
+    const day = dayContext(addDays(DATE, 160), []);
+    sharedSceneLife(facades, day, false, 5, false);
+    const visits = vi.mocked(visitorsMod.dayVisits), rooms = vi.mocked(schedulesMod.occupiedRooms);
+    const v = visits.mock.calls.length, r = rooms.mock.calls.length;
+    const wet = sharedSceneLife(facades, day, true, 5, false);
+    expect(visits.mock.calls.length).toBe(v);
+    expect(rooms.mock.calls.length).toBe(r);
+    expect(wet.today).toEqual(buildSceneLife(facades, day, { precip: 1, snow: false, storm: false }, 5, false).today);
+  });
+
+  it('minuit avec plusieurs largeurs de façades en cache : la veille est reprise, pas recalculée', () => {
+    const day = dayContext(addDays(DATE, 170), []);
+    const next = dayContext(addDays(DATE, 171), []);
+    const a = sharedSceneLife(facades, day, false, 5, false);
+    // Deux autres largeurs (vue pièce, aperçu) passent par le cache entre-temps.
+    sharedSceneLife(cityFacades(1080, 340, 5), day, false, 5, false);
+    sharedSceneLife(cityFacades(1440, 340, 5), day, false, 5, false);
+    const spy = vi.mocked(personDay.householdDays);
+    const before = spy.mock.calls.length;
+    const b = sharedSceneLife(facades, { ...next, yesterday: day }, false, 5, false);
+    expect(spy.mock.calls.length - before).toBe(a.dwellings.length);
+    for (const d of a.dwellings) expect(b.prevDays.get(d.id)).toBe(a.days.get(d.id));
   });
 
   it('bascule humide / sec ou déménagement : journées des habitants non recalculées, emplois du temps refaits', () => {

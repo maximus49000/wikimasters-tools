@@ -19,8 +19,10 @@ import type { SceneDay } from './scene-day';
 // - Ami / famille / livreur / vendeur / commercial : un tirage de moment ; si aucun hôte n'est là, la visite est annulée.
 // - Jour libre (amis) : week-end, férié, vacances scolaires (enfants à la maison, même en semaine) ; livreurs et autres
 //   continuent de venir les jours ouvrés.
-// - Indices d'invités pour `roomTimeline` : members.length + rang de la visite parmi les visites non-nounou dans l'ordre de
-//   `dayVisits` ; la nounou y est `NANNY_M`.
+// - Indices des visites dans l'emploi du temps (schedules.ts, `visitIndices`) : la nounou a un seul indice toute la journée,
+//   n = members.length, pour toutes ses visites ; les autres visites entrées (`inside`) suivent, n + 1 + k (k = rang parmi
+//   les visites entrées hors nounou, dans l'ordre de `dayVisits`), ou n + k sans nounou ; livreurs, vendeurs, commerciaux
+//   (restés à la porte) n'en ont pas. Dans `roomTimeline`, la nounou est `NANNY_M` (rendue à son indice ensuite).
 // - Un même visiteur n'a jamais deux visites qui se chevauchent le même jour.
 
 export type VisitKind = 'diner' | 'ami' | 'famille' | 'livreur' | 'vendeur' | 'commercial' | 'nounou';

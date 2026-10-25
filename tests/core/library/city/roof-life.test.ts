@@ -241,6 +241,11 @@ describe('fumées', () => {
     // Un invité (indice ≥ membres) ne compte pas.
     expect(homeOccupied(s([{ k: 'depart', t: 480, m: 0 }, { k: 'return', t: 490, m: 1 }]), 1, 600)).toBe(false);
     expect(homeOccupied(s([]), 2, 600)).toBe(false);
+    // Premier passage du jour = un retour (boîte, vacances) : dehors jusqu'au retour.
+    const back = s([{ k: 'return', t: 270, m: 0 }, { k: 'return', t: 1000, m: 1 }]);
+    expect(homeOccupied(back, 2, 100)).toBe(false);
+    expect(homeOccupied(back, 2, 300)).toBe(true);
+    expect(homeOccupied(s([{ k: 'return', t: 1000, m: 0 }]), 1, 600)).toBe(false);
   });
 });
 

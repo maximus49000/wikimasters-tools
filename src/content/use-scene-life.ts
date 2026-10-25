@@ -53,8 +53,11 @@ export function buildSceneLife(facades: readonly Facade[], day: DayContext, weat
   // Veille : même plan (même édition), sauf la veille de la période.
   const prevPlan = plan && halloweenPlanFor(prevCtx.date, dwellings, facades, seed, periods) ? plan : null;
   // `pre` : journées et repas déjà calculés (cache par logement et par jour) : à minuit la veille est l'ancien jour du cache.
-  const t = dayMapsOf(dwellings, today, seed, day, plan, pre?.(day));
-  const y = dayMapsOf(dwellings, prev, seed, prevCtx, prevPlan, pre?.(prevCtx));
+  // La veille est lue d'abord : le nouveau jour, ajouté ensuite, ne peut pas l'avoir chassée du cache.
+  const preY = pre?.(prevCtx);
+  const preT = pre?.(day);
+  const t = dayMapsOf(dwellings, today, seed, day, plan, preT);
+  const y = dayMapsOf(dwellings, prev, seed, prevCtx, prevPlan, preY);
   return {
     dwellings,
     today: t.schedules,
@@ -96,13 +99,15 @@ const lives = new Map<string, SceneLife>();
 // Journées des habitants et repas par (logements, graine, jour, périodes) : indépendants de la météo et du déménagement, ils
 // ne sont refaits ni à la bascule humide / sec ni au déménagement ; à minuit, le jour d'hier y est déjà (devient la veille).
 const pres = new Map<string, Map<string, DwellingPre>>();
+// Jours gardés : jour et veille de trois largeurs de façades (vue rue, pièce, aperçu) au plus.
+const PRES_MAX = 6;
 function preOf(sig: string, seed: number, dwellings: readonly Dwelling[], ctx: DayContext): Map<string, DwellingPre> {
   const key = [sig, seed, dayKey(ctx), periodsKey(ctx)].join('#');
   let hit = pres.get(key);
   if (hit) pres.delete(key);
   else {
     hit = new Map(dwellings.map((d) => { const hd = householdDays(d, ctx, seed); return [d.id, { hd, meals: mealsOf(d, hd) }]; }));
-    while (pres.size >= CACHE_MAX) pres.delete(pres.keys().next().value!);
+    while (pres.size >= PRES_MAX) pres.delete(pres.keys().next().value!);
   }
   pres.set(key, hit);
   return hit;

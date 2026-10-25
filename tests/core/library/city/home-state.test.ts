@@ -212,6 +212,34 @@ describe('état d\'un logement à la minute', () => {
   });
 });
 
+describe('pistes précalculées', () => {
+  it('volets, rideaux et fenêtres : même valeur que le calcul direct des pistes, sur un échantillon', () => {
+    // Calcul direct (ancien : pistes refaites à chaque appel).
+    const direct = (dw: Dwelling, today: Schedule, y: Schedule | null, m: number, k: 'shut' | 'curt' | 'win', room: Dwelling['rooms'][number]) => {
+      const days: [Schedule, number][] = y ? [[y, -1440], [today, 0]] : [[today, 0]];
+      const evts: { t: number; to: number; dur: number }[] = [];
+      for (const [s, off] of days) for (const g of s.segments) if (g.k === k && g.room === room) evts.push({ t: g.t + off, to: g.to, dur: g.dur });
+      evts.sort((a, b) => a.t - b.t);
+      const init = k === 'shut' ? (dw.shutters !== null && days[0]![0].shutUser ? 0 : 1) : k === 'curt' ? (evts.length || room === 'salon' ? 1 : 0) : 0;
+      return k === 'shut' && dw.shutters === null ? 1 : trackValue(evts, m, init);
+    };
+    let n = 0;
+    for (const dw of dwellingsOf(2).slice(0, 40)) {
+      const y = scheduleOf(dw, addDays(TUESDAY, -1), 2), t = scheduleOf(dw, TUESDAY, 2);
+      for (const m of [0, 300, 455.5, 480, 1080.25, 1200, 1439.9]) {
+        for (const eve of [y, null]) {
+          const st = homeState(dw, t, eve, m);
+          for (const room of dw.rooms) for (const k of ['shut', 'curt', 'win'] as const) {
+            n++;
+            expect(st[k][room]).toBe(direct(dw, t, eve, m, k, room));
+          }
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(1000);
+  });
+});
+
 describe('retraité en hiver', () => {
   it('à la fermeture des volets de la cuisine, la cuisine du retraité présent est allumée', () => {
     const DEC: YMD = { y: 2026, m: 12, d: 15 };

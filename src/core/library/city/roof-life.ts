@@ -228,11 +228,18 @@ export function smokeWind(seed: number, iso: string): number {
 }
 
 // Quelqu'un du foyer (membres 0 à members − 1, invités exclus) est-il chez lui à la minute `m` ? Sorti par la porte et pas
-// encore revenu : dehors. Logement parti (emploi du temps vide) : personne.
+// encore revenu : dehors ; premier passage du jour = un retour (rentré de nuit, de vacances) : dehors jusque-là. Logement
+// parti (emploi du temps vide) : personne.
 export function homeOccupied(s: Schedule, members: number, m: number): boolean {
   if (s.segments.length === 0) return false;
   const last: (number | null)[] = new Array<number | null>(members).fill(null);
+  const firstT: number[] = new Array<number>(members).fill(Infinity);
   const out: boolean[] = new Array<boolean>(members).fill(false);
+  for (const g of s.segments) {
+    if ((g.k !== 'depart' && g.k !== 'return') || g.m >= members || g.t >= firstT[g.m]!) continue;
+    firstT[g.m] = g.t;
+    out[g.m] = g.k === 'return';
+  }
   for (const g of s.segments) {
     if ((g.k !== 'depart' && g.k !== 'return') || g.m >= members || g.t > m) continue;
     if (last[g.m] === null || g.t >= last[g.m]!) {

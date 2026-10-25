@@ -16,7 +16,7 @@ import type { Visit } from './visitors';
 // - `lit` : union, par pièce, des pièces occupées (teinte du foyer ; télé au salon le soir ; fête en orange), plus la pièce
 //   d'une scène le temps de la scène ; une lumière ne s'allume que si quelqu'un est là ;
 // - `depart` / `return` : bornes des intervalles `out` de chaque membre (indice `m`), arrivée et départ des visites qui
-//   entrent (indice `n + k`, k = rang parmi les visites `inside`, nounou comprise) ; une sortie rentrée après minuit est
+//   entrent (`visitIndices` : la nounou, `n` pour toutes ses visites, puis les autres `n + 1 + k`) ; une sortie rentrée après minuit est
 //   rendue le lendemain (retour de nuit) ;
 // - scènes (`act`) posées dans le temps libre de leur membre : jamais quand il dort, est dehors, monte ou descend
 //   l'escalier, ni autour de son habillage et de son déshabillage (`dressAt`, `undressAt` ± 1,5 min).
@@ -107,22 +107,31 @@ function clusters(list: readonly RoomSpan[]): RoomSpan[][] {
 // Repas du foyer d'un jour (même flux que les tests de home-rooms et de visitors).
 export const mealsOf = (d: Dwelling, hd: HouseholdDays): HouseholdMeals => householdMeals(d, hd, dayRng(d.hh.seed, 0, hd.iso, 'repas'));
 
-// Pièces occupées par chacun ce jour-là (`roomTimeline`), indices de l'emploi du temps : membres `m`, visites entrées
-// `n + k` (k = rang parmi les visites `inside`, nounou comprise : ses pièces `NANNY_M` vont à la visite qui les contient).
+// Indice, dans l'emploi du temps, de chaque visite de `visits` (−1 : restée à la porte) : la nounou a un seul indice toute la
+// journée, `n` (n = membres), pour toutes ses visites ; les autres visites entrées suivent, `n + 1 + k` (k = rang parmi les
+// visites entrées hors nounou, dans l'ordre de `dayVisits`) ; sans nounou, `n + k`.
+export function visitIndices(visits: readonly Visit[], n: number): number[] {
+  const nanny = visits.some((v) => v.inside && v.kind === 'nounou');
+  let k = 0;
+  return visits.map((v) => (!v.inside ? -1 : v.kind === 'nounou' ? n : n + (nanny ? 1 : 0) + k++));
+}
+const insideOf = (visits: readonly Visit[], n: number) => {
+  const idx = visitIndices(visits, n);
+  return visits.flatMap((v, i) => (idx[i]! >= 0 ? [{ m: idx[i]!, a: v.arrive, b: v.leave, nanny: v.kind === 'nounou', kind: v.kind }] : []));
+};
+
+// Pièces occupées par chacun ce jour-là (`roomTimeline`), aux indices de l'emploi du temps (membres `m`, visites
+// `visitIndices` ; les pièces `NANNY_M` de la nounou vont à son indice).
 // Invités du dîner arrivés moins de 10 min avant (le second, à dîner − 9) : à table quand même, comme le premier.
 export function occupiedRooms(d: Dwelling, hd: HouseholdDays, meals: HouseholdMeals, visits: readonly Visit[]): RoomSpan[] {
   const n = d.hh.members.length;
   const K: Room = d.rooms.includes('cuisine') ? 'cuisine' : 'salon';
-  const inside = visits.filter((v) => v.inside);
-  const guests = inside.map((v, k) => ({ m: n + k, a: v.arrive, b: v.leave, nanny: v.kind === 'nounou' }));
-  const nannyAt = (t: number) => guests.find((g) => g.nanny && t >= Math.floor(g.a) && t < g.b)?.m;
-  const diners = new Set(inside.flatMap((v, k) => (v.kind === 'diner' ? [n + k] : [])));
+  const guests = insideOf(visits, n);
+  const nanny = guests.find((g) => g.nanny)?.m;
+  const diners = new Set(guests.filter((g) => g.kind === 'diner').map((g) => g.m));
   const T = meals.dinner;
   return roomTimeline(d, hd, meals, guests.filter((g) => !g.nanny)).flatMap((s): RoomSpan[] => {
-    if (s.m === NANNY_M) {
-      const m = nannyAt(s.a);
-      return m === undefined ? [] : [{ ...s, m }];
-    }
+    if (s.m === NANNY_M) return nanny === undefined ? [] : [{ ...s, m: nanny }];
     if (T === null || !diners.has(s.m) || (s.what !== 'home' && s.what !== 'evening') || s.b <= T || s.a >= T + DINNER_LEN) return [s];
     const a = Math.max(s.a, T), b = Math.min(s.b, T + DINNER_LEN);
     return [
@@ -133,7 +142,7 @@ export function occupiedRooms(d: Dwelling, hd: HouseholdDays, meals: HouseholdMe
   });
 }
 
-function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[], mealsIn?: HouseholdMeals): Segment[] {
+function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[], mealsIn?: HouseholdMeals, roomsIn?: readonly RoomSpan[]): Segment[] {
   const hh = d.hh;
   const r = mulberry32(draw.rng);
   const opt = draw.optional;
@@ -156,11 +165,10 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, v
 
   // ─── qui est là : pièces occupées (membres, nounou, visiteurs entrés) ───
   const meals = mealsIn ?? mealsOf(d, hd);
-  const inside = visits.filter((v) => v.inside);
-  const total = n + inside.length;
-  const guests = inside.map((v, k) => ({ m: n + k, a: v.arrive, b: v.leave, nanny: v.kind === 'nounou' }));
-  const nannies = guests.filter((g) => g.nanny).map((g) => g.m);
-  const spans = occupiedRooms(d, hd, meals, visits);
+  const guests = insideOf(visits, n);
+  const total = Math.max(n, ...guests.map((g) => g.m + 1));
+  const nannies = [...new Set(guests.filter((g) => g.nanny).map((g) => g.m))];
+  const spans = roomsIn ?? occupiedRooms(d, hd, meals, visits);
   const spansOf = new Map<number, RoomSpan[]>();
   for (const s of spans) (spansOf.get(s.m) ?? spansOf.set(s.m, []).get(s.m)!).push(s);
   const avail = new Map<number, Iv[]>();
@@ -690,9 +698,10 @@ function maxActors(segments: Segment[]): number {
 // Parti (semaine de vacances) : aucun segment (volets fermés tout le jour pour qui les ferme). `decor` : décors
 // d'Halloween à poser ou retirer ce jour-là (halloween.ts, `decorTasks`). Calculé une fois par jour et par logement
 // (dwelling-day.ts, cache de la vie de la scène), jamais par image.
-export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[] = [], meals?: HouseholdMeals): Schedule {
+// `meals` / `rooms` : repas et pièces occupées déjà calculés (dwelling-day.ts), sinon calculés ici.
+export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[] = [], meals?: HouseholdMeals, rooms?: readonly RoomSpan[]): Schedule {
   const shutUser = SHUT_USERS.has(d.hh.type);
   if (hd.away.state === 'away') return { dwelling: d.id, segments: [], shutUser, maxActors: 0 };
-  const segments = clamp(compose(d, day, draw, hd, visits, decor, meals));
+  const segments = clamp(compose(d, day, draw, hd, visits, decor, meals, rooms));
   return { dwelling: d.id, segments, shutUser, maxActors: maxActors(segments) };
 }

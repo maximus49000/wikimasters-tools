@@ -1,10 +1,10 @@
 import type { DayContext } from './calendar';
 import type { DecorTask } from './halloween';
-import type { HouseholdMeals } from './home-rooms';
+import type { HouseholdMeals, RoomSpan } from './home-rooms';
 import type { Dwelling } from './households';
 import { householdDays, type HouseholdDays } from './person-day';
 import { dayDraw, type DayDraw, type SceneDay } from './scene-day';
-import { buildSchedule, mealsOf, type Schedule } from './schedules';
+import { buildSchedule, mealsOf, occupiedRooms, type Schedule } from './schedules';
 import { dayVisits, type Visit } from './visitors';
 
 // Journée d'un logement (plan 2026-10-25 « journées des habitants », tâche 10) : tirage du jour (invités, scènes
@@ -14,13 +14,15 @@ import { dayVisits, type Visit } from './visitors';
 // de scène correspondant (`sceneDay`).
 export type DwellingDay = { draw: DayDraw; hd: HouseholdDays; meals: HouseholdMeals; visits: Visit[]; schedule: Schedule };
 
-// `pre` : journées et repas déjà calculés pour ce logement et ce jour (ils ne dépendent ni de la météo ni du déménagement :
-// la vie de la scène les garde d'une météo à l'autre) ; seuls tirage, visites et emploi du temps sont refaits.
-export type DwellingPre = { hd: HouseholdDays; meals: HouseholdMeals };
+// `pre` : ce qui ne dépend ni de la météo ni du déménagement pour ce logement et ce jour, gardé par la vie de la scène
+// d'une météo à l'autre : journées et repas (fournis), visites et pièces occupées (remplies au premier calcul : les invités
+// du tirage et les visites ne lisent pas la météo). Une bascule humide / sec ne refait que le tirage et l'emploi du temps.
+export type DwellingPre = { hd: HouseholdDays; meals: HouseholdMeals; visits?: Visit[]; rooms?: RoomSpan[] };
 export function dwellingDay(d: Dwelling, ctx: DayContext, day: SceneDay, seed: number, decor: readonly DecorTask[] = [], pre?: DwellingPre): DwellingDay {
   const draw = dayDraw(d, day, seed);
   const hd = pre?.hd ?? householdDays(d, ctx, seed);
   const meals = pre?.meals ?? mealsOf(d, hd);
-  const visits = dayVisits(d, hd, meals, day, seed, draw.guests);
-  return { draw, hd, meals, visits, schedule: buildSchedule(d, day, draw, hd, visits, decor, meals) };
+  const visits = pre ? (pre.visits ??= dayVisits(d, hd, meals, day, seed, draw.guests)) : dayVisits(d, hd, meals, day, seed, draw.guests);
+  const rooms = pre ? (pre.rooms ??= occupiedRooms(d, hd, meals, visits)) : occupiedRooms(d, hd, meals, visits);
+  return { draw, hd, meals, visits, schedule: buildSchedule(d, day, draw, hd, visits, decor, meals, rooms) };
 }

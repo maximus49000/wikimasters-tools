@@ -608,8 +608,9 @@ const SIREN_SHUT_MIN = 0.9;
 type Sched = { segments: readonly Segment[] };
 // Membre chez lui à la minute T du jour : ni sorti (de son départ moins la montée de l'escalier à son retour plus la montée).
 function memberHome(today: Sched, mem: number, T: number, climb: number): boolean {
-  let home = true;
   const evts = today.segments.filter((g): g is Extract<Segment, { k: 'return' | 'depart' }> => (g.k === 'return' || g.k === 'depart') && g.m === mem).sort((a, b) => a.t - b.t);
+  // Premier passage du jour = un retour (rentré de nuit, de vacances, invité) : dehors jusque-là.
+  let home = evts[0]?.k !== 'return';
   for (const g of evts) {
     if (g.k === 'depart' && T >= g.t - climb) home = false;
     else if (g.k === 'return' && T >= g.t + climb) home = true;

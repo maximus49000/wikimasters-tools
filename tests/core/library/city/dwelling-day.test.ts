@@ -4,7 +4,7 @@ import { dwellingDay, type DwellingDay } from '../../../../src/core/library/city
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
 import { sceneDay } from '../../../../src/core/library/city/scene-day';
-import { occupiedRooms, type Segment } from '../../../../src/core/library/city/schedules';
+import { occupiedRooms, visitIndices, type Segment } from '../../../../src/core/library/city/schedules';
 
 // Emplois du temps tirés des journées de chaque habitant (tâche 10) : mêmes logements que schedules.test.ts (villes de
 // 1440 px, graines 1 à 3), vacances de la Toussaint.
@@ -187,14 +187,18 @@ describe('emplois du temps depuis les journées de chacun', () => {
       const n = d.hh.members.length;
       for (const date of [...WEEK, { y: 2026, m: 10, d: 9 }, { y: 2026, m: 10, d: 10 }, { y: 2026, m: 10, d: 23 }, { y: 2026, m: 10, d: 24 }]) {
         const x = full(d, date);
-        x.visits.filter((v) => v.inside).forEach((v, k) => {
+        const idx = visitIndices(x.visits, n);
+        x.visits.forEach((v, i) => {
+          if (!v.inside) return;
           inside++;
-          const m = n + k;
+          const m = idx[i]!, k = i;
+          // Toutes les visites du même indice (la nounou : toute la journée sous `n`).
+          const mine = x.visits.filter((_, j) => idx[j] === m);
           const ret = x.schedule.segments.filter((g) => g.k === 'return' && g.m === m).map((g) => (g as { t: number }).t);
           const dep = x.schedule.segments.filter((g) => g.k === 'depart' && g.m === m).map((g) => (g as { t: number }).t);
-          expect(ret, `${d.id} ${x.hd.iso} ${v.kind}`).toEqual([v.arrive]);
-          expect(dep).toEqual([v.leave]);
-          for (const a of acts(x)) if (a.m === m) expect(a.t0 >= v.arrive && a.t1 <= v.leave).toBe(true);
+          expect(ret.sort((a, b) => a - b), `${d.id} ${x.hd.iso} ${v.kind}`).toEqual(mine.map((w) => w.arrive).sort((a, b) => a - b));
+          expect(dep.sort((a, b) => a - b)).toEqual(mine.map((w) => w.leave).sort((a, b) => a - b));
+          for (const a of acts(x)) if (a.m === m) expect(mine.some((w) => a.t0 >= w.arrive && a.t1 <= w.leave)).toBe(true);
           if (v.kind !== 'diner') return;
           const seat = acts(x).find((a) => a.m === m && a.choreo === 'table');
           expect(seat, `${d.id} ${x.hd.iso} invité ${k}`).toBeDefined();
@@ -207,6 +211,25 @@ describe('emplois du temps depuis les journées de chacun', () => {
     }
     expect(dinners).toBeGreaterThan(10);
     expect(inside).toBeGreaterThan(dinners);
+  });
+
+  it('nounou : un seul indice toute la journée (n), invités ensuite (n + 1 + k)', () => {
+    let nannies = 0;
+    for (const d of ds.filter((x) => x.hh.nanny)) {
+      const n = d.hh.members.length;
+      for (const date of WEEK) {
+        const x = full(d, date);
+        const idx = visitIndices(x.visits, n);
+        const nv = x.visits.map((v, i) => ({ v, m: idx[i]! })).filter(({ v }) => v.kind === 'nounou');
+        if (!nv.length) continue;
+        nannies++;
+        for (const { m } of nv) expect(m).toBe(n);
+        const others = x.visits.map((v, i) => ({ v, m: idx[i]! })).filter(({ v }) => v.inside && v.kind !== 'nounou');
+        others.forEach(({ m }, k) => expect(m).toBe(n + 1 + k));
+        expect(x.schedule.segments.filter((g) => g.k === 'return' && g.m === n).length).toBe(nv.length);
+      }
+    }
+    expect(nannies).toBeGreaterThan(3);
   });
 
   it('même (logement, jour, graine) → même journée ; veille recalculée', () => {
