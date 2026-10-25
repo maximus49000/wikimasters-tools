@@ -55,9 +55,10 @@ function arrange(shifts: Shift[], rest: Omit<WorkDay, 'shifts' | 'start' | 'end'
   };
 }
 
-/** Jour de dépose à l'école : début repoussé à 8 h 20 + trajet (jamais avancé), matin raccourci d'autant, journée recalculée. */
-export function withDrop(w: WorkDay, cadre: boolean): WorkDay {
-  const start = Math.max(w.start, DROP_AT + w.commute);
+/** Jour de dépose à l'école : début repoussé à 8 h 20 + trajet (jamais avancé), matin raccourci d'autant, journée recalculée.
+ *  `at` : fin de la dépose (8 h 30 quand il y a aussi la crèche). */
+export function withDrop(w: WorkDay, cadre: boolean, at: number = DROP_AT): WorkDay {
+  const start = Math.max(w.start, at + w.commute);
   if (w.split || start === w.start) return { ...w, drop: true };
   const first = w.shifts[0]!;
   const second = w.shifts[1]!;
