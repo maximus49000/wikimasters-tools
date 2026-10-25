@@ -86,7 +86,7 @@ function plaid(look: CelLook, x: number, top: number, hw: number, hl: number, z:
 // `skirt` la fait onduler de ±1 cm en z, surtout vers le bas (le haut est cousu au corps).
 function valance(col: Tone, hw: number, y: number, hh: number, z: number, skirt: number): CelPart {
   const deform: Deform | undefined = skirt > 0 ? (x, py, pz) => [x, py, pz + skirt * Math.sin(x / 9) * Math.max(0, (hh - py) / (2 * hh))] : undefined;
-  return part(place(superEll(hw, hh, 0.8, 0.3, 0.2, 6, 32, deform), { t: [0, y, z] }), col, { crease: false, hi: false });
+  return part(place(superEll(hw, hh, 0.5, 0.3, 0.2, 6, 32, deform), { t: [0, y, z] }), col, { crease: false, hi: false });
 }
 
 // Coussin d'assise bombé à coins ronds (demi-axes a, b, c) centré en (cx, cy, cz), creusé au point d'assise (px, pz).
@@ -118,7 +118,7 @@ function sofa(look: CelLook, life: LifeState): CelPart[] {
   for (const sx of [-1, 1]) P.push(part(place(superEll(11, 17, 44, 0.35, 0.28, 12, 28), { t: [sx * 89, 50, 0] }), A)); // accoudoirs 33..67
   for (const sx of [-1, 0, 1]) P.push(seatCushion(CU, 26, 7, 31, sx * 52, 47, 10, px, pz, life.dent)); // dessus 54
   for (const sx of [-1, 0, 1]) P.push(backCushion(CU, 25.5, 18, 7, sx * 52, 61, -24));
-  P.push(valance(F, 76, 11, 4.5, 42, life.skirt)); // jupe 6,5..15,5 : son haut entre dans le corps, elle en sort comme un ourlet
+  P.push(valance(A, 76, 11, 4.5, 42, life.skirt)); // jupe 6,5..15,5 (ton des accoudoirs, mince) : un ourlet qui sort du corps
   P.push(part(place(superEll(13, 13, 5, 0.4, 0.4, 12, 20), { ry: 0.3, rz: 0.15, t: [-62, 59, -14] }), T.warm)); // coussin d'appoint
   if (look.variant.tufted) P.push(...tufting(look, 80, 50, 3, -29));
   if (look.variant.rivets) {
@@ -141,7 +141,7 @@ function loveseat(look: CelLook, life: LifeState): CelPart[] {
   for (const sx of [-1, 1]) P.push(...rolledArm(F, sx * 66.5, 8.5, 42.5, 8, 62.5));
   for (const sx of [-1, 1]) P.push(seatCushion(CU, 33, 5.5, 29, sx * 29.25, 43.5, 11, px, pz, life.dent)); // dessus 49 (les deux coussins se chevauchent sous le centre)
   for (const sx of [-1, 1]) P.push(backCushion(CU, 27, 16, 6.5, sx * 29.25, 58, -23));
-  P.push(valance(F, 55, 7.5, 4, 41, life.skirt));
+  P.push(valance(D, 55, 7.5, 4, 41, life.skirt));
   if (look.variant.tufted) P.push(...tufting(look, 50, 48, 3, -30));
   if (look.variant.rivets) P.push(...rivets(look, [-55, 24, 43.2], [55, 24, 43.2], [0, 0, 1]));
   if (look.variant.pattern === 'diamonds') P.push(...diamonds(T.fabric, [-39, -29, -19], 65, -17.6));
@@ -189,20 +189,24 @@ function daybed(look: CelLook, life: LifeState): CelPart[] {
   const P: CelPart[] = [];
   P.push(...legs(look, T.leg, 76, 29, 8));
   P.push(part(place(superEll(82, 15, 34, 0.22, 0.22, 10, 28), { t: [0, 23, 0] }), F)); // assise 8..38
-  // Dossier en pente, épais et arrondi : 74 cm de haut à gauche (x = −58,5), 46 à droite (x = 27,5), le long du bord arrière ;
-  // un boudin suit la pente sur son dessus, un coussin de dos s'y appuie.
+  // Dossier en pente, épais et bombé : 74 cm de haut à gauche (x = −58,5), 46 à droite (x = 27,5), le long du bord arrière ; il
+  // sort de l'assise (sa base est noyée dans le corps, 8 cm sous le dessus) ; profil vertical arrondi (e1 0,6) et dos renflé ;
+  // un coussin de dos s'y appuie.
   const H = (x: number) => 36 - (28 * (x + 43)) / 86; // hauteur du dossier au-dessus de l'assise (38) selon x local
-  const slope: Deform = (x, y, z) => [x, -18 + ((y + 18) * H(x)) / 36, z];
-  P.push(part(place(superEll(43, 18, 8.5, 0.35, 0.3, 12, 32, slope), { t: [-15.5, 56, -26.5] }), D));
-  const crest: Vec3[] = [0, 0.25, 0.5, 0.75, 1].map((t) => [-58.5 + 86 * t, 36 + H(-43 + 86 * t), -26.5]);
-  P.push(part(tube(crest, 4.5, 12), D, { crease: false, hi: true }));
-  P.push(backCushion(CU, 22, 12, 5.5, -20, 52, -19));
-  // Accoudoir haut à gauche, volute roulée au sommet (boudin le long de z) fermée par deux disques enroulés.
+  const slope: Deform = (x, y, z) => {
+    const u = (y + 22) / 44; // 0 à la base (noyée), 1 à la crête
+    const bulge = z < 0 ? 3 * Math.sin(Math.PI * Math.min(1, u * 1.15)) : 0; // dos bombé vers l'arrière
+    return [x, -22 + u * (H(x) + 8), z - bulge];
+  };
+  P.push(part(place(superEll(43, 22, 8.5, 0.6, 0.3, 16, 32, slope), { t: [-15.5, 52, -24.5] }), D)); // arrière à −36 avec le renflement
+  P.push(backCushion(CU, 22, 12, 5.5, -20, 52, -18.5));
+  // Accoudoir haut à gauche, volute roulée au sommet : boudin cylindrique le long de z (section ronde, bouts presque plats),
+  // fermé par deux disques enroulés rentrés dans sa section.
   P.push(part(place(superEll(12, 31, 34, 0.3, 0.3, 10, 28), { t: [-70.5, 39, 0] }), F)); // 8..70
-  P.push(part(place(superEll(12, 12, 33, 1, 0.3, 12, 28), { t: [-70.5, 70, 0] }), CU, { hi: true })); // volute, sommet 82
+  P.push(part(place(superEll(12, 33, 12, 0.3, 1, 14, 28), { rx: Math.PI / 2, t: [-70.5, 70, 0] }), CU, { hi: true })); // volute, sommet 82
   for (const sz of [-1, 1]) {
-    P.push(part(place(superEll(11.5, 11.5, 1, 1, 1, 8, 24), { t: [-70.5, 70, sz * 33.8] }), D, { crease: false })); // bout de la volute
-    P.push(part(place(superEll(5.5, 5.5, 0.8, 1, 1, 6, 16), { t: [-70.5, 70, sz * 34.6] }), CU, { crease: false, noshadow: true })); // cœur de l'enroulement
+    P.push(part(place(superEll(10.5, 10.5, 1, 1, 1, 8, 24), { t: [-70.5, 70, sz * 32.8] }), D, { crease: false })); // bout de la volute
+    P.push(part(place(superEll(5, 5, 0.8, 1, 1, 6, 16), { t: [-70.5, 70, sz * 33.6] }), CU, { crease: false, noshadow: true })); // cœur de l'enroulement
   }
   P.push(seatCushion(CU, 69, 5.5, 26, 11, 43.5, 5, px, pz, life.dent)); // dessus 49
   P.push(part(place(superEll(9, 6, 8, 0.45, 0.45, 12, 20), { ry: 0.35, rz: 0.1, t: [-46, 55, -12] }), T.fabric)); // petit coussin rond
@@ -226,19 +230,13 @@ function bench(look: CelLook, life: LifeState): CelPart[] {
   return P;
 }
 
-/* ---------- pouf tricoté : galette ronde de grosse maille (dessus et base aplatis), côtes fines qui se rejoignent à la fronce du sommet ---------- */
+/* ---------- pouf tricoté : galette ronde de grosse maille (dessus et base aplatis), fronce au sommet où la maille se rejoint ;
+   sans côtes modelées : sur le flanc, la normale frôle le seuil d'ombre et la moindre côte déchiquette la frontière de l'ombre ---------- */
 function pouf(look: CelLook, life: LifeState): CelPart[] {
   const T = look.tones;
-  const dent = dentOf(life.dent, 20, 0, 0, 0, 0);
-  const ribbed: Deform = (x, y, z) => {
-    const a = Math.atan2(z, x), r = Math.hypot(x, z);
-    const k = 1 + 0.012 * Math.cos(20 * a) * Math.min(1, r / 5); // côtes de tricot (méridiens) discrètes, fondues au sommet
-    const q: Vec3 = [x * k, y, z * k];
-    return dent ? dent(q[0], q[1], q[2]) : q;
-  };
   return [
-    part(place(superEll(26.9, 20, 26.9, 0.55, 1, 20, 60, ribbed), { t: [0, 20, 0] }), T.warm, { creaseThr: 0.9 }),
-    // Fronce du sommet (les côtes s'y rejoignent) : elle descend avec le creux.
+    part(place(superEll(26.9, 20, 26.9, 0.55, 1, 40, 80, dentOf(life.dent, 20, 0, 0, 0, 0)), { t: [0, 20, 0] }), T.warm),
+    // Fronce du sommet : elle descend avec le creux.
     part(place(superEll(3.2, 1, 3.2, 1, 1, 6, 12), { t: [0, 39.6 - DENT_DEPTH * life.dent, 0] }), T.warmDark, { crease: false, noshadow: true }),
   ];
 }
