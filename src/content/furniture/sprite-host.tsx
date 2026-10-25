@@ -138,19 +138,21 @@ export class SpriteRegistry {
       if (p.done.size === 0) this.queue.delete(k);
     };
   }
-  // Lecture dans la mémoire de l'appareil : trouvée, l'image est prête sans peinture ; absente, la tâche passe à la peinture.
+  // Lecture dans la mémoire de l'appareil : trouvée, l'image est prête sans peinture ; absente (ou pas de réponse dans le délai
+  // maximal de la mémoire), la tâche passe à la peinture, et une image arrivée en retard la remplace.
   private recall(k: string, p: Pending, store: SpriteStore): void {
     const paint = (): void => {
       p.state = 'paint';
       this.pump();
     };
-    store.read(k).then((s) => {
-      if (!s) return paint();
+    const found = (s: PaintedSprite): void => {
       this.put(k, s);
       if (this.queue.get(k) !== p) return;
+      // Image prête : la peinture éventuellement commencée (lecture arrivée après le délai maximal) est abandonnée.
       this.queue.delete(k);
       for (const d of p.done.keys()) d();
-    }, paint);
+    };
+    store.read(k, found).then((s) => (s ? found(s) : paint()), paint);
   }
   private put(k: string, s: PaintedSprite): void {
     const old = this.sprites.get(k);

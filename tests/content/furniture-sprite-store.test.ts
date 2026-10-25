@@ -187,6 +187,101 @@ describe('mémoire persistante des sprites', () => {
     expect(pb.count.made).toBe(1);
   });
 
+  // Minuteur manuel : `fire()` déclenche tous les délais en attente.
+  function manualTimer() {
+    const pending: (() => void)[] = [];
+    const timer = (cb: () => void) => {
+      pending.push(cb);
+      return () => {
+        const i = pending.indexOf(cb);
+        if (i >= 0) pending.splice(i, 1);
+      };
+    };
+    return { timer, fire: () => pending.splice(0).forEach((cb) => cb()), get count() { return pending.length; } };
+  }
+
+  it('ouverture qui ne répond jamais : au-delà du délai, on peint, et la mémoire est désactivée pour la session', async () => {
+    const t = manualTimer();
+    const mute = { open: () => ({}) as IDBOpenDBRequest } as unknown as IDBFactory; // aucun événement, jamais
+    const store = createSpriteStore({ factory: mute, gen: 'cel1', timeoutMs: 2500, timer: t.timer });
+    const { reg, settle } = registry(store);
+    const p = painter(sprite('A'));
+    const d = want(reg, 'k', p.job);
+    await settle();
+    // Avant le délai : lecture en attente, rien de peint (repli).
+    expect(p.count.made).toBe(0);
+    expect(reg.pendingCount()).toBe(1);
+    t.fire();
+    await settle();
+    expect(p.count.made).toBe(1);
+    expect(d()).toBe(1);
+    expect(reg.pendingCount()).toBe(0);
+    // Mémoire désactivée : une autre image est peinte tout de suite, sans nouveau délai.
+    const p2 = painter(sprite('B'));
+    const d2 = want(reg, 'k2', p2.job);
+    await settle();
+    expect(t.count).toBe(0);
+    expect(p2.count.made).toBe(1);
+    expect(d2()).toBe(1);
+  });
+
+  it('ouverture lente : on peint après le délai, puis l’image gardée arrivée en retard remplace la peinture en cours', async () => {
+    const factory = new IDBFactory();
+    await createSpriteStore({ factory, gen: 'cel1' })!.write('k', sprite('A'));
+    const t = manualTimer();
+    const store = createSpriteStore({ factory, gen: 'cel1', timeoutMs: 2500, timer: t.timer })!;
+    const queue: (() => void)[] = [];
+    const reg = new SpriteRegistry('test', { store, schedule: (cb) => void queue.push(cb) });
+    let steps = 0, done = 0;
+    reg.want('k', () => ({ step: () => (steps++, false), finish: () => sprite('Z') }), () => done++, { urgent: true });
+    // Délai dépassé avant toute réponse de la base (le minuteur part au premier besoin, ici la lecture de ce want).
+    expect(t.count).toBe(1);
+    t.fire();
+    // Lecture rendue absente (délai dépassé) : la peinture commence dès la première image, sans attendre la base.
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    for (const cb of queue.splice(0)) cb();
+    expect(steps).toBeGreaterThan(0);
+    expect(done).toBe(0);
+    // Une image d'animation par tour (la tâche ne finit jamais d'elle-même : elle se reprogramme à chaque image).
+    for (let i = 0; i < 200 && done === 0; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      for (const cb of queue.splice(0)) cb();
+    }
+    expect(done).toBe(1);
+    expect(reg.get('k')).toEqual(sprite('A')); // l'image gardée l'a remplacée
+    expect(reg.pendingCount()).toBe(0);
+    // Mémoire réactivée : une autre lecture passe normalement.
+    expect((await store.read('k'))?.url).toBe(sprite('A').url);
+  });
+
+  it('transaction de lecture muette : au-delà du délai, l’image est déclarée absente et peinte', async () => {
+    const factory = new IDBFactory();
+    await createSpriteStore({ factory, gen: 'cel1' })!.write('k', sprite('A'));
+    const t = manualTimer();
+    const store = createSpriteStore({ factory, gen: 'cel1', preloadBytes: 0, timeoutMs: 2500, timer: t.timer })!;
+    await store.count(); // ouverture normale
+    const proto = IDBDatabase.prototype;
+    const tx = proto.transaction;
+    // Transaction qui ne répond plus : ni succès des lectures, ni fin.
+    proto.transaction = function () {
+      return { objectStore: () => ({ get: () => ({}), put: () => ({}), delete: () => ({}) }) } as unknown as IDBTransaction;
+    } as unknown as IDBDatabase['transaction'];
+    try {
+      const { reg, settle } = registry(store);
+      const p = painter(sprite('N'));
+      const d = want(reg, 'k', p.job);
+      await settle();
+      expect(p.count.made).toBe(0);
+      t.fire();
+      await settle();
+      expect(p.count.made).toBe(1);
+      expect(d()).toBe(1);
+      expect(reg.get('k')).toEqual(sprite('N'));
+    } finally {
+      proto.transaction = tx;
+    }
+  });
+
   it('sous jsdom/vitest, le registre par défaut se passe de mémoire persistante', () => {
     expect(typeof indexedDB).toBe('undefined');
     const reg = new SpriteRegistry('défaut', { schedule: () => undefined });

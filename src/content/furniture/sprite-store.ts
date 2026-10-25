@@ -17,8 +17,9 @@ import type { PaintedSprite } from './sprite-paint';
 export type SpriteStore = {
   /** Ouvre la base sans attendre le premier besoin (dès la création d'une pièce, avant son premier rendu). */
   warm(): void;
-  /** Image gardée pour cette clé (null si absente, d'une autre génération ou en cas d'erreur) ; met à jour sa date de lecture. */
-  read(k: string): Promise<PaintedSprite | null>;
+  /** Image gardée pour cette clé (null si absente, d'une autre génération, en cas d'erreur ou au-delà du délai maximal) ; met à jour
+   *  sa date de lecture. `late` reçoit l'image si elle arrive après le délai (la peinture commencée entre-temps peut être abandonnée). */
+  read(k: string, late?: (s: PaintedSprite) => void): Promise<PaintedSprite | null>;
   /** Garde l'image (et évince au-delà du plafond) ; ne rejette jamais. */
   write(k: string, s: PaintedSprite): Promise<void>;
   /** Octets occupés (somme des longueurs des data URL). */
@@ -34,6 +35,42 @@ export const SPRITE_STORE_MAX_BYTES = 60e6;
 // En dessous, toute la mémoire est relue à l'ouverture en une seule requête (getAll) : sur un fil saturé, chaque événement
 // d'IndexedDB attend son tour (des centaines de ms à CPU ×4), une lecture clé par clé coûterait un événement par image.
 export const SPRITE_STORE_PRELOAD_BYTES = 16e6;
+// Délai maximal d'une ouverture ou d'une lecture : la mémoire accélère, elle ne bloque jamais. Au-delà, l'image est déclarée absente
+// (elle sera peinte) ; une ouverture qui ne répond pas à temps (IndexedDB abîmée, WebView qui n'envoie aucun événement) désactive
+// la mémoire pour la session.
+export const SPRITE_STORE_TIMEOUT_MS = 3000;
+type Timer = (cb: () => void, ms: number) => () => void;
+const defaultTimer: Timer = (cb, ms) => {
+  const t = setTimeout(cb, ms) as unknown as { unref?: () => void };
+  t.unref?.(); // node (tests) : ne retient pas le processus
+  return () => clearTimeout(t as unknown as number);
+};
+// `p` borné à `ms` : au-delà, `fallback` ; la valeur arrivée trop tard va à `late`.
+function bounded<T>(p: Promise<T>, ms: number, timer: Timer, fallback: T, late?: (v: T) => void): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const cancel = timer(() => {
+      if (settled) return;
+      settled = true;
+      resolve(fallback);
+    }, ms);
+    p.then(
+      (v) => {
+        if (settled) return late?.(v);
+        settled = true;
+        cancel();
+        resolve(v);
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        cancel();
+        resolve(fallback);
+      },
+    );
+  });
+}
+
 // Les images relues d'avance et jamais demandées sont oubliées après ce délai (mémoire rendue).
 const PRELOAD_KEEP_MS = 60_000;
 
@@ -88,7 +125,7 @@ function defaultHint(): Storage | null {
   }
 }
 
-export function createSpriteStore(opts: { factory?: IDBFactory | null; gen?: string; maxBytes?: number; preloadBytes?: number; now?: () => number; hint?: Storage | null } = {}): SpriteStore | null {
+export function createSpriteStore(opts: { factory?: IDBFactory | null; gen?: string; maxBytes?: number; preloadBytes?: number; now?: () => number; hint?: Storage | null; timeoutMs?: number; timer?: Timer } = {}): SpriteStore | null {
   const { factory } = opts;
   if (!factory) return null;
   const gen = opts.gen ?? '';
@@ -114,9 +151,37 @@ export function createSpriteStore(opts: { factory?: IDBFactory | null; gen?: str
       // indice perdu : sans conséquence
     }
   };
+  const timeoutMs = opts.timeoutMs ?? SPRITE_STORE_TIMEOUT_MS;
+  const timer = opts.timer ?? defaultTimer;
+  // Ouverture bornée : au-delà du délai, la mémoire est désactivée (lectures rendues absentes tout de suite, sans nouveau délai) ;
+  // si l'ouverture aboutit plus tard, elle est réactivée et les lectures restées sans réponse reçoivent leur image en retard.
   let ready: Promise<Db | null> | undefined;
+  let raw: Promise<Db | null> | null = null;
+  // Lectures en attente d'une ouverture dépassée (une par image demandée, vidées à l'issue de l'ouverture).
+  const lateReads: { k: string; late: (s: PaintedSprite) => void }[] = [];
+  let rawFailed = false;
   const open = (): Promise<Db | null> =>
-    (ready ??= (async () => {
+    // Le délai court à partir du premier besoin (lecture, écriture) : l'ouverture lancée d'avance par warm() n'est pas pressée.
+    (ready ??= bounded(raw ?? startRaw(), timeoutMs, timer, null, (d) => {
+      if (!d) return;
+      ready = Promise.resolve(d);
+      for (const { k, late } of lateReads.splice(0)) void lookup(d, k, late).then((s) => s && late(s));
+    }).then((d) => {
+      if (!d) console.warn('[wikimasters-tools]', 'mémoire des sprites désactivée (ouverture trop lente ou refusée) ; réactivée si elle aboutit plus tard');
+      return d;
+    }));
+  const startRaw = (): Promise<Db | null> => {
+    raw = openRaw();
+    // Échec de l'ouverture (avant ou après le délai) : plus rien à attendre.
+    void raw.then((d) => {
+      if (d) return;
+      rawFailed = true;
+      lateReads.length = 0;
+    });
+    return raw;
+  };
+  const openRaw = (): Promise<Db | null> =>
+    (async () => {
       const db = await openDb(factory);
       const tx = db.transaction([META, DATA], 'readwrite');
       const metaStore = tx.objectStore(META);
@@ -160,7 +225,7 @@ export function createSpriteStore(opts: { factory?: IDBFactory | null; gen?: str
     })().catch((error: unknown) => {
       console.warn('[wikimasters-tools]', 'mémoire des sprites indisponible :', error);
       return null;
-    }));
+    });
 
   // Dates de lecture des images servies d'avance : écrites ensemble, plus tard, en une transaction (la date en mémoire, elle, est
   // à jour tout de suite : c'est elle qui décide de l'éviction).
@@ -183,7 +248,8 @@ export function createSpriteStore(opts: { factory?: IDBFactory | null; gen?: str
     });
   }
 
-  type Batch = Map<string, ((s: PaintedSprite | null) => void)[]>;
+  type Waiter = { resolve: (s: PaintedSprite | null) => void; late?: (s: PaintedSprite) => void };
+  type Batch = Map<string, Waiter[]>;
   let batch: Batch | null = null;
   // Une transaction pour un lot de clés : images relues, dates de lecture mises à jour ; réponses données toutes ensemble.
   async function readBatch(d: Db, keys: Batch): Promise<void> {
@@ -209,41 +275,62 @@ export function createSpriteStore(opts: { factory?: IDBFactory | null; gen?: str
           found.set(k, { url: s.url, box: { ...s.box } });
         };
       }
-      await finished(tx);
+      // Transaction muette au-delà du délai : tout le lot est déclaré absent (et sera peint).
+      const done = finished(tx).then(() => true);
+      if (!(await bounded(done, timeoutMs, timer, false))) {
+        // Images arrivées après le délai : à ceux qui veulent bien les recevoir en retard.
+        void done.then(
+          () => {
+            for (const [k, ws] of keys) for (const w of ws) if (found.has(k)) w.late?.(found.get(k)!);
+          },
+          () => undefined,
+        );
+        for (const ws of keys.values()) for (const w of ws) w.resolve(null);
+        return;
+      }
     } catch {
       found.clear();
     }
-    for (const [k, cbs] of keys) for (const cb of cbs) cb(found.get(k) ?? null);
+    for (const [k, ws] of keys) for (const w of ws) w.resolve(found.get(k) ?? null);
+  }
+
+  // Image d'une clé dans une base ouverte : relue d'avance, sinon lue avec les autres clés demandées dans la même tâche.
+  function lookup(d: Db, k: string, late?: (s: PaintedSprite) => void): Promise<PaintedSprite | null> {
+    const m = d.meta.get(k);
+    if (!m) return Promise.resolve(null);
+    const early = d.pre?.get(k);
+    if (early) {
+      d.pre!.delete(k);
+      touch(d, k, m);
+      return Promise.resolve(early);
+    }
+    // Lectures groupées : toutes les clés demandées dans la même tâche (les meubles d'une pièce montés ensemble) partagent une
+    // transaction, au lieu d'une transaction chacune (sérialisées, et chaque aller-retour attend son tour sur un fil saturé).
+    return new Promise<PaintedSprite | null>((resolve) => {
+      if (!batch) {
+        const b = (batch = new Map());
+        queueMicrotask(() => {
+          batch = null;
+          void readBatch(d, b);
+        });
+      }
+      const w: Waiter = { resolve, ...(late && { late }) };
+      const waiting = batch.get(k);
+      if (waiting) waiting.push(w);
+      else batch.set(k, [w]);
+    });
   }
 
   return {
     warm() {
-      void open();
+      if (!raw) void startRaw();
     },
-    read(k) {
+    read(k, late) {
       return open().then((d) => {
-        const m = d?.meta.get(k);
-        if (!d || !m) return null;
-        const early = d.pre?.get(k);
-        if (early) {
-          d.pre!.delete(k);
-          touch(d, k, m);
-          return early;
-        }
-        // Lectures groupées : toutes les clés demandées dans la même tâche (les meubles d'une pièce montés ensemble) partagent une
-        // transaction, au lieu d'une transaction chacune (sérialisées, et chaque aller-retour attend son tour sur un fil saturé).
-        return new Promise<PaintedSprite | null>((resolve) => {
-          if (!batch) {
-            const b = (batch = new Map());
-            queueMicrotask(() => {
-              batch = null;
-              void readBatch(d!, b);
-            });
-          }
-          const waiting = batch.get(k);
-          if (waiting) waiting.push(resolve);
-          else batch.set(k, [resolve]);
-        });
+        if (d) return lookup(d, k, late);
+        // Ouverture dépassée mais encore en cours : l'image viendra peut-être en retard.
+        if (late && raw && !rawFailed) lateReads.push({ k, late });
+        return null;
       });
     },
     async write(k, s) {
