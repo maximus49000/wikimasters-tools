@@ -195,3 +195,37 @@
 ### style-scandinave_h-21_nostore-1.png
 
 ![style-scandinave_h-21_nostore-1.png](07-rangements/style-scandinave_h-21_nostore-1.png)
+
+## 07-rangements-r1
+
+### kind-desk_style-scandinave_res-3_cell-700.png
+
+![kind-desk_style-scandinave_res-3_cell-700.png](07-rangements-r1/kind-desk_style-scandinave_res-3_cell-700.png)
+
+### kind-dresser_style-scandinave_res-3_cell-700.png
+
+![kind-dresser_style-scandinave_res-3_cell-700.png](07-rangements-r1/kind-dresser_style-scandinave_res-3_cell-700.png)
+
+### kind-rug_style-scandinave_res-3_cell-700.png
+
+![kind-rug_style-scandinave_res-3_cell-700.png](07-rangements-r1/kind-rug_style-scandinave_res-3_cell-700.png)
+
+### kind-shelf_desk_dresser_style-scandinave_res-2.png
+
+![kind-shelf_desk_dresser_style-scandinave_res-2.png](07-rangements-r1/kind-shelf_desk_dresser_style-scandinave_res-2.png)
+
+### kind-shelf_style-scandinave_res-3_cell-700.png
+
+![kind-shelf_style-scandinave_res-3_cell-700.png](07-rangements-r1/kind-shelf_style-scandinave_res-3_cell-700.png)
+
+### kind-side_table_coffee_table_rug_style-scandinave_res-2.png
+
+![kind-side_table_coffee_table_rug_style-scandinave_res-2.png](07-rangements-r1/kind-side_table_coffee_table_rug_style-scandinave_res-2.png)
+
+### style-scandinave_h-10_nostore-1.png
+
+![style-scandinave_h-10_nostore-1.png](07-rangements-r1/style-scandinave_h-10_nostore-1.png)
+
+### style-scandinave_h-21_nostore-1.png
+
+![style-scandinave_h-21_nostore-1.png](07-rangements-r1/style-scandinave_h-21_nostore-1.png)
