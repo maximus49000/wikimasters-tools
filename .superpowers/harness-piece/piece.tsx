@@ -1,5 +1,7 @@
 // Banc de la pièce G6 : piece.html?style=<StyleId>&h=<heure décimale>&meteo=soleil|nuages|pluie|neige&pet=chat|chien|robot&scene=<nom>&t=<s>&w=1440
-// Pièce meublée (RoomView, Ghibli) ; `window.done` quand plus aucun repli `[data-sprite-fallback]` ; `window.__spriteStats` = temps de peinture.
+// Pièce meublée (RoomView, Ghibli) ; `window.done` quand plus aucun repli `[data-sprite-fallback]` et que la file du registre est vide ;
+// `window.__t0` = instant du premier want() (chronomètre de perf.mjs) ; `window.__spriteStats` = temps de peinture et mémoire de l'appareil.
+// `rush=<ms>` / `rushmax=<ms>` : plancher / plafond du budget de peinture par image tant qu'un repli est affiché ; `nostore=1` : sans mémoire persistante (IndexedDB).
 const q = new URLSearchParams(location.search);
 const t = q.get('t');
 // `t=<s>` : fige l'instant (horloge des animaux et mouvement réduit), pour des captures reproductibles.
@@ -13,7 +15,7 @@ import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
 import { RoomView, type SceneView } from '../../src/content/RoomView';
 import { usePetSim } from '../../src/content/pet-sim';
-import { SpriteContext, SpriteRegistry } from '../../src/content/furniture/sprite-host';
+import { SpriteContext, SpriteRegistry, defaultSpriteStore } from '../../src/content/furniture/sprite-host';
 import { skyAt } from '../../src/core/library/sky';
 import { STYLE_IDS, type PetPlan, type Room, type StyleId } from '../../src/core/library/library-types';
 import { VISIBLE_COLS } from '../../src/core/library/room-grid';
@@ -47,34 +49,59 @@ const sceneView: SceneView = {
 };
 
 // Registre mesuré : chaque tâche de peinture est chronométrée (somme des tranches) sans toucher au code de l'appli.
-type Stat = { key: string; ms: number; steps: number };
+type Stat = { key: string; ms: number; steps: number; enc: number };
 const stats: Stat[] = [];
+// Demandes (want) et instant où l'image est prête, en ms depuis le premier want().
+const timeline: { key: string; wantAt: number; doneAt: number }[] = [];
+const tw = window as unknown as { __t0?: number };
 class BenchRegistry extends SpriteRegistry {
-  override want(k: string, job: Parameters<SpriteRegistry['want']>[1], done: () => void): () => void {
+  override want(k: string, job: Parameters<SpriteRegistry['want']>[1], done: () => void, o?: Parameters<SpriteRegistry['want']>[3]): () => void {
+    // Chronomètre : à partir de la première demande (la transformation des modules par Vite n'est pas comptée).
+    tw.__t0 ??= performance.now();
+    const ev = { key: k, wantAt: performance.now() - tw.__t0, doneAt: -1 };
+    timeline.push(ev);
     return super.want(
       k,
       () => {
         const j = job();
-        const s: Stat = { key: k, ms: 0, steps: 0 };
+        const s: Stat = { key: k, ms: 0, steps: 0, enc: 0 };
         stats.push(s);
         return {
           step: (b) => { const t0 = performance.now(); const r = j.step(b); s.ms += performance.now() - t0; s.steps++; return r; },
-          finish: () => { const t0 = performance.now(); const r = j.finish(); s.ms += performance.now() - t0; return r; },
+          finish: () => { const t0 = performance.now(); const r = j.finish(); s.enc = performance.now() - t0; s.ms += s.enc; return r; },
         };
       },
-      done,
+      () => {
+        ev.doneAt = performance.now() - tw.__t0!;
+        done();
+      },
+      o,
     );
   }
 }
-const registry = new BenchRegistry('banc');
+const rush = q.get('rush');
+const store = q.get('nostore') === '1' ? null : defaultSpriteStore();
+const rushMax = q.get('rushmax');
+const registry = new BenchRegistry('banc', { store, ...(rush !== null && { rushMs: Number(rush) }), ...(rushMax !== null && { rushMaxMs: Number(rushMax) }) });
+// Instant où la mémoire de l'appareil est ouverte (ms depuis le chargement de la page).
+let storeOpenAt = -1;
+void store?.count().then(() => (storeOpenAt = performance.now()));
 (window as unknown as { __spriteStats: unknown }).__spriteStats = {
   get count() { return stats.length; },
   get meanMs() { return stats.length ? stats.reduce((a, s) => a + s.ms, 0) / stats.length : 0; },
   get maxMs() { return stats.reduce((a, s) => Math.max(a, s.ms), 0); },
   get totalMs() { return stats.reduce((a, s) => a + s.ms, 0); },
+  // Encodage (putImageData + toDataURL) : compris dans ms.
+  get maxEncMs() { return stats.reduce((a, s) => Math.max(a, s.enc), 0); },
+  get totalEncMs() { return stats.reduce((a, s) => a + s.enc, 0); },
   get cacheSize() { return registry.size(); },
   get cacheBytes() { return registry.bytes(); },
+  get pending() { return registry.pendingCount(); },
+  // Mémoire de l'appareil (IndexedDB) : octets et nombre d'images gardées.
+  store: async () => ({ bytes: (await store?.bytes()) ?? 0, count: (await store?.count()) ?? 0 }),
   perSprite: () => stats.map((s) => ({ ...s })),
+  timeline: () => timeline.map((e) => ({ ...e })),
+  get storeOpenAt() { return storeOpenAt - (tw.__t0 ?? 0); },
 };
 
 function Piece() {
@@ -94,12 +121,12 @@ function Piece() {
 }
 createRoot(document.getElementById('out')!).render(<Piece />);
 
-// Prêt quand plus aucun repli n'est affiché et qu'au moins un sprite l'est.
+// Prêt quand plus aucun repli n'est affiché, qu'au moins un sprite l'est et qu'aucune tâche n'est en cours (lecture, peinture, encodage).
 const w = window as unknown as { done: boolean; doneAt: number };
 const ready = (): void => {
-  if (document.querySelector('[data-furniture-sprite] > image') && document.querySelectorAll('[data-sprite-fallback]').length === 0) {
+  if (document.querySelector('[data-furniture-sprite] > image') && document.querySelectorAll('[data-sprite-fallback]').length === 0 && registry.pendingCount() === 0) {
     w.doneAt = performance.now();
     w.done = true;
-  } else setTimeout(ready, 100);
+  } else requestAnimationFrame(ready); // à chaque image : un minuteur attendrait son tour (plusieurs secondes sur un fil saturé à CPU ×4)
 };
 ready();

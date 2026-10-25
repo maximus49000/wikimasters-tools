@@ -21,7 +21,8 @@ export function benchLayout(): Layout {
     { id: 'ar', kind: 'arc-lamp', col: 14, row: 7 },
     { id: 'rc', kind: 'rocking-chair', col: 24, row: 11 },
     { id: 'pf', kind: 'pouf', col: 17, row: 15 },
-    { id: 'pl', kind: 'paper-lantern', col: 29, row: 14 },
+    // Lanterne en papier dans une zone dégagée (entre le lampadaire arc et le rocking-chair) : rien ne la cache.
+    { id: 'pl', kind: 'paper-lantern', col: 22, row: 14 },
     { id: 'ds', kind: 'desk', col: 32, row: 13 },
     { id: 'cp', kind: 'computer', deskId: 'ds', slug: 'Dune' },
     { id: 'sl', kind: 'small', item: 'lamp', hostId: 'ds', x: 2, z: 10 },
