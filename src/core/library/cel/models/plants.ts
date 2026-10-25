@@ -1,6 +1,6 @@
 import type { LifeState } from '../life-state';
 import type { CelLook } from '../looks';
-import { bent, lathe, leaf, normalize, part, place, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
+import { bent, lathe, leaf, normalize, part, place, rotX, rotY, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
 import type { Tone } from '../tone';
 import { CEL_MODELS } from './registry';
 
@@ -44,6 +44,17 @@ function rotAxis(m: Mesh, axis: Vec3, a: number, base: Vec3 = [0, 0, 0]): Mesh {
     n: m.n.map(R),
     t: m.t,
   };
+}
+// Réunion de maillages en un seul (indices décalés) : une pièce, donc pas d'encre de silhouette entre eux.
+function merge(ms: Mesh[]): Mesh {
+  const out: Mesh = { v: [], n: [], t: [] };
+  for (const m of ms) {
+    const o = out.v.length;
+    out.v.push(...m.v);
+    out.n.push(...m.n);
+    for (const [a, b, c] of m.t) out.t.push([a + o, b + o, c + o]);
+  }
+  return out;
 }
 // Axe horizontal perpendiculaire à la direction `dir` d'une feuille : la feuille hoche (pointe qui monte ou descend).
 const nodAxis = (dir: Vec3): Vec3 => (Math.hypot(dir[0], dir[2]) < 1e-6 ? [1, 0, 0] : [dir[2], 0, -dir[0]]);
@@ -112,36 +123,78 @@ function plant(look: CelLook, life: LifeState): CelPart[] {
 }
 
 /* ---------- monstera (porté de la maquette) : pot évasé, collerette, terreau ; six tiges courbes, chacune finie par une feuille
-   en cœur fendue (contour étoilé, fentes profondes depuis le bord) qui pend vers l'extérieur et vers le bas. L'arche du limbe est
-   translatée pour que sa base reste à la pointe de la tige (dans la maquette elle en était écartée de 3 cm). ---------- */
-const MON_L = 46, MON_W = 36, MON_C: [number, number] = [0, MON_L * 0.38];
-// Contour en cœur fendu : largeur w(z) de la maquette ; les quatre fentes de chaque côté sont des biseaux qui pointent vers le centre
-// de l'étoile (sur la nervure, à 38 % de la longueur : c'est de là que rayonnent les nervures secondaires). Le contour reste étoilé
-// autour de ce centre, donc la triangulation en éventail de `leaf` est exacte (dans la maquette, les fentes horizontales laissaient
-// des lamelles de fond visibles au milieu du limbe).
-function monsteraOutline(): [number, number][] {
-  const L = MON_L, W = MON_W, [cx, cz] = MON_C;
-  const w = (z: number): number => {
-    const t = z / L;
-    return (W / 2) * Math.sin(Math.PI * Math.pow(t, 0.8)) * (t < 0.3 ? 0.75 + (0.25 * t) / 0.3 : 1);
-  };
-  const side = (sgn: number): [number, number][] => {
-    const pts: [number, number][] = [];
-    for (let i = 1; i < 14; i++) {
-      const z = L * (1 - i / 14), x = w(z) * sgn;
-      if (i === 3 || i === 6 || i === 9 || i === 12) {
-        const d = 0.55 + 0.1 * (i % 2); // profondeur de la fente (part du rayon)
-        const ix = cx + (x - cx) * (1 - d), iz = cz + (z - cz) * (1 - d);
-        pts.push([w(z + 1.3) * sgn, z + 1.3], [ix, iz], [w(z - 1.3) * sgn, z - 1.3]);
-      } else pts.push([x, z]);
-    }
-    return pts;
-  };
-  return [[0, L], ...side(1), [2.5, -1], [0, 3.5], [-2.5, -1], ...side(-1).reverse()];
+   en cœur à fentes pennées (Ruling 25) qui pend vers l'extérieur et vers le bas. L'arche du limbe est translatée pour que sa base
+   reste à la pointe de la tige (dans la maquette elle en était écartée de 3 cm). ---------- */
+const MON_L = 46, MON_W = 36, MON_NOTCH = 3.5;
+// Largeur du limbe à la hauteur z (maquette).
+const monW = (z: number): number => {
+  const t = z / MON_L;
+  return (MON_W / 2) * Math.sin(Math.PI * Math.pow(t, 0.8)) * (t < 0.3 ? 0.75 + (0.25 * t) / 0.3 : 1);
+};
+// Bord d'un côté du limbe, de la pointe à la base, z STRICTEMENT décroissant : quatre fentes PENNÉES (Ruling 25), chacune un biseau
+// qui part du bord vers la nervure, presque perpendiculaire, le fond un peu vers la pointe (comme les nervures secondaires).
+function monsteraSide(sgn: number): [number, number][] {
+  const L = MON_L;
+  const pts: [number, number][] = [[0, L]];
+  for (let i = 1; i < 14; i++) {
+    const z = L * (1 - i / 14), x = monW(z) * sgn;
+    if (i === 3 || i === 6 || i === 9 || i === 12) {
+      const d = 0.55 + 0.1 * (i % 2); // profondeur de la fente (part de la demi-largeur)
+      pts.push([monW(z + 1.3) * sgn, z + 1.3], [x * (1 - d), z + 0.9], [monW(z - 1.3) * sgn, z - 1.3]);
+    } else pts.push([x, z]);
+  }
+  pts.push([2.5 * sgn, -1], [0, MON_NOTCH]); // lobe de la base, puis l'échancrure du cœur sur la nervure
+  return pts;
 }
-const MON_OUTLINE = monsteraOutline();
+// Limbe à double face triangulé PAR BANDES le long de la nervure : chaque point du bord est relié à son pied sur la nervure (0, z),
+// borné à l'échancrure ; la bande entre deux points voisins du bord est deux triangles. Les fentes sont donc des vides exacts (aucune
+// lamelle de fond ni recouvrement, contrairement à l'éventail de `leaf` sur un contour non étoilé). Épaisseur th, déformation puis
+// normales recalculées à partir des faces (sens du dessus vers le haut imposé avant déformation).
+function pinnateBlade(th: number, deform: Deform): Mesh {
+  const flat: Vec3[] = [], m: Mesh = { v: [], n: [], t: [] };
+  const push = (x: number, y: number, z: number): number => {
+    flat.push([x, y, z]);
+    m.v.push(deform(x, y, z));
+    m.n.push([0, y > 0 ? 1 : -1, 0]);
+    return m.v.length - 1;
+  };
+  const tri = (a: number, b: number, c: number, want: Vec3): void => {
+    const A = flat[a]!, B = flat[b]!, C = flat[c]!;
+    const u: Vec3 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], w: Vec3 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+    const N: Vec3 = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    if (N[0] * want[0] + N[1] * want[1] + N[2] * want[2] < 0) m.t.push([a, c, b]);
+    else m.t.push([a, b, c]);
+  };
+  for (const sgn of [1, -1]) {
+    const edge = monsteraSide(sgn);
+    const top = edge.map(([x, z]) => push(x, th / 2, z)), bot = edge.map(([x, z]) => push(x, -th / 2, z));
+    const ribT = edge.map(([, z]) => push(0, th / 2, Math.max(z, MON_NOTCH))), ribB = edge.map(([, z]) => push(0, -th / 2, Math.max(z, MON_NOTCH)));
+    for (let j = 0; j + 1 < edge.length; j++) {
+      tri(ribT[j]!, top[j]!, top[j + 1]!, [0, 1, 0]);
+      tri(ribT[j]!, top[j + 1]!, ribT[j + 1]!, [0, 1, 0]);
+      tri(ribB[j]!, bot[j]!, bot[j + 1]!, [0, -1, 0]);
+      tri(ribB[j]!, bot[j + 1]!, ribB[j + 1]!, [0, -1, 0]);
+      // Chant (épaisseur), tourné vers le dehors du limbe.
+      const [x0, z0] = edge[j]!, [x1, z1] = edge[j + 1]!;
+      const out: Vec3 = [(x0 + x1) / 2, 0, (z0 + z1) / 2 - MON_L / 2];
+      tri(top[j]!, bot[j]!, top[j + 1]!, out);
+      tri(top[j + 1]!, bot[j]!, bot[j + 1]!, out);
+    }
+  }
+  // Normales lissées à partir des faces déformées (repli : la normale plane).
+  const nn: Vec3[] = m.v.map(() => [0, 0, 0]);
+  for (const [a, b, c] of m.t) {
+    const A = m.v[a]!, B = m.v[b]!, C = m.v[c]!;
+    const u: Vec3 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], w: Vec3 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+    const N: Vec3 = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    for (const i of [a, b, c]) nn[i] = [nn[i]![0] + N[0], nn[i]![1] + N[1], nn[i]![2] + N[2]];
+  }
+  m.n = nn.map((v, i) => (Math.hypot(v[0], v[1], v[2]) > 1e-9 ? normalize(v) : m.n[i]!));
+  return m;
+}
 // Arche du limbe (bombé de 3,2 cm au milieu, base et pointe sur la tige) et creux transversal.
 const monsteraCurl: Deform = (x, y, z) => [x, y + 0.006 * z * (MON_L - z) - 0.004 * x * x, z];
+const MON_BLADE = pinnateBlade(0.5, monsteraCurl);
 function monstera(look: CelLook, life: LifeState): CelPart[] {
   const T = look.tones;
   const P: CelPart[] = [];
@@ -156,10 +209,13 @@ function monstera(look: CelLook, life: LifeState): CelPart[] {
   stems.forEach(([a, h, tip, sc, r2], k) => {
     const r1 = r2 * 0.45;
     const p1: Vec3 = [Math.sin(a) * r1, y0 + 37 * h, Math.cos(a) * r1], p2: Vec3 = [Math.sin(a) * r2, y0 + 68 * h, Math.cos(a) * r2];
-    P.push(part(tube([[0, y0 - 1, 0], p1, p2], 1.5, 8), T.leafDark, { crease: false }));
-    // La feuille part de la pointe de la tige, pend vers l'extérieur et vers le bas (pointe en bas).
-    const m = place(leaf(MON_OUTLINE, 0.5, monsteraCurl, MON_C), { s: sc, rx: tip, ry: a, t: p2 });
-    P.push(...nod([part(m, k % 2 ? T.leaf : T.leafDark, { crease: false })], p2, dirOf(a), k, life.rustle));
+    // La feuille part de la pointe de la tige, pend vers l'extérieur et vers le bas (pointe en bas). Le pétiole continue sous le
+    // limbe le long de la nervure (6 cm, 1,9 cm sous la face : le tube r 1,5 reste entièrement sous le revers) : son bout n'est jamais une « baguette » au-dessus de la feuille.
+    const along = rotY(rotX([0, 0, 1], tip), a), under = rotY(rotX([0, -1, 0], tip), a);
+    const p3: Vec3 = [p2[0] + along[0] * 6 + under[0] * 1.9, p2[1] + along[1] * 6 + under[1] * 1.9, p2[2] + along[2] * 6 + under[2] * 1.9];
+    const stem = part(tube([[0, y0 - 1, 0], p1, p2, p3], 1.5, 8), T.leafDark, { crease: false });
+    const m = place(MON_BLADE, { s: sc, rx: tip, ry: a, t: p2 });
+    P.push(...nod([stem, part(m, k % 2 ? T.leaf : T.leafDark, { crease: false, hi: false })], p2, dirOf(a), k, life.rustle));
   });
   return P;
 }
@@ -246,8 +302,8 @@ function palm(look: CelLook, life: LifeState): CelPart[] {
 }
 
 /* ---------- cactus cierge : pot en terre, collerette, terreau ; colonne côtelée au tour, deux bras côtelés coudés (colonne droite
-   cintrée par bent() le long d'un coude arrondi), fleur en coupe au sommet (elle frémit) ---------- */
-const RIBS = 9, RIB = 0.07;
+   cintrée par bent() le long d'un coude arrondi, une seule pièce avec la colonne), fleur en bouton au sommet (elle frémit) ---------- */
+const RIBS = 9, RIB = 0.055; // au-delà, les côtes au ras de la silhouette font des tirets d'encre (saut de profondeur) de profil
 const ribbed: Deform = (x, y, z) => {
   const f = 1 + RIB * Math.cos(RIBS * Math.atan2(z, x));
   return [x * f, y, z * f];
@@ -275,8 +331,10 @@ function cactus(look: CelLook, life: LifeState): CelPart[] {
   P.push(part(lathe([[12.8, 19], [15.2, 19.5], [15.2, 22.4], [14.4, 23.1], [12.8, 23.3]], 28), T.warmDark)); // collerette 19..23
   P.push(soil(12.4, 23.4, T.door));
   // Colonne : côtes au tour (9 côtes, 6 colonnes par côte), sommet en dôme.
-  P.push(part(lathe([[4.6, 22.6], [5.5, 25.5], [5.5, 118], [5.2, 121], [4.2, 124], [2.5, 126.5], [0, 127.4]], 54, ribbed), G, { crease: false }));
-  // Bras : la racine est dans la colonne (x = 0), le coude arrondi, le bout en dôme.
+  const body: Mesh[] = [lathe([[4.6, 22.6], [5.5, 25.5], [5.5, 118], [5.2, 121], [4.2, 124], [2.5, 126.5], [0, 127.4]], 54, ribbed)];
+  // Bras : la racine est dans la colonne (x = 0), le coude arrondi, le bout en dôme. Les côtes du bras s'effacent sur ses 8 premiers
+  // centimètres (racine lisse). Colonne et bras forment UNE pièce : au raccord, pas de trait d'encre entre deux surfaces côtelées
+  // (le moignon dentelé), seule la silhouette et les vrais sauts de profondeur s'encrent.
   for (const [sx, y0, h] of [[-1, 58, 88], [1, 72, 98]] as const) {
     const { S, d } = armPath(sx, y0, 12.3, 4.2);
     const top = h - (y0 + 4.2), L = S(top);
@@ -285,11 +343,12 @@ function cactus(look: CelLook, life: LifeState): CelPart[] {
     for (let y = 4.5; y < L; y += 1.5) prof.push([3.9, y]);
     prof.push([3.9, L], [3.6, L + 1.8], [2.5, L + 3.1], [0, L + 4]);
     const arm = lathe(prof, 42, (x, y, z) => {
-      const f = 1 + 0.08 * Math.cos(7 * Math.atan2(z, x));
+      const f = 1 + 0.08 * Math.cos(7 * Math.atan2(z, x)) * Math.min(1, Math.max(0, (y - 5) / 3));
       return [x * f, y, z * f];
     });
-    P.push(part(bent(arm, d), G, { crease: false }));
+    body.push(bent(arm, d));
   }
+  P.push(part(merge(body), G, { crease: false }));
   // Fleur en bouton au sommet (bulbe à pétales festonnés qui se resserrent en pointe) ; elle frémit (feuille 0).
   const fy = 127;
   const flower = lathe([[0, 0], [2, 0.5], [3.4, 2], [3.6, 3.5], [2.7, 5], [1.3, 6], [0, 6.3]], 30, (x, y, z) => {
