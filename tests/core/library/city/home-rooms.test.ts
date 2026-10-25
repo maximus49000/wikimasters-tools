@@ -109,6 +109,76 @@ describe('pièces occupées et repas du foyer', () => {
     expect(n).toBeGreaterThan(5);
   });
 
+  it('endormi : aucune couverture hors chambre ; une span night ne chevauche jamais un out', () => {
+    const bad: string[] = [];
+    let nights = 0;
+    for (const r of ROWS) {
+      r.hd.people.forEach((p) => {
+        for (const s of r.spans) {
+          if (s.m !== p.m) continue;
+          if (s.what === 'night') {
+            nights++;
+            if (p.out.some(([a, b]) => s.a < b && s.b > a) && !p.out.some(([a, b]) => s.a >= a && s.a === b)) bad.push(`night/out ${r.d.id} ${r.day.iso} m${p.m}`);
+            if (s.a >= p.wake) bad.push(`night après lever ${r.d.id} ${r.day.iso} m${p.m}`);
+          }
+          const asleep = s.b <= p.wake || s.a >= p.bed;
+          if (asleep && s.what !== 'night') bad.push(`asleep ${r.d.id} ${r.day.iso} m${p.m} ${s.what} ${s.a}`);
+          if (asleep && r.d.rooms.includes('chambre') && s.room !== 'chambre') bad.push(`room ${r.d.id} ${r.day.iso} m${p.m}`);
+        }
+      });
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(nights).toBeGreaterThan(5);
+  });
+
+  it('matin : chambre, cuisine puis salon, sans trou tant que l’on est au logement', () => {
+    let seq = 0;
+    const bad: string[] = [];
+    for (const r of ROWS) {
+      const full = r.d.rooms.includes('cuisine') && r.d.rooms.includes('chambre');
+      r.hd.people.forEach((p) => {
+        const mine = r.spans.filter((s) => s.m === p.m && s.what !== 'night');
+        // Continuité : deux spans consécutives ne laissent un trou que sur un intervalle out.
+        for (let i = 1; i < mine.length; i++) {
+          const gap = mine[i]!.a - mine[i - 1]!.b;
+          if (gap > 0 && !p.out.some(([a, b]) => a <= mine[i - 1]!.b + 1 && b >= mine[i]!.a - 1)) bad.push(`trou ${r.d.id} ${r.day.iso} m${p.m} ${mine[i - 1]!.b}-${mine[i]!.a}`);
+        }
+        if (!full || mine[0]?.what !== 'wake' || mine[1]?.what !== 'breakfast') return;
+        expect(mine[0]!.room).toBe('chambre');
+        expect(mine[1]!.room).toBe('cuisine');
+        if (mine[2]) expect(mine[2].room === 'salon' || mine[2].what === 'bedtime' || mine[2].what === 'dinner' || mine[2].what === 'lunch' || mine[2].what === 'snack' || mine[2].what === 'homework').toBe(true);
+        seq++;
+      });
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(seq).toBeGreaterThan(1000);
+  });
+
+  it('chaque enfant goûte dès son arrivée après 16 h ; petits : dîner avant 19 h 30 s’ils sont rentrés à 19 h 20', () => {
+    let snacks = 0, dinners = 0;
+    for (const r of ROWS) {
+      r.hd.people.forEach((p) => {
+        const kid = r.d.hh.members[p.m]!;
+        if (kid.who.status !== 'enfant' || r.meals.snack === null) return;
+        const here = (t: number): boolean => t >= p.wake && t < p.bed && !inside(p.out, t) && r.hd.away.state !== 'away';
+        let first = -1;
+        for (let t = 960; t < 1200 && first < 0; t++) if (here(Math.round(t))) first = t;
+        if (first < 0) return;
+        const sn = r.spans.find((s) => s.m === p.m && s.what === 'snack');
+        expect(sn?.a, `${r.d.id} ${r.day.iso} m${p.m}`).toBe(first);
+        snacks++;
+        if (kid.who.age < 11 && r.meals.kidsDinner !== null && here(1160) && (p.outing === null || p.outing.dep > 1240)) {
+          const dn = r.spans.find((s) => s.m === p.m && s.what === 'dinner');
+          expect(dn, `${r.d.id} ${r.day.iso} m${p.m} ${JSON.stringify([p.wake, p.bed, p.out, p.outing, r.meals, r.hd.away])}`).toBeDefined();
+          expect(dn!.a).toBeLessThanOrEqual(1170);
+          dinners++;
+        }
+      });
+    }
+    expect(snacks).toBeGreaterThan(100);
+    expect(dinners).toBeGreaterThan(20);
+  });
+
   it('invités et nounou : indices au-delà des membres, avec leur hôte', () => {
     const r = ROWS.find((x) => x.meals.dinner !== null && x.d.hh.nanny && x.hd.nanny)!;
     expect(r).toBeDefined();
@@ -119,6 +189,10 @@ describe('pièces occupées et repas du foyer', () => {
     expect(guest.some((s) => s.what === 'dinner')).toBe(true);
     const nanny = spans.filter((s) => s.m === NANNY_M);
     expect(nanny.length).toBeGreaterThan(0);
-    for (const s of nanny) expect(r.hd.nanny!.visits.some((v) => s.a >= v.arrive && s.b <= v.leave)).toBe(true);
+    for (const s of nanny) expect(r.hd.nanny!.visits.some((v) => s.a >= Math.round(v.arrive) && s.b <= Math.round(v.leave))).toBe(true);
+    // La nounou est en cuisine pendant le goûter des enfants.
+    const sk = ROWS.find((x) => x.hd.nanny && x.d.rooms.includes('cuisine') && x.spans.some((y) => y.m === NANNY_M && y.what === 'snack'))!;
+    expect(sk).toBeDefined();
+    expect(sk.spans.filter((y) => y.m === NANNY_M && y.what === 'snack').every((y) => y.room === 'cuisine')).toBe(true);
   });
 });

@@ -46,9 +46,9 @@ const isYoung = (d: Dwelling, m: number): boolean => isKid(d, m) && d.hh.members
 function presence(hd: HouseholdDays, p: PersonDay): Cells {
   const c = new Uint8Array(HORIZON);
   if (hd.away.state === 'away') return c;
-  const end = p.outing && p.outing.ret > 1440 ? 1440 : p.bed;
-  for (let t = Math.max(0, Math.ceil(p.wake)); t < Math.min(HORIZON, end); t++) c[t] = 1;
-  for (const [a, b] of p.out) for (let t = Math.max(0, Math.floor(a)); t < Math.min(HORIZON, b); t++) c[t] = 0;
+  const end = p.outing && p.outing.ret > 1440 ? 1440 : Math.round(p.bed);
+  for (let t = Math.max(0, Math.round(p.wake)); t < Math.min(HORIZON, end); t++) c[t] = 1;
+  for (const [a, b] of p.out) for (let t = Math.max(0, Math.round(a)); t < Math.min(HORIZON, Math.round(b)); t++) c[t] = 0;
   return c;
 }
 const freeFor = (c: Cells, a: number, b: number): boolean => { for (let t = a; t < b; t++) if (!c[t]) return false; return true; };
@@ -56,7 +56,7 @@ const freeFor = (c: Cells, a: number, b: number): boolean => { for (let t = a; t
 export function householdMeals(d: Dwelling, hd: HouseholdDays, rng: () => number): HouseholdMeals {
   const hh = d.hh;
   const cells = hd.people.map((p) => presence(hd, p));
-  const breakfast = hd.people.map((p, m) => (cells[m]![Math.ceil(p.wake)] ? Math.ceil(p.wake) + MEAL.wake : -1));
+  const breakfast = hd.people.map((p, m) => (cells[m]![Math.round(p.wake)] ? Math.round(p.wake) + MEAL.wake : -1));
 
   const base = MEAL.dinner[hh.type] + int5(rng, -MEAL.dinnerJitter, MEAL.dinnerJitter);
   const lunchAt = MEAL.lunch + int5(rng, -MEAL.lunchJitter, MEAL.lunchJitter);
@@ -68,7 +68,7 @@ export function householdMeals(d: Dwelling, hd: HouseholdDays, rng: () => number
     if (isKid(d, m)) return;
     const dep = p.outing?.dep ?? Infinity;
     if (dep < base + MEAL.dineOuting) return;
-    const b = Math.max(0, ...p.out.filter(([a, e]) => a < dep && e <= MEAL.lateBack).map(([, e]) => e));
+    const b = Math.max(0, ...p.out.filter(([a, e]) => a < dep && e <= MEAL.lateBack).map(([, e]) => Math.round(e)));
     if (b <= base + MEAL.dineWindow) back = Math.max(back, b);
   });
   const T = Math.max(base, back + MEAL.settle);
@@ -80,7 +80,7 @@ export function householdMeals(d: Dwelling, hd: HouseholdDays, rng: () => number
 
   let kidsDinner: number | null = null;
   if (dinner !== null && hd.people.some((_, m) => isYoung(d, m))) {
-    const kidBack = Math.max(0, ...hd.people.flatMap((p, m) => (isYoung(d, m) ? p.out.filter(([, e]) => e <= MEAL.kidsDinnerMax).map(([, e]) => e) : [])));
+    const kidBack = Math.max(0, ...hd.people.flatMap((p, m) => (isYoung(d, m) ? p.out.filter(([, e]) => e <= MEAL.kidsDinnerMax).map(([, e]) => Math.round(e)) : [])));
     kidsDinner = Math.min(MEAL.kidsDinnerMax, Math.max(Math.min(dinner, MEAL.kidsDinnerMax), kidBack + MEAL.settle));
   }
   return { breakfast, lunch, snack, dinner, kidsDinner };
@@ -105,13 +105,13 @@ export function roomTimeline(d: Dwelling, hd: HouseholdDays, meals: HouseholdMea
   hd.people.forEach((p, m) => add(m, presence(hd, p)));
   if (hd.nanny) {
     const c = new Uint8Array(HORIZON);
-    for (const v of hd.nanny.visits) for (let t = Math.max(0, v.arrive); t < Math.min(HORIZON, v.leave); t++) c[t] = 1;
+    for (const v of hd.nanny.visits) for (let t = Math.max(0, Math.round(v.arrive)); t < Math.min(HORIZON, Math.round(v.leave)); t++) c[t] = 1;
     add(NANNY_M, c);
   }
   const guestCells = new Map<number, Cells>();
   for (const g of guests) {
     const c = guestCells.get(g.m) ?? new Uint8Array(HORIZON);
-    for (let t = Math.max(0, g.a); t < Math.min(HORIZON, g.b); t++) c[t] = 1;
+    for (let t = Math.max(0, Math.round(g.a)); t < Math.min(HORIZON, Math.round(g.b)); t++) c[t] = 1;
     guestCells.set(g.m, c);
   }
   for (const [m, c] of guestCells) add(m, c);
@@ -120,12 +120,12 @@ export function roomTimeline(d: Dwelling, hd: HouseholdDays, meals: HouseholdMea
   const dinnerEnd = meals.dinner === null ? MEAL.eveningFrom : meals.dinner + MEAL.dinnerLen;
 
   // 1. Coucher.
-  hd.people.forEach((p, m) => paint(m, p.bed - MEAL.bedtime, p.bed, 'bedtime'));
+  hd.people.forEach((p, m) => paint(m, Math.round(p.bed) - MEAL.bedtime, Math.round(p.bed), 'bedtime'));
   // 2. Lever et petit-déjeuner (seulement si le lever est au logement).
   hd.people.forEach((p, m) => {
     const b = meals.breakfast[m] ?? -1;
     if (b < 0) return;
-    paint(m, p.wake, p.wake + MEAL.wake, 'wake');
+    paint(m, b - MEAL.wake, b, 'wake');
     paint(m, b, b + MEAL.breakfast, 'breakfast');
   });
   // 3. Dîner : adultes et grands à l'heure du dîner, petits à l'heure des enfants (sinon avec les grands).
@@ -133,18 +133,33 @@ export function roomTimeline(d: Dwelling, hd: HouseholdDays, meals: HouseholdMea
     const T = meals.dinner;
     for (const m of [...memberIds, ...guestIds]) {
       const young = m < n && isYoung(d, m);
-      if (young && meals.kidsDinner !== null && eats(m, meals.kidsDinner)) { paint(m, meals.kidsDinner, meals.kidsDinner + MEAL.kidsDinnerLen, 'dinner'); continue; }
+      // Le dîner des petits finit avant leur coucher (qui commence 15 min avant `bed`).
+      const kd = young && meals.kidsDinner !== null ? Math.min(meals.kidsDinner, Math.round(hd.people[m]!.bed) - MEAL.bedtime - MEAL.kidsDinnerLen) : -1;
+      if (kd >= 0 && eats(m, kd)) {
+        paint(m, kd, kd + MEAL.kidsDinnerLen, 'dinner');
+        if (hd.nanny) paint(NANNY_M, kd, kd + MEAL.kidsDinnerLen, 'dinner'); // la nounou mange avec eux
+        continue;
+      }
       if (eats(m, T)) paint(m, T, T + MEAL.dinnerLen, 'dinner');
     }
   }
   // 4. Déjeuner.
   if (meals.lunch !== null) for (const m of memberIds) if (eats(m, meals.lunch)) paint(m, meals.lunch, meals.lunch + MEAL.lunchLen, 'lunch');
   // 5. Goûter des enfants (avec la nounou), puis devoirs en chambre pour les écoliers.
+  // Chaque enfant goûte dès son arrivée (à partir de 16 h), la nounou avec lui ; puis devoirs (la nounou reste avec eux).
   if (meals.snack !== null) {
-    const s = meals.snack;
-    memberIds.forEach((m) => { if (isKid(d, m) && free.get(m)![s]) paint(m, s, s + MEAL.snackLen, 'snack'); });
-    if (hd.nanny) paint(NANNY_M, s, s + MEAL.snackLen, 'snack');
-    hd.people.forEach((p, m) => { if (isKid(d, m) && p.school) paint(m, s + MEAL.snackLen, s + MEAL.snackLen + MEAL.homework, 'homework'); });
+    hd.people.forEach((p, m) => {
+      if (!isKid(d, m)) return;
+      let s = -1;
+      for (let t = MEAL.snackFrom; t < 1200 && s < 0; t++) if (free.get(m)![t]) s = t;
+      if (s < 0) return;
+      paint(m, s, s + MEAL.snackLen, 'snack');
+      if (hd.nanny) paint(NANNY_M, s, s + MEAL.snackLen, 'snack');
+      if (p.school) {
+        paint(m, s + MEAL.snackLen, s + MEAL.snackLen + MEAL.homework, 'homework');
+        if (hd.nanny) paint(NANNY_M, s + MEAL.snackLen, s + MEAL.snackLen + MEAL.homework, 'homework');
+      }
+    });
   }
   // 6. Soirée au salon, du dîner jusqu'au coucher.
   for (const m of [...memberIds, ...guestIds]) paint(m, dinnerEnd, HORIZON, 'evening');
@@ -157,7 +172,10 @@ export function roomTimeline(d: Dwelling, hd: HouseholdDays, meals: HouseholdMea
     if (!b) return;
     const g = grids.get(m)!;
     const night = new Uint8Array(HORIZON);
-    for (let t = Math.ceil(b.b); t < b.b + MEAL.night; t++) if (!g[t]) night[t] = code('night');
+    const outCell = new Uint8Array(HORIZON);
+    for (const [x, y] of p.out) for (let t = Math.max(0, Math.round(x)); t < Math.min(HORIZON, Math.round(y)); t++) outCell[t] = 1;
+    const end = Math.round(b.b);
+    for (let t = end; t < end + MEAL.night; t++) if (!g[t] && !outCell[t] && t < Math.round(p.wake)) night[t] = code('night');
     nights.set(m, night);
   });
 
