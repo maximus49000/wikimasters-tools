@@ -59,22 +59,15 @@ type Port = {
   kidsN: Range; kidsT: Range; share: Range; ang: Range;
   kidsN2: Range; kidsT2: Range; share2: Range; ang2: Range;
   up: number; W: number; cy: number; ry: number; tuft: number; dens: Range; along: number; gap: number; dead?: boolean;
-  // Plafonds du budget (axes ≤ 120, nuages ≤ 220) : brindilles par rameau (maquette 2-4), nuages par bouquet (maquette 1-3).
-  twigs: Range; bunch: number;
 };
-// Ports par essence (maquette PORTS4, version V5), PLAFONNÉS au budget (axes ≤ 120, nuages ≤ 220 par arbre) : la maquette
-// tirait jusqu'à 146-226 axes et 118-598 nuages (robinier, cerisier : 3-4 charpentières). Valeurs de la maquette changées :
-// kidsN2 [2, 3] → [2, 2] (sauf frêne, déjà [2, 2]) ; brindilles par rameau `twigs` [2, 4] → frêne [1, 3], robinier et
-// cerisier [1, 1] ; nuages par bouquet `bunch` 1-3 (3) → tilleul, robinier, cerisier 2,5 (1-3, le 3ᵉ une fois sur 5) ; densité
-// des bouquets aux niveaux 4-5 `dens[1]` platane 0,8 → 0,68, tilleul 0,85 → 0,72, cerisier 0,9 → 0,63. Avec twigs [2, 4],
-// bunch 3 et les kidsN2 / dens de la maquette, on retrouve les tirages de la maquette (aux deux garde-fous près : trouées
-// plafonnées, fille jamais plus large que la mère).
+// Ports par essence (maquette PORTS4, version V5), valeurs de la maquette à l'identique (jusqu'à ~230 axes et ~600 nuages
+// pour un cerisier ou un robinier : coût à mesurer sur le S26).
 const PORTS: Record<RueSpecies, Port> = {
-  platane: { lean: 0.05, sinu: 0.1, w: 1.0, L: [0, 0.32, 0.36, 0.24, 0.14, 0.07], kidsN: [1, 1], kidsT: [0.8, 0.96], share: [0.4, 0.5], ang: [0.45, 0.75], kidsN2: [2, 2], kidsT2: [0.4, 0.95], share2: [0.22, 0.35], ang2: [0.45, 0.85], up: 0.3, W: 0.95, cy: 0.52, ry: 0.56, tuft: 2.4, dens: [0.35, 0.68], along: 0.5, gap: 0.25, twigs: [2, 4], bunch: 3 },
-  tilleul: { lean: 0.05, sinu: 0.1, w: 0.95, L: [0, 0.32, 0.36, 0.24, 0.14, 0.07], kidsN: [1, 1], kidsT: [0.8, 0.96], share: [0.4, 0.5], ang: [0.4, 0.65], kidsN2: [2, 2], kidsT2: [0.4, 0.95], share2: [0.22, 0.35], ang2: [0.4, 0.8], up: 0.35, W: 0.85, cy: 0.52, ry: 0.56, tuft: 2.4, dens: [0.4, 0.72], along: 0.5, gap: 0.2, twigs: [2, 4], bunch: 2.5 },
-  robinier: { lean: 0.08, sinu: 0.22, w: 0.62, L: [0, 0.55, 0.3, 0.18, 0.1, 0.06], kidsN: [2, 3], kidsT: [0.82, 1.0], share: [0.25, 0.35], ang: [0.3, 0.6], kidsN2: [2, 2], kidsT2: [0.5, 0.95], share2: [0.22, 0.35], ang2: [0.4, 0.8], up: 0.4, W: 1.15, cy: 0.7, ry: 0.42, tuft: 2.8, dens: [0.45, 0.85], along: 0.5, gap: 0.2, twigs: [1, 1], bunch: 2.5 },
-  frene: { lean: 0.03, sinu: 0.06, w: 0.85, L: [0, 0.5, 0.36, 0.2, 0.12, 0.07], kidsN: [1, 2], kidsT: [0.8, 1.0], share: [0.3, 0.45], ang: [0.4, 0.7], kidsN2: [2, 2], kidsT2: [0.45, 0.95], share2: [0.25, 0.4], ang2: [0.35, 0.7], up: 0.4, W: 1.1, cy: 0.56, ry: 0.52, tuft: 2.2, dens: [0.25, 0.6], along: 0.4, gap: 0.4, dead: true, twigs: [1, 3], bunch: 3 },
-  cerisier: { lean: 0.06, sinu: 0.14, w: 0.8, L: [0, 0.25, 0.34, 0.22, 0.12, 0.06], kidsN: [2, 3], kidsT: [0.5, 1.0], share: [0.25, 0.35], ang: [0.55, 0.95], kidsN2: [2, 2], kidsT2: [0.4, 0.95], share2: [0.22, 0.35], ang2: [0.5, 0.9], up: 0.2, W: 1.4, cy: 0.5, ry: 0.54, tuft: 2.0, dens: [0.5, 0.63], along: 0.8, gap: 0.2, twigs: [1, 1], bunch: 2.5 },
+  platane: { lean: 0.05, sinu: 0.1, w: 1.0, L: [0, 0.32, 0.36, 0.24, 0.14, 0.07], kidsN: [1, 1], kidsT: [0.8, 0.96], share: [0.4, 0.5], ang: [0.45, 0.75], kidsN2: [2, 3], kidsT2: [0.4, 0.95], share2: [0.22, 0.35], ang2: [0.45, 0.85], up: 0.3, W: 0.95, cy: 0.52, ry: 0.56, tuft: 2.4, dens: [0.35, 0.8], along: 0.5, gap: 0.25 },
+  tilleul: { lean: 0.05, sinu: 0.1, w: 0.95, L: [0, 0.32, 0.36, 0.24, 0.14, 0.07], kidsN: [1, 1], kidsT: [0.8, 0.96], share: [0.4, 0.5], ang: [0.4, 0.65], kidsN2: [2, 3], kidsT2: [0.4, 0.95], share2: [0.22, 0.35], ang2: [0.4, 0.8], up: 0.35, W: 0.85, cy: 0.52, ry: 0.56, tuft: 2.4, dens: [0.4, 0.85], along: 0.5, gap: 0.2 },
+  robinier: { lean: 0.08, sinu: 0.22, w: 0.62, L: [0, 0.55, 0.3, 0.18, 0.1, 0.06], kidsN: [2, 3], kidsT: [0.82, 1.0], share: [0.25, 0.35], ang: [0.3, 0.6], kidsN2: [2, 3], kidsT2: [0.5, 0.95], share2: [0.22, 0.35], ang2: [0.4, 0.8], up: 0.4, W: 1.15, cy: 0.7, ry: 0.42, tuft: 2.8, dens: [0.45, 0.85], along: 0.5, gap: 0.2 },
+  frene: { lean: 0.03, sinu: 0.06, w: 0.85, L: [0, 0.5, 0.36, 0.2, 0.12, 0.07], kidsN: [1, 2], kidsT: [0.8, 1.0], share: [0.3, 0.45], ang: [0.4, 0.7], kidsN2: [2, 2], kidsT2: [0.45, 0.95], share2: [0.25, 0.4], ang2: [0.35, 0.7], up: 0.4, W: 1.1, cy: 0.56, ry: 0.52, tuft: 2.2, dens: [0.25, 0.6], along: 0.4, gap: 0.4, dead: true },
+  cerisier: { lean: 0.06, sinu: 0.14, w: 0.8, L: [0, 0.25, 0.34, 0.22, 0.12, 0.06], kidsN: [2, 3], kidsT: [0.5, 1.0], share: [0.25, 0.35], ang: [0.55, 0.95], kidsN2: [2, 3], kidsT2: [0.4, 0.95], share2: [0.22, 0.35], ang2: [0.5, 0.9], up: 0.2, W: 1.4, cy: 0.5, ry: 0.54, tuft: 2.0, dens: [0.5, 0.9], along: 0.8, gap: 0.2 },
 };
 // Hauteur totale (pied → sommet) d'un adulte de la maquette : 88 px (cerisier 72) pour un fût h = 42 et un rayon r = 20 du plan.
 const TOTAL_OF = (sp: RueSpecies): number => (sp === 'cerisier' ? 72 : 88) / 82;
@@ -177,7 +170,7 @@ export function rueTreeModelV5(pit: RuePit): RueTreeModel {
       const [ta, tb] = lv === 1 ? P.kidsT : P.kidsT2;
       const [s0, s1] = lv === 1 ? P.share : P.share2;
       const [a0, a1] = lv === 1 ? P.ang : P.ang2;
-      const n = lv === 4 ? P.twigs[0] + Math.floor(rng() * (P.twigs[1] - P.twigs[0] + 1)) : n0 + Math.floor(rng() * (n1 - n0 + 1));
+      const n = lv === 4 ? 2 + Math.floor(rng() * 3) : n0 + Math.floor(rng() * (n1 - n0 + 1));
       let side = side0 ?? (rng() < 0.5 ? 1 : -1);
       for (let k = 0; k < n; k++) {
         const t = lv === 4 ? Math.min(1, 0.3 + ((k + rng()) / n) * 0.65) : Math.min(1, ta + ((k + rng()) / n) * (tb - ta));
@@ -259,7 +252,7 @@ export function rueTreeModelV5(pit: RuePit): RueTreeModel {
   // Nuages : 1 à 3 par point, tailles variées ; rang (chute) = distance au centre de la couronne (les bouts tombent d'abord).
   const clouds: RueCloud[] = [];
   for (const t of tips) {
-    const b = 1 + Math.floor(rng() * P.bunch);
+    const b = 1 + Math.floor(rng() * 3);
     for (let k = 0; k < b; k++) {
       const r = P.tuft * rnd(0.5, 1.25);
       const x = t.x + (rng() - 0.5) * r * 1.4;

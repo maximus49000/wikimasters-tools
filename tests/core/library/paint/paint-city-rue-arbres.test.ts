@@ -80,10 +80,11 @@ describe('arbre de rue V5 (rueTreeModelV5)', () => {
     }
   });
 
-  it('budget : au plus 120 axes et 220 nuages par arbre', () => {
+  // Densité de la maquette V5 validée (max mesuré ≈ 226 axes, ≈ 600 nuages pour un cerisier) + marge.
+  it('budget : au plus 240 axes et 620 nuages par arbre', () => {
     for (const m of MODELS) {
-      expect(m.axes.length).toBeLessThanOrEqual(120);
-      expect(m.clouds.length).toBeLessThanOrEqual(220);
+      expect(m.axes.length).toBeLessThanOrEqual(240);
+      expect(m.clouds.length).toBeLessThanOrEqual(620);
     }
   });
 
