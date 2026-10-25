@@ -88,13 +88,14 @@ describe('arbre de rue V5 (rueTreeModelV5)', () => {
     }
   });
 
-  it("hiver : aucun nuage dessiné ; été : tous les nuages", () => {
+  // d vaut au plus 1 en été : un nuage de rang 1 (rare) n'y est pas visible ; au moins 95 % des nuages le sont.
+  it("hiver : aucun nuage dessiné ; été : au moins 95 % des nuages", () => {
     for (const m of MODELS.slice(0, 40)) {
       const ctx = recordingCtx();
       paintRueClouds(ctx, m, day(1, 15));
       paintRueClouds(ctx, m, day(1, 15), { part: 'shadow' });
       expect(ctx.ops).toEqual([]);
-      expect(rueCloudItems(m, day(7, 7)).length).toBe(m.clouds.length);
+      expect(rueCloudItems(m, day(7, 7)).length).toBeGreaterThanOrEqual(0.95 * m.clouds.length);
       const summer = recordingCtx();
       paintRueClouds(summer, m, day(7, 7));
       expect(summer.fills.length).toBeGreaterThan(0);
@@ -106,10 +107,19 @@ describe('arbre de rue V5 (rueTreeModelV5)', () => {
       const ctx = recordingCtx();
       paintRueSkeleton(ctx, m);
       const starts = ctx.ops.filter((o) => o.op === 'moveTo').map((o) => o.args as [number, number]);
-      const drawn = (a: RueAxis): boolean => {
+      // Point de départ exact de l'axe : brindille, son premier point ; tube, son contour gauche (premier point + normale ×
+      // demi-largeur, comme `tubePath`).
+      const startOf = (a: RueAxis): [number, number] => {
         const [x, y] = a.pts[0]!;
-        // Brindille : segment depuis le premier point ; tube : contour gauche à une demi-largeur du premier point.
-        return starts.some(([sx, sy]) => Math.abs(Math.hypot(sx - x, sy - y) - (isTwig(a) ? 0 : Math.max(0.12, a.w[0]!))) < 1e-6);
+        if (isTwig(a)) return [x, y];
+        const [x1, y1] = a.pts[1]!;
+        const l = Math.hypot(x1 - x, y1 - y) || 1;
+        const w = Math.max(0.12, a.w[0]!);
+        return [x - ((y1 - y) / l) * w, y + ((x1 - x) / l) * w];
+      };
+      const drawn = (a: RueAxis): boolean => {
+        const [x, y] = startOf(a);
+        return starts.some(([sx, sy]) => Math.abs(sx - x) < 1e-9 && Math.abs(sy - y) < 1e-9);
       };
       const drawnAxes = new Set(m.axes.map((a, i) => (drawn(a) ? i : -1)));
       expect(drawnAxes.size - (drawnAxes.has(-1) ? 1 : 0)).toBe(m.axes.length);

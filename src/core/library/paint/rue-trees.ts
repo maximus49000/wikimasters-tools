@@ -31,7 +31,8 @@ export type RueAxis = {
   pointed: boolean;
   dead?: boolean;
 };
-export type RueCloud = { x: number; y: number; r: number; rot: number; k1: number; k2: number; phase: number; yel: number; axis: number; mass: number; rank: number };
+// `hiA`, `hiD` : angle et distance (fraction du rayon) de la touche claire, tirés une fois avec le modèle (comme `k1`, `k2`).
+export type RueCloud = { x: number; y: number; r: number; rot: number; k1: number; k2: number; hiA: number; hiD: number; phase: number; yel: number; axis: number; mass: number; rank: number };
 export type RueBox = { x0: number; y0: number; x1: number; y1: number };
 export type RueTreeModel = {
   key: string;
@@ -49,7 +50,9 @@ export type RueTreeModel = {
   cy: number;
   rx: number;
   ry: number;
-  // Boîte de tout ce que `paintRueSkeleton` et `paintRueClouds` peuvent toucher (ombre portée des nuages comprise).
+  // Boîte de tout ce que `paintRueSkeleton` et `paintRueClouds` peuvent toucher (ombre portée des nuages comprise), SANS le vent :
+  // `shiftX/Y` déplace un nuage jusqu'à 1,5 × le décalage (bouts), et les calques au vent translatent les nuages ; l'appelant
+  // ajoute lui-même la marge du vent.
   box: RueBox;
 };
 
@@ -72,6 +75,8 @@ const PORTS: Record<RueSpecies, Port> = {
 // Hauteur totale (pied → sommet) d'un adulte de la maquette : 88 px (cerisier 72) pour un fût h = 42 et un rayon r = 20 du plan.
 const TOTAL_OF = (sp: RueSpecies): number => (sp === 'cerisier' ? 72 : 88) / 82;
 // Échelle d'enveloppe par niveau (arrêt des axes dans la couronne).
+// S_LV[1] (9) n'est jamais lu : le tronc n'est pas arrêté par l'enveloppe (seuls les niveaux ≥ 2 la consultent) ; valeur
+// reprise telle quelle de la maquette.
 const S_LV = [0, 9, 0.85, 0.98, 1.06];
 // Décroissance de w² le long d'un axe, par niveau (terminal : 97 %, pointe).
 const K_LV = [0, 0.12, 0.2, 0.35, 0.55, 0.97];
@@ -263,7 +268,10 @@ export function rueTreeModelV5(pit: RuePit): RueTreeModel {
       const phase = rng() * TAU;
       const yel = rng();
       const rc = mulberry32(hashString('cl' + phase));
-      clouds.push({ x, y, r, rot, k1: 3 + Math.floor(rc() * 3), k2: 6 + Math.floor(rc() * 4), phase, yel, axis: t.axis, mass: t.mass, rank });
+      const rh = mulberry32(hashString('hi' + phase));
+      const hiA = -2.5 + rh() * 1.4;
+      const hiD = 0.2 + rh() * 0.4;
+      clouds.push({ x, y, r, rot, k1: 3 + Math.floor(rc() * 3), k2: 6 + Math.floor(rc() * 4), hiA, hiD, phase, yel, axis: t.axis, mass: t.mass, rank });
     }
   }
 
@@ -336,6 +344,7 @@ export function paintRueSkeleton(ctx: PaintCtx, m: RueTreeModel, opts: RueSkelet
   const thin = m.axes.filter(isTwig);
   const live = thick.filter((a) => !a.dead);
   const dead = thick.filter((a) => a.dead);
+  ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   const twigTone = m.species === 'frene' ? TWIG_FRENE : TWIG;
@@ -415,17 +424,17 @@ export function paintRueSkeleton(ctx: PaintCtx, m: RueTreeModel, opts: RueSkelet
       ctx.fill();
     }
   ctx.restore();
-  ctx.lineCap = 'butt';
+  ctx.restore();
 }
 
 // Taille d'un nuage à une date (0 = absent) : sat((d − rang)/0,36), d du calendrier `foliageOf` de l'arbre ; cerisier en fleurs :
 // au moins la floraison (`bloomOf`).
+const cloudSizeAt = (d: number, bloom: number, rank: number): number => {
+  const size = sat((d - rank) / 0.36);
+  return bloom > 0 ? Math.max(size, bloom) : size;
+};
 export function rueCloudSize(m: RueTreeModel, c: RueCloud, D: Pick<FondMoment, 'doy'>): number {
-  const f = foliageOf(D, m.key, m.species);
-  const bloom = m.species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
-  let size = sat((f.d - c.rank) / 0.36);
-  if (bloom > 0) size = Math.max(size, bloom);
-  return size;
+  return cloudSizeAt(foliageOf(D, m.key, m.species).d, m.species === 'cerisier' ? bloomOf(D, 'cerisier') : 0, c.rank);
 }
 
 export type RueCloudItem = { c: RueCloud; rr: number; x: number; y: number; tones: Rgb[]; i: number };
@@ -444,8 +453,7 @@ export function rueCloudItems(m: RueTreeModel, D: Pick<FondMoment, 'doy'>, opts:
   const out: RueCloudItem[] = [];
   m.clouds.forEach((c, i) => {
     if (opts.mass !== undefined && c.mass !== opts.mass) return;
-    let size = sat((f.d - c.rank) / 0.36);
-    if (bloom > 0) size = Math.max(size, bloom);
+    const size = cloudSizeAt(f.d, bloom, c.rank);
     if (size <= 0) return;
     const y = sat(yel0 * 1.5 + c.rank * 0.5 + c.yel * 0.2 - 0.4);
     let tones = GREEN[sp].map((g, k) => mixRgb(g, AUTUMN[sp][k]!, y));
@@ -520,9 +528,8 @@ export function paintRueClouds(ctx: PaintCtx, m: RueTreeModel, D: Pick<FondMomen
     ctx.beginPath();
     for (const it of g) {
       if (it.rr < 1.6) continue;
-      const r = mulberry32(hashString('hi' + it.c.phase));
-      const a = -2.5 + r() * 1.4;
-      const dd = it.rr * (0.2 + r() * 0.4);
+      const a = it.c.hiA;
+      const dd = it.rr * it.c.hiD;
       const ex = it.x + Math.cos(a) * dd;
       const ey = it.y + Math.sin(a) * dd;
       ctx.moveTo(ex + 0.8, ey);
