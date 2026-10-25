@@ -38,7 +38,7 @@ Planches à valider :
 | 13 | Sans travail le lendemain, sortie tardive ⇒ lever tardif (rattrapage) | Règle |
 | 14 | **Droit du travail respecté** pour chaque actif et pour la nounou (voir la section suivante) | Règle |
 | 15 | Horaires coupés pour certains métiers (restauration) : 2 services et une coupure, avec retour à la maison ou non | Règle |
-| 16 | Congés selon le contrat : 35 h, 39 h + RTT, forfait jours, fonction publique, restauration (voir « Contrats et congés ») | Règle |
+| 16 | Congés selon le contrat : 35 h, 39 h + 11 RTT, forfait jours, fonction publique, restauration (voir « Contrats et congés ») | Règle |
 | 17 | Lumières : on n'allume que quand il fait sombre (avant le lever du soleil + 20 min, après le coucher − 20 min) | Proposition (maquette) |
 
 ## Droit du travail (Règle)
@@ -61,15 +61,15 @@ Bilan sur la semaine du 2 au 8 novembre :
 
 | Personne | Contrat | Semaine | Jour max | Amplitude max | Repos quotidien min | Repos hebdo | CP / RTT par an |
 |---|---|---|---|---|---|---|---|
-| Karim | 39 h + RTT | 31 h 12 (RTT vendredi) | 7 h 48 | 8 h 18 | 15 h 42 | 87 h 42 | 25 / 22 |
+| Karim | 39 h + 11 RTT | 39 h 00 | 7 h 48 | 8 h 18 | 15 h 42 | 63 h 42 | 25 / 11 |
 | Sophie | forfait jours | 40 h 35 | 8 h 55 | 9 h 55 | 14 h 05 | 63 h 25 | 25 / 11 |
 | Julie | forfait jours | 40 h 50 | 8 h 10 | 9 h 15 | 14 h 25 | 63 h 05 | 25 / 11 |
 | Marc | forfait jours | 40 h 25 | 8 h 05 | 9 h 35 | 14 h 15 | 62 h 40 | 25 / 11 |
-| Camille | 39 h + RTT | 31 h 42 (RTT lundi) | 8 h 18 | 9 h 08 | 14 h 32 | 86 h 47 | 25 / 22 |
+| Camille | 39 h + 11 RTT | 31 h 42 (RTT lundi) | 8 h 18 | 9 h 08 | 14 h 32 | 86 h 47 | 25 / 11 |
 | Yasmine | fonction publique | 30 h 00 (RTT vendredi) | 7 h 30 | 8 h 00 | 16 h 00 | 88 h 00 | 25 / 15 |
 | Samir | forfait jours | 38 h 45 | 7 h 45 | 9 h 15 | 14 h 25 | 63 h 20 | 25 / 11 |
 | Léo | 35 h | 28 h 00 (congé lundi) | 7 h 00 | 7 h 30 | 16 h 30 | 80 h 00 | 25 / 0 |
-| Manon | 39 h + RTT | 39 h 57 | 8 h 45 | 10 h 00 | 15 h 07 | 61 h 45 | 25 / 22 |
+| Manon | 39 h + 11 RTT | 39 h 57 | 8 h 45 | 10 h 00 | 15 h 07 | 61 h 45 | 25 / 11 |
 | Sarah | restauration (HCR) | 37 h 30 | 7 h 30 | 11 h 30 (coupé) | 12 h 30 | 60 h 30 | 25 / 0 |
 | Théo | forfait jours | 42 h 10 | 9 h 10 | 10 h 05 | 13 h 30 | 62 h 45 | 25 / 11 |
 | Hélène | fonction publique | en congé | — | — | — | — | 25 / 15 |
@@ -94,7 +94,7 @@ Chaque actif a un contrat (affiché sur sa ligne de travail). Ses congés sont t
 | Contrat | Travail effectif | CP (jours ouvrés) | RTT / an | Total ≈ semaines | Habitants |
 |---|---|---|---|---|---|
 | 35 h | 7 h / jour | 25 | 0 | 5 | Léo |
-| 39 h + RTT | 7 h 48 / jour | 25 | 22 | ≈ 9,5 | Karim, Camille, Manon |
+| 39 h + 11 RTT | 7 h 48 / jour (semaines à 39 h ; ≈ 11 jours par an ramenés à « 35 h » en RTT, souvent 1 jour isolé) | 25 | 11 | ≈ 7 | Karim, Camille, Manon |
 | Forfait jours (cadre) | 7 h 30 – 8 h 30 tiré, jours longs possibles | 25 | 11 | ≈ 7 | Sophie, Julie, Marc, Samir, Théo |
 | Fonction publique | 7 h 30 / jour | 25 | 15 | 8 | Yasmine, Hélène |
 | Restauration (HCR) | 7 h 30 en 2 services, mar. → sam. | 25 | 0 | 5 | Sarah |
@@ -109,7 +109,7 @@ Répartition :
 
 Visibles sur la semaine de novembre :
 - Camille : RTT le lundi 2, imposé (pont après la Toussaint) ; lever 8 h 30 en rattrapage. Le lundi 9 est aussi tiré en RTT, d'où sa sortie du dimanche soir ;
-- Yasmine et Karim : RTT tiré le vendredi 6. Ils déposent les enfants eux-mêmes ;
+- Yasmine : RTT tiré le vendredi 6. Elle dépose les enfants elle-même ;
 - Léo : congé payé tiré le lundi 2 ;
 - Hélène : en congé toute la semaine.
 
@@ -146,7 +146,7 @@ Visibles sur la semaine de novembre :
 ## Exemples imposés pour les planches (le reste est tiré)
 
 - **Chloé (étudiante)** : mardi soir en boîte, retour 4 h 00. Elle n'a pas cours le mercredi matin.
-- **Camille (jeune, 39 h + RTT)** :
+- **Camille (jeune, 39 h + 11 RTT)** :
   - RTT le lundi 2 ;
   - jeudi en boîte, retour 3 h 30. Elle se lève quand même à 6 h 53 vendredi : c'est la minorité qui dort peu ;
   - samedi en boîte, d'où un rattrapage le dimanche (lever 12 h 35) ;
@@ -160,7 +160,7 @@ Visibles sur la semaine de novembre :
 
 - **`households.ts`** : chaque `Member` reçoit un âge, un statut, un **contrat** et ses traits fixes tirés de la graine du foyer :
   - statuts : cadre, non-cadre, chômeur, retraité, étudiant, enfant ;
-  - contrats : 35 h, 39 h + RTT, forfait jours, fonction publique, HCR ;
+  - contrats : 35 h, 39 h + 11 RTT, forfait jours, fonction publique, HCR ;
   - traits : début du travail, travail effectif, pause, trajet, préparation, sommeil, coucher, `leveTot`, plan de congés de l'année (CP + RTT, par date), horaires coupés éventuels, emploi du temps de cours ou de collège ;
   - le foyer garde son type d'aujourd'hui, avec en plus un drapeau « nounou ».
 - **Une journée de travail = une liste de services** : `[[début, fin], …]`, avec une pause déjeuner ou une coupure entre eux. On garantit les limites légales dès la construction (`journee()`), puis on les vérifie (`verifierDroit()`). Ce contrôle mériterait un test vitest dans le produit.

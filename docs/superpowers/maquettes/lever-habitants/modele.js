@@ -67,7 +67,7 @@
   // Contrats : heures effectives par jour, jours de congés payés (ouvrés), RTT par an.
   const CONTRATS = {
     '35h': { lab: '35 h', eff: H(7), cp: 25, rtt: 0 },
-    '39h': { lab: '39 h + RTT', eff: 468, cp: 25, rtt: 22 },
+    '39h': { lab: '39 h + 11 RTT', eff: 468, cp: 25, rtt: 11 },
     forfait: { lab: 'forfait jours (cadre)', eff: null, cp: 25, rtt: 11 },
     fp: { lab: 'fonction publique', eff: H(7, 30), cp: 25, rtt: 15 },
     hcr: { lab: 'restauration (HCR)', eff: null, cp: 25, rtt: 0 },
@@ -180,7 +180,7 @@
 
   // Congés de l'année 2026 d'une personne : Map date ISO → 'CP' | 'RTT'. Congés payés : 25 jours ouvrés (5 semaines),
   // parents : 3 semaines l'été + Noël + 1 semaine de petites vacances ; sans enfant : 2-3 semaines l'été + 1 semaine l'hiver
-  // + jours épars ; fonction publique : + 15 RTT (≈ 8 semaines en tout) ; 39 h : 22 RTT ; forfait jours : 11 RTT.
+  // + jours épars ; fonction publique : + 15 RTT (≈ 8 semaines en tout) ; 39 h : 11 RTT ; forfait jours : 11 RTT.
   // Les RTT sont des jours isolés, surtout le vendredi ou le lundi (ponts, longs week-ends).
   function planConges(p) {
     const c = CONTRATS[p.contrat], rc = rngOf('conges', p.id), imp = IMPOSES.conges[p.id] || {};
