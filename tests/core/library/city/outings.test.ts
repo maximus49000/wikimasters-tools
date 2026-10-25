@@ -52,60 +52,88 @@ describe('profil de vie', () => {
 });
 
 describe('sorties du soir', () => {
-  it('jeunes : sorties plus fréquentes avant un jour libre (ratio ≥ 3)', () => {
-    const jeunes = samples.filter((s) => s.profile === 'jeune');
-    expect(jeunes.length).toBeGreaterThan(5000);
-    const free = rate(jeunes.filter((s) => s.free)), busy = rate(jeunes.filter((s) => !s.free));
-    expect(free).toBeGreaterThan(0.38);
-    expect(free).toBeLessThan(0.52);
-    expect(free / busy).toBeGreaterThanOrEqual(3);
+  const near = (v: number, target: number, tol: number): void => { expect(Math.abs(v - target)).toBeLessThanOrEqual(tol); };
+  const within = (list: Sample[], key: 'dep' | 'ret', lo: number, hi: number): void => { for (const s of list) { expect(s[key]).toBeGreaterThanOrEqual(lo); expect(s[key]).toBeLessThanOrEqual(hi); } };
+  const jeunes = samples.filter((s) => s.profile === 'jeune');
+
+  it('jeunes, lendemain libre : 45 % des soirs, 35 % en boîte (départ 22 h 30-23 h 30, retour 3 h 30-5 h), sinon bar (0 h 30-2 h)', () => {
+    const free = jeunes.filter((s) => s.free);
+    expect(free.length).toBeGreaterThan(2000);
+    near(rate(free), 0.45, 0.03);
+    const out = free.filter((s) => s.kind);
+    near(out.filter((s) => s.kind === 'boite').length / out.length, 0.35, 0.05);
+    expect(new Set(out.map((s) => s.kind))).toEqual(new Set(['bar', 'boite']));
+    within(out.filter((s) => s.kind === 'boite'), 'dep', 1350, 1410);
+    within(out.filter((s) => s.kind === 'boite'), 'ret', 1650, 1740);
+    within(out.filter((s) => s.kind === 'bar'), 'dep', 1170, 1260);
+    within(out.filter((s) => s.kind === 'bar'), 'ret', 1470, 1560);
+  });
+
+  it('jeunes, lendemain travaillé : bar 12 % (retour avant minuit) ; jeudi : boîte 10 % de plus (retour 2 h 45-3 h 45)', () => {
+    const busy = jeunes.filter((s) => !s.free);
+    const other = busy.filter((s) => s.day.weekday !== 4), thursday = busy.filter((s) => s.day.weekday === 4);
+    expect(other.length).toBeGreaterThan(5000);
+    expect(thursday.length).toBeGreaterThan(1000);
+    near(rate(other), 0.12, 0.02);
+    expect(other.every((s) => s.kind === null || s.kind === 'bar')).toBe(true);
+    near(thursday.filter((s) => s.kind === 'bar').length / thursday.length, 0.12, 0.03);
+    near(thursday.filter((s) => s.kind === 'boite').length / thursday.length, 0.1, 0.03);
+    within(busy.filter((s) => s.kind === 'bar'), 'dep', 1170, 1230);
+    within(busy.filter((s) => s.kind === 'bar'), 'ret', 1365, 1440);
+    within(busy.filter((s) => s.kind === 'boite'), 'dep', 1350, 1395);
+    within(busy.filter((s) => s.kind === 'boite'), 'ret', 1605, 1665);
   });
 
   it('boîte seulement chez les jeunes, retour entre 2 h 45 et 5 h', () => {
     const clubs = samples.filter((s) => s.kind === 'boite');
-    expect(clubs.length).toBeGreaterThan(50);
-    for (const s of clubs) {
-      expect(s.profile).toBe('jeune');
-      expect(s.ret).toBeGreaterThanOrEqual(1605);
-      expect(s.ret).toBeLessThanOrEqual(1800);
-      expect(s.dep).toBeGreaterThanOrEqual(1350);
-      expect(s.dep).toBeLessThanOrEqual(1410);
-    }
-    // Le jeudi, lendemain travaillé : boîte rare mais présente.
-    expect(clubs.some((s) => s.day.weekday === 4 && !s.free)).toBe(true);
-    for (const s of samples.filter((x) => x.kind === 'bar' && x.profile === 'jeune' && !x.free)) expect(s.ret).toBeLessThanOrEqual(1440);
+    expect(clubs.length).toBeGreaterThan(500);
+    for (const s of clubs) expect(s.profile).toBe('jeune');
+    within(clubs, 'ret', 1605, 1800);
   });
 
-  it('adultes : plus de sorties avant un jour libre, retour avant 0 h 15', () => {
+  it('adultes : 25 % avant un jour libre (resto, bar, amis), 6 % sinon (resto)', () => {
     const adultes = samples.filter((s) => s.profile === 'adulte');
-    expect(rate(adultes.filter((s) => s.free))).toBeGreaterThan(0.18);
-    expect(rate(adultes.filter((s) => s.free))).toBeLessThan(0.32);
-    for (const s of adultes) if (s.kind) { expect(['resto', 'bar', 'amis']).toContain(s.kind); expect(s.ret).toBeLessThanOrEqual(1455); }
+    const free = adultes.filter((s) => s.free), busy = adultes.filter((s) => !s.free);
+    expect(free.length).toBeGreaterThan(1500);
+    expect(busy.length).toBeGreaterThan(4000);
+    near(rate(free), 0.25, 0.03);
+    near(rate(busy), 0.06, 0.02);
+    const out = free.filter((s) => s.kind);
+    expect(new Set(out.map((s) => s.kind))).toEqual(new Set(['resto', 'bar', 'amis']));
+    within(out, 'dep', 1185, 1215);
+    within(out, 'ret', 1380, 1455);
+    const late = busy.filter((s) => s.kind);
+    expect(late.every((s) => s.kind === 'resto')).toBe(true);
+    within(late, 'dep', 1185, 1215);
+    within(late, 'ret', 1350, 1410);
   });
 
-  it('seniors : retour ≤ 23 h, plus de sorties le samedi', () => {
+  it('seniors : samedi 30 %, vendredi 15 %, autres jours 6 %, départ 19 h 15-19 h 45, retour ≤ 23 h', () => {
     const seniors = samples.filter((s) => s.profile === 'senior');
-    expect(seniors.length).toBeGreaterThan(3000);
-    for (const s of seniors) if (s.kind) {
-      expect(s.ret).toBeLessThanOrEqual(1380);
-      expect(['resto', 'theatre', 'amis']).toContain(s.kind);
-      expect(s.dep).toBeGreaterThanOrEqual(1155);
-      expect(s.dep).toBeLessThanOrEqual(1185);
-    }
-    const sat = rate(seniors.filter((s) => s.day.weekday === 6)), other = rate(seniors.filter((s) => s.day.weekday >= 1 && s.day.weekday <= 4));
-    expect(sat).toBeGreaterThan(other * 2.5);
-    expect(rate(seniors.filter((s) => s.day.weekday === 5))).toBeGreaterThan(other);
+    const outs = seniors.filter((s) => s.kind);
+    within(outs, 'dep', 1155, 1185);
+    within(outs, 'ret', 1320, 1380);
+    expect(outs.every((s) => ['resto', 'theatre', 'amis'].includes(s.kind!))).toBe(true);
+    expect(outs.some((s) => s.kind === 'theatre')).toBe(true);
+    const on = (days: number[]) => seniors.filter((s) => days.includes(s.day.weekday));
+    expect(on([6]).length).toBeGreaterThan(700);
+    near(rate(on([6])), 0.3, 0.03);
+    near(rate(on([5])), 0.15, 0.03);
+    near(rate(on([0, 1, 2, 3, 4])), 0.06, 0.03);
   });
 
-  it('familles sans nounou : aucune sortie du soir ; avec nounou : le samedi seulement, en resto', () => {
+  it('familles : jamais sans nounou ; avec nounou, samedi 15 % seulement, en resto (départ 19 h 45-20 h 15, retour 23 h-0 h)', () => {
     const fam = samples.filter((s) => s.profile === 'famille');
-    expect(fam.some((s) => s.nanny)).toBe(true);
-    expect(fam.some((s) => !s.nanny)).toBe(true);
-    for (const s of fam) {
-      if (!s.nanny) expect(s.kind).toBeNull();
-      if (s.kind) { expect(s.day.weekday).toBe(6); expect(s.kind).toBe('resto'); }
-    }
-    expect(fam.filter((s) => s.kind).length).toBeGreaterThan(0);
+    for (const s of fam) if (!s.nanny) expect(s.kind).toBeNull();
+    const nanny = fam.filter((s) => s.nanny);
+    for (const s of nanny) if (s.day.weekday !== 6) expect(s.kind).toBeNull();
+    const sat = nanny.filter((s) => s.day.weekday === 6);
+    expect(sat.length).toBeGreaterThan(1000);
+    near(rate(sat), 0.15, 0.025);
+    const outs = sat.filter((s) => s.kind);
+    expect(outs.every((s) => s.kind === 'resto')).toBe(true);
+    within(outs, 'dep', 1185, 1215);
+    within(outs, 'ret', 1380, 1440);
   });
 
   it('déterministe : même foyer, même jour, même sortie', () => {
@@ -188,6 +216,33 @@ describe('sorties de jour', () => {
     expect(retMorning / retN).toBeGreaterThan(0.5);
     expect(retMorning / retN).toBeLessThan(0.75);
     for (const d of dwellings) d.hh.members.forEach((x, m) => { if (x.who.status === 'enfant') expect(dayErrands(d.hh, m, YEAR[5]!, 450, [], null)).toEqual([]); });
+  });
+
+  it('dayErrands : une fréquence par cas (retraité, chômeur, jour de congé, jour ordinaire), matin et après-midi', () => {
+    const cases: Record<string, { n: number; am: number; pm: number }> = {};
+    const bump = (k: string, blocks: Block[]): void => {
+      const c = (cases[k] ??= { n: 0, am: 0, pm: 0 });
+      c.n++;
+      if (blocks.some((b) => b.a < 780)) c.am++;
+      if (blocks.some((b) => b.a >= 840)) c.pm++;
+    };
+    for (const { d, m, status } of adults) {
+      if (d.hh.members.some((x) => x.who.status === 'enfant')) continue;
+      for (const day of YEAR) {
+        const duty = dutyOf(d.hh, m, day);
+        if (duty?.kind === 'work' || duty?.kind === 'sick') continue;
+        const off = day.weekday === 0 || day.weekday === 6 || !!day.publicHoliday || duty?.kind === 'leave';
+        const key = status === 'retraite' ? 'retraite' : off ? 'conge' : status === 'chomeur' ? 'chomeur' : 'ordinaire';
+        bump(key, dayErrands(d.hh, m, day, 450, [], null));
+      }
+    }
+    const want: Record<string, [number, number]> = { retraite: [0.65, 0.5], chomeur: [0.35, 0.4], conge: [0.55, 0.5], ordinaire: [0.2, 0.25] };
+    for (const [k, [am, pm]] of Object.entries(want)) {
+      const c = cases[k]!;
+      expect(c.n).toBeGreaterThan(1500);
+      expect(Math.abs(c.am / c.n - am)).toBeLessThanOrEqual(0.03);
+      expect(Math.abs(c.pm / c.n - pm)).toBeLessThanOrEqual(0.03);
+    }
   });
 
   it("familyErrands : seulement un jour libre sans école, parc tous ensemble ≈ 70 %, courses d'un adulte ≈ 60 %", () => {
