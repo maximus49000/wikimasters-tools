@@ -17,6 +17,10 @@ import type { SceneDay } from './scene-day';
 // - Dîner : arrivée dîner − 12 (+ 3 par invité supplémentaire), départ 45–90 min après la fin du dîner, avant le coucher de
 //   l'hôte − 8 (montée comprise) ; seulement si `guests` (tirage du jour) et si un hôte est présent. 1 ou 2 invités.
 // - Ami / famille / livreur / vendeur / commercial : un tirage de moment ; si aucun hôte n'est là, la visite est annulée.
+// - Jour libre (amis) : week-end, férié, vacances scolaires (enfants à la maison, même en semaine) ; livreurs et autres
+//   continuent de venir les jours ouvrés.
+// - Indices d'invités pour `roomTimeline` : members.length + rang de la visite parmi les visites non-nounou dans l'ordre de
+//   `dayVisits` ; la nounou y est `NANNY_M`.
 // - Un même visiteur n'a jamais deux visites qui se chevauchent le même jour.
 
 export type VisitKind = 'diner' | 'ami' | 'famille' | 'livreur' | 'vendeur' | 'commercial' | 'nounou';
@@ -105,7 +109,11 @@ export function dayVisits(d: Dwelling, hd: HouseholdDays, meals: HouseholdMeals,
   const hostFor = (a: number, b: number): number => hosts.find((m) => here(m, a, b)) ?? -1;
 
   const nanny: Visit[] = hd.nanny
-    ? hd.nanny.visits.map((v) => ({ visitor: hd.nanny!.visitor, kind: 'nounou', host: hosts[0] ?? 0, arrive: v.arrive, leave: v.leave, inside: true }))
+    ? hd.nanny.visits.map((v) => {
+      // Hôte de la nounou : un adulte (sinon un enfant) éveillé au logement à son arrivée.
+      const host = [...hosts, ...hd.people.map((_, m) => m)].find((m) => presentUntil(hd, m, v.arrive) > v.arrive) ?? hosts[0] ?? 0;
+      return { visitor: hd.nanny!.visitor, kind: 'nounou' as const, host, arrive: v.arrive, leave: v.leave, inside: true };
+    })
     : [];
   const kept: Visit[] = [...nanny];
   const busy = (v: Visitor, a: number, b: number): boolean => kept.some((t) => t.visitor.id === v.id && a < t.leave && b > t.arrive);
@@ -119,10 +127,15 @@ export function dayVisits(d: Dwelling, hd: HouseholdDays, meals: HouseholdMeals,
     for (let i = 0; i < nGuests; i++) {
       const visitor = pool[(firstGuest + i) % pool.length]!;
       const a = meals.dinner - V.dinnerEarly + V.dinnerStep * i;
-      const host = hosts.find((m) => presentUntil(hd, m, a) > a);
-      if (host === undefined) break;
-      const b = Math.min(meals.dinner + V.dinnerLen + stay, presentUntil(hd, host, a) - V.dinnerBedGap - climb);
-      if (b - a < V.minDinner || !here(host, a, b) || busy(visitor, a, b)) continue;
+      // Premier adulte pour qui la visite tient (présent, assez de temps avant son coucher ou sa sortie).
+      let host = -1, b = 0;
+      for (const m of hosts) {
+        const until = presentUntil(hd, m, a);
+        if (until <= a) continue;
+        b = Math.min(meals.dinner + V.dinnerLen + stay, until - V.dinnerBedGap - climb);
+        if (b - a >= V.minDinner && here(m, a, b)) { host = m; break; }
+      }
+      if (host < 0 || busy(visitor, a, b)) continue;
       const visit: Visit = { visitor, kind: 'diner', host, arrive: a, leave: b, inside: true };
       dinner.push(visit);
       kept.push(visit);
@@ -130,13 +143,13 @@ export function dayVisits(d: Dwelling, hd: HouseholdDays, meals: HouseholdMeals,
   }
 
   const workday = day.weekday >= 1 && day.weekday <= 5 && day.kind !== 'public-holiday';
-  const freeDay = day.weekend || day.kind === 'public-holiday' || day.kind === 'holiday';
+  const freeDay = day.weekend || day.kind === 'public-holiday' || day.kind === 'holiday' || day.schoolHoliday || day.holidayWeek;
   // Probabilité, moment, durée et choix du visiteur de chaque sorte (toujours consommés dans le même ordre).
-  const draw = (p: number, [lo, hi]: readonly [number, number], [dl, dh]: readonly [number, number]) =>
-    ({ yes: rng() < p, at: int5(rng, lo, hi), len: int5(rng, dl, dh), who: rng() });
+  const draw = (p: number, [lo, hi]: readonly [number, number], [dl, dh]: readonly [number, number], exact = false) =>
+    ({ yes: rng() < p, at: int5(rng, lo, hi), len: exact ? int(rng, dl, dh) : int5(rng, dl, dh), who: rng() });
   const ami = draw(V.pAmi, V.amiWindow, V.ami);
   const fam = draw(V.pFamille, V.familleWindow, V.famille);
-  const liv = draw(V.pLivreur, V.callerWindow, V.livreur);
+  const liv = draw(V.pLivreur, V.callerWindow, V.livreur, true);
   const ven = draw(V.pVendeur, V.callerWindow, V.shop);
   const com = draw(V.pCommercial, V.callerWindow, V.shop);
 

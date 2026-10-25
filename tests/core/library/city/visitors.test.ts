@@ -85,6 +85,8 @@ describe('visiteurs à identité stable', () => {
       expect(v.arrive).toBeGreaterThanOrEqual(540);
       expect(v.leave).toBeLessThanOrEqual(1140);
       expect(v.inside).toBe(false);
+      expect(v.leave - v.arrive).toBeGreaterThanOrEqual(2);
+      expect(v.leave - v.arrive).toBeLessThanOrEqual(4);
       if (r.seed === 1) expect(callers.has(v.visitor.id)).toBe(true);
     }
     expect(n).toBeGreaterThan(20);
@@ -106,7 +108,7 @@ describe('visiteurs à identité stable', () => {
       const mine = r.visits.filter((v) => v.kind === 'nounou');
       const nd = r.hd.nanny;
       expect(mine.map((v) => [v.arrive, v.leave])).toEqual(nd ? nd.visits.map((v) => [v.arrive, v.leave]) : []);
-      for (const v of mine) { expect(v.visitor).toBe(nd!.visitor); expect(v.inside).toBe(true); n++; }
+      for (const v of mine) { expect(present(r, v.host, v.arrive, v.arrive + 1)).toBe(true); expect(v.visitor).toBe(nd!.visitor); expect(v.inside).toBe(true); n++; }
       if (mine.length) expect(r.visits[0]!.kind).toBe('nounou');
     }
     expect(n).toBeGreaterThan(20);
