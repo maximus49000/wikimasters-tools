@@ -198,8 +198,8 @@ function basket(look: CelLook, life: LifeState): CelPart[] {
   P.push(part(merge([lathe(outer, 48, wall, { caps: false }), inward(lathe(inner, 48, wall, { caps: false }))]), T.warm, { crease: false }));
   // Boudin du bord : tube fermé qui suit le rebord échancré (couture derrière).
   const ring: Vec3[] = [];
-  for (let k = 0; k <= 50; k++) {
-    const a = -Math.PI / 2 + (2 * Math.PI * k) / 48;
+  for (let k = 0; k <= 74; k++) {
+    const a = -Math.PI / 2 + (2 * Math.PI * k) / 72;
     ring.push([Math.cos(a) * 28.7, rimH(a), Math.sin(a) * 28.7 * OVAL]);
   }
   P.push(part(tube(ring, 2.3, 10), T.warmDark, { crease: false }));
@@ -230,7 +230,9 @@ function kennel(look: CelLook): CelPart[] {
   const P: CelPart[] = [];
   P.push(part(place(superEll(32.5, 1.7, 42.5, 0.3, 0.3, 6, 28), { t: [0, 1.7, 0] }), T.woodDark)); // socle 0..3,4
   // Corps : section maison (sens trigonométrique vu de face), coins arrondis en plan (x réduit près des bouts en z).
-  const round = (p: number, zmax: number): Deform => (x, y, z) => [x * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(z) / zmax, p)), 1 / p), y, z];
+  // `x0` : abscisse fixe de l'arrondi (0 = le centre ; pour une dalle de toit, le faîte : ses coins de gouttière s'arrondissent, le
+  // faîte reste bord à bord sur toute la longueur).
+  const round = (p: number, zmax: number, x0 = 0): Deform => (x, y, z) => [x0 + (x - x0) * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(z) / zmax, p)), 1 / p), y, z];
   const section: [number, number][] = [[-KEN_HALF_W, 2.5], [KEN_HALF_W, 2.5], [KEN_HALF_W, KEN_EAVE_Y], [0, KEN_RIDGE_Y], [-KEN_HALF_W, KEN_EAVE_Y]];
   P.push(part(prism(section, slices(KEN_HALF_D, 9), round(7, KEN_HALF_D + 2.5)), T.wood, { creaseThr: 0.8 }));
   // Quatre poteaux d'angle ronds (ossature de la niche) : de face, leur moitié droite est à l'ombre.
@@ -251,21 +253,25 @@ function kennel(look: CelLook): CelPart[] {
   frame.push([12.4, 3, zf]);
   P.push(part(tube(frame, 1.3, 8), T.woodDark, { crease: false, noshadow: true }));
   P.push(part(place(superEll(6, 2.1, 0.7, 0.4, 0.3, 6, 16), { t: [0, 45, zf + 0.2] }), T.desk, { crease: false, noshadow: true }));
-  // Toit : deux dalles épaisses (section rectangulaire extrudée le long du faîte par `prism` : coins arrondis en plan aux seuls bouts,
-  // arête de faîte droite) posées sur les pignons, débordant de 6 cm aux gouttières et devant/derrière ; chaque dalle dépasse le faîte
-  // de `over` (les deux se croisent : pas d'encoche en V) ; faîtage en rondin enfoncé dans le croisement, bouts arrondis à fleur des
-  // façades du toit (de face : un petit embout rond au sommet du pignon, pas un poteau).
-  const slope = Math.atan2(KEN_RIDGE_Y - KEN_EAVE_Y, KEN_HALF_W), eaveX = 35, th = 2.8, halfD = 46, over = 1.4;
-  const eaveY = KEN_RIDGE_Y - eaveX * Math.tan(slope), L = Math.hypot(eaveX, KEN_RIDGE_Y - eaveY), Lp = L + over;
+  // Toit : deux dalles épaisses (section extrudée le long du faîte par `prism` : coins arrondis en plan aux seuls bouts, arête de
+  // faîte droite) posées sur les pignons, débordant de 6 cm aux gouttières et devant/derrière. Au faîte, chaque dalle est coupée
+  // D'APLOMB (coupe verticale, comme un chevron) : les deux coupes se rejoignent dans le plan x = 0, bord à bord, sans encoche ni
+  // lèvre ; l'arête du faîte est le trait d'encre entre les deux pièces. Pas de rondin de faîtage : essayé à deux hauteurs (tours 0 et
+  // 1), vu de face il se lisait comme un poteau au-dessus du pignon.
+  const slope = Math.atan2(KEN_RIDGE_Y - KEN_EAVE_Y, KEN_HALF_W), eaveX = 35, th = 2.8, halfD = 46;
+  const eaveY = KEN_RIDGE_Y - eaveX * Math.tan(slope), L = Math.hypot(eaveX, KEN_RIDGE_Y - eaveY);
   for (const sx of [-1, 1]) {
-    const plate = prism([[-Lp / 2, -th / 2], [Lp / 2, -th / 2], [Lp / 2, th / 2], [-Lp / 2, th / 2]], slices(halfD, 9), round(8, halfD + 2.5));
-    // rz = −sx·pente : l'axe local x monte vers le faîte ; la normale du dessus (nx, ny) penche vers la gouttière ; (ux, uy) monte le pan.
-    const nx = sx * Math.sin(slope), ny = Math.cos(slope), ux = -sx * Math.cos(slope), uy = Math.sin(slope);
-    const c: Vec3 = [(sx * eaveX) / 2 + nx * (th / 2) + (ux * over) / 2, (eaveY + KEN_RIDGE_Y) / 2 + ny * (th / 2) + (uy * over) / 2, 0];
+    // Repère local de la dalle : x le long de la pente, y = épaisseur ; avec rz = −sx·pente, le faîte est du côté local +x pour le pan
+    // gauche et −x pour le pan droit (r). Coupe d'aplomb au faîte : le coin haut est décalé de th·tan(pente) le long de la pente, vers
+    // l'autre pan (la verticale du monde vaut (±sin, cos) dans ce repère).
+    const r = -sx, e = th * Math.tan(slope) + 0.15; // + 0,15 : les deux coupes se chevauchent d'un rien (aucun jour au faîte)
+    const section: [number, number][] = [[-L / 2, -th / 2], [L / 2, -th / 2], [L / 2 + (r > 0 ? e : 0), th / 2], [-L / 2 - (r < 0 ? e : 0), th / 2]];
+    const plate = prism(section, slices(halfD, 9), round(8, halfD + 2.5, (r * L) / 2));
+    // rz = −sx·pente : l'axe local x monte vers le faîte ; la normale du dessus (nx, ny) penche vers la gouttière.
+    const nx = sx * Math.sin(slope), ny = Math.cos(slope);
+    const c: Vec3 = [(sx * eaveX) / 2 + nx * (th / 2), (eaveY + KEN_RIDGE_Y) / 2 + ny * (th / 2), 0];
     P.push(part(place(plate, { rz: -sx * slope, t: c }), T.door, { creaseThr: 0.8 }));
   }
-  const ridgeTop = KEN_RIDGE_Y + over * Math.sin(slope) + th * Math.cos(slope); // sommet des lèvres du croisement (74,3)
-  P.push(part(place(lathe([[0, -46.2], [1.6, -45.6], [2.2, -44.4], [2.2, 44.4], [1.6, 45.6], [0, 46.2]], 14), { rx: Math.PI / 2, t: [0, ridgeTop - 2, 0] }), T.woodDark, { crease: false }));
   return P;
 }
 

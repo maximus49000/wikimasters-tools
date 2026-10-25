@@ -119,15 +119,21 @@ describe('lampes et coin des animaux en cellulo', () => {
     for (const v of low) expect(topAt([plate], v[0], v[2]), `sommet (${v[0].toFixed(1)}, ${v[2].toFixed(1)})`).toBeGreaterThanOrEqual(v[1] - 0.8);
   });
 
-  it('niche : le faîtage reste à fleur des pans du toit, pas plus haut qu’eux, sous le plafond de la boîte', () => {
+  it('niche : les deux pans se rejoignent au faîte bord à bord (aucun jour, rien au-dessus des pans)', () => {
     const parts = celPartsOf('kennel', look, REST_LIFE);
-    const top = Math.max(...parts.flatMap((P) => P.m.v.map((v) => v[1])));
-    const ridge = parts.find((P) => P.m.v.every((v) => v[1] > 70))!; // la seule pièce entièrement au-dessus des murs
-    const roof = parts.filter((P) => P !== ridge && P.m.v.some((v) => v[1] > 60));
-    const zMaxRoof = Math.max(...roof.flatMap((P) => P.m.v.map((v) => Math.abs(v[2]))));
-    expect(Math.max(...ridge.m.v.map((v) => Math.abs(v[2])))).toBeLessThanOrEqual(zMaxRoof + 0.5); // à fleur des façades du toit
-    expect(Math.max(...ridge.m.v.map((v) => v[1]))).toBeLessThanOrEqual(Math.max(...roof.flatMap((P) => P.m.v.map((v) => v[1]))) + 0.5); // pas de poteau au-dessus du toit
-    expect(top).toBeLessThanOrEqual(FURNITURE_MODELS.kennel.h + 2);
+    const roof = parts.filter((P) => P.m.v.every((v) => v[1] > 40) && P.m.v.some((v) => v[1] > 60)); // au-dessus des murs et jusqu'au faîte (pas la plaque)
+    expect(roof.length).toBe(2); // deux dalles, pas de rondin
+    // Le dessus du toit au faîte (x = 0) est continu sur toute la longueur : entre 74 et 75,5 (71,2 + 2,8 / cos(pente) = 74,8).
+    // (sondé à 0,3 cm de part et d'autre du plan de coupe : un point exactement sur une arête est un cas limite du test de triangle)
+    for (const z of [-40, -20, 0, 20, 40])
+      for (const x of [-0.3, 0.3]) {
+        const y = topAt(roof, x, z);
+        expect(y, `faîte à (${x}, ${z})`).toBeGreaterThan(74);
+        expect(y, `faîte à (${x}, ${z})`).toBeLessThan(75.5);
+      }
+    // Rien ne dépasse de part et d'autre du faîte (coupes d'aplomb qui se touchent) : à 1 cm du faîte, le toit est à peine plus bas.
+    for (const sx of [-1, 1]) expect(topAt(roof, 0.3 * sx, 0) - topAt(roof, sx, 0)).toBeLessThan(1);
+    expect(Math.max(...parts.flatMap((P) => P.m.v.map((v) => v[1])))).toBeLessThanOrEqual(FURNITURE_MODELS.kennel.h + 2);
   });
 
   it('panier : rebord échancré devant (le coussin se voit), haut derrière et sur les côtés', () => {
