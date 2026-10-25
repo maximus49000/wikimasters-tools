@@ -50,9 +50,8 @@ export type RueTreeModel = {
   cy: number;
   rx: number;
   ry: number;
-  // Boîte de tout ce que `paintRueSkeleton` et `paintRueClouds` peuvent toucher (ombre portée des nuages comprise), SANS le vent :
-  // `shiftX/Y` déplace un nuage jusqu'à 1,5 × le décalage (bouts), et les calques au vent translatent les nuages ; l'appelant
-  // ajoute lui-même la marge du vent.
+  // Boîte de tout ce que `paintRueSkeleton` et `paintRueClouds` peuvent toucher (ombre portée des nuages comprise), SANS le vent
+  // (calques de charpentière cisaillés par l'appelant, qui ajoute lui-même la marge du cisaillement).
   box: RueBox;
 };
 
@@ -331,7 +330,63 @@ function tubePath(ctx: PaintCtx, ax: RueAxis, dx = 0, shrink = 0): void {
 // Axes dessinés en traits dégressifs (demi-largeur de départ < 0,5 px) ; les autres sont des tubes encrés.
 export const isTwig = (ax: RueAxis): boolean => ax.w[0]! < 0.5;
 
-export type RueSkeletonOpts = { wet?: number; snow?: boolean };
+// Couche de la charpentière d'un axe (calques au vent : 6 au plus, la charpentière k ≥ 5 va dans la dernière).
+export const rueLayerOfMass = (mass: number): number => Math.min(5, mass);
+// Retrait du trou découpé dans le tronc pour le bois des calques de charpentière (≈ la moitié intérieure du trait du tronc).
+const SEAM = 0.7;
+// Polygone approché d'un tube (côté gauche, bout, côté droit à rebours), demi-largeur réduite de `shrink`.
+function tubePoly(ax: RueAxis, shrink: number): [number, number][] {
+  const { pts, w: ws } = ax;
+  const n = pts.length;
+  const L: [number, number][] = [];
+  const R: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)]!;
+    const b = pts[Math.min(n - 1, i + 1)]!;
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const nx = -(b[1] - a[1]) / l;
+    const ny = (b[0] - a[0]) / l;
+    const w = Math.max(0.12, ws[i]! - shrink);
+    L.push([pts[i]![0] + nx * w, pts[i]![1] + ny * w]);
+    R.push([pts[i]![0] - nx * w, pts[i]![1] - ny * w]);
+  }
+  // Bout arrondi (comme `tubePath`) : milieu de la courbe quadratique du bout ; pointe : le bout de l'axe.
+  const last = pts[n - 1]!;
+  const prev = pts[n - 2]!;
+  const tl = Math.hypot(last[0] - prev[0], last[1] - prev[1]) || 1;
+  const wl = Math.max(0.12, ws[n - 1]! - shrink);
+  const ctrl: [number, number] = [last[0] + ((last[0] - prev[0]) / tl) * wl * 1.2, last[1] + ((last[1] - prev[1]) / tl) * wl * 1.2];
+  const tip: [number, number] = ax.pointed ? ctrl : [0.25 * L[n - 1]![0] + 0.5 * ctrl[0] + 0.25 * R[n - 1]![0], 0.25 * L[n - 1]![1] + 0.5 * ctrl[1] + 0.25 * R[n - 1]![1]];
+  return [...L, tip, ...R.reverse()];
+}
+// Découpe « tout sauf l'intérieur de l'axe `ax` » (rétréci de `shrink`), intersectée avec la découpe courante : rectangle de la
+// boîte du modèle tracé dans le sens contraire du polygone de l'axe (règle non nulle : l'axe devient un trou).
+function clipOutside(ctx: PaintCtx, m: RueTreeModel, ax: RueAxis, shrink: number): void {
+  const poly = tubePoly(ax, shrink);
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [x0, y0] = poly[i]!;
+    const [x1, y1] = poly[(i + 1) % poly.length]!;
+    area += x0 * y1 - x1 * y0;
+  }
+  const { x0, y0, x1, y1 } = m.box;
+  ctx.beginPath();
+  // Sens du rectangle : (x0,y0)→(x1,y0)→(x1,y1)→(x0,y1) a une aire signée positive (repère y vers le bas).
+  const rect: [number, number][] = area > 0 ? [[x0, y0], [x0, y1], [x1, y1], [x1, y0]] : [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  ctx.moveTo(rect[0]![0], rect[0]![1]);
+  for (let i = 1; i < 4; i++) ctx.lineTo(rect[i]![0], rect[i]![1]);
+  ctx.closePath();
+  ctx.moveTo(poly[0]![0], poly[0]![1]);
+  for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i]![0], poly[i]![1]);
+  ctx.closePath();
+  ctx.clip();
+}
+
+// `layer` : 'fixed' (tronc seul, niveau 1, avec son écorce et les nœuds des charpentières : couche fixe du calque), un numéro
+// de couche de charpentière (ses axes de niveau ≥ 2 : calque cisaillé au vent ; dessinés hors de l'intérieur du tronc, que le
+// calque fixe peint déjà, pour qu'aucun trait de la charpentière ne traverse le fût et que son bois recouvre le contour du
+// tronc à la jonction), ou rien (tout l'arbre, d'un seul tenant).
+export type RueSkeletonOpts = { wet?: number; snow?: boolean; layer?: 'fixed' | number };
 // Squelette complet (toujours, quelle que soit la date) : brindilles en traits dégressifs (2 w par segment, 0,25 px minimum)
 // sous les tubes, trait encré commun (1,3 px tronc et charpentières, 0,9 px branches), tubes pleins, flanc droit ombré (tubes
 // décalés de 0,55 w découpés dans le squelette vivant), écorce qui pèle (platane), crevasses (frêne), nœuds au départ des
@@ -339,13 +394,28 @@ export type RueSkeletonOpts = { wet?: number; snow?: boolean };
 // sur le dessus des tubes peu pentus (branches et rameaux, comme `paintBranches` de la colline).
 export function paintRueSkeleton(ctx: PaintCtx, m: RueTreeModel, opts: RueSkeletonOpts = {}): void {
   const wet = opts.wet ?? 0;
+  const sel = opts.layer;
   const bark0 = RUE_BARK_V5[m.species];
   const bark = wet ? mixRgb(bark0, hexRgb('#2A2420'), 0.35 * wet) : bark0;
-  const thick = m.axes.filter((a) => !isTwig(a));
-  const thin = m.axes.filter(isTwig);
+  const axes = sel === undefined ? m.axes : sel === 'fixed' ? m.axes.filter((a) => a.level === 1) : m.axes.filter((a) => a.level >= 2 && rueLayerOfMass(a.mass) === sel);
+  const withTrunk = sel === undefined || sel === 'fixed';
+  if (!axes.length) return;
+  const thick = axes.filter((a) => !isTwig(a));
+  const thin = axes.filter(isTwig);
   const live = thick.filter((a) => !a.dead);
   const dead = thick.filter((a) => a.dead);
   ctx.save();
+  // Bois de la couche hors de l'intérieur du tronc rétréci de SEAM : il recouvre la moitié intérieure du trait du tronc là où il
+  // en sort (comme dans l'arbre d'un seul tenant).
+  if (!withTrunk) clipOutside(ctx, m, m.axes[0]!, SEAM);
+  // Traits d'une couche de charpentière : jamais sur le bois plein du tronc ni des AUTRES charpentières (dans l'arbre d'un seul
+  // tenant, le trait encré commun passe sous tous les remplissages : aucune ligne dans le fût ni là où deux charpentières se
+  // croisent près de la fourche).
+  ctx.save();
+  if (!withTrunk) {
+    clipOutside(ctx, m, m.axes[0]!, 0);
+    for (const a of m.axes) if (a.level === 2 && !a.dead && !isTwig(a) && rueLayerOfMass(a.mass) !== sel) clipOutside(ctx, m, a, 0);
+  }
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   const twigTone = m.species === 'frene' ? TWIG_FRENE : TWIG;
@@ -377,6 +447,9 @@ export function paintRueSkeleton(ctx: PaintCtx, m: RueTreeModel, opts: RueSkelet
   ctx.beginPath();
   for (const a of thick) if (a.level < 3) tubePath(ctx, a);
   ctx.stroke();
+  ctx.restore();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
   ctx.fillStyle = rgba(bark, 1);
   ctx.beginPath();
   for (const a of live) tubePath(ctx, a);
@@ -395,35 +468,37 @@ export function paintRueSkeleton(ctx: PaintCtx, m: RueTreeModel, opts: RueSkelet
   ctx.beginPath();
   for (const a of live) tubePath(ctx, a, 0.55, 0.1);
   ctx.fill();
-  const tr = m.axes[0]!;
-  if (m.species === 'platane') {
-    ctx.fillStyle = rgba(pale(bark, 0.5), 1);
-    const r = mulberry32(hashString('ecorce' + m.key));
-    for (let i = 0; i < 9; i++) {
-      const t = 0.1 + r() * 0.85;
-      const k = Math.floor(t * (tr.pts.length - 1));
-      const [x, y] = tr.pts[k]!;
-      ctx.fillRect(x - tr.w[k]! * 0.8 + r() * tr.w[k]! * 1.3, y - 2 + r() * 3, 1, 1.5 + r());
+  if (withTrunk) {
+    const tr = m.axes[0]!;
+    if (m.species === 'platane') {
+      ctx.fillStyle = rgba(pale(bark, 0.5), 1);
+      const r = mulberry32(hashString('ecorce' + m.key));
+      for (let i = 0; i < 9; i++) {
+        const t = 0.1 + r() * 0.85;
+        const k = Math.floor(t * (tr.pts.length - 1));
+        const [x, y] = tr.pts[k]!;
+        ctx.fillRect(x - tr.w[k]! * 0.8 + r() * tr.w[k]! * 1.3, y - 2 + r() * 3, 1, 1.5 + r());
+      }
     }
-  }
-  if (m.species === 'frene') {
-    ctx.strokeStyle = 'rgba(42,34,56,0.35)';
-    ctx.lineWidth = 0.35;
-    ctx.beginPath();
-    for (const k of [-0.45, 0, 0.45]) {
-      ctx.moveTo(tr.pts[0]![0] + k * tr.w[0]!, tr.pts[0]![1]);
-      for (let i = 1; i < tr.pts.length; i++) ctx.lineTo(tr.pts[i]![0] + k * tr.w[i]!, tr.pts[i]![1]);
-    }
-    ctx.stroke();
-  }
-  // Nœuds : petites ombres au départ des charpentières.
-  ctx.fillStyle = rgba(darken(bark, 0.3), 1);
-  for (const a of live)
-    if (a.level === 2) {
+    if (m.species === 'frene') {
+      ctx.strokeStyle = 'rgba(42,34,56,0.35)';
+      ctx.lineWidth = 0.35;
       ctx.beginPath();
-      ctx.arc(a.pts[0]![0], a.pts[0]![1] + 0.6, a.w[0]! * 0.5, 0, TAU);
-      ctx.fill();
+      for (const k of [-0.45, 0, 0.45]) {
+        ctx.moveTo(tr.pts[0]![0] + k * tr.w[0]!, tr.pts[0]![1]);
+        for (let i = 1; i < tr.pts.length; i++) ctx.lineTo(tr.pts[i]![0] + k * tr.w[i]!, tr.pts[i]![1]);
+      }
+      ctx.stroke();
     }
+    // Nœuds : petites ombres au départ des charpentières (sur le tronc : couche fixe).
+    ctx.fillStyle = rgba(darken(bark, 0.3), 1);
+    for (const a of m.axes)
+      if (a.level === 2 && !a.dead && !isTwig(a)) {
+        ctx.beginPath();
+        ctx.arc(a.pts[0]![0], a.pts[0]![1] + 0.6, a.w[0]! * 0.5, 0, TAU);
+        ctx.fill();
+      }
+  }
   ctx.restore();
   if (opts.snow) {
     ctx.strokeStyle = 'rgba(242,246,250,0.92)';
@@ -455,28 +530,25 @@ export function rueCloudSize(m: RueTreeModel, c: RueCloud, D: Pick<FondMoment, '
 }
 
 export type RueCloudItem = { c: RueCloud; rr: number; x: number; y: number; tones: Rgb[]; i: number };
-export type RueCloudOpts = { mass?: number; part?: 'leaves' | 'shadow'; wet?: number; shiftX?: number; shiftY?: number };
+export type RueCloudOpts = { mass?: number; part?: 'leaves' | 'shadow'; wet?: number };
 // Nuages visibles à la date `D` (taille > 0), avec leurs tons : vert de l'essence → automne par nuage (les bouts d'abord), rose
-// du cerisier en fleurs, assombris sous la pluie. `mass` : une seule charpentière (calque au vent) ; `shiftX/Y` : vent (les
-// bouts bougent plus que le cœur).
+// du cerisier en fleurs, assombris sous la pluie. `mass` : une seule couche de charpentière (`rueLayerOfMass`, calque au vent).
 export function rueCloudItems(m: RueTreeModel, D: Pick<FondMoment, 'doy'>, opts: RueCloudOpts = {}): RueCloudItem[] {
   const sp = m.species;
   const f = foliageOf(D, m.key, sp);
   const bloom = sp === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
   const yel0 = f.yel ?? 0;
   const wet = opts.wet ?? 0;
-  const sx = opts.shiftX ?? 0;
-  const sy = opts.shiftY ?? 0;
   const out: RueCloudItem[] = [];
   m.clouds.forEach((c, i) => {
-    if (opts.mass !== undefined && c.mass !== opts.mass) return;
+    if (opts.mass !== undefined && rueLayerOfMass(c.mass) !== opts.mass) return;
     const size = cloudSizeAt(f.d, bloom, c.rank);
     if (size <= 0) return;
     const y = sat(yel0 * 1.5 + c.rank * 0.5 + c.yel * 0.2 - 0.4);
     let tones = GREEN[sp].map((g, k) => mixRgb(g, AUTUMN[sp][k]!, y));
     if (bloom > 0) tones = PINK.map((p, k) => mixRgb(p, tones[k]!, 1 - bloom));
     if (wet) tones = tones.map((t) => mixRgb(t, hexRgb('#1A2A3A'), 0.28 * wet));
-    out.push({ c, rr: c.r * size, x: c.x + (sx ? sx * (0.5 + c.rank) : 0), y: c.y + (sy ? sy * (0.5 + c.rank) : 0), tones, i });
+    out.push({ c, rr: c.r * size, x: c.x, y: c.y, tones, i });
   });
   return out;
 }

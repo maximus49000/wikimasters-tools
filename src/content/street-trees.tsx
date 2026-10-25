@@ -33,8 +33,9 @@ import { useWallClockLoop } from './use-wallclock-loop';
 
 // Calque `arbres-rue` de la ville peinte (PR 3, notes de la maquette §3 c, §3 d) : les arbres des fosses de la rue, au vent.
 // Par fosse plantée, des couches cuites (rue-sprites.ts) : ombre du feuillage et couche fixe (squelette entier, lèvre de terre,
-// grille ou herbe du carré), jamais transformées, puis une image par charpentière (ses nuages de feuilles seuls, translatés au
-// vent d'au plus RUE_WIND_MAX px : les feuilles ne quittent jamais leur rameau), puis particules et oiseau. Le
+// grille ou herbe du carré), jamais transformées, puis une image par charpentière (son bois et ses nuages de feuilles, cisaillés
+// au vent autour du pied de la charpentière : la jonction avec le tronc ne bouge pas, les feuilles restent sur leur bois), puis
+// particules et oiseau. Le
 // tout est dessiné sur UNE toile 2D placée dans le <svg> par <foreignObject> (comme la pluie, rain-canvas.tsx), à la même
 // profondeur que l'ancien calque SVG : la boucle de l'horloge murale (15 images/s) redessine la toile seule, sans toucher au
 // SVG de la scène, et ne redessine rien quand l'image ne change pas (vent calme, aucune particule).
@@ -108,7 +109,7 @@ function idleSlot(): Promise<Slot> {
   });
 }
 
-// Emprise d'une couche dans le monde (unités) : chaque image est rognée à ses pixels peints (une grappe ne couvre qu'une petite
+// Emprise d'une couche dans le monde (unités) : chaque image est rognée à ses pixels peints (une charpentière ne couvre qu'une petite
 // part de la boîte de l'arbre ; mémoire décodée divisée d'autant sur Android). Jeu sans emprise (peintre des tests) : la
 // boîte entière de l'arbre.
 export type RueCrop = { x: number; y: number; w: number; h: number };
@@ -203,8 +204,8 @@ export const canvasRueSpritePainter: RueSpritePainter = async (job) => {
 type Tree = { v: RuePit; tr: RueTree; box: { x: number; y: number; w: number; h: number }; layers: RueLayerName[]; masses: number };
 
 // Une image de la boucle, en ordres de dessin dans le repère du monde (bancs d'essai et tests : `setRueFrameSinkForTests`).
-// `m` : matrice (a b c d e f) de la couche, comme l'ancien attribut `transform` ; `alpha` : fondu d'entrée de l'arbre × opacité
-// de la couche (rehauts).
+// `m` : matrice (a b c d e f) de la couche (1 0 c 1 e 0 : cisaillement des charpentières, identité sinon) ; `alpha` : fondu
+// d'entrée de l'arbre (les couches elles-mêmes sont opaques).
 export type RueDraw =
   | { op: 'layer'; tree: number; layer: RueLayerName; href: string; m: readonly number[]; alpha: number }
   | { op: 'part'; kind: RueParticleKind; x: number; y: number; rot: number; color: string; alpha: number }
@@ -260,7 +261,7 @@ function setId(s: RueSprites): number {
 //   couche : [0, arbre, rang de la couche, c, e, f, alpha] (matrice 1 0 c 1 e f) ;
 //   particule : [1, genre, x, y, rotation, couleur, alpha] ; oiseau : [2, x, y, en vol, battement, sens, 0] ;
 //   arbre : [3, arbre, numéro du jeu, fondu, 0, 0, 0] avant ses couches (une nouvelle cuisson change l'image) ; les couches
-//   portent leur seule opacité (rehauts), le fondu s'applique à l'arbre entier.
+//   portent une opacité de 1, le fondu s'applique à l'arbre entier.
 // Le même tampon sert de signature : une image identique à la précédente n'est pas redessinée.
 const STRIDE = 7;
 const KINDS: readonly RueParticleKind[] = ['feuille', 'petale', 'goutte', 'neige', 'graine'];
@@ -344,8 +345,9 @@ function fitCanvas(cv: HTMLCanvasElement, area: Area): number {
 }
 
 // Dessine une image de la boucle (efface tout, puis les enregistrements dans l'ordre : arbres, particules, oiseau).
-// Marge (unités) autour de la boîte d'un arbre sur la toile de travail du fondu (feuillage au vent).
-const FADE_PAD = 12;
+// Marge (unités) autour de la boîte d'un arbre sur la toile de travail du fondu : la boîte (`rueSpriteBox`) compte déjà le
+// cisaillement maximal du vent (`rueWindPad`) ; 2 unités pour le lissage.
+const FADE_PAD = 2;
 let scratch: HTMLCanvasElement | null = null;
 function paintFrame(main: CanvasRenderingContext2D, cv: HTMLCanvasElement, k: number, area: Area, F: readonly number[], trees: readonly Tree[], imgs: readonly (Partial<Record<RueLayerName, HTMLImageElement>> | undefined)[], sets: readonly (RueSprites | undefined)[]): void {
   main.setTransform(1, 0, 0, 1, 0, 0);
@@ -571,13 +573,14 @@ export function StreetTrees({ plan, moment, daylight, twilight, gloom, dim, minu
         let k = 0;
         for (let li = 0; li < tr.layers.length; li++) {
           const l = tr.layers[li]!;
+          let c = 0;
           let e = 0;
-          let g = 0;
           if (l[0] === 'c') {
             const mv = p.masses[k++];
-            if (mv) ((e = rnd(mv.dx)), (g = rnd(mv.dy)));
+            // Cisaillement autour du pied de la charpentière (e = −c·y0, arrondis ensemble : le pied reste au centième près).
+            if (mv) ((c = rnd(mv.c, 4)), (e = rnd(-c * mv.y0)));
           }
-          F.push(0, i, li, 0, e, g, 1);
+          F.push(0, i, li, c, e, 0, 1);
         }
       }
       imgs.length = trees.length;

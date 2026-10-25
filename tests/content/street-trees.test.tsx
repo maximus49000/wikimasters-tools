@@ -12,7 +12,7 @@ import { fondMoment } from '../../src/core/library/paint/fond-time';
 import { windOf } from '../../src/core/library/paint/fond-vent';
 import { IDENTITY, NIGHT } from '../../src/core/library/paint/grade';
 import type { RuePit } from '../../src/core/library/paint/rue-verte-plan';
-import { RUE_WIND_MAX, gradePixels, rueLayers, rueSpriteBox, rueTreeOf, rueTreePose, type RueTree } from '../../src/core/library/paint/rue-sprites';
+import { RUE_SHEAR_MAX, gradePixels, rueLayers, rueSpriteBox, rueTreeOf, rueTreePose, type RueTree } from '../../src/core/library/paint/rue-sprites';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const W = 1400;
@@ -113,7 +113,7 @@ describe('calque arbres-rue', () => {
     expect(jobs.some((j) => j.grade !== null)).toBe(true);
     expect(jobs.some((j) => j.grade === null)).toBe(true);
   });
-  it('au vent : les grappes bougent d\'une image à l\'autre, le fût jamais', async () => {
+  it('au vent : les charpentières se cisaillent d\'une image à l\'autre, le fût jamais', async () => {
     render(15 * 60, { still: false });
     await settle();
     const nodes = host.querySelectorAll('*').length;
@@ -255,11 +255,11 @@ describe('particules et oiseau des arbres', () => {
 describe('rueTreePose', () => {
   const v = pits.find((p) => !p.young)!;
   const tr = rueTreeOf(v);
-  it('calme : toutes les translations nulles', () => {
+  it('calme : aucun cisaillement', () => {
     const p = rueTreePose(v, tr, 1234.5, windOf({ cloud: 0, precip: 0, wind: 0, snow: false }, false), W);
-    expect(p.masses.every((g) => g.dx === 0 && g.dy === 0)).toBe(true);
+    expect(p.masses.every((g) => g.c === 0 && g.e === 0)).toBe(true);
   });
-  it('vent 0,8 : à écart au tronc égal, la charpentière haute bouge plus que la basse ; une pose par couche de feuillage', () => {
+  it('vent 0,8 : à écart au tronc égal, la charpentière haute bouge plus que la basse (au centre de son feuillage) ; une pose par couche', () => {
     if (tr.young) throw new Error('adulte attendu');
     const w = windOf({ cloud: 0, precip: 0, wind: 0.8, snow: false }, false);
     // Modèle réel, nuages regroupés en deux charpentières au même écart horizontal : 0 en haut du houppier, 1 en bas.
@@ -271,13 +271,14 @@ describe('rueTreePose', () => {
       const p = rueTreePose(v, mm, 1000 + t, w, W);
       expect(p.masses).toHaveLength(2);
       expect(Object.keys(p)).toEqual(['masses']);
-      sHi += Math.abs(p.masses[0]!.dx);
-      sLo += Math.abs(p.masses[1]!.dx);
+      const at = (k: number, y: number): number => Math.abs(p.masses[k]!.c * (y - p.masses[k]!.y0));
+      sHi += at(0, tr.m.cy - tr.m.ry * 0.8);
+      sLo += at(1, tr.m.cy + tr.m.ry * 0.8);
     }
     expect(sLo).toBeGreaterThan(0);
     expect(sHi).toBeGreaterThan(sLo);
   });
-  it('vent 0,8 sur les vrais arbres : chaque couche de feuillage bouge, jamais de plus de RUE_WIND_MAX px', () => {
+  it('vent 0,8 sur les vrais arbres : chaque couche de charpentière se cisaille, jamais plus que RUE_SHEAR_MAX, pied fixe', () => {
     const w = windOf({ cloud: 0, precip: 0, wind: 0.8, snow: false }, false);
     for (const pit of pits) {
       const t3 = rueTreeOf(pit);
@@ -285,8 +286,12 @@ describe('rueTreePose', () => {
       expect(p.masses).toHaveLength(rueLayers(t3).filter((l) => l[0] === 'c').length);
       // Sur 10 s (le vent local peut passer par zéro à un instant donné : ondes progressives).
       const poses = Array.from({ length: 10 }, (_, i) => rueTreePose(pit, t3, 1000 + i, w, W));
-      expect(poses.some((q) => q.masses.some((g) => Math.abs(g.dx) > 0.1)), `fosse ${pit.x}`).toBe(true);
-      for (const q of poses) for (const g of q.masses) expect(Math.hypot(g.dx, g.dy)).toBeLessThanOrEqual(RUE_WIND_MAX);
+      expect(poses.some((q) => q.masses.some((g) => Math.abs(g.c) > 0.005)), `fosse ${pit.x}`).toBe(true);
+      for (const q of poses)
+        for (const g of q.masses) {
+          expect(Math.abs(g.c)).toBeLessThanOrEqual(RUE_SHEAR_MAX);
+          expect(Math.abs(g.c * g.y0 + g.e)).toBeLessThan(1e-9);
+        }
     }
   });
 });

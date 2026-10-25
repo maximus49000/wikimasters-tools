@@ -7,18 +7,20 @@ import { STIFF, gustOf, gustPeriod, massAmp, windAt, type Gust, type Wind } from
 import type { Grade } from './grade';
 import { paintBranches, paintLeaves, treeModelOf, tuftState, type TreeModel } from './hill-trees';
 import type { PaintCtx } from './paint-ctx';
-import { paintRueClouds, paintRueSkeleton, rueCloudItems, rueTreeKey, rueTreeModelV5, type RueTreeModel } from './rue-trees';
+import { paintRueClouds, paintRueSkeleton, rueCloudItems, rueLayerOfMass, rueTreeKey, rueTreeModelV5, type RueTreeModel } from './rue-trees';
 import type { RuePit } from './rue-verte-plan';
 import { PIT, YOUNG_BARK, paintPitFront, paintTuteur, pitTopOf, rueWet } from './rue-verte-painter';
 
 // Sprites cuits des arbres de la rue (calque `arbres-rue`) : par fosse plantée, des couches peintes une fois par (date, pluie,
-// neige, étalonnage) : ombre portée du feuillage, couche FIXE (squelette entier + lèvre de terre + grille ou herbe du carré,
-// jamais transformée), puis une couche par charpentière (`mass`) qui ne contient QUE ses nuages de feuilles, translatée au vent.
-// Adultes : modèle V5 « squelette continu » (`rue-trees.ts`, maquette rue-arbres-naturels validée le 2026-10-24). Jeunes au
-// tuteur (1 place sur 10) : ancien modèle de la colline (`hill-trees`, 3 niveaux, 20 touffes) comme dans la maquette, avec le
-// collet de la maquette et toutes leurs branches dans la couche fixe (rien ne flotte). La pose de chaque image (`rueTreePose`)
-// est une fonction pure de (fosse, t, vent) : le calque ne fait qu'écrire des matrices à 15 Hz. Le sol (bordure, terre,
-// fleurs, flaque, ombre portée du fût) est dans les tranches.
+// neige, étalonnage) : ombre portée du feuillage, couche FIXE (tronc + lèvre de terre + grille ou herbe du carré, jamais
+// transformée), puis une couche par charpentière (`mass`) : son bois (niveaux ≥ 2) ET ses nuages de feuilles, cisaillée au vent
+// autour du pied de la charpentière (la jonction avec le tronc ne bouge pas, le haut part de plusieurs px ; les feuilles restent
+// sur leur bois puisqu'ils bougent ensemble). Adultes : modèle V5 « squelette continu » (`rue-trees.ts`, maquette
+// rue-arbres-naturels validée le 2026-10-24). Jeunes au tuteur (1 place sur 10) : ancien modèle de la colline (`hill-trees`,
+// 3 niveaux, 20 touffes) comme dans la maquette, avec le collet de la maquette et toutes leurs branches dans la couche fixe ;
+// leurs couches au vent ne portent que les touffes (cisaillées autour de la fourche : ≈ 1 px au plus sur un si petit arbre).
+// La pose de chaque image (`rueTreePose`) est une fonction pure de (fosse, t, vent) : le calque ne fait qu'écrire des matrices
+// à 15 Hz. Le sol (bordure, terre, fleurs, flaque, ombre portée du fût) est dans les tranches.
 
 export type RueLayerName = 'shadow' | 'trunk' | 'c0' | 'c1' | 'c2' | 'c3' | 'c4' | 'c5';
 
@@ -47,19 +49,24 @@ export function rueLayers(tr: RueTree): RueLayerName[] {
   return out;
 }
 
-// Déplacement maximal (px) du feuillage par rapport au bois sous le vent : les couches de feuillage sont translatées, le
-// squelette ne bouge pas ; au-delà d'1 px, un nuage de 1 à 3,5 px quitterait son rameau.
-export const RUE_WIND_MAX = 1;
+// Cisaillement maximal d'une couche de charpentière (px de déplacement horizontal par px de hauteur au-dessus de son pied) :
+// 0,12 → le haut d'une couronne de 40 à 60 px part de 5 à 7 px, comme les grappes d'avant (translation de b × amplitude).
+export const RUE_SHEAR_MAX = 0.12;
+// Déplacement horizontal maximal d'un point de l'arbre sous le vent (marge des boîtes) : cisaillement maximal × hauteur de la
+// boîte du modèle (borne large : aucun point n'est plus loin du pied de sa charpentière).
+export const rueWindPad = (tr: RueTree): number => RUE_SHEAR_MAX * (tr.m.box.y1 - tr.m.box.y0);
 
 // Boîte fixe des sprites d'une fosse (repère du monde) : boîte du modèle (tubes + nuages + ombre), carré de terre (lèvre,
-// grille, herbe : ± PIT.w / 2 + 0,8, du haut du carré à la bordure), plus la marge du vent (RUE_WIND_MAX) et 1 px.
+// grille, herbe : ± PIT.w / 2 + 0,8, du haut du carré à la bordure), 1 px, et sur les côtés la marge du vent (`rueWindPad`).
 export function rueSpriteBox(v: RuePit): { x: number; y: number; w: number; h: number } {
-  const { box: b } = rueTreeOf(v).m;
-  const pad = RUE_WIND_MAX + 1;
+  const tr = rueTreeOf(v);
+  const b = tr.m.box;
+  const pad = 1;
+  const wind = rueWindPad(tr);
   const half = PIT.w / 2 + 0.8;
-  const x0 = Math.min(b.x0, v.x - half) - pad;
+  const x0 = Math.min(b.x0, v.x - half) - pad - wind;
   const y0 = Math.min(b.y0, pitTopOf(v) - 0.8) - pad;
-  const x1 = Math.max(b.x1, v.x + half) + pad;
+  const x1 = Math.max(b.x1, v.x + half) + pad + wind;
   const y1 = Math.max(b.y1, pitTopOf(v) + PIT.h + 0.6) + pad;
   const x = Math.floor(x0);
   const y = Math.floor(y0);
@@ -101,9 +108,13 @@ export function paintRueLayer(ctx: PaintCtx, v: RuePit, layer: RueLayerName, D: 
     const m = tr.m;
     if (layer === 'shadow') paintRueClouds(ctx, m, D, { part: 'shadow' });
     else if (layer === 'trunk') {
-      paintRueSkeleton(ctx, m, { wet, snow: D.meteo.snow });
+      paintRueSkeleton(ctx, m, { wet, snow: D.meteo.snow, layer: 'fixed' });
       paintPitFront(ctx, v);
-    } else paintRueClouds(ctx, m, D, { mass: Number(layer.slice(1)), wet });
+    } else {
+      const k = Number(layer.slice(1));
+      paintRueSkeleton(ctx, m, { wet, snow: D.meteo.snow, layer: k });
+      paintRueClouds(ctx, m, D, { mass: k, wet });
+    }
     return;
   }
   const m = tr.m;
@@ -165,46 +176,56 @@ export function gradePixels(d: Uint8ClampedArray, g: Grade): void {
   }
 }
 
-// Amplitude d'une charpentière (px par unité de vent, comme `massAmp`) : plus forte pour les masses hautes et écartées du tronc.
-function massAmpV5(m: RueTreeModel, k: number): number {
-  const cl = m.clouds.filter((c) => Math.min(5, c.mass) === k);
-  if (!cl.length) return 1;
-  const mx = cl.reduce((a, c) => a + c.x, 0) / cl.length;
-  const my = cl.reduce((a, c) => a + c.y, 0) / cl.length;
-  return 0.8 + (1.2 * Math.abs(mx - m.foot.x)) / Math.max(1, m.rx) + (0.8 * (m.cy - my)) / Math.max(1, m.ry);
+// Géométrie d'une couche de charpentière : pied `y0` (point fixe du cisaillement : départ de la charpentière sur le tronc, le
+// plus bas si la couche en regroupe plusieurs ; jeune : la fourche), hauteur `h` de son feuillage au-dessus du pied (≥ 4 px) et
+// amplitude (px par unité de vent, comme `massAmp` : plus forte pour les masses hautes et écartées du tronc).
+type LayerGeo = { y0: number; h: number; amp: number };
+function layerGeoV5(m: RueTreeModel, k: number): LayerGeo {
+  const bases = m.axes.filter((a) => a.level === 2 && rueLayerOfMass(a.mass) === k).map((a) => a.pts[0]![1]);
+  const y0 = bases.length ? Math.max(...bases) : m.rootY;
+  const cl = m.clouds.filter((c) => rueLayerOfMass(c.mass) === k);
+  const ax = m.axes.filter((a) => a.level >= 2 && rueLayerOfMass(a.mass) === k).flatMap((a) => a.pts);
+  // Centre du feuillage (sinon, en hiver de la maquette sans nuage, du bois de la charpentière).
+  const pts: [number, number][] = cl.length ? cl.map((c) => [c.x, c.y]) : ax.length ? ax : [[m.cx, m.cy]];
+  const mx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const my = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  const amp = cl.length ? 0.8 + (1.2 * Math.abs(mx - m.foot.x)) / Math.max(1, m.rx) + (0.8 * (m.cy - my)) / Math.max(1, m.ry) : 1;
+  return { y0, h: Math.max(4, y0 - my), amp };
 }
-// Amplitudes des couches de feuillage (calculées une fois : la pose est lue à 15 Hz).
-const AMPS = new WeakMap<object, number[]>();
-const ampsOf = (tr: RueTree): number[] => {
-  let a = AMPS.get(tr.m);
-  if (!a) AMPS.set(tr.m, (a = Array.from({ length: rueMassCount(tr) }, (_, k) => (tr.young ? massAmp(tr.m, k) : massAmpV5(tr.m, k)))));
-  return a;
+function layerGeoYoung(m: TreeModel, k: number): LayerGeo {
+  const tf = m.tufts.filter((t) => t.cluster === k);
+  const my = tf.length ? tf.reduce((s, t) => s + t.y, 0) / tf.length : m.cy;
+  return { y0: m.rootY, h: Math.max(4, m.rootY - my), amp: massAmp(m, k) };
+}
+// Calculée une fois par arbre (la pose est lue à 15 Hz).
+const GEOS = new WeakMap<object, LayerGeo[]>();
+const geosOf = (tr: RueTree): LayerGeo[] => {
+  let g = GEOS.get(tr.m);
+  if (!g) GEOS.set(tr.m, (g = Array.from({ length: rueMassCount(tr) }, (_, k) => (tr.young ? layerGeoYoung(tr.m, k) : layerGeoV5(tr.m, k)))));
+  return g;
 };
 
-export type RueTreePose = { masses: { dx: number; dy: number }[] };
-// Gain du vent sur le feuillage : déplacement brut (b × amplitude × oscillation, ≈ 0 à 5) ramené à l'échelle de RUE_WIND_MAX,
-// puis saturé en douceur (tanh) : linéaire par vent faible, jamais plus de RUE_WIND_MAX px du bois.
-const WIND_GAIN = 0.35;
+// Pose d'une couche de charpentière : matrice (1 0 c 1 e 0) avec e = −c·y0 (cisaillement autour du pied : x' = x + c (y − y0)).
+export type RueLayerPose = { c: number; e: number; y0: number };
+export type RueTreePose = { masses: RueLayerPose[] };
 
 // Pose d'un arbre à l'instant `t` (s) sous le vent `w` : `b` = vent local × raideur (jeune 1,8, × 1,25 sous la pluie, × 1,3 par
-// orage) ; chaque couche de feuillage : translation b × amplitude × oscillation propre (deux sinus déphasés par arbre et par
-// couche) et légère remontée, saturée à RUE_WIND_MAX px. La couche fixe (squelette, carré) n'a pas de pose. Vent calme (ou
-// mouvement réduit, vent nul passé par l'appelant) : pose nulle. `width` : largeur de la scène (départ des rafales).
+// orage) ; chaque couche de charpentière : déplacement voulu au centre de son feuillage b × amplitude × oscillation propre
+// (deux sinus déphasés par arbre et par couche, comme les grappes d'avant), obtenu par un cisaillement autour du pied de la
+// charpentière, borné à RUE_SHEAR_MAX. La couche fixe (tronc, carré) n'a pas de pose. Vent calme (ou mouvement réduit, vent nul
+// passé par l'appelant) : pose nulle. `width` : largeur de la scène (départ des rafales).
 export function rueTreePose(v: RuePit, tr: RueTree, t: number, w: Wind, width = 1440): RueTreePose {
-  const amps = ampsOf(tr);
-  const n = amps.length;
+  const geos = geosOf(tr);
   const wind = windAt(v.x, t, w, width);
-  if (wind === 0) return { masses: Array.from({ length: n }, () => ({ dx: 0, dy: 0 })) };
+  if (wind === 0) return { masses: geos.map((g) => ({ c: 0, e: 0, y0: g.y0 })) };
   const stiff = (v.young ? 1.8 : STIFF[v.species] || 1) * (1 + 0.25 * (w.wet || 0)) * (w.storm ? 1.3 : 1);
   const b = wind * stiff;
-  const masses = Array.from({ length: n }, (_, k) => {
+  const masses = geos.map((g, k) => {
     const ph = v.x * 0.37 + k * 1.9;
     const osc = 0.7 + 0.3 * Math.sin(t * (2.6 + k * 0.7) + ph) + 0.15 * Math.sin(t * 7.3 + ph * 2);
-    const dx = b * amps[k]! * osc * WIND_GAIN;
-    const dy = -Math.abs(b) * 0.25 * (0.5 + 0.5 * Math.sin(t * 3.1 + ph)) * WIND_GAIN;
-    const h = Math.hypot(dx, dy);
-    const s = h > 0 ? (RUE_WIND_MAX * Math.tanh(h / RUE_WIND_MAX)) / h : 0;
-    return { dx: dx * s, dy: dy * s };
+    const dx = b * g.amp * osc;
+    const c = Math.max(-RUE_SHEAR_MAX, Math.min(RUE_SHEAR_MAX, -dx / g.h));
+    return { c, e: -c * g.y0 || 0, y0: g.y0 };
   });
   return { masses };
 }
@@ -512,7 +533,7 @@ export function rueBird(items: readonly RuePit[], D: FondMoment, t: number, widt
   const rk = rngOf(`oiseau-${band}-${k}`);
   const trees = adults.filter((p) => Math.floor(p.x / 480) === band);
   const v = trees[Math.floor(rk() * trees.length)]!;
-  if (foliageOf(D, 'rue' + Math.round(v.x), v.species).d < 0.3) return null;
+  if (foliageOf(D, rueTreeKey(v), v.species).d < 0.3) return null;
   const { m } = rueTreeOf(v);
   const t0 = k * BIRD_CYCLE + rk() * 40;
   let perch = 20 + rk() * 20;
