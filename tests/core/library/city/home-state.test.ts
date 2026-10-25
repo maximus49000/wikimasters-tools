@@ -183,9 +183,9 @@ describe('état d\'un logement à la minute', () => {
     expect(st.curt).toEqual({ cuisine: 0, chambre: 0, salon: 1 });
   });
 
-  // Depuis les journées de chacun (tâche 10), une pièce n'est allumée que si quelqu'un y est : la part allumée suit la
-  // forme de la courbe horaire (soirée haute, nuit noire) sans la dépasser (une famille à 21 h n'allume que le salon).
-  it('part allumée : forme de la courbe horaire, jamais au-dessus', () => {
+  // Depuis les journées de chacun (tâche 10), une pièce n'est allumée que si quelqu'un est au logement : la part allumée suit la
+  // forme de la courbe horaire (soirée haute, nuit noire), proche d'elle (on n'éteint pas toujours derrière soi).
+  it('part allumée : forme de la courbe horaire, guère au-dessus', () => {
     const day = { weekday: 2, kind: 'school' as const };
     const rows: string[] = [];
     const share: Record<number, number> = {};
@@ -196,14 +196,14 @@ describe('état d\'un logement à la minute', () => {
         const items = dwellingsOf(seed).map((d) => ({ d, today: scheduleOf(d, TUESDAY, seed), yesterday: scheduleOf(d, addDays(TUESDAY, -1), seed) }));
         const s = litShare(items, m), want = windowsLitFraction(m, day);
         rows.push(`${h} h graine ${seed} : ${s.toFixed(3)} / ${want.toFixed(3)}`);
-        expect(s, rows.join('\n')).toBeLessThanOrEqual(want + 0.05);
+        expect(s, rows.join('\n')).toBeLessThanOrEqual(want + 0.1);
         sum += s;
       }
       share[h] = sum / 5;
     }
     const msg = rows.join('\n');
     expect(share[20]!, msg).toBeGreaterThan(0.5);
-    expect(share[21]!, msg).toBeGreaterThan(0.35);
+    expect(share[21]!, msg).toBeGreaterThan(0.55);
     expect(share[20]!, msg).toBeGreaterThan(share[8]!);
     expect(share[8]!, msg).toBeGreaterThan(share[7]!);
     expect(share[23]!, msg).toBeGreaterThan(share[1]!);

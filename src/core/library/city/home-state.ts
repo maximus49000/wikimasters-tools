@@ -7,7 +7,8 @@ import type { Choreo, LightTone, Schedule, SceneDecor, Segment, Where } from './
 // après minuit (un segment de la veille compte à `m + 1440`) et la position des volets, rideaux et fenêtres à 0 h
 // (continuité). La chorégraphie (pose, déplacement, accessoires) est calculée en aval à partir de `choreo`, `p` et `t`.
 // Les emplois du temps viennent des journées de chaque habitant (dwelling-day.ts) : une pièce n'est allumée que si
-// quelqu'un y est ; un retour de boîte après minuit est rendu dans l'emploi du temps du jour (chambre, 10 min).
+// quelqu'un est au logement (parfois laissée allumée derrière soi, schedules.ts) ; un retour de boîte après minuit est
+// rendu dans l'emploi du temps du jour (chambre, 10 min).
 
 // p : avancement dans la scène (0-1) ; t : minutes écoulées depuis son début ; culled : écartée par la borne (pose fixe à la
 // place du mouvement ; la lumière et les volets du logement ne changent pas).

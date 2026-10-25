@@ -1,4 +1,4 @@
-import { mulberry32 } from '../scene-world';
+import { hashString, mulberry32 } from '../scene-world';
 import { festivityStartsOn } from './calendar';
 import { DECOR_SCENE, type DecorTask, type HwKind } from './halloween';
 import { householdMeals, NANNY_M, roomTimeline, type HouseholdMeals, type RoomSpan } from './home-rooms';
@@ -14,7 +14,8 @@ import type { Visit } from './visitors';
 // habitant (`householdDays`) et des visites (`dayVisits`). Les segments ne sont plus composés par type de foyer : ils
 // viennent des pièces occupées par chacun (`roomTimeline`) :
 // - `lit` : union, par pièce, des pièces occupées (teinte du foyer ; télé au salon le soir ; fête en orange), plus la pièce
-//   d'une scène le temps de la scène ; une lumière ne s'allume que si quelqu'un est là ;
+//   d'une scène le temps de la scène ; une lumière ne s'allume que si quelqu'un est là, et
+//   reste parfois allumée derrière soi (BEHIND), jamais dans un logement vide ;
 // - `depart` / `return` : bornes des intervalles `out` de chaque membre (indice `m`), arrivée et départ des visites qui
 //   entrent (`visitIndices` : la nounou, `n` pour toutes ses visites, puis les autres `n + 1 + k`) ; une sortie rentrée après minuit est
 //   rendue le lendemain (retour de nuit) ;
@@ -78,6 +79,12 @@ const PARTY = [1290, 1578] as const;
 const CURTAINS = [1020, 1260] as const;
 // Durée du dîner (home-rooms.ts, `MEAL.dinnerLen`).
 const DINNER_LEN = 40;
+// On n'éteint pas derrière soi (décision du 2026-10-25) : sauf dans un foyer « économe » (30 %), une pièce servie le matin
+// reste allumée jusqu'au départ de qui s'en est servi (30 min s'il reste) ; le soir, une pièce servie après le retour reste
+// allumée une fois sur deux jusqu'au dernier coucher ; la chambre d'un enfant s'allume 30 min avant qu'il dorme (histoire).
+const BEHIND = { econome: 0.3, morningStay: 30, morningUntil: 720, morningMin: 120, eveningFrom: 1020, eveningP: 0.5, story: 30 } as const;
+// Foyer économe : il éteint en quittant une pièce (tiré une fois pour toutes, graine du foyer).
+export const econome = (d: Dwelling): boolean => mulberry32((d.hh.seed ^ hashString('econome')) >>> 0)() < BEHIND.econome;
 
 const pri = (tone: LightTone, base: LightTone): number => (tone === 'tv' ? 3 : tone === 'orange' && base !== 'orange' ? 2 : 1);
 
@@ -627,6 +634,50 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, v
     lit(s.room, s.a, s.b, evening ? (opt.tv ? 'tv' : 'warm') : base);
   }
   for (const g of S) if (g.k === 'act') lit(g.room, g.t0, g.t1);
+  // Lumières laissées derrière soi : toujours bornées aux moments où quelqu'un est au logement (jamais un logement vide
+  // allumé : tout le monde parti, tout s'éteint).
+  const home = mergeIv([...avail.values()].flat());
+  const behind = (room: Room, a: number, b: number) => {
+    for (const [x, y] of home) {
+      const p = Math.max(a, x), q = Math.min(b, y);
+      if (q > p) lit(room, p, q);
+    }
+  };
+  // Histoire du soir : la chambre de l'enfant allumée de son coucher − 30 min jusqu'à ce qu'il dorme, puis éteinte.
+  for (const m of ms) {
+    const s = isKid(m) ? bedtimeOf(m) : null;
+    if (s && s.a >= 900) behind(s.room, s.b - BEHIND.story, s.b);
+  }
+  if (!econome(d)) {
+    // Matin : du lever au départ (sinon jusqu'à midi, au moins 2 h), chaque pièce servie reste allumée jusqu'au départ de
+    // qui s'en est servi, ou 30 min après l'avoir quittée s'il reste.
+    for (const m of ms) {
+      const p = hd.people[m]!;
+      const dep = p.out.map(([a]) => a).filter((a) => a > p.wake).sort((x, y) => x - y)[0];
+      const until = dep ?? Math.max(BEHIND.morningUntil, p.wake + BEHIND.morningMin);
+      // Pièce : de sa première utilisation au départ (ou 30 min après sa dernière utilisation).
+      const used = new Map<Room, [number, number]>();
+      for (const s of spansOf.get(m) ?? []) {
+        if (s.what === 'night' || s.a >= until) continue;
+        const [a, b] = used.get(s.room) ?? [s.a, s.b];
+        used.set(s.room, [Math.min(a, s.a), Math.max(b, Math.min(s.b, until))]);
+      }
+      for (const [room, [a, b]] of used) behind(room, a, dep ?? b + BEHIND.morningStay);
+    }
+    // Soir : une pièce servie par un adulte après son retour (17 h s'il était là) reste allumée une fois sur deux jusqu'au
+    // dernier coucher (les extinctions du coucher suivent).
+    if (lastBed) {
+      const used = new Map<Room, number>();
+      for (const m of adults) {
+        const back = Math.max(BEHIND.eveningFrom, ...hd.people[m]!.out.filter(([, b]) => b > 840 && b <= 1440).map(([, b]) => b));
+        for (const s of spansOf.get(m) ?? []) if (s.b > back && s.what !== 'bedtime' && s.what !== 'night') used.set(s.room, Math.max(used.get(s.room) ?? 0, s.b));
+      }
+      for (const room of draw.offOrder) {
+        const t = used.get(room);
+        if (t !== undefined && r() < BEHIND.eveningP && lastBed.a > t) behind(room, t, lastBed.a);
+      }
+    }
+  }
   // Une seule par pièce à la fois (télé, puis fête, puis lumière du foyer ; à égalité, la plus récente).
   for (const room of new Set(lits.map((l) => l.room))) {
     // Balayage : les lumières en cours (`on`) entre deux coupures consécutives.

@@ -4,7 +4,7 @@ import { dwellingDay, type DwellingDay } from '../../../../src/core/library/city
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
 import { sceneDay } from '../../../../src/core/library/city/scene-day';
-import { occupiedRooms, visitIndices, type Segment } from '../../../../src/core/library/city/schedules';
+import { econome, occupiedRooms, visitIndices, type Segment } from '../../../../src/core/library/city/schedules';
 
 // Emplois du temps tirés des journées de chaque habitant (tâche 10) : mêmes logements que schedules.test.ts (villes de
 // 1440 px, graines 1 à 3), vacances de la Toussaint.
@@ -239,9 +239,28 @@ describe('emplois du temps depuis les journées de chacun', () => {
     expect(full(d, addDays(date, -1)).hd.iso).toBe('2026-10-13');
   });
 
-  it('par pièce : chaque minute allumée au plus 10 min après une présence ou une scène dans cette pièce', () => {
+  it('par pièce : une lumière seulement si la pièce a servi plus tôt à quelqu’un encore là (ou parti depuis moins de 10 min)', () => {
     let seen = 0;
     for (const d of ds) {
+      for (const date of [...WEEK, { y: 2026, m: 11, d: 17 }, { y: 2026, m: 12, d: 31 }]) {
+        const x = full(d, date);
+        const rooms = occupiedRooms(d, x.hd, x.meals, x.visits);
+        const here = (m: number, t: number) => rooms.some((s) => s.m === m && s.a <= t && t < s.b + 10);
+        for (const l of lits(x)) {
+          for (let t = l.t0 + 0.01; t < l.t1; t += 1) {
+            seen++;
+            const users = [...rooms.filter((s) => s.room === l.room && s.a <= t).map((s) => s.m), ...acts(x).filter((a) => a.room === l.room && a.t0 <= t).map((a) => a.m)];
+            expect(users.some((m) => here(m, t)), `${d.id} ${l.room} ${t.toFixed(1)} ${x.hd.iso}`).toBe(true);
+          }
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(10000);
+  });
+
+  it('foyer économe : chaque minute allumée au plus 10 min après une présence, une scène ou l’histoire du soir dans cette pièce', () => {
+    let seen = 0;
+    for (const d of ds.filter(econome)) {
       for (const date of [...WEEK, { y: 2026, m: 12, d: 31 }, { y: 2026, m: 7, d: 14 }]) {
         const x = full(d, date);
         const rooms = occupiedRooms(d, x.hd, x.meals, x.visits);
@@ -249,13 +268,60 @@ describe('emplois du temps depuis les journées de chacun', () => {
           const cover = [
             ...rooms.filter((s) => s.room === l.room).map((s): [number, number] => [s.a, s.b + 10]),
             ...acts(x).filter((a) => a.room === l.room).map((a): [number, number] => [a.t0, a.t1 + 10]),
+            ...rooms.filter((s) => s.room === l.room && s.what === 'bedtime' && d.hh.members[s.m]?.kid).map((s): [number, number] => [s.b - 30, s.b]),
           ];
           seen++;
           expect(longestGap(l.t0, l.t1, cover), `${d.id} ${l.room} ${l.t0.toFixed(1)}-${l.t1.toFixed(1)} ${x.hd.iso}`).toBeLessThanOrEqual(1e-6);
         }
       }
     }
-    expect(seen).toBeGreaterThan(1000);
+    expect(seen).toBeGreaterThan(200);
+  });
+
+  it('on n’éteint pas derrière soi : le matin, la cuisine du petit-déjeuner reste allumée jusqu’au départ (non économes)', () => {
+    let checked = 0, eco = 0, all = 0;
+    for (const d of ds) {
+      all++;
+      if (econome(d)) { eco++; continue; }
+      const K = d.rooms.includes('cuisine') ? 'cuisine' : 'salon';
+      for (const date of WEEK.slice(1, 5)) {
+        const x = full(d, date);
+        const rooms = occupiedRooms(d, x.hd, x.meals, x.visits);
+        x.hd.people.forEach((p, m) => {
+          const bf = rooms.find((s) => s.m === m && s.what === 'breakfast' && s.room === K);
+          const dep = p.out.map(([a]) => a).filter((a) => a > p.wake).sort((u, v) => u - v)[0];
+          if (!bf || dep === undefined || dep - bf.b < 5) return;
+          checked++;
+          const t = (bf.b + dep) / 2;
+          expect(lits(x).some((l) => l.room === K && l.t0 <= t && l.t1 > t), `${d.id}#${m} ${x.hd.iso}`).toBe(true);
+        });
+      }
+    }
+    expect(checked).toBeGreaterThan(50);
+    expect(eco / all).toBeGreaterThan(0.18);
+    expect(eco / all).toBeLessThan(0.42);
+  });
+
+  it('histoire du soir : la chambre de l’enfant allumée 30 min avant qu’il dorme, éteinte ensuite s’il n’y a plus personne', () => {
+    let kids = 0;
+    for (const d of ds.filter((x) => x.rooms.includes('chambre'))) {
+      for (const date of WEEK.slice(0, 4)) {
+        const x = full(d, date);
+        const rooms = occupiedRooms(d, x.hd, x.meals, x.visits);
+        d.hh.members.forEach((mem, m) => {
+          if (!mem.kid) return;
+          const p = x.hd.people[m]!;
+          if (x.hd.away.state !== 'home' || p.out.some(([a, b]) => a < p.bed && b > p.bed - 30)) return;
+          kids++;
+          expect(lits(x).some((l) => l.room === 'chambre' && l.t0 <= p.bed - 29 && l.t1 >= p.bed - 1), `${d.id}#${m} ${x.hd.iso}`).toBe(true);
+          // Après, la chambre ne reste allumée que si quelqu'un y est (ou vient de la quitter).
+          const after = p.bed + 11;
+          const busy = rooms.some((s) => s.room === 'chambre' && s.a <= after && s.b + 10 > after) || acts(x).some((a) => a.room === 'chambre' && a.t0 <= after && a.t1 + 10 > after);
+          if (!busy) expect(lits(x).some((l) => l.room === 'chambre' && l.t0 <= after && l.t1 > after)).toBe(false);
+        });
+      }
+    }
+    expect(kids).toBeGreaterThan(20);
   });
 
   it('fête : on ne danse qu\'au salon, jamais pendant son coucher', () => {
