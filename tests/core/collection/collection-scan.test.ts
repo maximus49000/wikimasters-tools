@@ -18,7 +18,7 @@ const dated = (...items: [string, number][]): CollectionPage => ({
 
 function setup(pages: (CollectionPage | Error)[], options: { maxPages?: number; now?: () => number } = {}) {
   const store = createMemoryStore();
-  const collection = createCollectionRepo(store);
+  const collection = createCollectionRepo(store, options.now ?? (() => 1_000_000));
   const getCollectionPage = vi.fn(async (index: number) => {
     const next = pages[index] ?? EMPTY;
     if (next instanceof Error) throw next;
@@ -50,7 +50,7 @@ describe('createCollectionScanner', () => {
 
   it('une reprise sans les nombres déjà comptés repart de la première page', async () => {
     const { scanner, store, getCollectionPage } = setup([page('A')]);
-    await store.set('collectionScan', { status: 'error', nextPage: 4, entries: 200, updatedAt: 1, version: 9, pass: 'full' });
+    await store.set('collectionScan', { status: 'error', nextPage: 4, entries: 200, updatedAt: 1, version: 10, pass: 'full' });
     await scanner.run();
     expect(getCollectionPage.mock.calls[0]?.[0]).toBe(0);
   });
@@ -270,14 +270,14 @@ describe('createCollectionScanner', () => {
 
     it('un parcours terminé sans date de parcours complet (ancien état) est refait', async () => {
       const { scanner, store, getCollectionPage } = setup([dated(['A', 1])]);
-      await store.set('collectionScan', { status: 'done', nextPage: 0, entries: 1, updatedAt: 1, version: 9, pass: 'full', lastObtainedAt: 1 });
+      await store.set('collectionScan', { status: 'done', nextPage: 0, entries: 1, updatedAt: 1, version: 10, pass: 'full', lastObtainedAt: 1 });
       await scanner.run();
       expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
     });
 
     it('une mise à jour incrémentale interrompue ne reprend pas comme un parcours complet', async () => {
       const { scanner, store, getCollectionPage } = setup([dated(['A', 1])], { now: () => 10_000_000 });
-      await store.set('collectionScan', { status: 'error', nextPage: 0, entries: 1, updatedAt: 1, version: 9, pass: 'incremental', lastObtainedAt: 1, fullAt: 1 });
+      await store.set('collectionScan', { status: 'error', nextPage: 0, entries: 1, updatedAt: 1, version: 10, pass: 'incremental', lastObtainedAt: 1, fullAt: 1 });
       await scanner.run();
       expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
     });
@@ -329,8 +329,8 @@ describe('createCollectionScanner', () => {
   });
 
   it('laisse un scan récent d’un autre onglet tranquille, mais reprend un scan périmé', async () => {
-    const fresh: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 10_000, version: 9, pass: 'full' };
-    const stale: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 120_000, version: 9, pass: 'full' };
+    const fresh: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 10_000, version: 10, pass: 'full' };
+    const stale: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt: 1_000_000 - 120_000, version: 10, pass: 'full' };
 
     const a = setup([]);
     await a.store.set('collectionScan', fresh);
@@ -361,6 +361,64 @@ describe('createCollectionScanner', () => {
     await forced;
     expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 0, 1]);
     await first;
+  });
+
+  it('une grande Collection (plus de 200 pages) va au bout et retire les cartes parties', async () => {
+    const { scanner, collection, getCollectionPage } = setup([]);
+    await collection.observe([{ slug: 'Vendue', title: 'Vendue', copies: 1 }], true);
+    getCollectionPage.mockImplementation(async (index: number) => (index < 300 ? page(`C${index}`) : EMPTY));
+    await scanner.run({ force: true });
+    expect(await scanner.state()).toMatchObject({ status: 'done' });
+    const slugs = (await collection.list()).map((c) => c.slug);
+    expect(slugs).toHaveLength(300);
+    expect(slugs).not.toContain('Vendue');
+  });
+
+  it('un parcours arrêté sur l’ancienne limite de 200 pages reprend à sa page et se termine', async () => {
+    const { scanner, store, collection, getCollectionPage } = setup([]);
+    await collection.observe([{ slug: 'Gardée', title: 'Gardée', copies: 1 }, { slug: 'Vendue', title: 'Vendue', copies: 1 }], true);
+    await store.set('collectionScan', { status: 'error', error: 'limite de pages atteinte', nextPage: 200, entries: 200, updatedAt: 1, version: 10, pass: 'full' });
+    await store.set('collectionScanCounts', { nextPage: 200, counts: { Gardée: 1 } });
+    getCollectionPage.mockImplementation(async (index: number) => (index === 0 ? EMPTY : index === 200 ? page('Neuve') : EMPTY));
+    await scanner.run();
+    expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 200, 201]);
+    expect(await scanner.state()).toMatchObject({ status: 'done' });
+    expect((await collection.list()).map((c) => c.slug).sort()).toEqual(['Gardée', 'Neuve']);
+  });
+
+  it('une carte partie pendant le parcours (liste décalée) le fait recommencer depuis le début', async () => {
+    let t = 1_000;
+    const { scanner, store, collection, getCollectionPage } = setup([], { now: () => (t += 1) });
+    await collection.observe(['A', 'B', 'C'].map((slug) => ({ slug, title: slug, copies: 1 })), true);
+    // Premier passage : A vendue après la page 0, la liste remonte d'un cran et B n'est jamais lue.
+    let firstPass = true;
+    getCollectionPage.mockImplementation(async (index: number) => {
+      if (firstPass) {
+        if (index === 0) {
+          await collection.adjustCopies({ A: -1 });
+          return page('A');
+        }
+        if (index === 1) return page('C');
+        firstPass = false;
+        return EMPTY;
+      }
+      return index === 0 ? page('B') : index === 1 ? page('C') : EMPTY;
+    });
+    await scanner.run({ force: true });
+    expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1, 2, 0, 1, 2]);
+    expect((await collection.list()).map((c) => c.slug).sort()).toEqual(['B', 'C']);
+    expect(await scanner.state()).toMatchObject({ status: 'done' });
+    expect(await store.get('collectionScanCounts')).toBeNull();
+  });
+
+  it('une carte partie avant le début du parcours ne le fait pas recommencer', async () => {
+    let t = 1_000;
+    const { scanner, collection, getCollectionPage } = setup([page('B')], { now: () => t });
+    await collection.observe([{ slug: 'A', title: 'A', copies: 1 }, { slug: 'B', title: 'B', copies: 1 }], true);
+    await collection.adjustCopies({ A: -1 });
+    t = 2_000;
+    await scanner.run({ force: true });
+    expect(getCollectionPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
   });
 
   it('s’arrête sur la limite de pages', async () => {
@@ -411,7 +469,7 @@ describe('createCollectionScanner', () => {
         now: () => clock,
         schedule: (fn, ms) => void scheduled.push({ fn, ms }),
       });
-      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt, version: 9, pass: 'full' };
+      const saved: ScanState = { status: 'running', nextPage: 4, entries: 200, updatedAt, version: 10, pass: 'full' };
       return { store, scanner, scheduled, getCollectionPage, saved, setClock: (t: number) => void (clock = t) };
     }
 

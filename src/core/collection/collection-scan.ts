@@ -1,7 +1,7 @@
 import type { CollectionPage } from '../api/collection-schemas';
 import type { KeyValueStore } from '../cache/store';
 import type { KnownCard } from './collection-book';
-import type { CollectionRepo } from './collection-repo';
+import { DEPARTED_KEY, type CollectionRepo } from './collection-repo';
 
 const KEY = 'collectionScan';
 // Exemplaires comptés par le parcours complet en cours : la Collection garde ses anciens nombres jusqu'à la fin du parcours.
@@ -9,7 +9,10 @@ const COUNTS_KEY = 'collectionScanCounts';
 // Un autre onglet qui a écrit son état il y a moins longtemps est considéré comme toujours en cours.
 export const LOCK_MS = 60_000;
 // À incrémenter quand le scan lit de nouveaux champs : un parcours terminé avant repart de zéro.
-const SCAN_VERSION = 9;
+// 10 : recomptage complet forcé une fois (parcours bloqués à 200 pages, nombres faussés par une carte partie en cours de route).
+const SCAN_VERSION = 10;
+// Une carte partie pendant un parcours complet le fait recommencer, au plus ce nombre de fois (ventes en rafale).
+const MAX_RESTARTS = 2;
 // La mise à jour incrémentale n'ajoute que les cartes récentes : une carte vendue ou échangée n'est jamais décomptée.
 // Les exemplaires sont donc recomptés sur toute la Collection au plus tard à cette échéance.
 export const FULL_REFRESH_MS = 3_600_000;
@@ -38,7 +41,8 @@ export type ScanState = {
 
 // `tail` : les lignes (carte + date d'obtention) de la dernière page comptée, pour reconnaître celles qu'un décalage de la liste fait relire.
 type DatedRow = { slug: string; at: number };
-type StagedCounts = { nextPage: number; counts: Record<string, number>; tail?: DatedRow[] };
+// `startedAt` : début du parcours (ms), pour savoir si une carte est partie pendant sa lecture.
+type StagedCounts = { nextPage: number; counts: Record<string, number>; tail?: DatedRow[]; startedAt?: number };
 
 // Combien de lignes en tête de `rows` sont la fin de la page précédente relue : une carte obtenue entre deux pages décale la liste
 // (triée de la plus récente à la plus ancienne), la page suivante recommence alors par des lignes déjà comptées.
@@ -71,7 +75,9 @@ export function createCollectionScanner({
   collection,
   store,
   now = () => Date.now(),
-  maxPages = 200,
+  // Garde-fou contre une liste sans fin, pas une taille attendue : une Collection de 11 000 cartes dépasse déjà 200 pages.
+  // Un parcours arrêté sur l'ancienne limite reprend à sa page (nombres déjà comptés gardés) et va maintenant au bout.
+  maxPages = 5000,
   schedule = (fn, ms) => void setTimeout(fn, ms),
 }: ScannerDeps) {
   const listeners = new Set<() => void>();
@@ -199,11 +205,15 @@ export function createCollectionScanner({
       // Le parcours compte à part : la Collection garde ses nombres (et reste filtrable par « ×2 ») jusqu'à la fin.
       let counts: Record<string, number> = {};
       let tail: DatedRow[] = [];
+      let startedAt = now();
+      let restarts = 0;
       if (page > 0) {
         const staged = await store.get<StagedCounts>(COUNTS_KEY);
         if (staged?.nextPage === page) {
           counts = staged.counts;
           tail = staged.tail ?? [];
+          // Début inconnu (parcours commencé avant cette version) : toute carte partie connue le fait recommencer.
+          startedAt = staged.startedAt ?? 0;
           // Les cartes obtenues depuis le début de ce parcours sont en page 0, que la reprise ne relit pas : on la relit d'abord
           // pour qu'une carte achetée pendant l'interruption ait sa rareté, ses stats et sa date. Les nombres restent ceux du parcours.
           await write(snapshot('running'));
@@ -224,6 +234,20 @@ export function createCollectionScanner({
         const result = await api.getCollectionPage(page, undefined, 'added');
         pageSize = Math.max(pageSize, result.entries);
         if (result.entries === 0) {
+          // Une carte partie pendant la lecture (vente, mise en vente, échange) a fait remonter la liste du site d'un cran : la page
+          // suivante a sauté une carte, qui serait retirée ou sous-comptée. On recommence le parcours depuis le début.
+          const departed = await store.get<number>(DEPARTED_KEY);
+          if (typeof departed === 'number' && departed > startedAt && restarts < MAX_RESTARTS) {
+            restarts += 1;
+            counts = {};
+            tail = [];
+            page = 0;
+            entries = 0;
+            pending = undefined;
+            startedAt = now();
+            await store.set(COUNTS_KEY, null);
+            continue;
+          }
           // Les cartes que ce parcours n'a pas recomptées ont été vendues ou échangées.
           await collection.replaceCopies(counts);
           await store.set(COUNTS_KEY, null);
@@ -242,7 +266,7 @@ export function createCollectionScanner({
         for (const row of rows) pending = newest(pending, row.at);
         entries += result.entries;
         page += 1;
-        await store.set(COUNTS_KEY, { nextPage: page, counts, tail } satisfies StagedCounts);
+        await store.set(COUNTS_KEY, { nextPage: page, counts, tail, startedAt } satisfies StagedCounts);
       }
       await write(snapshot('error', { error: 'limite de pages atteinte' }));
     } catch (error) {
