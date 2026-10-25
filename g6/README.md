@@ -279,3 +279,25 @@
 ### style-scandinave_h-21_nostore-1.png
 
 ![style-scandinave_h-21_nostore-1.png](08-plantes/style-scandinave_h-21_nostore-1.png)
+
+## 08-plantes-r1
+
+### kind-cactus_style-scandinave_res-3_cell-700.png
+
+![kind-cactus_style-scandinave_res-3_cell-700.png](08-plantes-r1/kind-cactus_style-scandinave_res-3_cell-700.png)
+
+### kind-monstera_style-scandinave_res-3_cell-700.png
+
+![kind-monstera_style-scandinave_res-3_cell-700.png](08-plantes-r1/kind-monstera_style-scandinave_res-3_cell-700.png)
+
+### kind-palm_cactus_pampas_style-scandinave_res-2.png
+
+![kind-palm_cactus_pampas_style-scandinave_res-2.png](08-plantes-r1/kind-palm_cactus_pampas_style-scandinave_res-2.png)
+
+### kind-plant_monstera_strelitzia_style-scandinave_res-2.png
+
+![kind-plant_monstera_strelitzia_style-scandinave_res-2.png](08-plantes-r1/kind-plant_monstera_strelitzia_style-scandinave_res-2.png)
+
+### style-scandinave_h-10_nostore-1.png
+
+![style-scandinave_h-10_nostore-1.png](08-plantes-r1/style-scandinave_h-10_nostore-1.png)
