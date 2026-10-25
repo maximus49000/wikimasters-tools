@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passeport de la ville — maquette</title>
+<!--
+  Maquette (pas du code produit) : passeport d'un habitant de la ville Ghibli.
+  Modes (chaîne de requête) :
+    (rien)              vue rue paysage 2340×1080, interactive : appuyer sur le bouton passeport ouvre le carnet, ✕ ou l'extérieur le ferme.
+    ?portrait=1         même chose en portrait 1080×2340.
+    ?t=800              état figé à 800 ms après l'appui (pour les planches) ; ?tap=1 dessine l'onde d'appui du doigt.
+    ?who=1..4           habitant montré (1 Nicolas, 2 Léa, 3 Jeanne, 4 Fatou).
+    ?fiches=1           4 passeports ouverts côte à côte (planche-fiches).
+    ?planche=ouverture  6 images de l'ouverture (planche-ouverture), iframes de cette page.
+-->
+<style>
+  :root { --ink:#33241f; --bordeaux:#6B1F30; --bordeaux-s:#4A1522; --or:#D8B35A; --creme:#F6F0E1; --creme-s:#E6DCC4; }
+  * { box-sizing:border-box }
+  html, body { margin:0; background:#1A1422; font-family:"Segoe UI", system-ui, sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased }
+  body { overflow:hidden; position:relative; user-select:none }
+  #scene { position:absolute; inset:0 }
+  #scene svg { display:block; width:100%; height:100% }
+  #dim { position:absolute; inset:0; background:#1A1422; opacity:0; pointer-events:none }
+  /* Flèche de suivi + bouton passeport, suivent la tête */
+  #follow { position:absolute; left:0; top:0; width:0; height:0 }
+  #arrow { position:absolute; left:-14px; top:-20px; width:28px; height:20px }
+  #ppbtn { position:absolute; width:120px; height:120px; border-radius:50%; background:#FFFDF7; border:4px solid var(--ink); box-shadow:0 7px 0 rgba(26,20,34,.38); display:flex; align-items:center; justify-content:center; cursor:pointer; transform-origin:50% 50% }
+  #ppbtn svg { width:66px; height:66px }
+  #tapring { position:absolute; width:120px; height:120px; border-radius:50%; border:6px solid rgba(255,255,255,.9); pointer-events:none; display:none }
+  /* Carnet */
+  #bookWrap { position:absolute; left:0; top:0; width:0; height:0; opacity:0; pointer-events:none }
+  #book { position:absolute; width:1120px; height:760px; perspective:2600px; perspective-origin:50% 50% }
+  .page, .cover { position:absolute; top:0; width:560px; height:760px; border-radius:18px }
+  .page.right { left:560px; background:var(--creme); border:4px solid var(--ink); box-shadow:12px 14px 0 rgba(26,20,34,.38); overflow:hidden }
+  .page.right::before { content:""; position:absolute; inset:0; background:repeating-linear-gradient(135deg, rgba(107,31,48,.06) 0 2px, transparent 2px 14px); pointer-events:none }
+  .page.right::after { content:""; position:absolute; left:0; top:0; bottom:0; width:38px; background:linear-gradient(90deg, rgba(26,20,34,.28), rgba(26,20,34,0)); pointer-events:none }
+  .cover { left:560px; transform-origin:0% 50%; transform-style:preserve-3d }
+  .face { position:absolute; inset:0; border-radius:18px; backface-visibility:hidden; -webkit-backface-visibility:hidden; border:4px solid var(--ink) }
+  .face.front { background:var(--bordeaux); box-shadow:12px 14px 0 rgba(26,20,34,.38); display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:54px 30px 46px; color:var(--or); text-align:center }
+  .face.front .t1 { font-weight:700; letter-spacing:4px; font-size:26px }
+  .face.front .t2 { font-weight:800; letter-spacing:6px; font-size:40px; line-height:1.1 }
+  .face.front .t3 { font-weight:600; letter-spacing:3px; font-size:20px; opacity:.9; margin-top:6px }
+  .face.front .emb { width:300px; height:300px }
+  .face.back { background:var(--creme-s); transform:rotateY(180deg); box-shadow:-12px 14px 0 rgba(26,20,34,.38); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; padding:40px; text-align:center }
+  .face.back::after { content:""; position:absolute; right:0; top:0; bottom:0; width:38px; background:linear-gradient(270deg, rgba(26,20,34,.22), rgba(26,20,34,0)); pointer-events:none }
+  .face.back .emb { width:260px; height:260px; opacity:.45 }
+  .face.back p { margin:0; font-size:22px; line-height:1.4; color:#5a4a44; max-width:420px }
+  .face.back p b { color:var(--bordeaux) }
+  .face.back .stk { position:absolute; right:-10px; top:14px; bottom:14px; width:14px; background:repeating-linear-gradient(180deg,#fff 0 3px,#D9D0BB 3px 5px); border-radius:0 6px 6px 0 }
+  /* Page d'identité */
+  .id { position:relative; height:100%; padding:30px 34px 28px 48px; display:flex; flex-direction:column }
+  .id .hd { display:flex; justify-content:space-between; align-items:center; color:var(--bordeaux); font-weight:800; letter-spacing:3px; font-size:20px; border-bottom:3px solid var(--bordeaux); padding-bottom:10px }
+  .id .hd small { font-weight:600; letter-spacing:1px; font-size:17px; opacity:.8 }
+  .id .top { display:flex; gap:22px; margin-top:22px; align-items:flex-start }
+  .id .photo { width:200px; height:240px; flex:none; border:4px solid var(--ink); border-radius:12px; background:#CFE0EC; box-shadow:6px 7px 0 rgba(26,20,34,.28); overflow:hidden }
+  .id .photo svg { display:block; width:100%; height:100% }
+  .id .who { flex:1; min-width:0 }
+  .id .name { font-size:46px; font-weight:800; line-height:1.05; color:#2a1d1a; word-break:break-word }
+  .id .age { font-size:28px; font-weight:700; margin-top:8px; display:flex; align-items:center; gap:10px }
+  .id .job { font-size:24px; margin-top:10px; display:flex; align-items:flex-start; gap:10px; line-height:1.25 }
+  .g { font-size:30px; line-height:1; flex:none; width:40px; text-align:center; filter:drop-shadow(1px 1px 0 rgba(26,20,34,.25)) }
+  .id .rows { margin-top:22px; display:flex; flex-direction:column; gap:14px; font-size:23px; line-height:1.3 }
+  .id .rows div { display:flex; gap:12px; align-items:flex-start }
+  .id .rows .mut { color:#8a7b74 }
+  .id .pages { position:absolute; right:-10px; top:14px; bottom:14px; width:14px; background:repeating-linear-gradient(180deg,#fff 0 3px,#D9D0BB 3px 5px); border-radius:0 6px 6px 0 }
+  .id .no { position:absolute; left:48px; bottom:22px; font-size:15px; letter-spacing:2px; color:#9c8d85; font-weight:600 }
+  .id .stamp { position:absolute; right:26px; bottom:22px; width:220px; height:220px; opacity:0; transform-origin:50% 50%; mix-blend-mode:multiply; pointer-events:none }
+  #close { position:absolute; width:104px; height:104px; border-radius:50%; background:#FFFDF7; border:4px solid var(--ink); box-shadow:0 7px 0 rgba(26,20,34,.38); display:flex; align-items:center; justify-content:center; font-size:48px; font-weight:800; color:var(--ink); opacity:0; cursor:pointer; line-height:1 }
+  /* Planches */
+  body.sheet { overflow:visible; background:#F3EDE2; color:var(--ink) }
+  .sheet h1 { font-size:34px; margin:0 0 6px; }
+  .sheet .sub { font-size:20px; color:#6b625a; margin:0 0 20px }
+  .grid { display:grid; gap:26px }
+  .cell { background:#fff; border:3px solid #d8cfc2; border-radius:14px; padding:14px; }
+  .cell .cap { font-size:22px; font-weight:700; margin-top:10px }
+  .cell .cap small { display:block; font-weight:500; color:#6b625a; font-size:18px }
+  .frame { position:relative; overflow:hidden; border-radius:10px; background:#000 }
+  .frame iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0 }
+  .fiche { position:relative; width:1120px; height:760px }
+</style>
+</head>
+<body>
+<script>
+// ---------------------------------------------------------------- utilitaires couleur (mêmes règles que ghibli-figure.tsx)
+const INK = '#33241f';
+function mixHex(a, b, t) {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return '#' + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, '0')).join('');
+}
+const shadeOf = (c) => mixHex(mixHex(c, '#4a3a6a', 0.3), '#000000', 0.05);
+let uid = 0;
+const q = new URLSearchParams(location.search);
+const PORTRAIT = q.get('portrait') === '1';
+const W = PORTRAIT ? 1080 : 2340, H = PORTRAIT ? 2340 : 1080;
+
+// ---------------------------------------------------------------- habitants (tenues = Outfit de people.ts, fiches = IdCard de id-card.ts)
+const PEOPLE = [
+  { outfit: { skin: '#E0A97F', hair: 'short', hairColor: '#3B2A1E', hatColor: '#E0A21E', top: 'suit', topColor: '#243044', bottom: 'pants', bottomColor: '#243044', accessory: 'case', accessoryColor: '#7A5A4A' },
+    card: { first: 'Nicolas', age: 38, job: 'chef de projet', situation: { kind: 'couple', with: 'Virginie' }, children: [{ first: 'Léa', age: 6 }, { first: 'Tom', age: 3 }], quarter: null, home: '2ᵉ gauche' } },
+  { outfit: { skin: '#F2C9A5', hair: 'long', hairColor: '#C9A24A', hatColor: '#E07A8C', top: 'tee', topColor: '#E07A8C', bottom: 'skirt', bottomColor: '#2F4A7A', accessory: 'backpack', accessoryColor: '#3B6FD6' },
+    card: { first: 'Léa', age: 6, job: 'écolière', situation: { kind: 'enfant', of: ['Nicolas', 'Virginie'] }, children: [], quarter: null, home: '2ᵉ gauche' } },
+  { outfit: { skin: '#F2C9A5', hair: 'bun', hairColor: '#9A9A9A', hatColor: '#B3262B', top: 'coat', topColor: '#7A8C80', bottom: 'skirt', bottomColor: '#43506A', accessory: 'scarf', accessoryColor: '#B3262B' },
+    card: { first: 'Jeanne', age: 74, job: 'retraitée', situation: { kind: 'celibataire' }, children: [], quarter: null, home: '4ᵉ droite' } },
+  { outfit: { skin: '#6B4228', hair: 'short', hairColor: '#111111', hatColor: '#F2C94C', top: 'sweater', topColor: '#2A9DAA', bottom: 'jeans', bottomColor: '#1E2A3A', accessory: 'bag', accessoryColor: '#E0A21E' },
+    card: { first: 'Fatou', age: 41, job: 'nounou', situation: { kind: 'celibataire' }, children: [], quarter: 'Grenelle', visiting: 'famille Martin, 2ᵉ gauche' } },
+];
+
+// ---------------------------------------------------------------- pantin cellulo (aplats, trait encré, ombre nette)
+// Tête centrée en (0,0), rayon r ; retourne les cheveux « derrière » (longs), la tête, les cheveux/couvre-chef devant.
+function headSVG(o, r) {
+  const id = 'h' + (uid++);
+  const ink = `stroke="${INK}" stroke-width="${(r * 0.14).toFixed(1)}" stroke-linejoin="round"`;
+  const sk = o.skin, sks = shadeOf(sk), hc = o.hairColor, hcs = shadeOf(hc), ht = o.hatColor;
+  let behind = '', front = '';
+  if (o.hair === 'long') {
+    behind = `<path d="M${-r * 1.05} ${-r * 0.2} L${-r * 1.15} ${r * 1.9} L${r * 1.15} ${r * 1.9} L${r * 1.05} ${-r * 0.2} Z" fill="${hc}" ${ink}/>
+      <path d="M${r * 0.55} ${-r * 0.2} L${r * 0.45} ${r * 1.9} L${r * 1.15} ${r * 1.9} L${r * 1.05} ${-r * 0.2} Z" fill="${hcs}"/>`;
+  }
+  // crâne + ombre nette côté droit (clip au cercle)
+  const head = `<defs><clipPath id="${id}"><circle r="${r}"/></clipPath></defs>
+    <circle r="${r}" fill="${sk}"/>
+    <path clip-path="url(#${id})" d="M${r * 0.35} ${-r} L${r * 1.2} ${-r} L${r * 1.2} ${r * 1.2} L${r * 0.75} ${r * 1.2} Q${r * 0.3} ${r * 0.2} ${r * 0.35} ${-r} Z" fill="${sks}"/>`;
+  // cheveux devant
+  const cap = (col, cols, y, wave) => `<path clip-path="url(#${id})" d="M${-r * 1.1} ${-r * 1.1} L${r * 1.1} ${-r * 1.1} L${r * 1.1} ${y} ${wave} L${-r * 1.1} ${y} Z" fill="${col}"/>
+    <path clip-path="url(#${id})" d="M${r * 0.45} ${-r * 1.1} L${r * 1.1} ${-r * 1.1} L${r * 1.1} ${y} L${r * 0.5} ${y} Z" fill="${cols}"/>`;
+  const fringe = `Q${r * 0.7} ${-r * 0.55} ${r * 0.4} ${-r * 0.3} Q${r * 0.1} ${-r * 0.1} ${-r * 0.2} ${-r * 0.42} Q${-r * 0.5} ${-r * 0.7} ${-r * 0.85} ${-r * 0.25} L${-r * 1.1} ${-r * 0.25}`;
+  if (o.hair === 'short' || o.hair === 'long' || o.hair === 'bun') {
+    front += cap(hc, hcs, -r * 0.25, fringe);
+    // pattes / mèches sur les côtés
+    front += `<path d="M${-r} ${-r * 0.35} L${-r * 1.0} ${r * 0.3} L${-r * 0.78} ${r * 0.05} Z" fill="${hc}"/><path d="M${r} ${-r * 0.35} L${r * 1.0} ${r * 0.3} L${r * 0.78} ${r * 0.05} Z" fill="${hcs}"/>`;
+  }
+  if (o.hair === 'bun') front += `<circle cx="0" cy="${-r * 1.05}" r="${r * 0.42}" fill="${hc}" ${ink}/><path d="M${r * 0.05} ${-r * 1.45} A${r * 0.42} ${r * 0.42} 0 0 1 ${r * 0.05} ${-r * 0.65} Z" fill="${hcs}"/>`;
+  if (o.hair === 'cap') {
+    front += cap(ht, shadeOf(ht), -r * 0.32, '');
+    front += `<path d="M${-r * 1.0} ${-r * 0.32} L${r * 1.0} ${-r * 0.32} L${r * 1.25} ${-r * 0.05} Q0 ${r * 0.15} ${-r * 1.25} ${-r * 0.05} Z" fill="${shadeOf(ht)}" ${ink}/>`;
+  }
+  if (o.hair === 'beanie') {
+    front += cap(ht, shadeOf(ht), -r * 0.12, '');
+    front += `<rect x="${-r * 1.02}" y="${-r * 0.42}" width="${r * 2.04}" height="${r * 0.3}" fill="${shadeOf(ht)}" clip-path="url(#${id})"/><circle cx="0" cy="${-r * 1.08}" r="${r * 0.22}" fill="${ht}" ${ink}/>`;
+  }
+  // trait encré du crâne (par-dessus les aplats), yeux, bouche, joues
+  front += `<circle r="${r}" fill="none" ${ink}/>
+    <circle cx="${-r * 0.34}" cy="${r * 0.08}" r="${r * 0.1}" fill="${INK}"/><circle cx="${r * 0.34}" cy="${r * 0.08}" r="${r * 0.1}" fill="${INK}"/>
+    <path d="M${-r * 0.18} ${r * 0.5} Q0 ${r * 0.66} ${r * 0.18} ${r * 0.5}" fill="none" stroke="${INK}" stroke-width="${(r * 0.09).toFixed(1)}" stroke-linecap="round"/>
+    <ellipse cx="${-r * 0.55}" cy="${r * 0.36}" rx="${r * 0.14}" ry="${r * 0.09}" fill="#E8A090" opacity=".7"/><ellipse cx="${r * 0.55}" cy="${r * 0.36}" rx="${r * 0.14}" ry="${r * 0.09}" fill="#E8A090" opacity=".7"/>`;
+  return { behind, head, front };
+}
+// Col selon le haut (vue de face, cou en (0,0), épaules à y = sh)
+function collarSVG(o, r) {
+  const t = o.topColor, ts = shadeOf(t), ink = `stroke="${INK}" stroke-width="${(r * 0.1).toFixed(1)}" stroke-linejoin="round"`;
+  switch (o.top) {
+    case 'suit': return `<path d="M${-r * 0.75} ${r * 0.9} L0 ${r * 2.0} L${r * 0.75} ${r * 0.9} L${r * 0.75} ${r * 1.3} L0 ${r * 2.4} L${-r * 0.75} ${r * 1.3} Z" fill="#F6F3EC" ${ink}/>
+      <path d="M${-r * 0.75} ${r * 0.9} L${-r * 1.35} ${r * 1.45} L${-r * 0.4} ${r * 2.9} L0 ${r * 2.0} Z" fill="${ts}" ${ink}/><path d="M${r * 0.75} ${r * 0.9} L${r * 1.35} ${r * 1.45} L${r * 0.4} ${r * 2.9} L0 ${r * 2.0} Z" fill="${ts}" ${ink}/>
+      <path d="M${-r * 0.16} ${r * 1.7} L${r * 0.16} ${r * 1.7} L${r * 0.1} ${r * 3.2} L${-r * 0.1} ${r * 3.2} Z" fill="#B3262B" ${ink}/>`;
+    case 'shirt': return `<path d="M${-r * 0.8} ${r * 0.9} L0 ${r * 1.7} L${r * 0.8} ${r * 0.9} L${r * 1.0} ${r * 1.25} L0 ${r * 2.1} L${-r * 1.0} ${r * 1.25} Z" fill="#F6F3EC" ${ink}/>`;
+    case 'coat': case 'jacket': return `<path d="M${-r * 0.8} ${r * 0.9} L${-r * 1.4} ${r * 1.6} L${-r * 0.3} ${r * 2.2} L0 ${r * 1.8} Z" fill="${ts}" ${ink}/><path d="M${r * 0.8} ${r * 0.9} L${r * 1.4} ${r * 1.6} L${r * 0.3} ${r * 2.2} L0 ${r * 1.8} Z" fill="${ts}" ${ink}/><path d="M0 ${r * 1.8} L0 ${r * 3.4}" ${ink}/>`;
+    case 'sweater': return `<path d="M${-r * 0.9} ${r * 1.0} Q0 ${r * 1.7} ${r * 0.9} ${r * 1.0} L${r * 0.9} ${r * 1.3} Q0 ${r * 2.0} ${-r * 0.9} ${r * 1.3} Z" fill="${ts}" ${ink}/>`;
+    case 'jersey': return `<path d="M${-r * 0.8} ${r * 1.0} Q0 ${r * 1.6} ${r * 0.8} ${r * 1.0}" fill="none" ${ink}/><rect x="${-r * 1.9}" y="${r * 2.4}" width="${r * 3.8}" height="${r * 0.3}" fill="#F6F3EC"/>`;
+    default: return `<path d="M${-r * 0.8} ${r * 1.0} Q0 ${r * 1.6} ${r * 0.8} ${r * 1.0}" fill="none" ${ink}/>`;
+  }
+}
+// Portrait d'identité (tête et épaules) dans un cadre w×h
+function portraitSVG(o, w, h) {
+  const r = w * 0.2;
+  const cx = w / 2, cy = h * 0.42;
+  const hd = headSVG(o, r);
+  const t = o.topColor, ts = shadeOf(t), ink = `stroke="${INK}" stroke-width="${(r * 0.14).toFixed(1)}" stroke-linejoin="round"`;
+  const sh = r * 1.55; // épaules sous le centre de la tête
+  const torso = `<path d="M${-r * 0.5} ${r * 0.85} L${-r * 0.9} ${sh} Q${-r * 2.4} ${sh + r * 0.2} ${-r * 2.7} ${sh + r * 1.2} L${-r * 2.7} ${h} L${r * 2.7} ${h} L${r * 2.7} ${sh + r * 1.2} Q${r * 2.4} ${sh + r * 0.2} ${r * 0.9} ${sh} L${r * 0.5} ${r * 0.85} Z" fill="${t}" ${ink}/>
+    <path d="M${r * 0.9} ${sh} Q${r * 2.4} ${sh + r * 0.2} ${r * 2.7} ${sh + r * 1.2} L${r * 2.7} ${h} L${r * 1.3} ${h} L${r * 1.2} ${sh + r * 0.9} Z" fill="${ts}"/>
+    <path d="M${-r * 0.5} ${r * 0.85} L${-r * 0.5} ${r * 1.3} Q0 ${r * 1.7} ${r * 0.5} ${r * 1.3} L${r * 0.5} ${r * 0.85} Z" fill="${shadeOf(o.skin)}" ${ink}/>`;
+  const acc = o.accessory === 'scarf' ? `<path d="M${-r * 1.1} ${r * 1.0} Q0 ${r * 2.2} ${r * 1.1} ${r * 1.0} L${r * 1.2} ${r * 1.5} Q0 ${r * 2.7} ${-r * 1.2} ${r * 1.5} Z" fill="${o.accessoryColor}" ${ink}/>`
+    : o.accessory === 'backpack' ? `<path d="M${-r * 1.0} ${sh + r * 0.1} L${-r * 0.55} ${h} L${-r * 0.1} ${h} L${-r * 0.55} ${sh + r * 0.1} Z" fill="${o.accessoryColor}" ${ink}/><path d="M${r * 1.0} ${sh + r * 0.1} L${r * 0.55} ${h} L${r * 0.1} ${h} L${r * 0.55} ${sh + r * 0.1} Z" fill="${o.accessoryColor}" ${ink}/>`
+    : o.accessory === 'bag' ? `<path d="M${r * 1.1} ${sh + r * 0.1} L${r * 2.1} ${h}" fill="none" stroke="${o.accessoryColor}" stroke-width="${r * 0.22}"/>` : '';
+  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${w}" height="${h}" fill="#CFE0EC"/><rect x="${w * 0.12}" width="${w * 0.76}" height="${h}" fill="#DCE9F1"/>
+    <g transform="translate(${cx} ${cy})">${hd.behind}${torso}${collarSVG(o, r)}${acc}${hd.head}${hd.front}</g>
+  </svg>`;
+}
+// Pantin en pied, pieds à l'origine, hauteur hgt
+function figureSVG(o, hgt, phase = 0) {
+  const u = hgt / 100, r = 11 * u;
+  const hd = headSVG(o, r);
+  const t = o.topColor, ts = shadeOf(t), b = o.bottomColor, bs = shadeOf(b);
+  const ink = `stroke="${INK}" stroke-width="${(r * 0.14).toFixed(1)}" stroke-linejoin="round" stroke-linecap="round"`;
+  const sw = Math.sin(phase) * 8 * u;
+  const skirt = o.bottom === 'skirt' || o.bottom === 'dress';
+  const legs = skirt
+    ? `<path d="M${-14 * u} ${-40 * u} L${-19 * u} ${-14 * u} L${19 * u} ${-14 * u} L${14 * u} ${-40 * u} Z" fill="${b}" ${ink}/><path d="M${4 * u} ${-40 * u} L${6 * u} ${-14 * u} L${19 * u} ${-14 * u} L${14 * u} ${-40 * u} Z" fill="${bs}"/>
+       <rect x="${-11 * u}" y="${-14 * u}" width="${8 * u}" height="${14 * u}" fill="${o.skin}" ${ink}/><rect x="${3 * u}" y="${-14 * u}" width="${8 * u}" height="${14 * u}" fill="${o.skin}" ${ink}/>`
+    : `<rect x="${-12 * u + sw / 2}" y="${-40 * u}" width="${10 * u}" height="${38 * u}" rx="${3 * u}" fill="${b}" ${ink}/><rect x="${2 * u - sw / 2}" y="${-40 * u}" width="${10 * u}" height="${38 * u}" rx="${3 * u}" fill="${bs}" ${ink}/>`;
+  const shoes = `<rect x="${-14 * u + sw / 2}" y="${-5 * u}" width="${13 * u}" height="${6 * u}" rx="${2 * u}" fill="#3a2a24" ${ink}/><rect x="${1 * u - sw / 2}" y="${-5 * u}" width="${13 * u}" height="${6 * u}" rx="${2 * u}" fill="#3a2a24" ${ink}/>`;
+  const torso = `<path d="M${-15 * u} ${-70 * u} Q${-15 * u} ${-75 * u} ${-9 * u} ${-75 * u} L${9 * u} ${-75 * u} Q${15 * u} ${-75 * u} ${15 * u} ${-70 * u} L${14 * u} ${-38 * u} L${-14 * u} ${-38 * u} Z" fill="${t}" ${ink}/><path d="M${5 * u} ${-75 * u} L${9 * u} ${-75 * u} Q${15 * u} ${-75 * u} ${15 * u} ${-70 * u} L${14 * u} ${-38 * u} L${6 * u} ${-38 * u} Z" fill="${ts}"/>`;
+  const arms = `<path d="M${-14 * u} ${-70 * u} L${-19 * u - sw} ${-42 * u}" fill="none" stroke="${t}" stroke-width="${7 * u}" stroke-linecap="round"/><path d="M${-14 * u} ${-70 * u} L${-19 * u - sw} ${-42 * u}" fill="none" ${ink}/><circle cx="${-19 * u - sw}" cy="${-40 * u}" r="${3.4 * u}" fill="${o.skin}" ${ink}/>
+    <path d="M${14 * u} ${-70 * u} L${19 * u + sw} ${-42 * u}" fill="none" stroke="${ts}" stroke-width="${7 * u}" stroke-linecap="round"/><path d="M${14 * u} ${-70 * u} L${19 * u + sw} ${-42 * u}" fill="none" ${ink}/><circle cx="${19 * u + sw}" cy="${-40 * u}" r="${3.4 * u}" fill="${o.skin}" ${ink}/>`;
+  const acc = o.accessory === 'case' ? `<rect x="${17 * u + sw}" y="${-38 * u}" width="${14 * u}" height="${11 * u}" rx="${1.5 * u}" fill="${o.accessoryColor}" ${ink}/>`
+    : o.accessory === 'backpack' ? `<rect x="${-20 * u}" y="${-72 * u}" width="${10 * u}" height="${22 * u}" rx="${3 * u}" fill="${o.accessoryColor}" ${ink}/>`
+    : o.accessory === 'ball' ? `<circle cx="${22 * u + sw}" cy="${-6 * u}" r="${6 * u}" fill="${o.accessoryColor}" ${ink}/>`
+    : o.accessory === 'bag' ? `<rect x="${16 * u}" y="${-48 * u}" width="${11 * u}" height="${13 * u}" rx="${2 * u}" fill="${o.accessoryColor}" ${ink}/>` : '';
+  const neck = `<rect x="${-3.5 * u}" y="${-80 * u}" width="${7 * u}" height="${8 * u}" fill="${shadeOf(o.skin)}"/>`;
+  return `<g>${shoes}${legs}${torso}${neck}${arms}${acc}<g transform="translate(0 ${-86 * u})">${hd.behind}${collarSVG(o, r)}${hd.head}${hd.front}</g></g>`;
+}
+
+// ---------------------------------------------------------------- rue (décor cellulo simplifié, procédural pour paysage et portrait)
+function sceneSVG(W, H, heroIndex, heroX) {
+  const G = H * 0.80; // ligne du trottoir
+  const M = Math.min(W, H); // les tailles (gens, fenêtres, boutiques) suivent le petit côté : même échelle en portrait
+  let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9CC8EE"/><stop offset="1" stop-color="#E6F1F7"/></linearGradient></defs>
+    <rect width="${W}" height="${H}" fill="url(#sky)"/>`;
+  // nuages
+  for (let i = 0; i < 5; i++) { const x = (i * 0.22 + 0.05) * W, y = H * (0.08 + (i % 2) * 0.09), rw = M * 0.15; s += `<g><ellipse cx="${x}" cy="${y}" rx="${rw}" ry="${rw * 0.38}" fill="#FFFFFF" stroke="${INK}" stroke-width="3"/><ellipse cx="${x + rw * 0.3}" cy="${y + rw * 0.12}" rx="${rw * 0.6}" ry="${rw * 0.22}" fill="#D9E6F2"/></g>`; }
+  // colline
+  s += `<path d="M0 ${H * 0.52} Q${W * 0.25} ${M * 0.36} ${W * 0.5} ${H * 0.48} T${W} ${H * 0.44} L${W} ${H} L0 ${H} Z" fill="#9CC0E4"/>`;
+  // façades
+  const cols = ['#E8D9C0', '#D9C7B0', '#E2D4C4', '#CFC0A8'];
+  const bw = Math.round(M / 2.6);
+  for (let i = -1, x = -bw * 0.4; x < W + bw; i++, x += bw) {
+    const k = ((i % 4) + 4) % 4, hh = M * (0.42 + (k * 0.07)) + (H - M) * 0.25, top = G - hh, c = cols[k];
+    s += `<rect x="${x}" y="${top}" width="${bw}" height="${hh}" fill="${c}" stroke="${INK}" stroke-width="4"/>`;
+    s += `<rect x="${x + bw * 0.78}" y="${top}" width="${bw * 0.22}" height="${hh}" fill="${shadeOf(c)}" opacity=".55"/>`;
+    s += `<path d="M${x - 8} ${top} L${x + bw * 0.5} ${top - H * 0.06} L${x + bw + 8} ${top} Z" fill="#7E8A98" stroke="${INK}" stroke-width="4"/>`;
+    const rows = Math.floor(hh / (M * 0.13)), wcols = 3;
+    for (let ry = 0; ry < rows; ry++) for (let cx = 0; cx < wcols; cx++) {
+      const wx = x + bw * (0.12 + cx * 0.28), wy = top + M * 0.05 + ry * M * 0.13, ww = bw * 0.16, wh = M * 0.08;
+      s += `<rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" fill="#2E3A55" stroke="${INK}" stroke-width="3"/><rect x="${wx + ww * 0.1}" y="${wy + wh * 0.1}" width="${ww * 0.35}" height="${wh * 0.8}" fill="#7A98C4" opacity=".6"/>`;
+      if (ry > 0) s += `<rect x="${wx - ww * 0.12}" y="${wy + wh * 0.72}" width="${ww * 1.24}" height="${wh * 0.3}" fill="none" stroke="${INK}" stroke-width="3"/>`;
+    }
+    // boutique au rez-de-chaussée
+    s += `<rect x="${x + bw * 0.06}" y="${G - M * 0.17}" width="${bw * 0.88}" height="${M * 0.17}" fill="${['#6B1F30', '#2E8B6A', '#3B6FD6', '#D95F2B'][k]}" stroke="${INK}" stroke-width="4"/><rect x="${x + bw * 0.12}" y="${G - M * 0.13}" width="${bw * 0.5}" height="${M * 0.13}" fill="#CDE2EE" stroke="${INK}" stroke-width="3"/><rect x="${x + bw * 0.68}" y="${G - M * 0.13}" width="${bw * 0.2}" height="${M * 0.13}" fill="#4A3A2A" stroke="${INK}" stroke-width="3"/>`;
+  }
+  // trottoir, bordure, chaussée
+  s += `<rect x="0" y="${G}" width="${W}" height="${H * 0.09}" fill="#C9C2B4" stroke="${INK}" stroke-width="4"/><rect x="0" y="${G + H * 0.09}" width="${W}" height="${H * 0.11}" fill="#5E5A66"/><rect x="0" y="${G + H * 0.145}" width="${W}" height="${H * 0.012}" fill="#E8E4D8" opacity=".9"/>`;
+  // arbre + lampadaire
+  const tx = W * 0.82; s += `<rect x="${tx - 14}" y="${G - M * 0.26}" width="28" height="${M * 0.26}" fill="#5A3A28" stroke="${INK}" stroke-width="4"/><circle cx="${tx}" cy="${G - M * 0.32}" r="${M * 0.12}" fill="#4F8A4A" stroke="${INK}" stroke-width="4"/><circle cx="${tx + M * 0.05}" cy="${G - M * 0.30}" r="${M * 0.07}" fill="#3F6E3A"/>`;
+  const lx = W * 0.6; s += `<rect x="${lx - 6}" y="${G - M * 0.36}" width="12" height="${M * 0.36}" fill="#3A3A44" stroke="${INK}" stroke-width="3"/><rect x="${lx - 22}" y="${G - M * 0.40}" width="44" height="${M * 0.05}" rx="8" fill="#F2C94C" stroke="${INK}" stroke-width="3"/>`;
+  // passants (ombres nettes au sol)
+  const walkers = [[0.08, 1], [0.22, 2], [0.5, 3], [0.7, 0], [0.9, 2]];
+  const hgt = M * 0.22;
+  for (const [fx, pi] of walkers) {
+    if (pi === heroIndex) continue;
+    const x = fx * W; s += `<ellipse cx="${x}" cy="${G + 6}" rx="${hgt * 0.16}" ry="${hgt * 0.035}" fill="#3a2f5a" opacity=".35"/><g transform="translate(${x} ${G + 2})">${figureSVG(PEOPLE[pi].outfit, hgt, fx * 10)}</g>`;
+  }
+  const hh = M * 0.26;
+  s += `<ellipse cx="${heroX}" cy="${G + 6}" rx="${hh * 0.17}" ry="${hh * 0.04}" fill="#3a2f5a" opacity=".4"/><g transform="translate(${heroX} ${G + 2})">${figureSVG(PEOPLE[heroIndex].outfit, hh, 0.4)}</g>`;
+  s += `</svg>`;
+  return { svg: s, headTop: G + 2 - hh * 0.97, heroHeight: hh };
+}
+
+// ---------------------------------------------------------------- glyphe du bouton et emblème de couverture
+const BTN_GLYPH = `<svg viewBox="0 0 66 66" xmlns="http://www.w3.org/2000/svg"><rect x="14" y="7" width="38" height="52" rx="5" fill="#6B1F30" stroke="${INK}" stroke-width="3"/><rect x="14" y="7" width="7" height="52" rx="3" fill="#4A1522"/><circle cx="36" cy="30" r="9" fill="none" stroke="#D8B35A" stroke-width="2.5"/><path d="M31 33 L31 28 L34 28 L34 25 L38 25 L38 28 L41 28 L41 33 Z" fill="#D8B35A"/><rect x="28" y="44" width="16" height="2.5" rx="1" fill="#D8B35A"/><rect x="30" y="49" width="12" height="2.5" rx="1" fill="#D8B35A"/></svg>`;
+function emblemSVG(col) {
+  return `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="${col}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="100" cy="100" r="92"/><circle cx="100" cy="100" r="78" stroke-dasharray="6 7"/>
+    <!-- couronne de feuilles -->
+    ${Array.from({ length: 10 }, (_, i) => { const a = Math.PI * (0.62 + i * 0.195); const x = 100 + 84 * Math.cos(a), y = 100 + 84 * Math.sin(a); return `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="9" ry="4.5" transform="rotate(${(a * 180 / Math.PI + 90).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="${col}" stroke="none"/>`; }).join('')}
+    <!-- toits de la ville -->
+    <path d="M38 128 L38 96 L56 80 L74 96 L74 128"/><path d="M74 128 L74 70 L100 48 L126 70 L126 128"/><path d="M126 128 L126 92 L144 78 L162 92 L162 128"/>
+    <path d="M30 128 L170 128"/><rect x="92" y="98" width="16" height="30" fill="${col}" stroke="none"/><rect x="50" y="102" width="10" height="12"/><rect x="138" y="102" width="10" height="12"/>
+    <!-- carte à jouer (Wikimasters) -->
+    <rect x="86" y="140" width="28" height="36" rx="4" fill="${col}" stroke="none" transform="rotate(-8 100 158)"/>
+  </svg>`;
+}
+const EMBLEM_GOLD = emblemSVG('#D8B35A'), EMBLEM_INK = emblemSVG('#6B1F30');
+function stampSVG() {
+  return `<svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg"><defs><path id="ring" d="M110 110 m-80 0 a80 80 0 1 1 160 0 a80 80 0 1 1 -160 0"/></defs>
+    <g fill="none" stroke="#2F4A9A" stroke-width="6"><circle cx="110" cy="110" r="104"/><circle cx="110" cy="110" r="60"/></g>
+    <text font-family="Segoe UI, system-ui, sans-serif" font-weight="800" font-size="19" letter-spacing="2.5" fill="#2F4A9A"><textPath href="#ring" startOffset="2%">VILLE DE WIKIMASTERS ✶ ENTRÉE ✶ RUE DE LA BIBLIOTHÈQUE ✶</textPath></text>
+    <text x="110" y="104" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-weight="800" font-size="30" fill="#2F4A9A">VU</text>
+    <text x="110" y="134" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-weight="700" font-size="19" fill="#2F4A9A">25 · 10 · 2026</text>
+  </svg>`;
+}
+
+// ---------------------------------------------------------------- page d'identité
+const an = (n) => `${n} an${n > 1 ? 's' : ''}`;
+function idPageHTML(p) {
+  const c = p.card;
+  const sit = c.situation.kind === 'couple' ? ['💞', `en couple avec <b>${c.situation.with}</b>`]
+    : c.situation.kind === 'enfant' ? ['👪', `enfant de <b>${c.situation.of.join(' et ')}</b>`] : ['💞', 'célibataire'];
+  const kids = c.children.length ? ['👶', `${c.children.length} enfant${c.children.length > 1 ? 's' : ''} : <b>${c.children.map((k) => `${k.first} (${k.age})`).join(', ')}</b>`] : ['👶', '<span class="mut">pas d’enfant</span>'];
+  const home = c.quarter === null ? ['🏠', `habite ici, <b>${c.home}</b>`] : ['🧭', `vient de <b>${c.quarter}</b>`];
+  const visit = c.quarter !== null && c.visiting ? ['🚪', `rend visite à la <b>${c.visiting}</b>`] : null;
+  const row = (r) => r ? `<div><span class="g">${r[0]}</span><span>${r[1]}</span></div>` : '';
+  return `<div class="id">
+    <div class="hd"><span>PASSEPORT DE LA VILLE</span><small>FR · WIKIMASTERS</small></div>
+    <div class="top">
+      <div class="photo">${portraitSVG(p.outfit, 200, 240)}</div>
+      <div class="who"><div class="name">${c.first}</div><div class="age"><span class="g">🎂</span>${an(c.age)}</div><div class="job"><span class="g">💼</span><span>${c.job}</span></div></div>
+    </div>
+    <div class="rows">${row(sit)}${row(kids)}${row(home)}${row(visit)}</div>
+    <div class="no">N° ${String(1000 + PEOPLE.indexOf(p) * 37).padStart(4, '0')} · document de jeu</div>
+    <div class="stamp">${stampSVG()}</div>
+    <div class="pages"></div>
+  </div>`;
+}
+function bookHTML(p) {
+  return `<div id="book" class="bookEl">
+    <div class="page right">${idPageHTML(p)}</div>
+    <div class="cover"><div class="face front"><div class="t1">VILLE DE WIKIMASTERS</div><div class="emb">${EMBLEM_GOLD}</div><div><div class="t2">PASSEPORT</div><div class="t3">DE LA VILLE</div></div></div>
+      <div class="face back"><div class="emb">${EMBLEM_INK}</div><p>Ce passeport est délivré par la <b>Ville de Wikimasters</b> à l’un de ses habitants ou visiteurs.<br>Il n’a aucune valeur hors de la Bibliothèque.</p><div class="stk"></div></div></div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------- courbes et chronologie de l'ouverture (ms)
+const T = { press: 80, release: 220, rise0: 60, rise1: 420, dim1: 520, open0: 520, open1: 1120, stamp0: 1120, stamp1: 1400, close0: 900, close1: 1100, end: 1400 };
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+
+// ---------------------------------------------------------------- vue rue (interactive ou figée)
+function buildStreet() {
+  const who = Math.max(1, Math.min(4, +(q.get('who') || 1))) - 1, p = PEOPLE[who];
+  const heroX = PORTRAIT ? W * 0.5 : W * 0.36;
+  const sc = sceneSVG(W, H, who, heroX);
+  document.body.style.width = W + 'px'; document.body.style.height = H + 'px';
+  document.body.innerHTML = `<div id="scene">${sc.svg}</div><div id="dim"></div>
+    <div id="follow" style="left:${heroX}px;top:${sc.headTop}px">
+      <svg id="arrow" viewBox="-14 -20 28 20" style="width:44px;height:32px;left:-22px;top:-34px"><path d="M-7 -10 L7 -10 L0 0 Z" fill="#fff" stroke="#222" stroke-width="2" stroke-linejoin="round"/></svg>
+      <div id="ppbtn" style="left:50px;top:-92px" title="Passeport">${BTN_GLYPH}</div>
+      <div id="tapring" style="left:50px;top:-92px"></div>
+    </div>
+    <div id="bookWrap">${bookHTML(p)}</div>
+    <div id="close" style="left:${W - 104 - 40}px;top:40px">✕</div>`;
+  // la flèche est dessinée 2× plus grande que dans le jeu (14 px → 28 px) pour rester lisible sur 2340 px ; proposition
+  const arrow = document.getElementById('arrow'), btn = document.getElementById('ppbtn'), dim = document.getElementById('dim'), wrap = document.getElementById('bookWrap'), book = document.getElementById('book'), cover = book.querySelector('.cover'), stamp = book.querySelector('.stamp'), closeB = document.getElementById('close'), ring = document.getElementById('tapring');
+  // position du bouton (centre) à l'écran
+  const btnC = { x: heroX + 50 + 60, y: sc.headTop - 92 + 60 };
+  // carnet : échelle pour tenir dans l'écran
+  const S = PORTRAIT ? Math.min((W - 80) / 1120, (H * 0.6) / 760) : Math.min((W - 160) / 1120, (H - 100) / 760);
+  const cx = W / 2, cy = PORTRAIT ? H * 0.46 : H / 2;
+  let t = 0, opening = false, open = false, raf = 0;
+  function render(t) {
+    // bouton
+    const pr = t < T.press ? 1 - 0.1 * seg(t, 0, T.press) : 1 - 0.1 * (1 - seg(t, T.press, T.release));
+    btn.style.transform = `scale(${pr.toFixed(3)})`;
+    btn.style.opacity = String(1 - seg(t, T.rise0, T.rise1) * 0.0); // le bouton reste visible sous la pénombre
+    // pénombre
+    dim.style.opacity = (0.58 * easeOut(seg(t, T.rise0, T.dim1))).toFixed(3);
+    // montée du carnet fermé : du bouton au centre
+    const r = easeOut(seg(t, T.rise0, T.rise1));
+    const o = easeInOut(seg(t, T.open0, T.open1));
+    const sc0 = 0.1, scale = (sc0 + (S - sc0) * r);
+    // centre du carnet fermé (moitié droite du #book) → centre du livre ouvert
+    const shift = 280 * o; // le livre glisse de 280 px (une demi-page) vers la gauche pour rester centré
+    const x = btnC.x + (cx - btnC.x) * r, y = btnC.y + (cy - btnC.y) * r;
+    wrap.style.opacity = t <= T.rise0 ? '0' : String(clamp01((t - T.rise0) / 90));
+    wrap.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${(-10 * (1 - r)).toFixed(2)}deg) scale(${scale.toFixed(4)})`;
+    book.style.transform = `translate(${(-840 + shift).toFixed(1)}px, -380px)`; // fermé : -840 (la couverture, moitié droite du livre, est centrée) ; ouvert : -560 (le livre entier est centré)
+    cover.style.transform = `rotateY(${(-180 * o).toFixed(2)}deg)`;
+    // tampon
+    const st = easeOut(seg(t, T.stamp0, T.stamp1));
+    stamp.style.opacity = (0.82 * st).toFixed(3);
+    stamp.style.transform = `rotate(-14deg) scale(${(1.7 - 0.7 * st).toFixed(3)})`;
+    // ✕
+    closeB.style.opacity = seg(t, T.close0, T.close1).toFixed(3);
+    closeB.style.pointerEvents = t > T.close1 - 1 ? 'auto' : 'none';
+    wrap.style.pointerEvents = t >= T.end ? 'auto' : 'none';
+  }
+  function animate(to) {
+    cancelAnimationFrame(raf);
+    const from = t, t0 = performance.now(), dur = Math.abs(to - from) * (to < from ? 0.55 : 1);
+    opening = true;
+    const step = (now) => { const k = clamp01((now - t0) / dur); t = from + (to - from) * k; render(t); if (k < 1) raf = requestAnimationFrame(step); else { opening = false; open = to > 0; } };
+    raf = requestAnimationFrame(step);
+  }
+  btn.addEventListener('click', () => { if (!open && !opening) animate(T.end); });
+  closeB.addEventListener('click', () => { if (open) animate(0); });
+  dim.addEventListener('click', () => { if (open) animate(0); });
+  dim.style.pointerEvents = 'auto';
+  // flèche qui dodeline (900 ms, sinus) — le bouton ne dodeline pas : cible stable sous le doigt
+  const bob = (now) => { arrow.style.transform = `translateY(${(Math.sin(now / 143) * 6).toFixed(1)}px)`; requestAnimationFrame(bob); };
+  const fixed = q.get('t');
+  if (fixed !== null) {
+    t = +fixed; render(t); arrow.style.transform = 'translateY(-4px)';
+    if (q.get('tap') === '1') { ring.style.display = 'block'; ring.style.transform = 'scale(1.35)'; ring.style.opacity = '.7'; }
+  } else { render(0); requestAnimationFrame(bob); }
+}
+
+// ---------------------------------------------------------------- planche des fiches : 4 passeports ouverts
+function buildFiches() {
+  document.body.className = 'sheet'; document.body.style.padding = '28px';
+  document.body.innerHTML = `<h1>Passeport de la ville — quatre fiches</h1><p class="sub">Un père de famille cadre, une écolière, une retraitée qui vit seule, la nounou (visiteuse d’un autre quartier). Taille réelle sur un écran paysage 2340 × 1080.</p><div class="grid" style="grid-template-columns:repeat(4, 1120px)"></div>`;
+  const g = document.querySelector('.grid');
+  const caps = ['Nicolas — cadre, en couple, 2 enfants', 'Léa — 6 ans, écolière', 'Jeanne — retraitée, vit seule', 'Fatou — nounou, vient de Grenelle'];
+  PEOPLE.forEach((p, i) => {
+    const cell = document.createElement('div'); cell.className = 'cell';
+    cell.innerHTML = `<div class="fiche">${bookHTML(p)}</div><div class="cap">${caps[i]}<small>${p.card.quarter ? 'visiteuse : « vient de » + « rend visite à »' : 'habitant : « habite ici » + étage'}</small></div>`;
+    g.appendChild(cell);
+    const book = cell.querySelector('#book'); book.removeAttribute('id'); book.style.left = '0'; book.style.top = '0';
+    book.querySelector('.cover').style.transform = 'rotateY(-180deg)';
+    const st = book.querySelector('.stamp'); st.style.opacity = '.82'; st.style.transform = 'rotate(-14deg)';
+  });
+}
+
+// ---------------------------------------------------------------- planche de l'ouverture : 6 images (iframes de cette page)
+function buildOuverture() {
+  document.body.className = 'sheet'; document.body.style.padding = '28px';
+  const frames = [[0, 'Appui sur le bouton', '0 ms — la flèche dodeline, le bouton rond à sa droite', 1], [300, 'Le carnet monte', '300 ms — fermé, il grossit depuis le bouton, la rue s’assombrit', 0], [520, 'Fermé, au centre', '520 ms — pause de 100 ms, pénombre à 58 %', 0], [760, 'La couverture pivote', '760 ms — charnière à gauche, le livre glisse pour rester centré', 0], [920, 'Presque ouvert', '920 ms — l’intérieur de la couverture apparaît', 0], [1400, 'Ouvert, tampon', '1 400 ms — tampon « VU », ✕ en haut à droite', 0]];
+  const sc = 0.4, fw = 2340 * sc, fh = 1080 * sc;
+  document.body.innerHTML = `<h1>Passeport de la ville — ouverture (paysage 2340 × 1080)</h1><p class="sub">Appui sur le bouton → le carnet fermé monte depuis le bouton (60–420 ms, sortie douce) → la couverture pivote comme un livre (520–1120 ms, entrée-sortie douce) → tampon (1120–1400 ms). Fermeture : le même film à rebours, en 0,55 × le temps.</p><div class="grid" style="grid-template-columns:repeat(3, ${fw + 34}px)"></div>`;
+  const g = document.querySelector('.grid');
+  const base = location.href.split('?')[0];
+  for (const [t, cap, sub, tap] of frames) {
+    const cell = document.createElement('div'); cell.className = 'cell';
+    cell.innerHTML = `<div class="frame" style="width:${fw}px;height:${fh}px"><iframe src="${base}?t=${t}&tap=${tap}" width="2340" height="1080" style="transform:scale(${sc})"></iframe></div><div class="cap">${cap}<small>${sub}</small></div>`;
+    g.appendChild(cell);
+  }
+}
+
+if (q.get('fiches') === '1') buildFiches();
+else if (q.get('planche') === 'ouverture') buildOuverture();
+else buildStreet();
+</script>
+</body>
+</html>
