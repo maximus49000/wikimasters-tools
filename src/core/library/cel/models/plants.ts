@@ -213,9 +213,14 @@ function monstera(look: CelLook, life: LifeState): CelPart[] {
     // limbe le long de la nervure (6 cm, 1,9 cm sous la face : le tube r 1,5 reste entièrement sous le revers) : son bout n'est jamais une « baguette » au-dessus de la feuille.
     const along = rotY(rotX([0, 0, 1], tip), a), under = rotY(rotX([0, -1, 0], tip), a);
     const p3: Vec3 = [p2[0] + along[0] * 6 + under[0] * 1.9, p2[1] + along[1] * 6 + under[1] * 1.9, p2[2] + along[2] * 6 + under[2] * 1.9];
-    const stem = part(tube([[0, y0 - 1, 0], p1, p2, p3], 1.5, 8), T.leafDark, { crease: false });
+    // La tige plantée (terreau → p2) ne bouge jamais ; seul le limbe hoche, avec le court tronçon de pétiole qui le porte (de 1 cm
+    // avant p2, à l'intérieur de la tige, jusqu'à p3) : la jointure reste couverte quel que soit le bruissement, aucun bout coupé.
+    P.push(part(tube([[0, y0 - 1, 0], p1, p2], 1.5, 8), T.leafDark, { crease: false }));
+    const d12 = normalize([p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]);
+    const q: Vec3 = [p2[0] - d12[0], p2[1] - d12[1], p2[2] - d12[2]];
+    const petiole = part(tube([q, p2, p3], 1.5, 8), T.leafDark, { crease: false });
     const m = place(MON_BLADE, { s: sc, rx: tip, ry: a, t: p2 });
-    P.push(...nod([stem, part(m, k % 2 ? T.leaf : T.leafDark, { crease: false, hi: false })], p2, dirOf(a), k, life.rustle));
+    P.push(...nod([petiole, part(m, k % 2 ? T.leaf : T.leafDark, { crease: false, hi: false })], p2, dirOf(a), k, life.rustle));
   });
   return P;
 }

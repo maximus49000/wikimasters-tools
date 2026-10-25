@@ -49,6 +49,16 @@ describe('plantes en cellulo', () => {
       expect(maxMove).toBeLessThanOrEqual(2 * reach * Math.sin(RUSTLE_MAX / 2));
     });
 
+  it('monstera : les tiges plantées dans le terreau ne bougent pas quand les feuilles bruissent (base immobile)', () => {
+    const rest = celPartsOf('monstera', look, REST_LIFE), moved = celPartsOf('monstera', look, { ...REST_LIFE, rustle: 1 });
+    // Une tige = un tube `leafDark` dont un sommet est dans le terreau (y < 37) ; il y en a six.
+    const planted = rest.map((_, i) => i).filter((i) => rest[i]!.col === look.tones.leafDark && Math.min(...rest[i]!.m.v.map((v) => v[1])) < 37);
+    expect(planted.length).toBe(6);
+    for (const i of planted) expect(moved[i]!.m.v).toEqual(rest[i]!.m.v);
+    // Et pourtant la feuille (et son pétiole) ont bougé.
+    expect(moved.some((P, i) => P.m.v.some((v, j) => Math.hypot(v[0] - rest[i]!.m.v[j]![0], v[1] - rest[i]!.m.v[j]![1], v[2] - rest[i]!.m.v[j]![2]) > 0.5))).toBe(true);
+  });
+
   it('quatre poses de bruissement (0,25 ; 0,5 ; 0,75 ; 1) donnent quatre images distinctes du monstera', () => {
     const imgs = [0.25, 0.5, 0.75, 1].map((rustle) => renderCel(celPartsOf('monstera', look, { ...REST_LIFE, rustle }), view(0)).rgba);
     for (let i = 0; i < imgs.length; i++) for (let j = i + 1; j < imgs.length; j++) expect(imgs[i]).not.toEqual(imgs[j]);
