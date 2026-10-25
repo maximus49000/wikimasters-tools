@@ -9,7 +9,7 @@ const H = 340;
 const dwellingsOf = (seed: number): Dwelling[] => cityDwellings(cityFacades(W, H, seed), seed);
 const many = Array.from({ length: 20 }, (_, i) => i + 1).flatMap((s) => dwellingsOf(s));
 const SCHOOL = (age: number, f: boolean): string =>
-  age < 11 ? (f ? 'écolière' : 'écolier') : age < 15 ? (f ? 'collégienne' : 'collégien') : f ? 'lycéenne' : 'lycéen';
+  age < 3 ? 'à la crèche' : age < 11 ? (f ? 'écolière' : 'écolier') : age < 15 ? (f ? 'collégienne' : 'collégien') : f ? 'lycéenne' : 'lycéen';
 
 describe("carte d'identité des habitants", () => {
   it("carte d'un parent : en couple avec le prénom du conjoint, enfants avec prénoms et âges", () => {
@@ -30,9 +30,9 @@ describe("carte d'identité des habitants", () => {
     }
   });
 
-  it("carte d'un enfant : pas de conjoint, pas d'enfants, métier scolaire selon l'âge", () => {
+  it("carte d'un enfant : pas de conjoint, pas d'enfants, crèche avant 3 ans puis métier scolaire selon l'âge", () => {
     const kids = many.flatMap((d) => d.hh.members.map((m, i) => ({ d, m, i })).filter((x) => x.m.who.status === 'enfant'));
-    expect(new Set(kids.map((k) => SCHOOL(k.m.who.age, true))).size).toBe(3);
+    expect(new Set(kids.map((k) => SCHOOL(k.m.who.age, true))).size).toBe(4);
     for (const { d, m, i } of kids) {
       const card = idCardOf(d, i);
       expect(card.situation).toEqual({ kind: 'celibataire' });

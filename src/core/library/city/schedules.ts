@@ -332,7 +332,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       break;
     }
     case 'famille': {
-      const kids = ms.filter((i) => hh.members[i]!.size < 0.8), adults = ms.filter((i) => hh.members[i]!.size >= 0.8);
+      const kids = ms.filter((i) => hh.members[i]!.kid), adults = ms.filter((i) => !hh.members[i]!.kid);
       const wake = (off ? 498 : 395) + W * 0.6, out = wake + 60;
       lit(K, wake, off ? out + 15 : out + 30); // en semaine, jusqu'au départ du second parent
       if (!off) lit(L, wake + 9, out + 28);
@@ -611,7 +611,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
     if (!has(room)) continue;
     const { dur } = DECOR_SCENE[item.gesture];
     const x: ActExtra = { decor: { id: item.id, kind: item.kind, dx: item.dx }, ...(removing ? { reverse: true } : {}) };
-    const who = [item.m, ...ms.filter((i) => i !== item.m && hh.members[i]!.size >= 0.9)];
+    const who = [item.m, ...ms.filter((i) => i !== item.m && !hh.members[i]!.kid)];
     let s: number | null = null;
     for (const shift of DECOR_TRIES) {
       for (const m of who) {
@@ -710,7 +710,7 @@ export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw, decor: 
     const awake = (d.hh.type !== 'famille' && d.hh.type !== 'retraite') || res.bed > show.start;
     const a = show.start - 2, b = show.end + 1;
     // Adultes d'abord (trois places au balcon) ; les enfants déjà couchés ne regardent pas.
-    const kid = (m: number) => d.hh.members[m]!.size < 0.8;
+    const kid = (m: number) => d.hh.members[m]!.kid;
     const who = d.hh.members.map((_, i) => i)
       .filter((m) => !res.gone.some(([g, from, to]) => g === m && from - d.climb < b && to + d.climb > a))
       .filter((m) => !kid(m) || res.kidBed > show.start)

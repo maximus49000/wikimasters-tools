@@ -39,7 +39,11 @@ describe('traits de journée des habitants', () => {
       }
       if (t.school) {
         expect(t.school.start).toHaveLength(5);
-        if (w.status === 'enfant' && age < 11) {
+        expect(t.school.kind).toBe(w.status === 'etudiant' ? 'fac' : age < 3 ? 'creche' : age < 11 ? 'ecole' : 'college');
+        if (w.status === 'enfant' && age < 3) {
+          expect(t.school.start).toEqual([510, 510, 510, 510, 510]);
+          expect(t.school.autonomous).toBe(false);
+        } else if (w.status === 'enfant' && age < 11) {
           expect(t.school.start).toEqual([500, 500, 500, 500, 500]);
           expect(t.school.autonomous).toBe(false);
         } else if (w.status === 'enfant') {

@@ -15,16 +15,20 @@ export type WorkTraits = {
   rttPerYear: number;
 };
 // `bedtime` : minutes depuis minuit, peut dépasser 1440 (0 h 30 → 1470). `school.start` : lundi → vendredi, -1 = pas de cours
-// ce jour-là (étudiant).
+// ce jour-là (étudiant). `school.kind` : crèche (moins de 3 ans), école (3–10 ans), collège ou lycée (11–17 ans), études
+// supérieures (étudiant).
+export type SchoolKind = 'creche' | 'ecole' | 'college' | 'fac';
 export type PersonTraits = {
   work: WorkTraits | null; sleep: number; bedtime: number; earlyP: number;
-  school: null | { start: number[]; autonomous: boolean };
+  school: null | { kind: SchoolKind; start: number[]; autonomous: boolean };
 };
 
 const RTT: Record<Contract, number> = { '35h': 0, '39h': 11, forfait: 11, 'fonction-publique': 15, hcr: 0, particulier: 0 };
 const EFFECTIVE: Record<Contract, number | null> = { '35h': 420, '39h': 468, forfait: null, 'fonction-publique': 450, hcr: 450, particulier: 420 };
 const HCR_SPLIT = { a: [660, 870], b: [1110, 1350], days: [2, 3, 4, 5, 6] } as const; // 11 h-14 h 30, 18 h 30-22 h 30, mardi → samedi
 const SCHOOL_START = 500; // 8 h 20
+const CRECHE_START = 510; // 8 h 30, lundi → vendredi (pas de demi-journée le mercredi)
+const CRECHE_AGE = 3; // la crèche avant 3 ans, l'école maternelle ensuite
 
 type Rng = () => number;
 // Entier tiré dans [lo, hi], arrondi au multiple de 5 (comme la maquette).
@@ -75,11 +79,13 @@ function draw(hh: Household, m: number): PersonTraits {
   const earlyP = status === 'retraite' ? 0.15 + 0.7 * rng() : 0;
   let school: PersonTraits['school'] = null;
   if (status === 'enfant') {
-    school = age < 11
-      ? { start: [SCHOOL_START, SCHOOL_START, SCHOOL_START, SCHOOL_START, SCHOOL_START], autonomous: false }
-      : { start: Array.from({ length: 5 }, () => pick([480, 540, 600], rng)), autonomous: true };
+    school = age < CRECHE_AGE
+      ? { kind: 'creche', start: Array.from({ length: 5 }, () => CRECHE_START), autonomous: false }
+      : age < 11
+        ? { kind: 'ecole', start: Array.from({ length: 5 }, () => SCHOOL_START), autonomous: false }
+        : { kind: 'college', start: Array.from({ length: 5 }, () => pick([480, 540, 600], rng)), autonomous: true };
   } else if (status === 'etudiant') {
-    school = { start: Array.from({ length: 5 }, () => (rng() < 0.2 ? -1 : int5(rng, 480, 660))), autonomous: true };
+    school = { kind: 'fac', start: Array.from({ length: 5 }, () => (rng() < 0.2 ? -1 : int5(rng, 480, 660))), autonomous: true };
   }
   return { work, sleep, bedtime, earlyP, school };
 }

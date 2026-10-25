@@ -49,7 +49,7 @@ export function nannyFor(hh: Household): Visitor | null {
   };
 }
 
-// Métier affiché : le métier, sinon la situation accordée au sexe (scolarité selon l'âge pour un enfant).
+// Métier affiché : le métier, sinon la situation accordée au sexe (crèche avant 3 ans, puis scolarité selon l'âge).
 function jobLabel(who: Identity): string {
   if (who.job) return who.job;
   const f = who.sex === 'f';
@@ -57,6 +57,7 @@ function jobLabel(who: Identity): string {
     case 'retraite': return f ? 'retraitée' : 'retraité';
     case 'etudiant': return f ? 'étudiante' : 'étudiant';
     case 'enfant':
+      if (who.age < 3) return 'à la crèche';
       if (who.age < 11) return f ? 'écolière' : 'écolier';
       if (who.age < 15) return f ? 'collégienne' : 'collégien';
       return f ? 'lycéenne' : 'lycéen';
