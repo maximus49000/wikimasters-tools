@@ -14,10 +14,13 @@ import { dayVisits, type Visit } from './visitors';
 // de scène correspondant (`sceneDay`).
 export type DwellingDay = { draw: DayDraw; hd: HouseholdDays; meals: HouseholdMeals; visits: Visit[]; schedule: Schedule };
 
-export function dwellingDay(d: Dwelling, ctx: DayContext, day: SceneDay, seed: number, decor: readonly DecorTask[] = []): DwellingDay {
+// `pre` : journées et repas déjà calculés pour ce logement et ce jour (ils ne dépendent ni de la météo ni du déménagement :
+// la vie de la scène les garde d'une météo à l'autre) ; seuls tirage, visites et emploi du temps sont refaits.
+export type DwellingPre = { hd: HouseholdDays; meals: HouseholdMeals };
+export function dwellingDay(d: Dwelling, ctx: DayContext, day: SceneDay, seed: number, decor: readonly DecorTask[] = [], pre?: DwellingPre): DwellingDay {
   const draw = dayDraw(d, day, seed);
-  const hd = householdDays(d, ctx, seed);
-  const meals = mealsOf(d, hd);
+  const hd = pre?.hd ?? householdDays(d, ctx, seed);
+  const meals = pre?.meals ?? mealsOf(d, hd);
   const visits = dayVisits(d, hd, meals, day, seed, draw.guests);
-  return { draw, hd, meals, visits, schedule: buildSchedule(d, day, draw, hd, visits, decor) };
+  return { draw, hd, meals, visits, schedule: buildSchedule(d, day, draw, hd, visits, decor, meals) };
 }

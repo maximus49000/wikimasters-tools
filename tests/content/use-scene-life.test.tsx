@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as personDay from '../../src/core/library/city/person-day';
+
+vi.mock('../../src/core/library/city/person-day', async (orig) => {
+  const actual = await orig<typeof import('../../src/core/library/city/person-day')>();
+  return { ...actual, householdDays: vi.fn(actual.householdDays) };
+});
 import { buildSceneLife, sceneMinute, sharedSceneLife, useSceneLife, type SceneLife } from '../../src/content/use-scene-life';
 import { addDays, dayContext, holidayWeekOf, type DayContext, type HolidayPeriod } from '../../src/core/library/city/calendar';
 import { cityFacades, type Facade } from '../../src/core/library/city/facades';
@@ -175,5 +181,61 @@ describe('vie des logements de la scène', () => {
       });
     }
     expect(on).toBeGreaterThan(0);
+  });
+
+  it('buildSceneLife : days et visits pour chaque logement, prevDays = journées de la veille', () => {
+    const day = dayContext(DATE, []);
+    const life = buildSceneLife(facades, day, { precip: 0, snow: false, storm: false }, 5, false);
+    const prevCtx = dayContext(addDays(DATE, -1), []);
+    expect(life.days.size).toBe(life.dwellings.length);
+    expect(life.visits.size).toBe(life.dwellings.length);
+    expect(life.prevDays.size).toBe(life.dwellings.length);
+    expect(life.prevVisits.size).toBe(life.dwellings.length);
+    const prevSd = sceneDay(prevCtx, { precip: 0, snow: false, storm: false }, 5);
+    for (const d of life.dwellings.slice(0, 8)) {
+      expect(life.days.get(d.id)!.iso).toBe('2026-10-14');
+      expect(life.prevDays.get(d.id)!.iso).toBe('2026-10-13');
+      expect(life.visits.get(d.id)).toEqual(dwellingDay(d, day, life.day, 5).visits);
+      expect(life.prevVisits.get(d.id)).toEqual(dwellingDay(d, prevCtx, prevSd, 5).visits);
+    }
+  });
+
+  it('deux appels du même jour → même objet (cache), aucun recalcul', () => {
+    const day = dayContext(addDays(DATE, 90), []);
+    const spy = vi.mocked(personDay.householdDays);
+    const a = sharedSceneLife(facades, day, false, 5, false);
+    const n = spy.mock.calls.length;
+    expect(n).toBeGreaterThan(0);
+    expect(sharedSceneLife(facades, { ...day }, false, 5, false)).toBe(a);
+    expect(spy.mock.calls.length).toBe(n);
+  });
+
+  it('minuit : la veille de la nouvelle vie reprend les journées d’hier déjà calculées (même contenu qu’un calcul à neuf)', () => {
+    const day = dayContext(addDays(DATE, 120), []);
+    const next = dayContext(addDays(DATE, 121), []);
+    const today = sharedSceneLife(facades, day, false, 5, false);
+    const spy = vi.mocked(personDay.householdDays);
+    const before = spy.mock.calls.length;
+    const tomorrow = sharedSceneLife(facades, { ...next, yesterday: day }, false, 5, false);
+    // Seul le nouveau jour est calculé : un appel par logement.
+    expect(spy.mock.calls.length - before).toBe(today.dwellings.length);
+    for (const d of today.dwellings) expect(tomorrow.prevDays.get(d.id)).toBe(today.days.get(d.id));
+    const fresh = buildSceneLife(facades, { ...next, yesterday: day }, { precip: 0, snow: false, storm: false }, 5, false);
+    expect(tomorrow.yesterday).toEqual(fresh.yesterday);
+    expect(tomorrow.prevVisits).toEqual(fresh.prevVisits);
+  });
+
+  it('bascule humide / sec ou déménagement : journées des habitants non recalculées, emplois du temps refaits', () => {
+    const day = dayContext(addDays(DATE, 150), []);
+    const dry = sharedSceneLife(facades, day, false, 5, false);
+    const spy = vi.mocked(personDay.householdDays);
+    const n = spy.mock.calls.length;
+    const wet = sharedSceneLife(facades, day, true, 5, false);
+    const moving = sharedSceneLife(facades, day, false, 5, true);
+    expect(spy.mock.calls.length).toBe(n);
+    expect(wet).not.toBe(dry);
+    for (const d of dry.dwellings) { expect(wet.days.get(d.id)).toBe(dry.days.get(d.id)); expect(moving.days.get(d.id)).toBe(dry.days.get(d.id)); }
+    const fresh = buildSceneLife(facades, day, { precip: 1, snow: false, storm: false }, 5, false);
+    expect(wet.today).toEqual(fresh.today);
   });
 });

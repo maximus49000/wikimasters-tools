@@ -107,7 +107,7 @@ function clusters(list: readonly RoomSpan[]): RoomSpan[][] {
 // Repas du foyer d'un jour (même flux que les tests de home-rooms et de visitors).
 export const mealsOf = (d: Dwelling, hd: HouseholdDays): HouseholdMeals => householdMeals(d, hd, dayRng(d.hh.seed, 0, hd.iso, 'repas'));
 
-function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[]): Segment[] {
+function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[], mealsIn?: HouseholdMeals): Segment[] {
   const hh = d.hh;
   const r = mulberry32(draw.rng);
   const opt = draw.optional;
@@ -129,7 +129,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, v
   const adults = ms.filter((m) => !isKid(m));
 
   // ─── qui est là : pièces occupées (membres, nounou, visiteurs entrés) ───
-  const meals = mealsOf(d, hd);
+  const meals = mealsIn ?? mealsOf(d, hd);
   const inside = visits.filter((v) => v.inside);
   const total = n + inside.length;
   const guests = inside.map((v, k) => ({ m: n + k, a: v.arrive, b: v.leave, nanny: v.kind === 'nounou' }));
@@ -670,9 +670,9 @@ function maxActors(segments: Segment[]): number {
 // Parti (semaine de vacances) : aucun segment (volets fermés tout le jour pour qui les ferme). `decor` : décors
 // d'Halloween à poser ou retirer ce jour-là (halloween.ts, `decorTasks`). Calculé une fois par jour et par logement
 // (dwelling-day.ts, cache de la vie de la scène), jamais par image.
-export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[] = []): Schedule {
+export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw, hd: HouseholdDays, visits: readonly Visit[], decor: readonly DecorTask[] = [], meals?: HouseholdMeals): Schedule {
   const shutUser = SHUT_USERS.has(d.hh.type);
   if (hd.away.state === 'away') return { dwelling: d.id, segments: [], shutUser, maxActors: 0 };
-  const segments = clamp(compose(d, day, draw, hd, visits, decor));
+  const segments = clamp(compose(d, day, draw, hd, visits, decor, meals));
   return { dwelling: d.id, segments, shutUser, maxActors: maxActors(segments) };
 }
