@@ -54,10 +54,13 @@ function legProfile(legs: CelVariant['legs'], h: number): [number, number][] {
 // triangles « vers l'extérieur du centre » : sur une plaque mince et large, une face cintrée loin du centre peut être jugée tournée
 // vers l'intérieur et se retrouver à l'envers (taches d'ombre, faces éclairées à contresens). Ici la plaque est construite plate,
 // orientée juste, puis cintrée.
-function bent(m: Mesh, d: Deform): Mesh {
+// Si la déformation retourne l'orientation (déterminant de sa jacobienne négatif : miroir, échange d'axes), l'ordre des sommets de
+// chaque triangle est inversé pour que les normales restent tournées vers l'extérieur. Exporté pour le test et les familles suivantes.
+export function bent(m: Mesh, d: Deform): Mesh {
   const v = m.v.map(([x, y, z]) => d(x, y, z));
+  const t = deformFlips(m, d) ? m.t.map(([a, b, c]): [number, number, number] => [a, c, b]) : m.t;
   const nn: Vec3[] = v.map(() => [0, 0, 0]);
-  for (const [a, b, c] of m.t) {
+  for (const [a, b, c] of t) {
     const A = v[a]!, B = v[b]!, C = v[c]!;
     const u: Vec3 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], w: Vec3 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
     const N: Vec3 = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
@@ -76,7 +79,21 @@ function bent(m: Mesh, d: Deform): Mesh {
     const sum = ids.reduce<Vec3>((acc, i) => [acc[0] + nn[i]![0], acc[1] + nn[i]![1], acc[2] + nn[i]![2]], [0, 0, 0]);
     for (const i of ids) nn[i] = sum;
   }
-  return { v, n: nn.map(normalize), t: m.t };
+  return { v, n: nn.map(normalize), t };
+}
+// Signe de la jacobienne de `d`, estimé par différences finies au centre et aux huit coins de la boîte du maillage (majorité des signes).
+function deformFlips(m: Mesh, d: Deform): boolean {
+  const lo: Vec3 = [Infinity, Infinity, Infinity], hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const p of m.v) for (let k = 0; k < 3; k++) (lo[k] = Math.min(lo[k]!, p[k]!)), (hi[k] = Math.max(hi[k]!, p[k]!));
+  const h = Math.max(1e-3, 0.01 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]));
+  const det = (x: number, y: number, z: number): number => {
+    const o = d(x, y, z), X = d(x + h, y, z), Y = d(x, y + h, z), Z = d(x, y, z + h);
+    const a: Vec3 = [X[0] - o[0], X[1] - o[1], X[2] - o[2]], b: Vec3 = [Y[0] - o[0], Y[1] - o[1], Y[2] - o[2]], c: Vec3 = [Z[0] - o[0], Z[1] - o[1], Z[2] - o[2]];
+    return a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]);
+  };
+  let vote = Math.sign(det((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2));
+  for (const x of [lo[0], hi[0]]) for (const y of [lo[1], hi[1]]) for (const z of [lo[2], hi[2]]) vote += Math.sign(det(x, y, z));
+  return vote < 0;
 }
 // Barreau rond entre deux points (tube droit).
 const rod = (a: Vec3, b: Vec3, r: number, col: Tone): CelPart => part(tube([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], b], r, 8), col, { crease: false });
@@ -89,13 +106,13 @@ const RUNNER_X = 26.5, RUNNER_R = 1.75;
 /** Les deux patins seuls (tubes en arc), pour le contrôle du dessin de profil. */
 export function rockingRunners(look: CelLook): CelPart[] {
   // Barre droite tournée (bouts effilés en pointe, pas de « roulettes »), puis cintrée le long de l'arc par `bent` (normales recalculées).
-  const prof: [number, number][] = [[0.7, 0], [1.3, 3]];
+  const prof: [number, number][] = [[0.25, 0], [0.7, 1.5], [1.25, 4.5]];
   for (let y = 8; y <= 84.1; y += 4.75) prof.push([RUNNER_R, y]); // anneaux rapprochés : l'arc est échantillonné sur toute sa longueur
-  prof.push([1.3, 89], [0.7, 92]);
+  prof.push([1.25, 87.5], [0.7, 90.5], [0.25, 92]); // pointes longues : plus de « roulette » vue de face ou de dos
   const bar = lathe(prof, 10);
   const out: CelPart[] = [];
   for (const sx of [-1, 1]) {
-    const arc: Deform = (x, y, z) => [sx * RUNNER_X + x, runnerY(y - 46) + z, y - 46];
+    const arc: Deform = (x, y, z) => [sx * RUNNER_X + x, runnerY(y - 46) - z, y - 46]; // (x, y, z) → (x, −z, y) : rotation, déterminant +1
     out.push(part(bent(bar, arc), look.tones.woodDark, { crease: false }));
   }
   return out;
@@ -222,6 +239,7 @@ function eggChair(look: CelLook, life: LifeState): CelPart[] {
 const FAN_Z = -18, FAN_LEAN = 0.08, FAN_CURL = 0.0018, FAN_C: [number, number] = [0, 88], FAN_RX = 44.5, FAN_RY = 47.5, FAN_BULGE = 4;
 // L'éventail est dessiné dans son repère (plan z = 0 au pied, x à droite, y en haut) puis penché en arrière de FAN_LEAN et posé à FAN_Z :
 // de face, sa normale s'écarte franchement du seuil d'ombre (une face verticale est à 0,04 du seuil : la moindre courbure la tachait).
+// Le pivot de l'inclinaison est au sol (y = 0), voulu : le pied de l'éventail (y 40) ne recule que de 3 cm, le sommet de 11.
 const fanPose = (m: Mesh): Mesh => place(m, { rx: -FAN_LEAN, t: [0, 0, FAN_Z] });
 // Cintrage en plan (repère de l'éventail) : les bouts viennent vers l'avant.
 const fanZ = (x: number): number => FAN_CURL * x * x;
