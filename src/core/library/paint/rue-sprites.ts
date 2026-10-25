@@ -1,66 +1,132 @@
 import { lampLit, type Lamp } from '../city/lamps';
 import { hashString, mulberry32 } from '../scene-world';
-import { TAU } from './cel';
-import type { Rgb } from './color';
+import { INK, TAU, fillRect, shade } from './cel';
+import { mixRgb, hexRgb, rgba, type Rgb } from './color';
 import { bloomOf, foliageOf, smooth, type FondMeteo, type FondMoment } from './fond-time';
 import { STIFF, gustOf, gustPeriod, massAmp, windAt, type Gust, type Wind } from './fond-vent';
 import type { Grade } from './grade';
-import { paintBranches, paintDryLeaves, paintLeaves, paintTrunk, tuftState, type TreeModel, type Tuft } from './hill-trees';
+import { paintBranches, paintLeaves, treeModelOf, tuftState, type TreeModel } from './hill-trees';
 import type { PaintCtx } from './paint-ctx';
+import { paintRueClouds, paintRueSkeleton, rueCloudItems, rueLayerOfMass, rueTreeKey, rueTreeModelV5, type RueTreeModel } from './rue-trees';
 import type { RuePit } from './rue-verte-plan';
-import { paintTuteur, rueBark, rueTreeModel, rueWet } from './rue-verte-painter';
+import { PIT, YOUNG_BARK, paintPitFront, paintTuteur, pitTopOf, rueWet } from './rue-verte-painter';
 
-// Sprites cuits des arbres de la rue (calque `arbres-rue`, PR 3) : port de `treeSprites` / `paintArbresRue` de la maquette
-// fond-ville (`04a-vent.js`, notes §3 c, §3 d « Vent, nouveau rendu »). Par fosse plantée, des couches peintes une fois par
-// (date, pluie, neige, étalonnage) : ombre des masses, fût + tuteur + charpentières (jamais transformés), rameaux fins (+ voile,
-// neige, feuilles sèches : léger cisaillement), une couche par grappe de touffes (`cluster` 0-5 : translation propre au vent),
-// rehauts et rehauts pâles (opacité). La pose de chaque image (`rueTreePose`) est une fonction pure de (fosse, t, vent) :
-// le calque ne fait qu'écrire des attributs à 15 Hz. Le sol (grille, fleurs, flaque, ombre portée du fût) est dans les tranches.
+// Sprites cuits des arbres de la rue (calque `arbres-rue`) : par fosse plantée, des couches peintes une fois par (date, pluie,
+// neige, étalonnage) : ombre portée du feuillage, couche FIXE (tronc + lèvre de terre + grille ou herbe du carré, jamais
+// transformée), puis une couche par charpentière (`mass`) : son bois (niveaux ≥ 2) ET ses nuages de feuilles, cisaillée au vent
+// autour du pied de la charpentière (la jonction avec le tronc ne bouge pas, le haut part de plusieurs px ; les feuilles restent
+// sur leur bois puisqu'ils bougent ensemble). Adultes : modèle V5 « squelette continu » (`rue-trees.ts`, maquette
+// rue-arbres-naturels validée le 2026-10-24). Jeunes au tuteur (1 place sur 10) : ancien modèle de la colline (`hill-trees`,
+// 3 niveaux, 20 touffes) comme dans la maquette, avec le collet de la maquette et toutes leurs branches dans la couche fixe ;
+// leurs couches au vent ne portent que les touffes (cisaillées autour de la fourche : ≈ 1 px au plus sur un si petit arbre).
+// La pose de chaque image (`rueTreePose`) est une fonction pure de (fosse, t, vent) : le calque ne fait qu'écrire des matrices
+// à 15 Hz. Le sol (bordure, terre, fleurs, flaque, ombre portée du fût) est dans les tranches.
 
-export type RueLayerName = 'shadow' | 'trunk' | 'twigs' | 'c0' | 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | 'hi' | 'pale';
+export type RueLayerName = 'shadow' | 'trunk' | 'c0' | 'c1' | 'c2' | 'c3' | 'c4' | 'c5';
 
-// Nombre de grappes d'un arbre (une par charpentière, 6 au plus : `cluster` = min(5, charpentière)).
-export const rueMassCount = (m: TreeModel): number => Math.max(1, Math.min(6, m.segs.filter((sg) => sg.lv === 1).length));
+// Arbre d'une fosse plantée : modèle V5 (adulte) ou ancien modèle (jeune), mémorisé par fosse. Champs communs : `foot`,
+// `rootY`, `trunkH`, `cx`, `cy`, `rx`, `ry`, `box`.
+export type RueTree = { young: false; m: RueTreeModel } | { young: true; m: TreeModel };
+// Jeune arbre au tuteur : fût v.h, ramure 2 r, 3 niveaux, ≤ 20 touffes de 0,42 r, fût de 0,7 px (port de hill-trees ; essence
+// sans port propre dans hill-trees : port « bouquet »).
+export const rueYoungModel = (v: RuePit): TreeModel => treeModelOf(rueTreeKey(v), v.species, { x: v.x, y: v.y }, v.h, v.r * 2, 3, v.r * 0.42, 20, 0.7);
+const TREES = new WeakMap<RuePit, RueTree>();
+export function rueTreeOf(v: RuePit): RueTree {
+  let tr = TREES.get(v);
+  if (!tr) TREES.set(v, (tr = v.young ? { young: true, m: rueYoungModel(v) } : { young: false, m: rueTreeModelV5(v) }));
+  return tr;
+}
+// Haut du houppier (départ des feuilles qui tombent).
+const crownTop = (tr: RueTree): number => (tr.young ? tr.m.top : tr.m.foot.y - tr.m.total);
+
+// Nombre de couches de feuillage (une par charpentière, 6 au plus : la charpentière k ≥ 5 va dans `c5`).
+export const rueMassCount = (tr: RueTree): number => Math.max(1, Math.min(6, tr.young ? tr.m.segs.filter((sg) => sg.lv === 1).length : tr.m.masses));
 
 // Couches d'un arbre, dans l'ordre de dessin (nombre fixe pour la vie de la scène : le squelette ne change jamais).
-export function rueLayers(m: TreeModel): RueLayerName[] {
-  const out: RueLayerName[] = ['shadow', 'trunk', 'twigs'];
-  for (let k = 0; k < rueMassCount(m); k++) out.push(`c${k}` as RueLayerName);
-  out.push('hi', 'pale');
+export function rueLayers(tr: RueTree): RueLayerName[] {
+  const out: RueLayerName[] = ['shadow', 'trunk'];
+  for (let k = 0; k < rueMassCount(tr); k++) out.push(`c${k}` as RueLayerName);
   return out;
 }
 
-// Boîte fixe des sprites d'une fosse (repère du monde) : envergure du modèle + marge 0,6 r (+ 6 px sur les côtés, 4 en haut,
-// 2 sous le pied), étendue à la boîte de dessin du modèle et à l'ombre des masses (décalée de +4, +5).
+// Cisaillement maximal d'une couche de charpentière (px de déplacement horizontal par px de hauteur au-dessus de son pied) :
+// 0,12 → le haut d'une couronne de 40 à 60 px part de 5 à 7 px, comme les grappes d'avant (translation de b × amplitude).
+export const RUE_SHEAR_MAX = 0.12;
+// Déplacement horizontal maximal d'un point de l'arbre sous le vent (marge des boîtes) : cisaillement maximal × hauteur de la
+// boîte du modèle (borne large : aucun point n'est plus loin du pied de sa charpentière).
+export const rueWindPad = (tr: RueTree): number => RUE_SHEAR_MAX * (tr.m.box.y1 - tr.m.box.y0);
+
+// Boîte fixe des sprites d'une fosse (repère du monde) : boîte du modèle (tubes + nuages + ombre), carré de terre (lèvre,
+// grille, herbe : ± PIT.w / 2 + 0,8, du haut du carré à la bordure), 1 px, et sur les côtés la marge du vent (`rueWindPad`).
 export function rueSpriteBox(v: RuePit): { x: number; y: number; w: number; h: number } {
-  const m = rueTreeModel(v);
-  const pad = v.r * 0.6;
-  const x0 = Math.min(m.span[0] - pad - 6, m.box.x0 - 2);
-  const y0 = Math.min(m.top - pad - 4, m.box.y0 - 2);
-  const x1 = Math.max(m.span[1] + pad + 6, m.box.x1 + 6);
-  const y1 = Math.max(v.y + pad + 2, m.box.y1 + 6);
+  const tr = rueTreeOf(v);
+  const b = tr.m.box;
+  const pad = 1;
+  const wind = rueWindPad(tr);
+  const half = PIT.w / 2 + 0.8;
+  const x0 = Math.min(b.x0, v.x - half) - pad - wind;
+  const y0 = Math.min(b.y0, pitTopOf(v) - 0.8) - pad;
+  const x1 = Math.max(b.x1, v.x + half) + pad + wind;
+  const y1 = Math.max(b.y1, pitTopOf(v) + PIT.h + 0.6) + pad;
   const x = Math.floor(x0);
   const y = Math.floor(y0);
   return { x, y, w: Math.ceil(x1) - x, h: Math.ceil(y1) - y };
 }
 
+// Fût d'un jeune arbre avec collet (maquette `paintTrunk(…, collet)`) : évasé sur ses 3,2 derniers px (1,25 → 1,9 w0) et
+// enfoncé de 0,8 px sous la terre (la lèvre est repeinte devant), flanc droit ombré, trait encré.
+function paintYoungTrunk(ctx: PaintCtx, m: TreeModel, bark0: Rgb, wet: number): void {
+  const bark = wet ? mixRgb(bark0, hexRgb('#2A2420'), 0.35 * wet) : bark0;
+  const { foot, rootY, w0 } = m;
+  const tb = w0 * 1.25;
+  const tt = w0 * 0.8;
+  const fy = foot.y + 0.8;
+  ctx.beginPath();
+  ctx.moveTo(foot.x - tb * 1.9, fy);
+  ctx.quadraticCurveTo(foot.x - tb * 1.05, fy - 1.2, foot.x - tb, fy - 3.2);
+  ctx.lineTo(foot.x - tt, rootY);
+  ctx.lineTo(foot.x + tt, rootY);
+  ctx.lineTo(foot.x + tb, fy - 3.2);
+  ctx.quadraticCurveTo(foot.x + tb * 1.05, fy - 1.2, foot.x + tb * 1.9, fy);
+  ctx.closePath();
+  ctx.fillStyle = rgba(bark, 1);
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  fillRect(ctx, shade(bark, 0.4), foot.x + tt * 0.2, rootY, tb * 2, m.trunkH + 2);
+  ctx.restore();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+}
+
 // Une couche d'un arbre, en coordonnées du monde (l'appelant décale le canvas sur la boîte de `rueSpriteBox`).
 export function paintRueLayer(ctx: PaintCtx, v: RuePit, layer: RueLayerName, D: FondMoment): void {
-  const m = rueTreeModel(v);
-  const f = foliageOf(D, 'rue' + Math.round(v.x), v.species);
+  const tr = rueTreeOf(v);
   const wet = rueWet(D);
+  if (!tr.young) {
+    const m = tr.m;
+    if (layer === 'shadow') paintRueClouds(ctx, m, D, { part: 'shadow' });
+    else if (layer === 'trunk') {
+      paintRueSkeleton(ctx, m, { wet, snow: D.meteo.snow, layer: 'fixed' });
+      paintPitFront(ctx, v);
+    } else {
+      const k = Number(layer.slice(1));
+      paintRueSkeleton(ctx, m, { wet, snow: D.meteo.snow, layer: k });
+      paintRueClouds(ctx, m, D, { mass: k, wet });
+    }
+    return;
+  }
+  const m = tr.m;
+  const f = foliageOf(D, m.key, v.species);
   if (layer === 'shadow') paintLeaves(ctx, m, f, D, 0, { part: 'shadow' });
   else if (layer === 'trunk') {
-    paintTrunk(ctx, m, rueBark(v), 0, wet, v.young);
+    paintYoungTrunk(ctx, m, YOUNG_BARK, wet);
+    // Toutes les branches, toujours (comme le squelette V5) : les touffes restantes sont toujours sur du bois.
+    paintBranches(ctx, m, 'all', { snow: D.meteo.snow });
     paintTuteur(ctx, v);
-    paintBranches(ctx, m, 'coarse');
-  } else if (layer === 'twigs') {
-    paintBranches(ctx, m, 'fine', { d: f.d, veil: 0.12, snow: D.meteo.snow });
-    paintDryLeaves(ctx, m, D);
-  } else if (layer === 'hi') paintLeaves(ctx, m, f, D, 0, { part: 'hi', wet });
-  else if (layer === 'pale') paintLeaves(ctx, m, f, D, 0, { part: 'hi', pale: true });
-  // Grappe : toutes ses touffes, lâches comprises (elles suivent leur grappe ; la maquette les redessine une à une).
-  else paintLeaves(ctx, m, f, D, 0, { which: Number(layer.slice(1)), wet });
+    paintPitFront(ctx, v);
+  } else paintLeaves(ctx, m, f, D, 0, { which: Number(layer.slice(1)), wet });
 }
 
 // Lavis chaud des lampadaires allumés (port de `paintLightsRue`) : dessous du houppier côté lampe et fût, à moins de 40 px
@@ -78,23 +144,23 @@ export function rueLampWash(v: RuePit, lamps: readonly Lamp[], minutes: number, 
   return out;
 }
 
-// Lavis posé sur les pixels déjà peints de la couche (`source-atop` : jamais hors du houppier ni empilé d'une grappe à l'autre).
-// Couches `trunk` et `c*` seulement.
+// Lavis posé sur les pixels déjà peints de la couche (`source-atop` : jamais hors du houppier ni empilé d'une couche à l'autre).
+// Couches `trunk` (fût) et `c*` (dessous du houppier) seulement.
 export function paintRueLampWash(ctx: PaintCtx, v: RuePit, layer: RueLayerName, washes: readonly RueLampWash[]): void {
   const crown = layer[0] === 'c';
   if (!washes.length || (!crown && layer !== 'trunk')) return;
+  const { m } = rueTreeOf(v);
   const prev = ctx.globalCompositeOperation;
   ctx.globalCompositeOperation = 'source-atop';
   for (const { k, side } of washes) {
     if (crown) {
-      const cy = v.y - v.h - v.r * 0.75;
       ctx.fillStyle = `rgba(255,214,140,${k.toFixed(3)})`;
       ctx.beginPath();
-      ctx.ellipse(v.x + v.lean + side * v.r * 0.3, cy + v.r * 0.35, v.r * 0.8, v.r * 0.5, 0, 0, TAU);
+      ctx.ellipse(m.cx + side * m.rx * 0.3, m.cy + m.ry * 0.35, m.rx * 0.8, m.ry * 0.5, 0, 0, TAU);
       ctx.fill();
     } else {
       ctx.fillStyle = `rgba(255,214,140,${(k * 0.7).toFixed(3)})`;
-      ctx.fillRect(v.x - 1.5, v.y - v.h, 3, v.h);
+      ctx.fillRect(v.x - 3, m.rootY, 6, v.y - m.rootY);
     }
   }
   ctx.globalCompositeOperation = prev;
@@ -110,38 +176,58 @@ export function gradePixels(d: Uint8ClampedArray, g: Grade): void {
   }
 }
 
-// Amplitudes des grappes d'un modèle (calculées une fois : la pose est lue à 15 Hz).
-const AMPS = new WeakMap<TreeModel, number[]>();
-const ampsOf = (m: TreeModel): number[] => {
-  let a = AMPS.get(m);
-  if (!a) AMPS.set(m, (a = Array.from({ length: rueMassCount(m) }, (_, k) => massAmp(m, k))));
-  return a;
+// Géométrie d'une couche de charpentière : pied `y0` (point fixe du cisaillement : départ de la charpentière sur le tronc, le
+// plus bas si la couche en regroupe plusieurs ; jeune : la fourche), hauteur `h` de son feuillage au-dessus du pied (≥ 4 px) et
+// amplitude (px par unité de vent, comme `massAmp` : plus forte pour les masses hautes et écartées du tronc).
+type LayerGeo = { y0: number; h: number; amp: number };
+function layerGeoV5(m: RueTreeModel, k: number): LayerGeo {
+  const bases = m.axes.filter((a) => a.level === 2 && rueLayerOfMass(a.mass) === k).map((a) => a.pts[0]![1]);
+  const y0 = bases.length ? Math.max(...bases) : m.rootY;
+  const cl = m.clouds.filter((c) => rueLayerOfMass(c.mass) === k);
+  const ax = m.axes.filter((a) => a.level >= 2 && rueLayerOfMass(a.mass) === k).flatMap((a) => a.pts);
+  // Centre du feuillage (sinon, en hiver de la maquette sans nuage, du bois de la charpentière).
+  const pts: [number, number][] = cl.length ? cl.map((c) => [c.x, c.y]) : ax.length ? ax : [[m.cx, m.cy]];
+  const mx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const my = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  const amp = cl.length ? 0.8 + (1.2 * Math.abs(mx - m.foot.x)) / Math.max(1, m.rx) + (0.8 * (m.cy - my)) / Math.max(1, m.ry) : 1;
+  return { y0, h: Math.max(4, y0 - my), amp };
+}
+function layerGeoYoung(m: TreeModel, k: number): LayerGeo {
+  const tf = m.tufts.filter((t) => t.cluster === k);
+  const my = tf.length ? tf.reduce((s, t) => s + t.y, 0) / tf.length : m.cy;
+  return { y0: m.rootY, h: Math.max(4, m.rootY - my), amp: massAmp(m, k) };
+}
+// Calculée une fois par arbre (la pose est lue à 15 Hz).
+const GEOS = new WeakMap<object, LayerGeo[]>();
+const geosOf = (tr: RueTree): LayerGeo[] => {
+  let g = GEOS.get(tr.m);
+  if (!g) GEOS.set(tr.m, (g = Array.from({ length: rueMassCount(tr) }, (_, k) => (tr.young ? layerGeoYoung(tr.m, k) : layerGeoV5(tr.m, k)))));
+  return g;
 };
 
-export type RueTreePose = { twigShear: number; masses: { dx: number; dy: number }[]; hiAlpha: number; paleAlpha: number; hiDx: number; paleDx: number };
+// Pose d'une couche de charpentière : matrice (1 0 c 1 e 0) avec e = −c·y0 (cisaillement autour du pied : x' = x + c (y − y0)).
+export type RueLayerPose = { c: number; e: number; y0: number };
+export type RueTreePose = { masses: RueLayerPose[] };
 
-// Pose d'un arbre à l'instant `t` (s) sous le vent `w` (port de `paintArbresRue`) : `b` = vent local × raideur (jeune 1,8,
-// × 1,25 sous la pluie, × 1,3 par orage) ; rameaux : cisaillement de 3 % de b autour de la racine des charpentières (`rootY`) ;
-// grappes : translation b × massAmp × oscillation propre (deux sinus déphasés par arbre et par grappe) et légère remontée ;
-// rehauts : frémissement au-delà de 0,04 de vent, face claire au-delà de 0,9 (décalés comme dans la maquette). Le fût et les
-// charpentières n'ont pas de pose. Vent calme (ou mouvement réduit, vent nul passé par l'appelant) : pose nulle.
-// `width` : largeur de la scène (point de départ des rafales quand le vent souffle vers la gauche).
-export function rueTreePose(v: RuePit, m: TreeModel, t: number, w: Wind, width = 1440): RueTreePose {
-  const amps = ampsOf(m);
-  const n = amps.length;
+// Pose d'un arbre à l'instant `t` (s) sous le vent `w` : `b` = vent local × raideur (jeune 1,8, × 1,25 sous la pluie, × 1,3 par
+// orage) ; chaque couche de charpentière : déplacement voulu au centre de son feuillage b × amplitude × oscillation propre
+// (deux sinus déphasés par arbre et par couche, comme les grappes d'avant), obtenu par un cisaillement autour du pied de la
+// charpentière, borné à RUE_SHEAR_MAX. La couche fixe (tronc, carré) n'a pas de pose. Vent calme (ou mouvement réduit, vent nul
+// passé par l'appelant) : pose nulle. `width` : largeur de la scène (départ des rafales).
+export function rueTreePose(v: RuePit, tr: RueTree, t: number, w: Wind, width = 1440): RueTreePose {
+  const geos = geosOf(tr);
   const wind = windAt(v.x, t, w, width);
-  if (wind === 0) return { twigShear: 0, masses: Array.from({ length: n }, () => ({ dx: 0, dy: 0 })), hiAlpha: 0, paleAlpha: 0, hiDx: 0, paleDx: 0 };
+  if (wind === 0) return { masses: geos.map((g) => ({ c: 0, e: 0, y0: g.y0 })) };
   const stiff = (v.young ? 1.8 : STIFF[v.species] || 1) * (1 + 0.25 * (w.wet || 0)) * (w.storm ? 1.3 : 1);
   const b = wind * stiff;
-  const masses = Array.from({ length: n }, (_, k) => {
+  const masses = geos.map((g, k) => {
     const ph = v.x * 0.37 + k * 1.9;
     const osc = 0.7 + 0.3 * Math.sin(t * (2.6 + k * 0.7) + ph) + 0.15 * Math.sin(t * 7.3 + ph * 2);
-    return { dx: b * amps[k]! * osc, dy: -Math.abs(b) * 0.25 * (0.5 + 0.5 * Math.sin(t * 3.1 + ph)) };
+    const dx = b * g.amp * osc;
+    const c = Math.max(-RUE_SHEAR_MAX, Math.min(RUE_SHEAR_MAX, -dx / g.h));
+    return { c, e: -c * g.y0 || 0, y0: g.y0 };
   });
-  const a = Math.abs(wind);
-  const hiAlpha = a > 0.04 ? Math.max(0, 0.5 * Math.min(1, a * 2) * (0.5 + 0.5 * Math.sin(t * (5 + (v.x % 7)) + v.x * 0.3) * Math.sin(t * 2.3 + v.x))) : 0;
-  const paleAlpha = a > 0.9 ? Math.min(0.7, (a - 0.9) * 0.8) * (0.6 + 0.4 * Math.sin(t * 9 + v.x)) : 0;
-  return { twigShear: 0.03 * b, masses, hiAlpha, paleAlpha, hiDx: b * 1.4, paleDx: b * 1.6 };
+  return { masses };
 }
 
 // ───────────── Particules et oiseaux (port de `paintParticlesArbre` / `paintBirdsArbre`, notes §3 c) ─────────────
@@ -169,10 +255,29 @@ const SEED_FADE_S = 2;
 const hexOf = (c: Rgb): string => '#' + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
 const rngOf = (key: string): (() => number) => mulberry32(hashString(key) >>> 0);
 
-// Touffes qui peuvent partir (lâches en automne ; en avril, les touffes du bout des branches des cerisiers en fleur).
-type Loose = { tf: Tuft; color: string }[];
-// Arbres de la scène pour un jour : modèle, feuillage, source, et places du pool par genre (mémorisé par liste et par jour).
-type TreeInfo = { v: RuePit; m: TreeModel; d: number; cx: number; cy: number; ground: number; loose: Loose; petals: boolean; slots: Record<RueParticleKind, { from: number; n: number }>; memo: Draws };
+// Touffes / nuages qui peuvent partir (lâches en automne : au bord de la densité du jour ; en avril, ceux du bout des branches
+// des cerisiers en fleur) : centre, rayon du jour, couleur de la feuille.
+export type RueLoose = { x: number; y: number; rr: number; color: string };
+export function rueLooseOf(v: RuePit, D: Pick<FondMoment, 'doy'>): { loose: RueLoose[]; petals: boolean; d: number } {
+  const tr = rueTreeOf(v);
+  const f = foliageOf(D, rueTreeKey(v), v.species);
+  const bloom = v.species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
+  const petals = bloom > 0.3;
+  const loose: RueLoose[] = [];
+  if ((f.drop > 0 && f.drop < 1) || petals) {
+    if (tr.young)
+      for (const tf of tr.m.tufts) {
+        const st = tuftState(tf, f, D, v.species);
+        if (petals ? st.size > 0 && tf.rank > 0.5 : st.loose && st.size > 0) loose.push({ x: tf.x, y: tf.y, rr: tf.rr, color: petals ? '#F6C0D4' : hexOf(st.tones[1]!) });
+      }
+    else
+      for (const it of rueCloudItems(tr.m, D))
+        if (petals ? it.c.rank > 0.5 : f.d - it.c.rank < 0.1) loose.push({ x: it.x, y: it.y, rr: it.rr, color: petals ? '#F6C0D4' : hexOf(it.tones[1]!) });
+  }
+  return { loose, petals, d: f.d };
+}
+// Arbres de la scène pour un jour : source, et places du pool par genre (mémorisé par liste et par jour).
+type TreeInfo = { v: RuePit; d: number; top: number; cx: number; cy: number; ground: number; loose: RueLoose[]; petals: boolean; slots: Record<RueParticleKind, { from: number; n: number }>; memo: Draws };
 // Tirages mémorisés (la boucle tourne à 15 images/s : ni clé texte ni générateur recréés à chaque image). Mêmes clés, mêmes
 // tirages dans le même ordre que `rngOf(clé)`, donc mêmes valeurs. `cycle` : derniers tirages par place (cycle `n`) ;
 // `once` : tirage fixe par place ; `gust` : tirage par rafale `k`, par place (vidé au-delà de 16 rafales).
@@ -230,18 +335,10 @@ function treesOf(items: readonly RuePit[], D: FondMoment): TreeInfo[] {
   const hit = INFOS.get(items);
   if (hit && hit.key === key) return hit.trees;
   const pits = items.filter((v) => v.kind === 'pit' && !v.empty);
-  const trees = pits.map((v) => {
-    const m = rueTreeModel(v);
-    const f = foliageOf(D, 'rue' + Math.round(v.x), v.species);
-    const bloom = v.species === 'cerisier' ? bloomOf(D, 'cerisier') : 0;
-    const petals = bloom > 0.3;
-    const loose: Loose = [];
-    if ((f.drop > 0 && f.drop < 1) || petals)
-      for (const tf of m.tufts) {
-        const st = tuftState(tf, f, D, v.species);
-        if (petals ? st.size > 0 && tf.rank > 0.5 : st.loose && st.size > 0) loose.push({ tf, color: petals ? '#F6C0D4' : hexOf(st.tones[1]!) });
-      }
-    return { v, m, d: f.d, cx: v.x + v.lean, cy: m.cy, ground: v.y - 0.5, loose, petals, slots: {} as TreeInfo['slots'], memo: { cycle: new Map(), once: new Map(), gust: new Map() } };
+  const trees = pits.map((v): TreeInfo => {
+    const tr = rueTreeOf(v);
+    const { loose, petals, d } = rueLooseOf(v, D);
+    return { v, d, top: crownTop(tr), cx: tr.m.cx, cy: tr.m.cy, ground: v.y - 0.5, loose, petals, slots: {} as TreeInfo['slots'], memo: { cycle: new Map(), once: new Map(), gust: new Map() } };
   });
   const seeds = D.doy >= 125 && D.doy < 175;
   const ok: Record<RueParticleKind, boolean[]> = {
@@ -286,7 +383,7 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
     const s = tr.slots[kind];
     if (!s.n) continue;
     const fallV = tr.petals ? 2.2 : 3.6;
-    const life = (tr.ground - (tr.m.top - 2)) / fallV + LEAF_GROUND_S + LEAF_FADE_S;
+    const life = (tr.ground - (tr.top - 2)) / fallV + LEAF_GROUND_S + LEAF_FADE_S;
     const C = life + LEAF_WINDOW_S;
     const x = tr.v.x;
     for (let j = 0; j < s.n; j++) {
@@ -317,8 +414,8 @@ export function rueParticles(items: readonly RuePit[], D: FondMoment, t: number,
       if (Number.isNaN(tp) || t < tp) continue;
       const rk = seq(cycleDraws(tr.memo, slot, n, () => `part-${Math.round(x)}-${j}-${n}`, 6));
       const o = tr.loose[Math.floor(rk() * tr.loose.length)]!;
-      const x0 = o.tf.x + (rk() - 0.5) * o.tf.rr;
-      const y0 = o.tf.y + (rk() - 0.5) * o.tf.rr;
+      const x0 = o.x + (rk() - 0.5) * o.rr;
+      const y0 = o.y + (rk() - 0.5) * o.rr;
       const vx = dir * (14 + 22 * force) * (0.7 + rk() * 0.6);
       const flut = 1.5 + rk() * 2;
       const ph = rk() * TAU;
@@ -436,8 +533,8 @@ export function rueBird(items: readonly RuePit[], D: FondMoment, t: number, widt
   const rk = rngOf(`oiseau-${band}-${k}`);
   const trees = adults.filter((p) => Math.floor(p.x / 480) === band);
   const v = trees[Math.floor(rk() * trees.length)]!;
-  if (foliageOf(D, 'rue' + Math.round(v.x), v.species).d < 0.3) return null;
-  const m = rueTreeModel(v);
+  if (foliageOf(D, rueTreeKey(v), v.species).d < 0.3) return null;
+  const { m } = rueTreeOf(v);
   const t0 = k * BIRD_CYCLE + rk() * 40;
   let perch = 20 + rk() * 20;
   const a = t - t0;

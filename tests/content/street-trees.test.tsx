@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // tests/content/street-trees.test.tsx — calque `arbres-rue` (PR 3) : une toile 2D dans le SVG, un groupe d'état par fosse
 // plantée, nœuds constants à toute heure et d'une image à l'autre (le vent n'écrit rien dans le SVG), mouvement réduit sans
-// aucune pose qui change, pose au vent (rameaux, grappes, rehauts ; fût jamais transformé). Les images de la boucle sont lues
+// aucune pose qui change, pose au vent (couches de feuillage translatées ; couche fixe jamais transformée). Les images de la boucle sont lues
 // en ordres de dessin (`setRueFrameSinkForTests`).
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -12,8 +12,7 @@ import { fondMoment } from '../../src/core/library/paint/fond-time';
 import { windOf } from '../../src/core/library/paint/fond-vent';
 import { IDENTITY, NIGHT } from '../../src/core/library/paint/grade';
 import type { RuePit } from '../../src/core/library/paint/rue-verte-plan';
-import { rueTreeModel } from '../../src/core/library/paint/rue-verte-painter';
-import { gradePixels, rueLayers, rueSpriteBox, rueTreePose } from '../../src/core/library/paint/rue-sprites';
+import { RUE_SHEAR_MAX, gradePixels, rueLayers, rueSpriteBox, rueTreeOf, rueTreePose, type RueTree } from '../../src/core/library/paint/rue-sprites';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const W = 1400;
@@ -101,14 +100,12 @@ describe('calque arbres-rue', () => {
     expect([...groups].every((g) => g.children.length === 0 && g.hasAttribute('data-rue-pret'))).toBe(true);
     expect(host.querySelectorAll('[data-arbres-rue-toile] canvas')).toHaveLength(1);
     expect(new Set(counts).size).toBe(1);
-    // Couches dessinées dans l'ordre (rehauts éteints omis), fosse après fosse ; images cuites ; nuit : cuisson étalonnée.
+    // Couches dessinées dans l'ordre, fosse après fosse ; images cuites ; nuit : cuisson étalonnée.
     tick(1_800_000_000_000);
     const layers = layersOf(lastFrame());
     pits.forEach((v, i) => {
-      const want = rueLayers(rueTreeModel(v));
       const got = layers.filter((o) => o.tree === i).map((o) => o.layer);
-      expect(got, `fosse ${i}`).toEqual(want.filter((l) => got.includes(l)));
-      expect(got.filter((l) => l !== 'hi' && l !== 'pale'), `fosse ${i}`).toEqual(want.filter((l) => l !== 'hi' && l !== 'pale'));
+      expect(got, `fosse ${i}`).toEqual(rueLayers(rueTreeOf(v)));
     });
     expect(layers.map((o) => o.tree)).toEqual(layers.map((o) => o.tree).sort((a, b) => a - b));
     expect(layers.find((o) => o.tree === 0 && o.layer === 'trunk')!.href).toMatch(/^data:.*\|trunk$/);
@@ -116,7 +113,7 @@ describe('calque arbres-rue', () => {
     expect(jobs.some((j) => j.grade !== null)).toBe(true);
     expect(jobs.some((j) => j.grade === null)).toBe(true);
   });
-  it('au vent : les grappes bougent d\'une image à l\'autre, le fût jamais', async () => {
+  it('au vent : les charpentières se cisaillent d\'une image à l\'autre, le fût jamais', async () => {
     render(15 * 60, { still: false });
     await settle();
     const nodes = host.querySelectorAll('*').length;
@@ -256,42 +253,45 @@ describe('particules et oiseau des arbres', () => {
 });
 
 describe('rueTreePose', () => {
-  const v = pits[0]!;
-  const m = rueTreeModel(v);
-  it('calme : toutes les translations nulles, rehauts éteints', () => {
-    const p = rueTreePose(v, m, 1234.5, windOf({ cloud: 0, precip: 0, wind: 0, snow: false }, false), W);
-    expect(p.twigShear).toBe(0);
-    expect(p.masses.every((g) => g.dx === 0 && g.dy === 0)).toBe(true);
-    expect([p.hiAlpha, p.paleAlpha]).toEqual([0, 0]);
+  const v = pits.find((p) => !p.young)!;
+  const tr = rueTreeOf(v);
+  it('calme : aucun cisaillement', () => {
+    const p = rueTreePose(v, tr, 1234.5, windOf({ cloud: 0, precip: 0, wind: 0, snow: false }, false), W);
+    expect(p.masses.every((g) => g.c === 0 && g.e === 0)).toBe(true);
   });
-  it('vent 0,8 : à écart au tronc égal, la grappe haute bouge plus que la basse ; une pose par grappe, pas de pose du fût', () => {
+  it('vent 0,8 : à écart au tronc égal, la charpentière haute bouge plus que la basse (au centre de son feuillage) ; une pose par couche', () => {
+    if (tr.young) throw new Error('adulte attendu');
     const w = windOf({ cloud: 0, precip: 0, wind: 0.8, snow: false }, false);
-    // Modèle réel, touffes regroupées en deux grappes au même écart horizontal : 0 en haut du houppier, 1 en bas.
-    const tf = (cluster: number, y: number) => ({ ...m.tufts[0]!, x: m.foot.x + 10, y, cluster });
-    const mm = { ...m, segs: m.segs.filter((sg) => sg.lv !== 1).concat(m.segs.filter((sg) => sg.lv === 1).slice(0, 2)), tufts: [tf(0, m.cy - m.ry * 0.8), tf(1, m.cy + m.ry * 0.8)] };
-    expect(mm.segs.filter((sg) => sg.lv === 1)).toHaveLength(2);
+    // Modèle réel, nuages regroupés en deux charpentières au même écart horizontal : 0 en haut du houppier, 1 en bas.
+    const cl = (mass: number, y: number) => ({ ...tr.m.clouds[0]!, x: tr.m.foot.x + 10, y, mass });
+    const mm: RueTree = { young: false, m: { ...tr.m, masses: 2, clouds: [cl(0, tr.m.cy - tr.m.ry * 0.8), cl(1, tr.m.cy + tr.m.ry * 0.8)] } };
     let sHi = 0;
     let sLo = 0;
     for (let t = 0; t < 120; t += 0.37) {
       const p = rueTreePose(v, mm, 1000 + t, w, W);
       expect(p.masses).toHaveLength(2);
-      expect(Object.keys(p)).not.toContain('trunk');
-      sHi += Math.abs(p.masses[0]!.dx);
-      sLo += Math.abs(p.masses[1]!.dx);
+      expect(Object.keys(p)).toEqual(['masses']);
+      const at = (k: number, y: number): number => Math.abs(p.masses[k]!.c * (y - p.masses[k]!.y0));
+      sHi += at(0, tr.m.cy - tr.m.ry * 0.8);
+      sLo += at(1, tr.m.cy + tr.m.ry * 0.8);
     }
     expect(sLo).toBeGreaterThan(0);
     expect(sHi).toBeGreaterThan(sLo);
   });
-  it('vent 0,8 sur les vrais arbres : chaque grappe bouge, une pose par couche de grappe', () => {
+  it('vent 0,8 sur les vrais arbres : chaque couche de charpentière se cisaille, jamais plus que RUE_SHEAR_MAX, pied fixe', () => {
     const w = windOf({ cloud: 0, precip: 0, wind: 0.8, snow: false }, false);
     for (const pit of pits) {
-      const mm = rueTreeModel(pit);
-      const p = rueTreePose(pit, mm, 1000, w, W);
-      expect(p.masses).toHaveLength(rueLayers(mm).filter((l) => l[0] === 'c').length);
+      const t3 = rueTreeOf(pit);
+      const p = rueTreePose(pit, t3, 1000, w, W);
+      expect(p.masses).toHaveLength(rueLayers(t3).filter((l) => l[0] === 'c').length);
       // Sur 10 s (le vent local peut passer par zéro à un instant donné : ondes progressives).
-      const poses = Array.from({ length: 10 }, (_, i) => rueTreePose(pit, mm, 1000 + i, w, W));
-      expect(poses.some((q) => q.masses.some((g) => Math.abs(g.dx) > 0.1)), `fosse ${pit.x}`).toBe(true);
-      expect(poses.some((q) => q.twigShear !== 0)).toBe(true);
+      const poses = Array.from({ length: 10 }, (_, i) => rueTreePose(pit, t3, 1000 + i, w, W));
+      expect(poses.some((q) => q.masses.some((g) => Math.abs(g.c) > 0.005)), `fosse ${pit.x}`).toBe(true);
+      for (const q of poses)
+        for (const g of q.masses) {
+          expect(Math.abs(g.c)).toBeLessThanOrEqual(RUE_SHEAR_MAX);
+          expect(Math.abs(g.c * g.y0 + g.e)).toBeLessThan(1e-9);
+        }
     }
   });
 });
