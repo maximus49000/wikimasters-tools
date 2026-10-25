@@ -229,3 +229,53 @@
 ### style-scandinave_h-21_nostore-1.png
 
 ![style-scandinave_h-21_nostore-1.png](07-rangements-r1/style-scandinave_h-21_nostore-1.png)
+
+## 08-plantes
+
+### kind-cactus_style-scandinave_res-3_cell-700.png
+
+![kind-cactus_style-scandinave_res-3_cell-700.png](08-plantes/kind-cactus_style-scandinave_res-3_cell-700.png)
+
+### kind-monstera_palm_pampas_style-scandinave_res-2_rustle-0.png
+
+![kind-monstera_palm_pampas_style-scandinave_res-2_rustle-0.png](08-plantes/kind-monstera_palm_pampas_style-scandinave_res-2_rustle-0.png)
+
+### kind-monstera_palm_pampas_style-scandinave_res-2_rustle-1.png
+
+![kind-monstera_palm_pampas_style-scandinave_res-2_rustle-1.png](08-plantes/kind-monstera_palm_pampas_style-scandinave_res-2_rustle-1.png)
+
+### kind-monstera_style-scandinave_res-3_cell-700.png
+
+![kind-monstera_style-scandinave_res-3_cell-700.png](08-plantes/kind-monstera_style-scandinave_res-3_cell-700.png)
+
+### kind-palm_cactus_pampas_style-scandinave_res-2.png
+
+![kind-palm_cactus_pampas_style-scandinave_res-2.png](08-plantes/kind-palm_cactus_pampas_style-scandinave_res-2.png)
+
+### kind-palm_style-scandinave_res-3_cell-700.png
+
+![kind-palm_style-scandinave_res-3_cell-700.png](08-plantes/kind-palm_style-scandinave_res-3_cell-700.png)
+
+### kind-pampas_style-scandinave_res-3_cell-700.png
+
+![kind-pampas_style-scandinave_res-3_cell-700.png](08-plantes/kind-pampas_style-scandinave_res-3_cell-700.png)
+
+### kind-plant_monstera_strelitzia_style-scandinave_res-2.png
+
+![kind-plant_monstera_strelitzia_style-scandinave_res-2.png](08-plantes/kind-plant_monstera_strelitzia_style-scandinave_res-2.png)
+
+### kind-plant_style-scandinave_res-3_cell-700.png
+
+![kind-plant_style-scandinave_res-3_cell-700.png](08-plantes/kind-plant_style-scandinave_res-3_cell-700.png)
+
+### kind-strelitzia_style-scandinave_res-3_cell-700.png
+
+![kind-strelitzia_style-scandinave_res-3_cell-700.png](08-plantes/kind-strelitzia_style-scandinave_res-3_cell-700.png)
+
+### style-scandinave_h-10_nostore-1.png
+
+![style-scandinave_h-10_nostore-1.png](08-plantes/style-scandinave_h-10_nostore-1.png)
+
+### style-scandinave_h-21_nostore-1.png
+
+![style-scandinave_h-21_nostore-1.png](08-plantes/style-scandinave_h-21_nostore-1.png)
