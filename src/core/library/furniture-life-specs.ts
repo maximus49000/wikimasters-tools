@@ -22,4 +22,6 @@ export const LIFE_SPECS: Partial<Record<StandingKind, LifeSpec>> = {
   'rocking-chair': { rock: { pivot: [0, RUN_R, 0], radius: RUN_R } },
   'egg-chair': { swing: { pivot: EGG_HOOK } },
   'cat-tree': { sag: { board: SAG_BOARD, max: 1.2 }, tassel: { pivot: TASSEL_PIVOT } },
+  // Plantes (tâche 8) : le feuillage frémit (`rustle`, flexion de 6° au plus par feuille, cf. cel/models/plants.ts).
+  plant: { rustle: true }, monstera: { rustle: true }, strelitzia: { rustle: true }, palm: { rustle: true }, cactus: { rustle: true }, pampas: { rustle: true },
 };

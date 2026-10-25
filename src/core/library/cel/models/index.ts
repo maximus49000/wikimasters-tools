@@ -16,6 +16,7 @@ import { CEL_ITEMS, CEL_MODELS } from './registry';
 import './seating';
 import './wood';
 import './storage';
+import './plants';
 
 export { CEL_ITEMS, CEL_MODELS, type CelBuilder, type CelItemBuilder } from './registry';
 
