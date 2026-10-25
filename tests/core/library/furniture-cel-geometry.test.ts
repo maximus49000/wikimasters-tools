@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import GRILLE from './fixtures/grille-main.json';
 import { applyFace, drawSize, faceFrame, floorOffsets, invertFace, topPoint, type Angle } from '../../../src/core/library/footprint';
-import { CELL_H, CELL_W, faceQuadOf, projectOf, PLUNGE_CAMERA } from '../../../src/core/library/furniture-render3d';
+import { CELL_H, CELL_W, HEIGHT_PX_PER_CM, PX_PER_CM_X, faceQuadOf, projectOf, PLUNGE_CAMERA } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import { STANDING_KINDS } from '../../../src/core/library/library-types';
-import { hitRectOf, pxRect } from '../../../src/core/library/room-grid';
+import { hitRectOf, overhangRow, pxRect } from '../../../src/core/library/room-grid';
 
 const ANGLES = [0, 1, 2, 3, 4, 5, 6, 7] as Angle[];
 describe('pièce en perspective', () => {
@@ -12,7 +12,18 @@ describe('pièce en perspective', () => {
     for (const k of STANDING_KINDS) for (const a of ANGLES) {
       expect(drawSize(k, a)).toEqual((GRILLE as any)[k][a].size);
       expect(floorOffsets(k, a)).toEqual((GRILLE as any)[k][a].floor);
+      // Rangée de surplomb (lampadaire arc) : notion de grille, identique à main ; null sans surplomb.
+      expect(overhangRow({ id: 'x', kind: k, col: 0, row: 0, ...(a ? { angle: a } : {}) } as any)).toBe((GRILLE as any)[k][a].overhang ?? null);
     }
+  });
+  it('échelle exacte au point d’ancrage (milieu avant au sol) : 30/21 px par cm, hauteur à HEIGHT_PX_PER_CM', () => {
+    const m = FURNITURE_MODELS.desk;
+    const [ax, ay] = projectOf(m, 0, [m.w / 2, 0, 0]);
+    expect(ax).toBeCloseTo((drawSize('desk', 0).w * CELL_W) / 2, 9);
+    expect(ay).toBeCloseTo(drawSize('desk', 0).h * CELL_H, 9);
+    expect(projectOf(m, 0, [m.w / 2 + 0.01, 0, 0])[0] - ax).toBeCloseTo(0.01 * PX_PER_CM_X, 6);
+    // 10 cm de hauteur au pied : HEIGHT_PX_PER_CM à 0,5 % près (la perspective grossit à peine ce qui monte vers la caméra).
+    expect((ay - projectOf(m, 0, [m.w / 2, 10, 0])[1]) / (10 * HEIGHT_PX_PER_CM)).toBeCloseTo(1, 2);
   });
   it('le haut de la face d’une étagère vue de face est plus large que le bas', () => {
     const [tl, tr, br, bl] = faceQuadOf(FURNITURE_MODELS.shelf, 0)!;

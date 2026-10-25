@@ -186,9 +186,12 @@ function layoutOf(model: Model, angle: Angle, cam: Camera = FACE_CAMERA): Layout
   const cols = Math.max(1, Math.round(traceW / 21)); // le dessin est centré, un débord d'une demi-case au plus est toléré
   const depthRows = Math.max(1, Math.round(traceD / 50));
   const v = viewTransform(cam, yawOf(angle));
-  const view = (p: V3) => v.project(v.tilt(v.turn(centeredOf(model, [p.x, p.y, p.z]))));
   // A : milieu avant de la trace tournée (la trace est centrée sur le centre de la base) ; repère centré tourné, z vers le spectateur.
-  const anchor = v.project(v.tilt([0, 0, traceD / 2]));
+  // A est ramené à la profondeur caméra 0 avant la projection : l'échelle vaut exactement `cam.scale` (30/21 px/cm) au point d'ancrage.
+  const a3 = v.tilt([0, 0, traceD / 2]);
+  const atA = (c: V3t): V3t => [c[0], c[1], c[2] - a3[2]];
+  const view = (p: V3) => v.project(atA(v.tilt(v.turn(centeredOf(model, [p.x, p.y, p.z])))));
+  const anchor = v.project(atA(a3));
   let rows: number;
   if (cam === FACE_CAMERA) {
     const heightPx = model.h * PX_PER_CM_Y + traceD * DEPTH_PX_PER_CM;

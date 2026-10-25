@@ -7,7 +7,7 @@ import { HOST_TOP, canPutOnTop, computerTopRect, firstFreeTopSpot, topRectsOf, t
 import type { BoxFormat } from '../game/platform-boxes';
 import { ITEM_MODELS, itemFootprintCm, storedModel } from './item-models';
 import { FURNITURE_MODELS } from './furniture-models';
-import { overhangOf, pieceBounds, projectOf } from './furniture-render3d';
+import { DEPTH_PX_PER_CM, localPointOf, overhangOf, pieceBounds, projectOf } from './furniture-render3d';
 
 export const ROWS = 18;
 // Les lignes 0 à WALL_ROWS - 1 sont le mur, les suivantes le sol.
@@ -93,13 +93,16 @@ export function footBottom(p: Standing): number {
   return Math.max(...floorCells(p.kind, angleOf(p), p.col, p.row).map((c) => c.row)) + 1;
 }
 
-// Rangée du sol sous le surplomb d'un meuble à socle (sous le dôme du lampadaire arc), selon son angle ; null sans surplomb.
+// Rangée du sol sous le surplomb d'un meuble à socle (sous le dôme du lampadaire arc), selon son angle ; null sans surplomb. Notion de
+// GRILLE (ordre de dessin, contrat avec les pièces enregistrées) : la profondeur du point au sol en rangées de grille (50 cm), depuis le bas
+// du rectangle, comme avant la perspective — jamais la projection écran.
 export function overhangRow(p: Standing): number | null {
   const m = FURNITURE_MODELS[p.kind];
   const over = overhangOf(m);
   if (!over) return null;
-  const [, y] = projectOf(m, angleOf(p), [over.at[0], 0, over.at[1]]);
-  return p.row + Math.max(0, Math.min(rectOf(p)!.h - 1, Math.floor(y / CELL_H)));
+  const rows = rectOf(p)!.h;
+  const y = rows * CELL_H - localPointOf(m, angleOf(p), [over.at[0], 0, over.at[1]]).z * DEPTH_PX_PER_CM;
+  return p.row + Math.max(0, Math.min(rows - 1, Math.floor(y / CELL_H)));
 }
 
 // Première rangée au sol d'un meuble (le fond de son emprise).

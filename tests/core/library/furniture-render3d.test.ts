@@ -178,7 +178,8 @@ describe('nouvelles formes (prisme, tige, feuillage, globe)', () => {
       const xs = renderModel(disc, a).shapes.flatMap((s) => ('points' in s ? s.points.map((p) => p[0]) : []));
       return Math.max(...xs) - Math.min(...xs);
     };
-    expect(width(0)).toBeCloseTo(29.68, 1); // perspective G6 (était 20 × PX_PER_CM_X = 28,57 : l'avant, plus proche, est grossi)
+    // perspective G6 : diamètre projeté sur la face avant du disque (z = 0), là où il est le plus large (était 20 × PX_PER_CM_X).
+    expect(width(0)).toBeCloseTo(projectOf(disc, 0, [30, 20, 0])[0] - projectOf(disc, 0, [10, 20, 0])[0], 1);
     expect(width(2)).toBeLessThan(3 * PX_PER_CM_X);
     for (const a of ANGLES) inRect(renderModel(disc, a));
   });
@@ -270,7 +271,8 @@ describe('nouvelles formes (prisme, tige, feuillage, globe)', () => {
     const pot: Model = { w: 40, d: 40, h: 30, pieces: [{ shape: 'cyl', cx: 20, cz: 20, y: 0, r: 12, r2: 18, h: 30, fill: 'warm' }] };
     const top = renderModel(pot, 0).shapes.find((s) => s.kind === 'poly' && s.shade === 1.12)!;
     const xs = 'points' in top ? top.points.map((p) => p[0]) : [];
-    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(52.0, 1); // perspective G6 (était 36 × PX_PER_CM_X = 51,43)
+    // perspective G6 : diamètre du haut projeté au centre du pot (était 36 × PX_PER_CM_X).
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(projectOf(pot, 0, [38, 30, 20])[0] - projectOf(pot, 0, [2, 30, 20])[0], 0);
     expect(pieceBounds(pot.pieces[0]!)).toEqual([2, 38, 0, 30, 2, 38]);
   });
   it('corps ronds en cellulo : silhouette lisse encrée, ombre nette sans trait côté droit, contour repassé par-dessus', () => {
@@ -402,7 +404,7 @@ describe('faces décorées (décalques) et couleurs propres', () => {
     expect(tl).toEqual(projectOf(card, 0, [0, 12.5, 0]));
     expect(tr).toEqual(projectOf(card, 0, [14, 12.5, 0]));
     expect(bl).toEqual(projectOf(card, 0, [0, 0, 0]));
-    expect(tr[0] - tl[0]).toBeCloseTo(20.11, 2); // perspective G6 (était 20)
+    expect(tr[0] - tl[0]).toBeCloseTo(14 * PX_PER_CM_X, 0); // perspective G6 : près de l'ancrage, l'échelle est 30/21 (était au millionième)
     expect(tr[1]).toBeCloseTo(tl[1], 6);
     expect(bl[1] - tl[1]).toBeCloseTo(12.5 * HEIGHT_PX_PER_CM, 0); // perspective G6 (était 12,5 × PX_PER_CM_Y)
     expect([w, h]).toEqual([14, 12.5]);

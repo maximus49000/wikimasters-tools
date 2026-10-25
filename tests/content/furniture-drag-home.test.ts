@@ -38,9 +38,7 @@ describe('dropTargetFor : petit objet', () => {
   });
 
   it('refuse hors d’un porteur', () => {
-    // perspective G6 : le dessus du bureau, plus proche, déborde de 2 px à droite de son rectangle : le point visé passe de la colonne 8
-    // (bord droit exact du bureau) à la colonne 9.
-    expect(dropTargetFor(layout, 48, 'f2', 9, 15)).toMatchObject({ ok: false, reason: 'not-host' });
+    expect(dropTargetFor(layout, 48, 'f2', 8, 15)).toMatchObject({ ok: false, reason: 'not-host' });
   });
 
   it('refuse un porteur plein', () => {

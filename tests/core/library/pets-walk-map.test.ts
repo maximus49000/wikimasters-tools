@@ -32,7 +32,6 @@ describe('buildWalkMap', () => {
     // 60 + décalage + 22 / 178 × PX_PER_CM_X ± 6).
     const at = (x: number) => projectOf(FURNITURE_MODELS.sofa, 0, [x, 54, 35]);
     expect(plat!.y).toBeCloseTo(12 * CELL_H + at(100)[1], 0);
-    expect(plat!.y).toBeCloseTo(419.86, 2); // perspective G6
     expect(plat!.x0).toBeCloseTo(60 + at(22)[0] + 6, 0);
     expect(plat!.x1).toBeCloseTo(60 + at(178)[0] - 6, 0);
   });

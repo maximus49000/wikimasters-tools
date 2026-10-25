@@ -1,7 +1,7 @@
 // tests/core/library/item-models.test.ts
 import { describe, expect, it } from 'vitest';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, openingOf, pieceBounds, renderModel, type Model, type Piece, type Shape } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y, faceCornersOf, openingOf, pieceBounds, projectOf, renderModel, type Model, type Piece, type Shape } from '../../../src/core/library/furniture-render3d';
 import { ITEM_MODELS, STAND_LEAN_DEG, STEAMPUNK_MONITOR, bookColor, itemFootprintCm, itemPieces, type ItemShape } from '../../../src/core/library/item-models';
 
 const CELL_W = 30;
@@ -91,11 +91,11 @@ describe('objets posés dans le repère de leur meuble', () => {
   it('un CD de face sur l’étagère à l’angle 0 montre sa couverture à sa vraie largeur', () => {
     const r = renderModel(shelfWith(...itemPieces({ key: 'c1', shape: 'cd', display: 'cover', x: 10, y: 61, z: 27 })), 0);
     const cover = decals(r.shapes).find((d) => d.key === 'c1|cover:cd')!;
-    expect(cover.tr[0] - cover.tl[0]).toBeCloseTo(20.074, 3); // perspective G6 (était 14 × PX_PER_CM_X = 20)
+    expect(cover.tr[0] - cover.tl[0]).toBeCloseTo(19.632, 3); // perspective G6, CD penché vers le fond (était 14 × PX_PER_CM_X = 20)
     // Penché sur son présentoir : le haut part vers le fond (la profondeur remonte à l'écran plus lentement que la hauteur).
     const t = (STAND_LEAN_DEG * Math.PI) / 180;
     expect(cover.bl[1] - cover.tl[1]).toBeLessThan(12.5 * (Math.cos(t) * PX_PER_CM_Y + Math.sin(t) * DEPTH_PX_PER_CM) + 1e-6);
-    expect(cover.bl[1] - cover.tl[1]).toBeCloseTo(17.916, 3); // perspective G6 (était 12,5 × (cos t × PX_PER_CM_Y + sin t × DEPTH_PX_PER_CM) = 17,98)
+    expect(cover.bl[1] - cover.tl[1]).toBeCloseTo(17.522, 3); // perspective G6 (était 12,5 × (cos t × PX_PER_CM_Y + sin t × DEPTH_PX_PER_CM) = 17,98)
   });
   it('un CD de face vu de profil : plus de couverture ; sa tranche (titre) se voit de profil droit', () => {
     const keys = (a: 2 | 6) => decals(renderModel(ITEM_MODELS.cd, a).shapes).map((d) => d.key.split(':')[0]);
@@ -109,7 +109,8 @@ describe('objets posés dans le repère de leur meuble', () => {
     expect(at(0).map((d) => d.key)).toContain('b|spine:book');
     expect(at(0).map((d) => d.key)).not.toContain('b|cover:book');
     const spine = at(0).find((d) => d.key === 'b|spine:book')!;
-    expect(spine.tr[0] - spine.tl[0]).toBeCloseTo(4.4286, 3); // perspective G6 (était 3 × PX_PER_CM_X = 4,2857)
+    // perspective G6 : la tranche (3 cm, haut du livre à 31 cm, 1 cm du bord avant) projetée (était 3 × PX_PER_CM_X).
+    expect(spine.tr[0] - spine.tl[0]).toBeCloseTo(projectOf(FURNITURE_MODELS.shelf, 0, [8, 31, 1])[0] - projectOf(FURNITURE_MODELS.shelf, 0, [5, 31, 1])[0], 6);
     expect(at(1).map((d) => d.key)).toContain('b|cover:book');
   });
   it('réveil, pendulette et station de table ont leurs dimensions et une face décorée', () => {
@@ -198,7 +199,7 @@ describe('présentoir : CD, DVD et jeu de face penchés sur un support', () => {
     // De face, la couverture penchée garde sa largeur et se raccourcit à peine en hauteur (le haut part vers le fond).
     const r = renderModel(shelfWith(...itemPieces({ key: 'g', shape: 'game', display: 'cover', x: 10, y: 61, z: 2 })), 0);
     const cover = decals(r.shapes).find((d) => d.key === 'g|cover:game')!;
-    expect(cover.tr[0] - cover.tl[0]).toBeCloseTo(20.110, 3); // perspective G6 (était 13,5 × PX_PER_CM_X = 19,29)
+    expect(cover.tr[0] - cover.tl[0]).toBeCloseTo(19.651, 3); // perspective G6, boîte penchée vers le fond (était 13,5 × PX_PER_CM_X = 19,29)
     expect(cover.bl[0]).toBeCloseTo(cover.tl[0], 1); // perspective G6 (était au millionième)
   });
 });
