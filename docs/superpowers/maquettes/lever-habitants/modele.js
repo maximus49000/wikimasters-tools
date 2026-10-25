@@ -61,7 +61,18 @@
     return { iso, wd, ferie, vacances, weekend, ouvre, ecole: ouvre && !vacances, semaine: semaineISO(iso), soleil: soleil(iso),
       titre: `${JOURS[wd]} ${+iso.slice(8)} ${MOIS[+iso.slice(5, 7) - 1]} ${iso.slice(0, 4)}` };
   }
-  const SEMAINES_VACANCES_2026 = [8, 9, 15, 16, 28, 29, 30, 31, 32, 33, 43, 44, 52];
+  // Vacances scolaires 2026 (zone C) en semaines ISO : hiver 8-9, printemps 16-17, été 28-35, Toussaint 43-44, Noël 52.
+  const VAC = { hiver: [8, 9], printemps: [16, 17], ete: [28, 29, 30, 31, 32, 33, 34, 35], toussaint: [43, 44], noel: [52] };
+  const lundiSemaine = (w) => isoAdd('2025-12-29', (w - 1) * 7); // lundi de la semaine ISO w de 2026
+  // Contrats : heures effectives par jour, jours de congés payés (ouvrés), RTT par an.
+  const CONTRATS = {
+    '35h': { lab: '35 h', eff: H(7), cp: 25, rtt: 0 },
+    '39h': { lab: '39 h + RTT', eff: 468, cp: 25, rtt: 22 },
+    forfait: { lab: 'forfait jours (cadre)', eff: null, cp: 25, rtt: 11 },
+    fp: { lab: 'fonction publique', eff: H(7, 30), cp: 25, rtt: 15 },
+    hcr: { lab: 'restauration (HCR)', eff: null, cp: 25, rtt: 0 },
+    nounou: { lab: 'particulier employeur', eff: null, cp: 25, rtt: 0 },
+  };
 
   // ─── L'immeuble : 12 logements, 25 habitants, + la nounou de la famille Martin ───
   // statut : cadre | non-cadre | chômeur | retraité | étudiant | enfant | nounou. f : féminin (accords).
@@ -69,47 +80,49 @@
   const ECOLE = { depose: H(8, 20), sortie: H(16, 30), pied: 10, garderieMax: H(18, 30) };
   const LOGEMENTS = [
     { id: '1g', nom: '1er gauche', type: 'famille', pieces: ['cuisine', 'chambre', 'salon'], ensemble: true, membres: [
-      { id: 'karim', prenom: 'Karim', age: 38, statut: 'non-cadre', metier: 'technicien' },
-      { id: 'sophie', prenom: 'Sophie', age: 36, statut: 'cadre', metier: 'ingénieure', f: true },
+      { id: 'karim', contrat: '39h', prenom: 'Karim', age: 38, statut: 'non-cadre', metier: 'technicien' },
+      { id: 'sophie', contrat: 'forfait', prenom: 'Sophie', age: 36, statut: 'cadre', metier: 'ingénieure', f: true },
       { id: 'lea', prenom: 'Léa', age: 6, statut: 'enfant', niveau: 'CP', f: true },
       { id: 'tom', prenom: 'Tom', age: 3, statut: 'enfant', niveau: 'maternelle' }] },
     { id: '1d', nom: '1er droite', type: 'retraite', pieces: ['cuisine', 'chambre', 'salon'], ensemble: true, membres: [
       { id: 'gerard', prenom: 'Gérard', age: 73, statut: 'retraité', fixe: { leveTot: 0.85 } },
       { id: 'monique', prenom: 'Monique', age: 70, statut: 'retraité', f: true, fixe: { leveTot: 0.2 } }] },
     { id: '2g', nom: '2e gauche', type: 'famille', pieces: ['cuisine', 'chambre', 'salon'], ensemble: true, nounou: 'fatou', famille: 'Martin', membres: [
-      { id: 'julie', prenom: 'Julie', age: 34, statut: 'cadre', metier: 'avocate', f: true },
-      { id: 'marc', prenom: 'Marc', age: 37, statut: 'cadre', metier: 'chef de projet' },
+      { id: 'julie', contrat: 'forfait', prenom: 'Julie', age: 34, statut: 'cadre', metier: 'avocate', f: true },
+      { id: 'marc', contrat: 'forfait', prenom: 'Marc', age: 37, statut: 'cadre', metier: 'chef de projet' },
       { id: 'emma', prenom: 'Emma', age: 8, statut: 'enfant', niveau: 'CE2', f: true },
       { id: 'hugo', prenom: 'Hugo', age: 5, statut: 'enfant', niveau: 'maternelle' }] },
     { id: '2d', nom: '2e droite', type: 'retraite', pieces: ['cuisine', 'chambre', 'salon'], membres: [
       { id: 'jeanne', prenom: 'Jeanne', age: 81, statut: 'retraité', f: true }] },
     { id: '3g', nom: '3e gauche', type: 'solo', pieces: ['cuisine', 'chambre', 'salon'], membres: [
-      { id: 'camille', prenom: 'Camille', age: 29, statut: 'cadre', metier: 'chargée de com', f: true }] },
+      { id: 'camille', contrat: '39h', prenom: 'Camille', age: 29, statut: 'cadre', metier: 'chargée de com', f: true }] },
     { id: '3d', nom: '3e droite', type: 'solo', pieces: ['cuisine', 'chambre', 'salon'], membres: [
       { id: 'nicolas', prenom: 'Nicolas', age: 47, statut: 'chômeur', metier: 'ex-comptable' }] },
     { id: '4g', nom: '4e gauche', type: 'famille', pieces: ['cuisine', 'chambre', 'salon'], ensemble: true, membres: [
-      { id: 'yasmine', prenom: 'Yasmine', age: 41, statut: 'non-cadre', metier: 'aide-soignante', f: true },
-      { id: 'samir', prenom: 'Samir', age: 43, statut: 'cadre', metier: 'informaticien' },
+      { id: 'yasmine', contrat: 'fp', prenom: 'Yasmine', age: 41, statut: 'non-cadre', metier: 'aide-soignante', f: true },
+      { id: 'samir', contrat: 'forfait', prenom: 'Samir', age: 43, statut: 'cadre', metier: 'informaticien' },
       { id: 'ines', prenom: 'Inès', age: 13, statut: 'enfant', niveau: 'collège', f: true,
         college: { 1: [H(8), H(16, 30)], 2: [H(9), H(17, 30)], 3: [H(8), H(12)], 4: [H(8), H(15, 30)], 5: [H(10), H(16, 30)] } },
       { id: 'adam', prenom: 'Adam', age: 9, statut: 'enfant', niveau: 'CM1' }] },
     { id: '4d', nom: '4e droite', type: 'couple', pieces: ['cuisine', 'chambre', 'salon'], ensemble: true, membres: [
-      { id: 'leo', prenom: 'Léo', age: 31, statut: 'non-cadre', metier: 'magasinier' },
-      { id: 'manon', prenom: 'Manon', age: 30, statut: 'cadre', metier: 'pharmacienne', f: true }] },
+      { id: 'leo', contrat: '35h', prenom: 'Léo', age: 31, statut: 'non-cadre', metier: 'magasinier' },
+      { id: 'manon', contrat: '39h', prenom: 'Manon', age: 30, statut: 'cadre', metier: 'pharmacienne', f: true }] },
     { id: '5g', nom: '5e gauche', type: 'coloc', pieces: ['cuisine', 'chambre', 'salon'], membres: [
       { id: 'lucas', prenom: 'Lucas', age: 23, statut: 'étudiant', metier: 'master',
         cours: { 1: [H(10), H(18)], 2: [H(8), H(17)], 3: [H(9), H(12)], 4: [H(13, 30), H(18)] } },
-      { id: 'sarah', prenom: 'Sarah', age: 25, statut: 'non-cadre', metier: 'boulangerie', f: true },
-      { id: 'theo', prenom: 'Théo', age: 26, statut: 'cadre', metier: 'consultant' }] },
+      { id: 'sarah', contrat: 'hcr', prenom: 'Sarah', age: 25, statut: 'non-cadre', metier: 'serveuse, horaires coupés', f: true,
+        // Horaires coupés (restauration) : du mardi au samedi, repos dimanche + lundi.
+        coupe: { jours: [2, 3, 4, 5, 6], services: [[H(11), H(14, 30)], [H(18, 30), H(22, 30)]], maison: 0.75 } },
+      { id: 'theo', contrat: 'forfait', prenom: 'Théo', age: 26, statut: 'cadre', metier: 'consultant' }] },
     { id: '5d', nom: '5e droite', type: 'solo', pieces: ['cuisine', 'chambre', 'salon'], membres: [
-      { id: 'helene', prenom: 'Hélène', age: 58, statut: 'cadre', metier: 'directrice d’agence', f: true }] },
+      { id: 'helene', contrat: 'fp', prenom: 'Hélène', age: 58, statut: 'cadre', metier: 'directrice d’agence publique', f: true }] },
     { id: '6g', nom: '6e gauche (sous les toits)', type: 'etudiant', pieces: ['salon'], membres: [
       { id: 'chloe', prenom: 'Chloé', age: 21, statut: 'étudiant', metier: 'licence', f: true,
         cours: { 1: [H(8, 30), H(17, 30)], 2: [H(10), H(16)], 3: [H(14), H(18)], 4: [H(8, 30), H(17)], 5: [H(10), H(13)] } }] },
     { id: '6d', nom: '6e droite (sous les toits)', type: 'retraite', pieces: ['cuisine', 'salon'], membres: [
       { id: 'bernard', prenom: 'Bernard', age: 67, statut: 'retraité' }] },
   ];
-  const NOUNOU = { id: 'fatou', prenom: 'Fatou', age: 45, statut: 'nounou', f: true, metier: 'nounou des Martin', logement: null };
+  const NOUNOU = { id: 'fatou', contrat: 'nounou', prenom: 'Fatou', age: 45, statut: 'nounou', f: true, metier: 'nounou des Martin', logement: null };
 
   // Exemples imposés pour que les planches montrent chaque règle (tout le reste est tiré).
   const IMPOSES = {
@@ -123,15 +136,19 @@
       'nicolas|2026-11-03': { h: H(9, 30), lab: 'France Travail', trajet: 25 },
       'monique|2026-11-06': { h: H(9), lab: 'kiné', trajet: 15 },
     },
-    conges: { helene: [45] },
-    // Semaine retirée des congés tirés, pour que la planche « semaine » montre Camille au travail.
-    pasDeConges: { camille: [45] },
+    // Hélène : une de ses semaines de congé est la semaine 45 ; Camille : RTT le lundi 2 novembre (pont après la Toussaint),
+    // et aucun autre congé tiré cette semaine-là (pour que la planche « semaine » la montre au travail).
+    // Sarah rentre chez elle pendant sa coupure du mardi (pour la planche « porte »).
+    coupureMaison: { 'sarah|2026-11-03': true },
+    conges: { helene: { semaines: [45] }, camille: { rtt: ['2026-11-02'], sansSemaines: [45] } },
   };
 
   // ─── Paramètres (notes.md : « proposition » sauf mention) ───
   const P = {
-    cadreDebut: [H(8, 30), H(9, 30)], cadreFlex: 15, cadreDuree: [H(9), H(9, 45)], cadreTard: { p: 0.12, extra: [45, 120] },
-    nonCadreDebut: [H(6, 30), H(8)], nonCadreDuree: [H(7, 45), H(8, 15)],
+    cadreDebut: [H(8, 30), H(9, 30)], cadreFlex: 15, cadreEffectif: [H(7, 30), H(8, 30)], cadrePause: [45, 90], cadreTard: { p: 0.12, extra: [30, 60] }, cadreFinMax: H(19, 30),
+    nonCadreDebut: [H(6, 30), H(8)], nonCadreEffectif: [H(7), H(7, 45)], nonCadrePause: 30,
+    // Droit du travail (Code du travail) : limites vérifiées par `verifierDroit`.
+    loi: { jourMax: H(10), semaineMax: H(48), sansPause: H(6), pauseMin: 20, amplitudeMax: H(11), amplitudeCoupeMax: H(13), reposJour: H(11), reposSemaine: H(35) },
     trajet: [10, 50], prep: [30, 60], prepBruit: 5,
     sommeil: { adulte: 450, retraite: 420, etudiant: 480, ecart: 30 },
     coucherHabituel: { jeune: [H(23, 45), H(24, 45)], adulte: [H(22, 45), H(23, 45)], senior: [H(22), H(23, 15)], bruit: 25 },
@@ -161,12 +178,51 @@
     return p.age < 35 ? 'jeune' : 'adulte';
   }
 
+  // Congés de l'année 2026 d'une personne : Map date ISO → 'CP' | 'RTT'. Congés payés : 25 jours ouvrés (5 semaines),
+  // parents : 3 semaines l'été + Noël + 1 semaine de petites vacances ; sans enfant : 2-3 semaines l'été + 1 semaine l'hiver
+  // + jours épars ; fonction publique : + 15 RTT (≈ 8 semaines en tout) ; 39 h : 22 RTT ; forfait jours : 11 RTT.
+  // Les RTT sont des jours isolés, surtout le vendredi ou le lundi (ponts, longs week-ends).
+  function planConges(p) {
+    const c = CONTRATS[p.contrat], rc = rngOf('conges', p.id), imp = IMPOSES.conges[p.id] || {};
+    const jours = p.coupe ? p.coupe.jours : [1, 2, 3, 4, 5];
+    const out = new Map(), sans = imp.sansSemaines || [];
+    const ouvre = (iso) => jours.includes(weekday(iso)) && !FERIES[iso];
+    const semaine = (w, type) => { for (let i = 0; i < 7; i++) { const iso = isoAdd(lundiSemaine(w), i); if (ouvre(iso) && !out.has(iso)) out.set(iso, type); } };
+    const cp = () => [...out.values()].filter((v) => v === 'CP').length;
+    const semaines = [];
+    const famille = p === NOUNOU ? true : parent(p);
+    if (famille) {
+      const debut = VAC.ete[Math.floor(rc() * (VAC.ete.length - 2))];
+      semaines.push(debut, debut + 1, debut + 2, ...VAC.noel, pick(rc, [...VAC.hiver, ...VAC.printemps, ...VAC.toussaint]));
+    } else {
+      const n = rc() < 0.5 ? 2 : 3, debut = 27 + Math.floor(rc() * (36 - 27 - n));
+      for (let i = 0; i < n; i++) semaines.push(debut + i);
+      semaines.push(pick(rc, [52, 1, 7, 8, 9]));
+    }
+    for (const w of imp.semaines || []) if (!semaines.includes(w)) semaines.splice(semaines.length - 1, 1, w);
+    for (const w of semaines) if (!sans.includes(w)) semaine(w, 'CP');
+    // Jours épars pour compléter les 25 jours (vendredi ou lundi de préférence).
+    const isole = (type) => {
+      for (let essai = 0; essai < 200; essai++) {
+        const w = 1 + Math.floor(rc() * 52);
+        if (sans.includes(w)) continue;
+        const x = rc(), wd = x < 0.6 ? 5 : x < 0.8 ? 1 : 2 + Math.floor(rc() * 3);
+        const iso = isoAdd(lundiSemaine(w), wd - 1);
+        if (ouvre(iso) && !out.has(iso)) { out.set(iso, type); return; }
+      }
+    };
+    while (cp() < c.cp) isole('CP');
+    for (const iso of imp.rtt || []) out.set(iso, 'RTT');
+    while ([...out.values()].filter((v) => v === 'RTT').length < c.rtt) isole('RTT');
+    return out;
+  }
+
   const T = {};
   for (const p of TOUS) {
     const r = rngOf('trait', p.id);
     const t = {};
-    if (p.statut === 'cadre') { t.debut = U5(r, ...P.cadreDebut); t.duree = U5(r, ...P.cadreDuree); }
-    else if (p.statut === 'non-cadre') { t.debut = U5(r, ...P.nonCadreDebut); t.duree = U5(r, ...P.nonCadreDuree); }
+    if (p.statut === 'cadre') { t.debut = U5(r, ...P.cadreDebut); t.eff = U5(r, ...P.cadreEffectif); t.pause = U5(r, ...P.cadrePause); }
+    else if (p.statut === 'non-cadre') { t.debut = U5(r, ...P.nonCadreDebut); t.eff = U5(r, ...P.nonCadreEffectif); t.pause = P.nonCadrePause; }
     else { r(); r(); }
     t.trajet = U5(r, ...P.trajet);
     t.mode = t.trajet <= 15 ? 'à pied' : r() < 0.7 ? 'métro' : 'bus';
@@ -180,17 +236,8 @@
     const ch = pr === 'jeune' ? P.coucherHabituel.jeune : pr === 'senior' ? P.coucherHabituel.senior : P.coucherHabituel.adulte;
     t.coucher = U5(r, ...ch);
     t.leveTot = p.statut === 'retraité' ? 0.15 + 0.7 * r() : 0;
-    // Congés : 5 semaines par an ; parents : 4 pendant les vacances scolaires + 1 ailleurs.
-    t.conges = [];
-    if (actif(p)) {
-      const rc = rngOf('conges', p.id);
-      const pool = parent(p) ? SEMAINES_VACANCES_2026.slice() : Array.from({ length: 52 }, (_, i) => i + 1);
-      const n = parent(p) ? 4 : P.congesSemaines;
-      while (t.conges.length < n) { const w = pick(rc, pool); if (!t.conges.includes(w)) t.conges.push(w); }
-      if (parent(p)) { let w; do { w = 1 + Math.floor(rc() * 52); } while (t.conges.includes(w)); t.conges.push(w); }
-    }
-    if (IMPOSES.conges[p.id]) t.conges.push(...IMPOSES.conges[p.id]);
-    if (IMPOSES.pasDeConges[p.id]) t.conges = t.conges.filter((w) => !IMPOSES.pasDeConges[p.id].includes(w));
+    if (p.contrat && CONTRATS[p.contrat].eff) t.eff = CONTRATS[p.contrat].eff;
+    t.conges = p.contrat ? planConges(p) : new Map();
     Object.assign(t, p.fixe || {});
     T[p.id] = t;
   }
@@ -199,14 +246,44 @@
   function travailDuJour(p, iso) {
     if (!actif(p)) return null;
     const j = jourCtx(iso);
-    if (!j.ouvre) return null;
     const t = T[p.id];
-    if (t.conges.includes(j.semaine)) return { conge: true };
+    if (p.coupe ? j.ferie || !p.coupe.jours.includes(j.wd) : !j.ouvre) return null;
+    if (t.conges.has(iso)) return { conge: t.conges.get(iso) };
     const r = rngOf(p.id, iso, 'travail');
-    const debut = t.debut + (p.statut === 'cadre' ? U5(r, -P.cadreFlex, P.cadreFlex) : 0);
     const prep = t.prep + Math.round(U(r, -P.prepBruit, P.prepBruit));
+    if (p.coupe) {
+      const sv = p.coupe.services.map((x) => x.slice());
+      return amenage({ coupe: true, services: sv, prep, trajet: t.trajet, tard: 0, maison: (r() < p.coupe.maison) || !!IMPOSES.coupureMaison[p.id + '|' + iso] });
+    }
+    const debut = t.debut + (p.statut === 'cadre' ? U5(r, -P.cadreFlex, P.cadreFlex) : 0);
     const tard = p.statut === 'cadre' && r() < P.cadreTard.p ? U5(r, ...P.cadreTard.extra) : 0;
-    return { debut, prevu: debut, fin: debut + t.duree + tard, prep, trajet: t.trajet, tard };
+    const pause = p.statut === 'cadre' ? Math.min(P.cadrePause[1], Math.max(P.cadrePause[0], t.pause + U5(r, -15, 15))) : t.pause;
+    const midi = p.statut === 'cadre' ? U5(r, H(12), H(13)) - debut : U5(r, 210, 270); // minutes de travail avant la pause
+    return journee({ debut, eff: t.eff + tard, pause, midi, prep, trajet: t.trajet, tard, cadre: p.statut === 'cadre' });
+  }
+  // Journée continue avec pause déjeuner : matin ≤ 6 h, après-midi ≤ 6 h, effectif ≤ 10 h, fin ≤ 19 h 30 (cadre).
+  function journee(w) {
+    const L = P.loi;
+    w.midi = Math.max(120, Math.min(L.sansPause, w.midi));
+    w.eff = Math.min(w.eff, L.jourMax, w.midi + L.sansPause);
+    if (w.cadre) w.eff = Math.min(w.eff, P.cadreFinMax - w.debut - w.pause);
+    const pa = w.debut + w.midi;
+    w.services = [[w.debut, pa], [pa + w.pause, w.debut + w.eff + w.pause]];
+    return amenage(w);
+  }
+  function amenage(w) {
+    w.debut = w.services[0][0];
+    w.fin = w.services[w.services.length - 1][1];
+    w.effectif = w.services.reduce((n, [a, b]) => n + b - a, 0);
+    return w;
+  }
+  function ligneTravail(w, p) {
+    const c = p && p.contrat ? CONTRATS[p.contrat].lab + ' · ' : '';
+    if (!w) return p && p.contrat ? c + 'pas travaillé ce jour' : '';
+    if (w.conge) return c + (w.conge === 'RTT' ? 'RTT aujourd’hui' : 'congé payé aujourd’hui');
+    const sv = w.services;
+    if (w.coupe) return c + `services ${hm(sv[0][0])} – ${hm(sv[0][1])} et ${hm(sv[1][0])} – ${hm(sv[1][1])} (coupure ${duree(sv[1][0] - sv[0][1])}) = ${duree(w.effectif)}`;
+    return c + `travail ${hm(w.debut)} – ${hm(w.fin)} (pause ${hm(sv[0][1])} – ${hm(sv[1][0])}) = ${duree(w.effectif)}${w.tard ? ' (journée longue)' : ''}`;
   }
   function coursDuJour(p, iso) {
     const j = jourCtx(iso);
@@ -261,7 +338,8 @@
       if (depose && travaille(depose, d)) {
         const w = W[depose.id][d];
         const debut = Math.max(w.debut, ECOLE.depose + w.trajet);
-        w.fin += debut - w.debut; w.debut = debut; w.depose = true;
+        if (debut > w.debut) W[depose.id][d] = journee({ ...w, midi: w.midi - (debut - w.debut), debut });
+        W[depose.id][d].depose = true;
       }
       // Sortie d'école : un parent libre ou rentré avant 16 h 20 ; sinon la nounou ; sinon garderie jusqu'au premier retour.
       const dispo = pars.filter((p) => !travaille(p, d) || retourTravail(p, d) <= ECOLE.sortie - 10);
@@ -351,7 +429,7 @@
     if (p.statut === 'enfant') return { lever: base + U5(r, ...(p.age < P.autonome ? P.leverEnfant.petit : P.leverEnfant.grand)), expl: 'pas d’école — tirage du jour' };
     if (p.statut === 'étudiant') return { lever: base + U5(r, ...P.leverLibreEtudiant), expl: 'pas de cours — tirage du jour' };
     const conge = W[p.id][d] && W[p.id][d].conge;
-    return { lever: base + U5(r, ...P.leverLibreActif), expl: conge ? `en congé (semaine ${jourCtx(d).semaine}) — tirage du jour` : 'jour libre — tirage du jour' };
+    return { lever: base + U5(r, ...P.leverLibreActif), expl: conge === 'RTT' ? 'jour de RTT — tirage du jour' : conge ? 'en congé — tirage du jour' : 'jour libre — tirage du jour' };
   }
 
   for (let di = 0; di < NJ - 1; di++) {
@@ -401,7 +479,14 @@
           bloc(p, ECOLE.depose - ECOLE.pied, ECOLE.depose, 'accomp', 'école');
           bloc(p, ECOLE.depose, w.debut, 'trajet', T[p.id].mode);
         } else bloc(p, w.debut - w.trajet, w.debut, 'trajet', T[p.id].mode);
-        bloc(p, w.debut, w.fin, 'travail', w.tard ? 'travail (tard)' : 'travail');
+        w.services.forEach(([a, b], i) => {
+          bloc(p, a, b, 'travail', w.coupe ? 'service' : 'travail');
+          const nx = w.services[i + 1];
+          if (!nx) return;
+          if (!w.coupe) bloc(p, b, nx[0], 'pause', 'pause déjeuner');
+          else if (w.maison) { bloc(p, b, b + w.trajet, 'trajet', T[p.id].mode); bloc(p, nx[0] - w.trajet, nx[0], 'trajet', T[p.id].mode); }
+          else bloc(p, b, nx[0], 'dehors', 'coupure en ville');
+        });
         bloc(p, w.fin, w.fin + w.trajet, 'trajet', T[p.id].mode);
         continue;
       }
@@ -545,7 +630,7 @@
       else roomIf(p, base + H(19, 45), base + H(20, 30), 'cuisine');
       roomIf(p, bed - (p.statut === 'enfant' ? 20 : 15), bed, 'chambre', ['maison', 'nounou']);
       const nuitAvant = lv - BED[p.id];
-      INFO[p.id][d] = { lever: lv - base, expl: leve[p.id].expl, coucher: bed - base, nuitAvant, nuitCourte: nuitAvant < T[p.id].sommeil - 90, sortie: sortie ? { lab: sortie.lab, dep: sortie.a - base, ret: sortie.b - base } : null, respect };
+      INFO[p.id][d] = { travail: ligneTravail(W[p.id][d], p), lever: lv - base, expl: leve[p.id].expl, coucher: bed - base, nuitAvant, nuitCourte: nuitAvant < T[p.id].sommeil - 90, sortie: sortie ? { lab: sortie.lab, dep: sortie.a - base, ret: sortie.b - base } : null, respect };
       BED[p.id] = bed;
     }
 
@@ -640,7 +725,66 @@
     return `${p.prenom}, ${p.age} ans, ${st}`;
   }
 
-  const Modele = { SEED, LOGEMENTS, NOUNOU, TOUS, T, P, W, OB, LOG, INFO, SORTIES, DAYS, IDX, IMPOSES, ECOLE,
+  // ─── Vérification du droit du travail sur la semaine générée (lun. 2 → dim. 8) : lève une erreur au moindre écart ───
+  // Limites (P.loi) : 10 h effectives par jour, 6 h au plus sans pause de 20 min, amplitude 11 h (13 h en horaires coupés,
+  // convention HCR), 11 h de repos entre deux jours, 48 h par semaine, 35 h de repos hebdomadaire d'affilée.
+  function periodesTravail(p, d) {
+    if (p === NOUNOU) {
+      const i = INFO[p.id][d];
+      // Elle travaille de la sortie d'école (16 h 30) ou de son arrivée le soir jusqu'à son départ.
+      return i ? i.visite.map((v) => [v.motif.startsWith('sortie') ? ECOLE.sortie : v.arrive, v.part]) : [];
+    }
+    const w = W[p.id][d] !== undefined ? W[p.id][d] : travailDuJour(p, d); // hors simulation (veille, lendemain) : tirage direct
+    return w && !w.conge ? w.services.map((x) => x.slice()) : [];
+  }
+  // Pour la nounou hors des jours simulés : la sortie d'école prévue par la logistique (ou rien).
+  function periodesNounou(d) {
+    const lg = LOGEMENTS.find((l) => l.nounou), L = LOG[lg.id][d];
+    if (INFO[NOUNOU.id][d]) return periodesTravail(NOUNOU, d);
+    return L && L.cherche.mode === 'nounou' ? [[ECOLE.sortie, L.cherche.jusque + 10]] : [];
+  }
+  function verifierDroit() {
+    const L = P.loi, semaine = DAYS.slice(1, 8), erreurs = [], bilan = [];
+    for (const p of TOUS.filter((q) => actif(q) || q === NOUNOU)) {
+      let total = 0, ampMax = 0, effMax = 0, reposMin = Infinity, prec = null;
+      const per = [], tout = [];
+      // Semaine vérifiée : lun. 2 → dim. 8 ; on lit aussi le sam. 31 oct. et les lun. 9 / mar. 10 pour les repos à cheval.
+      const jours = [isoAdd(DEBUT, -1), ...DAYS, isoAdd(DEBUT, NJ)];
+      jours.forEach((d, k) => {
+        const di = k - 1;
+        const sv = p === NOUNOU ? periodesNounou(d) : periodesTravail(p, d);
+        if (!sv.length) return;
+        const eff = sv.reduce((n, [a, b]) => n + b - a, 0), amp = sv[sv.length - 1][1] - sv[0][0];
+        const coupe = !!p.coupe;
+        const ou = `${p.prenom} ${d}`;
+        if (eff > L.jourMax) erreurs.push(`${ou} : ${duree(eff)} de travail effectif (> 10 h)`);
+        for (const [a, b] of sv) if (b - a > L.sansPause) erreurs.push(`${ou} : ${duree(b - a)} sans pause (> 6 h)`);
+        for (let i = 1; i < sv.length; i++) if (sv[i][0] - sv[i - 1][1] < L.pauseMin) erreurs.push(`${ou} : pause < 20 min`);
+        if (amp > (coupe ? L.amplitudeCoupeMax : L.amplitudeMax)) erreurs.push(`${ou} : amplitude ${duree(amp)}`);
+        const abs = sv.map(([a, b]) => [di * 1440 + a, di * 1440 + b]);
+        // Repos quotidien compté depuis la fin du DERNIER service de la veille.
+        if (prec !== null) { const repos = abs[0][0] - prec; reposMin = Math.min(reposMin, repos); if (repos < L.reposJour) erreurs.push(`${ou} : repos quotidien ${duree(repos)} (< 11 h)`); }
+        prec = abs[abs.length - 1][1];
+        tout.push(...abs);
+        if (semaine.includes(d)) { total += eff; ampMax = Math.max(ampMax, amp); effMax = Math.max(effMax, eff); per.push(...abs); }
+      });
+      if (total > L.semaineMax) erreurs.push(`${p.prenom} : ${duree(total)} dans la semaine (> 48 h)`);
+      // Repos hebdomadaire : plus long intervalle sans travail qui touche la semaine (lundi 0 h → lundi suivant 0 h),
+      // y compris à cheval sur la semaine voisine (dimanche + lundi de repos de Sarah).
+      const bornes = [-1440, ...tout.flat(), (NJ + 1) * 1440];
+      let reposSem = 0;
+      for (let i = 0; i < bornes.length; i += 2) if (bornes[i + 1] > 1440 && bornes[i] < 8 * 1440) reposSem = Math.max(reposSem, bornes[i + 1] - bornes[i]);
+      if (reposSem < L.reposSemaine) erreurs.push(`${p.prenom} : repos hebdomadaire ${duree(reposSem)} (< 35 h)`);
+      const cp = [...T[p.id].conges.values()].filter((v) => v === 'CP').length, rtt = T[p.id].conges.size - cp;
+      if (cp < 25) erreurs.push(`${p.prenom} : ${cp} jours de congés payés dans l’année (< 25 jours ouvrés = 5 semaines)`);
+      bilan.push({ cp, rtt, contrat: CONTRATS[p.contrat].lab, qui: p.prenom, semaine: total, effMax, ampMax, reposMin: reposMin === Infinity ? null : reposMin, reposSem });
+    }
+    if (erreurs.length) throw new Error('Droit du travail non respecté :\n' + erreurs.join('\n'));
+    return bilan;
+  }
+  const DROIT = verifierDroit();
+
+  const Modele = { CONTRATS, DROIT, ligneTravail,  SEED, LOGEMENTS, NOUNOU, TOUS, T, P, W, OB, LOG, INFO, SORTIES, DAYS, IDX, IMPOSES, ECOLE,
     jourCtx, soleil, hm, duree, segments, lumieres, porte, etiquette, profil };
   if (typeof module !== 'undefined' && module.exports) module.exports = Modele;
   else root.Modele = Modele;
