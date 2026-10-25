@@ -164,9 +164,9 @@ function awayWeek(d: Pick<Dwelling, 'key' | 'hh'>, seed: number, year: number, w
     const students = hh.members.every((x) => x.who.status === 'etudiant');
     const thursday = addDays(monday, 3);
     p = students && holiday ? AWAY.studentHoliday : AWAY.idle * (thursday.m === 7 || thursday.m === 8 ? AWAY.summer : 1);
-    // Enfants scolarisés : pas de départ hors des vacances scolaires.
-    if (hasKids(hh) && !holiday) p = 0;
   }
+  // Enfants scolarisés : jamais de départ hors des vacances scolaires, même si des CP épars couvrent toute la semaine.
+  if (hasKids(hh) && !holiday) p = 0;
   return { away: rAway < p, leave, back };
 }
 

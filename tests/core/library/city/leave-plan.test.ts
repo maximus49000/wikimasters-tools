@@ -42,6 +42,13 @@ describe('plan de congés', () => {
     });
   });
 
+  it('exactement 25 CP par actif sur une année sans semaine 53 (2027)', () => {
+    for (const { d, m } of actives) {
+      const cp = [...leavePlanOf(d.hh, m, 2027).values()].filter((v) => v === 'CP').length;
+      expect(cp, `${d.id}/${m}`).toBe(25);
+    }
+  });
+
   it('aucun CP un samedi, un dimanche ni un jour férié (HCR : aucun le lundi ni le dimanche)', () => {
     let hcr = 0;
     for (const { d, m } of actives) {
@@ -173,6 +180,24 @@ describe('départs en vacances', () => {
       }
     }
     expect(aways).toBeGreaterThan(50);
+  });
+
+  it('famille avec actifs : jamais partie hors des semaines de vacances scolaires (40 graines, 2026 et 2027)', () => {
+    const holidays = new Set<number>([...Object.values(SCHOOL_WEEKS).flat(), 53]);
+    let families = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const d of cityDwellings(cityFacades(1440, 340, seed), seed)) {
+        if (!d.hh.members.some((x) => x.who.status === 'enfant')) continue;
+        if (!d.hh.members.some((_, m) => traitsOf(d.hh, m).work)) continue;
+        families++;
+        for (const year of [2026, 2027]) {
+          for (let monday: YMD = { y: year, m: 1, d: 5 }; monday.y === year; monday = addDays(monday, 7)) {
+            if (awayState(d, seed, monday).state === 'away') expect(holidays, `${d.id} ${isoDate(monday)}`).toContain(weekOf(isoDate(monday)));
+          }
+        }
+      }
+    }
+    expect(families).toBeGreaterThan(20);
   });
 
   it('est déterministe', () => {
