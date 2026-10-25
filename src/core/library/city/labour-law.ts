@@ -40,7 +40,7 @@ export function checkLabourLaw(days: readonly { iso: string; shifts: readonly Sh
       const rest = abs[0][0] - prevEnd
       if (rest < LAW.dailyRest) errors.push(`${where} : repos quotidien ${hm(rest)} (< 11 h)`)
     }
-    prevEnd = abs[abs.length - 1][1]
+    prevEnd = abs[abs.length - 1]![1]
     worked.push(...abs)
     const w = mondayOf(n)
     weekTotals.set(w, (weekTotals.get(w) ?? 0) + eff)
@@ -55,7 +55,7 @@ export function checkLabourLaw(days: readonly { iso: string; shifts: readonly Sh
     if (w < first) continue
     const from = (w - first) * 1440, to = from + 7 * 1440
     let best = 0
-    for (let i = 0; i < bounds.length; i += 2) if (bounds[i + 1] > from && bounds[i] < to) best = Math.max(best, bounds[i + 1] - bounds[i])
+    for (let i = 0; i < bounds.length; i += 2) { const a = bounds[i]!, b = bounds[i + 1]!; if (b > from && a < to) best = Math.max(best, b - a) }
     if (best < LAW.weeklyRest) errors.push(`${who} : repos hebdomadaire ${hm(best)} (< 35 h) semaine du ${isoOf(w)}`)
   }
   return errors
