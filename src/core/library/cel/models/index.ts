@@ -15,6 +15,7 @@ import { CEL_ITEMS, CEL_MODELS } from './registry';
 // Familles de dessins (chacune s'inscrit dans les registres à l'import).
 import './seating';
 import './wood';
+import './storage';
 
 export { CEL_ITEMS, CEL_MODELS, type CelBuilder, type CelItemBuilder } from './registry';
 
