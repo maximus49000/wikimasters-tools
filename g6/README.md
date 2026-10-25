@@ -431,3 +431,25 @@
 ### style-scandinave_h-21_nostore-1.png
 
 ![style-scandinave_h-21_nostore-1.png](09-lampes-animaux-r1/style-scandinave_h-21_nostore-1.png)
+
+## 09-lampes-animaux-r2
+
+### kind-basket_bowl_kennel_charger_style-scandinave_res-2.png
+
+![kind-basket_bowl_kennel_charger_style-scandinave_res-2.png](09-lampes-animaux-r2/kind-basket_bowl_kennel_charger_style-scandinave_res-2.png)
+
+### kind-basket_style-scandinave_res-3_cell-700.png
+
+![kind-basket_style-scandinave_res-3_cell-700.png](09-lampes-animaux-r2/kind-basket_style-scandinave_res-3_cell-700.png)
+
+### kind-kennel_style-scandinave_res-1_cell-1000_angles-0_4.png
+
+![kind-kennel_style-scandinave_res-1_cell-1000_angles-0_4.png](09-lampes-animaux-r2/kind-kennel_style-scandinave_res-1_cell-1000_angles-0_4.png)
+
+### kind-kennel_style-scandinave_res-3_cell-1000_angles-0_4.png
+
+![kind-kennel_style-scandinave_res-3_cell-1000_angles-0_4.png](09-lampes-animaux-r2/kind-kennel_style-scandinave_res-3_cell-1000_angles-0_4.png)
+
+### kind-kennel_style-scandinave_res-3_cell-700.png
+
+![kind-kennel_style-scandinave_res-3_cell-700.png](09-lampes-animaux-r2/kind-kennel_style-scandinave_res-3_cell-700.png)
