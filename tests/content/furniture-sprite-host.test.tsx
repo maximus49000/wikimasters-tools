@@ -134,7 +134,8 @@ describe('hôte des sprites de meubles', () => {
       frames++;
     }
     expect(done).toBe(1);
-    expect(frames).toBe(3);
+    // 3 tranches, puis l'encodage (finish) au début de l'image suivante (tâche 4b).
+    expect(frames).toBe(4);
     expect(budgets.every((b) => b <= 6)).toBe(true);
     expect(reg.get('k')!.url).toBe('data:image/png;base64,AAAA');
   });

@@ -126,17 +126,21 @@ export function celJob(parts: readonly CelPart[], view: CelView): CelJob {
     const bx0 = Math.max(0, Math.floor(Math.min(x0, x1, x2))), bx1 = Math.min(w - 1, Math.ceil(Math.max(x0, x1, x2)));
     const by0 = Math.max(0, Math.floor(Math.min(y0, y1, y2))), by1 = Math.min(h - 1, Math.ceil(Math.max(y0, y1, y2)));
     const N = pass.normals;
+    const za = Z[a]!, zb = Z[b]!, zc = Z[c]!;
+    // Coordonnées barycentriques affines en x : pas constants le long d'une ligne (au lieu de deux produits et une division par pixel).
+    const d0 = (y1 - y2) / area, d1 = (y2 - y0) / area;
     for (let y = by0; y <= by1; y++) {
       const py = y + 0.5;
+      const q0 = bx0 + 0.5;
+      let w0 = ((x1 - q0) * (y2 - py) - (x2 - q0) * (y1 - py)) / area - d0;
+      let w1 = ((x2 - q0) * (y0 - py) - (x0 - q0) * (y2 - py)) / area - d1;
       for (let x = bx0; x <= bx1; x++) {
-        const qx = x + 0.5;
-        const w0 = ((x1 - qx) * (y2 - py) - (x2 - qx) * (y1 - py)) / area;
-        if (w0 < -1e-4) continue;
-        const w1 = ((x2 - qx) * (y0 - py) - (x0 - qx) * (y2 - py)) / area;
-        if (w1 < -1e-4) continue;
+        w0 += d0;
+        w1 += d1;
+        if (w0 < -1e-4 || w1 < -1e-4) continue;
         const w2 = 1 - w0 - w1;
         if (w2 < -1e-4) continue;
-        const z = w0 * Z[a]! + w1 * Z[b]! + w2 * Z[c]!;
+        const z = w0 * za + w1 * zb + w2 * zc;
         const i = y * w + x;
         if (z <= depth[i]!) continue;
         depth[i] = z;
@@ -179,8 +183,10 @@ export function celJob(parts: readonly CelPart[], view: CelView): CelJob {
     }
     const P = parts[a - 1]!;
     if (P.crease === false) return;
-    const dn = nx[i]! * nx[j]! + ny[i]! * ny[j]! + nz[i]! * nz[j]!;
-    const l = Math.hypot(nx[i]!, ny[i]!, nz[i]!) * Math.hypot(nx[j]!, ny[j]!, nz[j]!) || 1;
+    const ax = nx[i]!, ay = ny[i]!, az = nz[i]!, bx = nx[j]!, by = ny[j]!, bz = nz[j]!;
+    const dn = ax * bx + ay * by + az * bz;
+    // Une seule racine (Math.hypot est lent dans V8 : c'était le premier poste de la cuisson).
+    const l = Math.sqrt((ax * ax + ay * ay + az * az) * (bx * bx + by * by + bz * bz)) || 1;
     if (dn / l < (P.creaseThr ?? 0.62)) {
       setE(i, 1);
       setE(j, 1);
@@ -199,8 +205,9 @@ export function celJob(parts: readonly CelPart[], view: CelView): CelJob {
         const P = parts[a - 1]!, T = tones[a - 1]!;
         let t = 0; // 0 base, 1 ombre, 2 rehaut
         if (!P.flat && !P.glow) {
-          const l = Math.hypot(nx[i]!, ny[i]!, nz[i]!) || 1;
-          const ndl = (nx[i]! * Lc[0] + ny[i]! * Lc[1] + nz[i]! * Lc[2]) / l;
+          const ax = nx[i]!, ay = ny[i]!, az = nz[i]!;
+          const l = Math.sqrt(ax * ax + ay * ay + az * az) || 1;
+          const ndl = (ax * Lc[0] + ay * Lc[1] + az * Lc[2]) / l;
           t = ndl > thr ? (ndl > 0.9 && P.hi !== false ? 2 : 0) : 1;
         }
         c = t === 0 ? T.base : t === 1 ? T.shade : T.hi;
@@ -263,8 +270,10 @@ export function celJob(parts: readonly CelPart[], view: CelView): CelJob {
       for (const end = Math.min(h, row + ROWS_PER_UNIT); row < end; row++)
         for (let x = 0; x < w; x++) {
           const i = row * w + x;
-          if (x + 1 < w) mark(i, i + 1, true);
-          if (row + 1 < h) mark(i, i + w, false);
+          // Deux pixels de fond voisins : rien à encrer (la plupart des pixels du cadre), sans appel.
+          const a = id[i]!;
+          if (x + 1 < w && (a > 0 || id[i + 1]! !== a)) mark(i, i + 1, true);
+          if (row + 1 < h && (a > 0 || id[i + w]! !== a)) mark(i, i + w, false);
         }
       if (row >= h) (phase = 'color'), (row = 0);
     } else if (phase === 'color') {
