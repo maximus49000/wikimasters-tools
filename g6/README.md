@@ -117,3 +117,25 @@
 ### style-scandinave_h-21_nostore-1.png
 
 ![style-scandinave_h-21_nostore-1.png](06-bois/style-scandinave_h-21_nostore-1.png)
+
+## 06-bois-r1
+
+### kind-chair_style-scandinave_res-1_cell-420.png
+
+![kind-chair_style-scandinave_res-1_cell-420.png](06-bois-r1/kind-chair_style-scandinave_res-1_cell-420.png)
+
+### kind-egg_chair_peacock_chair_cat_tree_style-scandinave_res-2.png
+
+![kind-egg_chair_peacock_chair_cat_tree_style-scandinave_res-2.png](06-bois-r1/kind-egg_chair_peacock_chair_cat_tree_style-scandinave_res-2.png)
+
+### kind-peacock_chair_style-scandinave_res-1_cell-420.png
+
+![kind-peacock_chair_style-scandinave_res-1_cell-420.png](06-bois-r1/kind-peacock_chair_style-scandinave_res-1_cell-420.png)
+
+### kind-rocking_chair_chair_style-scandinave_res-2.png
+
+![kind-rocking_chair_chair_style-scandinave_res-2.png](06-bois-r1/kind-rocking_chair_chair_style-scandinave_res-2.png)
+
+### kind-rocking_chair_style-scandinave_res-1_cell-420.png
+
+![kind-rocking_chair_style-scandinave_res-1_cell-420.png](06-bois-r1/kind-rocking_chair_style-scandinave_res-1_cell-420.png)
