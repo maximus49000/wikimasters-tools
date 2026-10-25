@@ -125,7 +125,7 @@ describe('tirage du jour', () => {
 
   it('parti du samedi au dimanche suivant, sans trou', () => {
     // Semaine du lundi 27 juillet 2026 : samedi 25 départ (ou déjà parti), dimanche 26 → samedi 1er août parti.
-    const on = (d: number, m = 7) => sceneDay({ ...dayContext({ y: 2026, m, d }, SUMMER), periods: SUMMER }, dry, SEED);
+    const on = (d: number, m = 7) => sceneDay(dayContext({ y: 2026, m, d }, SUMMER), dry, SEED);
     const mon = on(27);
     const days = [on(26), on(28), on(29), on(30), on(31), on(1, 8)];
     let away = 0;

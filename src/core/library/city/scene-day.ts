@@ -1,6 +1,6 @@
 import { hashString, mulberry32 } from '../scene-world';
 import type { SunTimes } from '../sky';
-import { addDays, type DayContext, type DayKind, type FestivityId, type HolidayPeriod, type YMD } from './calendar';
+import { addDays, type DayContext, type DayKind, type FestivityId, type YMD } from './calendar';
 import { fireworksShow, type FireworksShow } from './fireworks-show';
 import type { Dwelling, Room } from './households';
 import { awayState } from './leave-plan';
@@ -21,8 +21,6 @@ export type SceneDay = {
   holidayWeek: boolean;
   week: number; // semaine ISO, année × 100 + numéro (graine de l'absence)
   weekMonth: number; // mois du jeudi de la semaine ISO (juillet-août : plus d'absences)
-  // Périodes de vacances connues (`DayContext.periods`), pour les départs en vacances (`awayState`) ; absentes : aucune.
-  periods?: readonly HolidayPeriod[];
 };
 
 // Lever / coucher de Paris le 15 de chaque mois, en heures (SUNS de docs/superpowers/maquettes/vie-etages/src/03-temps.js).
@@ -76,7 +74,6 @@ export function sceneDay(day: DayContext, weather: { precip: number; snow: boole
     holidayWeek: holidayWeek ?? day.kind === 'holiday',
     week,
     weekMonth: thursday.m,
-    ...(day.periods ? { periods: day.periods } : {}),
   };
 }
 
@@ -119,7 +116,7 @@ export function dayDraw(d: Dwelling, day: SceneDay, seed: number): DayDraw {
   const workday = !day.weekend && day.kind !== 'public-holiday';
   const pGuests = day.weekday === 5 || day.weekday === 6 ? GUESTS.friSat : GUESTS.other;
   const presence: Presence =
-    awayState(d, seed, ymdOf(day.iso), day.periods ?? []).state === 'away' ? 'away' : rSick < SICK ? 'sick' : rGuests < pGuests ? 'guests' : workday && rLate < LATE.p ? 'late' : 'normal';
+    awayState(d, seed, ymdOf(day.iso), []).state === 'away' ? 'away' : rSick < SICK ? 'sick' : rGuests < pGuests ? 'guests' : workday && rLate < LATE.p ? 'late' : 'normal';
 
   const wake = spread(rWake, !workday ? SPREAD.wakeWeekend : SPREAD.wakeWeek);
   const back = spread(rBack, SPREAD.back) + (presence === 'late' ? between(rLateExtra, LATE.extra) : 0);

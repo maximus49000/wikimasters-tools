@@ -1,5 +1,5 @@
 import { hashString, mulberry32 } from '../scene-world';
-import { addDays, holidayWeekOf, isoDate, publicHolidays, weekdayOf, type HolidayPeriod, type YMD } from './calendar';
+import { addDays, isoDate, publicHolidays, weekdayOf, type HolidayPeriod, type YMD } from './calendar';
 import type { Dwelling, Household } from './households';
 import { traitsOf } from './person-traits';
 
@@ -11,8 +11,10 @@ import { traitsOf } from './person-traits';
 // - Jours travaillés : lundi → vendredi, mardi → samedi en restauration (HCR) ; un jour férié n'est jamais un CP.
 // - Départ en vacances (`away`, propositions du constructeur) : tous les actifs en CP toute la semaine ISO, puis un tirage.
 
-// Semaines ISO des vacances scolaires (zone C de la maquette).
+// Semaines ISO des vacances scolaires (zone C de la maquette), FIXES : le modèle reste déterministe sans le calendrier du
+// relais. Une semaine 53 (31 décembre 2026 → 3 janvier 2027) prolonge Noël : vacances, et CP pour qui prend la semaine 52.
 export const SCHOOL_WEEKS = { hiver: [8, 9], printemps: [16, 17], ete: [28, 29, 30, 31, 32, 33, 34, 35], toussaint: [43, 44], noel: [52] } as const;
+const HOLIDAY_WEEKS: ReadonlySet<number> = new Set([...Object.values(SCHOOL_WEEKS).flat(), 53]);
 
 export type Leave = 'CP' | 'RTT';
 // home : à la maison ; leaves : part ce samedi à `at` ; away : parti toute la journée ; returns : rentre ce dimanche à `at`.
@@ -71,7 +73,9 @@ function leaveWeeks(hh: Household, m: number, year: number): number[] {
 function buildPlan(weeks: readonly number[], days: readonly number[], rtt: number, year: number, rng: Rng): Map<string, Leave> {
   const out = new Map<string, Leave>();
   const worked = (date: YMD) => days.includes(weekdayOf(date)) && !isPublicHoliday(date);
-  for (const w of weeks) {
+  // Semaine 53 (si l'année ISO en a une) : suite de Noël pour qui prend la semaine 52.
+  const all = weeks.includes(52) && isoWeekOf(mondayOf(year, 53)).w === 53 ? [...weeks, 53] : weeks;
+  for (const w of all) {
     const monday = mondayOf(year, w);
     for (let i = 0; i < 7; i++) {
       const date = addDays(monday, i);
@@ -133,14 +137,14 @@ export function leaveOn(hh: Household, m: number, date: YMD): Leave | null {
 }
 
 // Semaine ISO (année, numéro) où le foyer est parti, et ses heures de départ (samedi d'avant) et de retour (dimanche).
-function awayWeek(d: Pick<Dwelling, 'key' | 'hh'>, seed: number, year: number, w: number, periods: readonly HolidayPeriod[]): { away: boolean; leave: number; back: number } {
+function awayWeek(d: Pick<Dwelling, 'key' | 'hh'>, seed: number, year: number, w: number): { away: boolean; leave: number; back: number } {
   const rng = mulberry32((seed ^ hashString('away') ^ d.key ^ (year * 100 + w)) >>> 0);
   const rAway = rng();
   const leave = int5(rng, AWAY.leave);
   const back = int5(rng, AWAY.back);
   const { hh } = d;
   const monday = mondayOf(year, w);
-  const holiday = holidayWeekOf(monday, periods);
+  const holiday = HOLIDAY_WEEKS.has(w);
   const actives = hh.members.map((_, m) => m).filter((m) => traitsOf(hh, m).work);
   let p: number;
   if (actives.length) {
@@ -167,15 +171,16 @@ function awayWeek(d: Pick<Dwelling, 'key' | 'hh'>, seed: number, year: number, w
 }
 
 /** État du foyer ce jour-là : semaine W partie ⇒ samedi d'avant `leaves`, dimanche d'avant → samedi de W `away`, dimanche de W
- *  `returns` (sinon `away` si W + 1 l'est aussi). `at` : heure du départ (`leaves`) ou du retour (`returns`). */
-export function awayState(d: Pick<Dwelling, 'key' | 'hh'>, seed: number, date: YMD, periods: readonly HolidayPeriod[]): { state: AwayState; at?: number } {
+ *  `returns` (sinon `away` si W + 1 l'est aussi). `at` : heure du départ (`leaves`) ou du retour (`returns`). Vacances
+ *  scolaires : semaines fixes (`SCHOOL_WEEKS`) ; `_periods` est ignoré, gardé pour l'interface du plan. */
+export function awayState(d: Pick<Dwelling, 'key' | 'hh'>, seed: number, date: YMD, _periods: readonly HolidayPeriod[] = []): { state: AwayState; at?: number } {
   const wd = weekdayOf(date);
   const cur = isoWeekOf(date);
   const nxt = isoWeekOf(addDays(date, 7));
-  const thisWeek = awayWeek(d, seed, cur.year, cur.w, periods);
+  const thisWeek = awayWeek(d, seed, cur.year, cur.w);
   if (wd >= 1 && wd <= 5) return { state: thisWeek.away ? 'away' : 'home' };
   if (wd === 6 && thisWeek.away) return { state: 'away' };
-  const nextWeek = awayWeek(d, seed, nxt.year, nxt.w, periods);
+  const nextWeek = awayWeek(d, seed, nxt.year, nxt.w);
   if (wd === 6) return nextWeek.away ? { state: 'leaves', at: nextWeek.leave } : { state: 'home' };
   if (nextWeek.away) return { state: 'away' };
   return thisWeek.away ? { state: 'returns', at: thisWeek.back } : { state: 'home' };

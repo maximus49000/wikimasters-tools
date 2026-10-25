@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, isoDate, publicHolidays, weekdayOf, type HolidayPeriod, type YMD } from '../../../../src/core/library/city/calendar';
+import { addDays, isoDate, publicHolidays, weekdayOf, type YMD } from '../../../../src/core/library/city/calendar';
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling } from '../../../../src/core/library/city/households';
 import { checkPaidLeave } from '../../../../src/core/library/city/labour-law';
@@ -10,14 +10,6 @@ import { isoWeek } from '../../../../src/core/library/city/scene-day';
 const SEEDS = [1, 2, 3];
 const cities = SEEDS.map((seed) => ({ seed, dwellings: cityDwellings(cityFacades(1440, 340, seed), seed) }));
 const actives = cities.flatMap((c) => c.dwellings.flatMap((d) => d.hh.members.flatMap((_, m) => (traitsOf(d.hh, m).work ? [{ d, m }] : []))));
-// Vacances scolaires 2026-2027 (zone C), début inclus, fin exclue.
-const VAC: HolidayPeriod[] = [
-  { name: 'Hiver', start: '2026-02-21', end: '2026-03-09' },
-  { name: 'Printemps', start: '2026-04-18', end: '2026-05-04' },
-  { name: 'Été', start: '2026-07-04', end: '2026-09-01' },
-  { name: 'Toussaint', start: '2026-10-17', end: '2026-11-02' },
-  { name: 'Noël', start: '2026-12-19', end: '2027-01-04' },
-];
 const weekOf = (iso: string): number => {
   const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
   const date = { y, m, d };
@@ -138,7 +130,16 @@ describe('plan de congés', () => {
       expect(leaveOn(d.hh, m, { y: 2025, m: 12, d: 31 })).toBe('CP');
     }
     expect(found).toBeGreaterThan(0);
-    for (const { d, m } of actives) expect(leaveOn(d.hh, m, { y: 2027, m: 1, d: 1 })).toBeNull();
+    // Semaine 53 de 2026 : suite de Noël pour qui prend la semaine 52 (le 1er janvier, férié, n'est jamais un CP).
+    let christmas = 0;
+    for (const { d, m } of actives) {
+      expect(leaveOn(d.hh, m, { y: 2027, m: 1, d: 1 })).toBeNull();
+      if (leaveOn(d.hh, m, { y: 2026, m: 12, d: 22 }) !== 'CP' || leaveOn(d.hh, m, { y: 2026, m: 12, d: 23 }) !== 'CP') continue;
+      christmas++;
+      expect(leaveOn(d.hh, m, { y: 2026, m: 12, d: 31 })).toBe('CP');
+      expect(leavePlanOf(d.hh, m, 2026).get('2026-12-31')).toBe('CP');
+    }
+    expect(christmas).toBeGreaterThan(3);
   });
 });
 
@@ -152,7 +153,7 @@ describe('départs en vacances', () => {
         const act = d.hh.members.map((_, m) => m).filter((m) => traitsOf(d.hh, m).work);
         let prev: AwayState | null = null;
         for (let date: YMD = { y: 2026, m: 1, d: 5 }; date.y === 2026; date = addDays(date, 1)) {
-          const { state, at } = awayState(d, c.seed, date, VAC);
+          const { state, at } = awayState(d, c.seed, date);
           const iso = isoDate(date);
           const wd = weekdayOf(date);
           if (prev) expect(NEXT[prev], `${d.id} ${iso} ${prev}→${state}`).toContain(state);
@@ -160,6 +161,8 @@ describe('départs en vacances', () => {
           if (state === 'returns') { expect(wd).toBe(0); expect(at).toBeGreaterThanOrEqual(960); expect(at).toBeLessThanOrEqual(1140); }
           if (state === 'away') {
             aways++;
+            // Enfants : seulement pendant les semaines de vacances scolaires fixes (53 : suite de Noël).
+            if (d.hh.members.some((x) => x.who.status === 'enfant')) expect([...Object.values(SCHOOL_WEEKS).flat(), 53]).toContain(weekOf(isoDate(wd === 0 ? addDays(date, 1) : date)));
             for (const m of act) {
               const days = traitsOf(d.hh, m).work!.split?.days ?? [1, 2, 3, 4, 5];
               if (days.includes(wd) && !isHoliday(iso)) expect(leaveOn(d.hh, m, date), `${d.id}/${m} ${iso}`).toBe('CP');
@@ -176,6 +179,6 @@ describe('départs en vacances', () => {
     const c = cities[0]!;
     const d: Dwelling = c.dwellings[0]!;
     const date = { y: 2026, m: 8, d: 1 };
-    expect(awayState(d, c.seed, date, VAC)).toEqual(awayState(d, c.seed, date, VAC));
+    expect(awayState(d, c.seed, date)).toEqual(awayState(d, c.seed, date));
   });
 });

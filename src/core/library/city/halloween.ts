@@ -80,7 +80,7 @@ export function halloweenYear(date: YMD): number | null {
 }
 
 // Présence du foyer un jour donné : pas parti en vacances ce jour-là (le jour du départ et celui du retour comptent comme
-// présents), comme dans `dayDraw` (vacances d'après `periods`).
+// présents), comme dans `dayDraw` (vacances scolaires : semaines fixes).
 function presentOn(d: Dwelling, date: YMD, seed: number, periods: readonly HolidayPeriod[]): boolean {
   return awayState(d, seed, date, periods).state !== 'away';
 }

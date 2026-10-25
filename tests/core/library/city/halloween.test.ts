@@ -119,7 +119,7 @@ function scheduleOn(c: (typeof cities)[number], plan: ReturnType<typeof planOf>,
   const t = new Date(day * 86_400_000);
   const ymd = { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
   const ctx = dayContext(ymd, VAC);
-  const sd = sceneDay({ ...ctx, holidayWeek: ctx.kind === 'holiday' || ymd.m === 10, periods: VAC }, dry, c.seed);
+  const sd = sceneDay({ ...ctx, holidayWeek: ctx.kind === 'holiday' || ymd.m === 10 }, dry, c.seed);
   const d = c.dwellings.find((x) => x.id === it.dwelling)!;
   return buildSchedule(d, sd, dayDraw(d, sd, c.seed), decorTasks(plan, d.id, ymd));
 }
