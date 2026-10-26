@@ -67,7 +67,10 @@ describe('rangements, tables et tapis en cellulo', () => {
     expect(plain.every((P) => P.noshadow)).toBe(true);
     expect(Math.max(...plain.flatMap((P) => P.m.v.map((v) => v[1])))).toBeLessThanOrEqual(3);
     const withFringes = celPartsOf('rug', fringed, REST_LIFE);
-    expect(withFringes.length).toBeGreaterThan(plain.length);
+    // Les mèches font une seule pièce avec l'ourlet et les lisières (tâche 10 : pas d'encre entre elles) : pas plus de pièces.
+    expect(withFringes.length).toBe(plain.length);
+    const spanX = (parts: typeof plain) => Math.max(...parts.flatMap((P) => P.m.v.map((v) => Math.abs(v[0]))));
+    expect(spanX(withFringes)).toBeGreaterThan(spanX(plain)); // les mèches sortent au-delà de la nappe
     expect(withFringes.every((P) => P.noshadow)).toBe(true);
     const vs = withFringes.flatMap((P) => P.m.v);
     expect(Math.max(...vs.map((v) => Math.abs(v[0])))).toBeLessThanOrEqual(102);

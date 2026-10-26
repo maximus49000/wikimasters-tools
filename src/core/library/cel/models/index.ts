@@ -7,7 +7,7 @@ import type { LifeState } from '../life-state';
 import type { CelLook } from '../looks';
 import type { CelPart } from '../mesh';
 import { WARM_LIT } from '../tone';
-import { CEL_ITEMS, CEL_MODELS, CEL_TRIM_KEEP } from './registry';
+import { CEL_ITEMS, CEL_MODELS, CEL_TRIMS } from './registry';
 
 // Dessin 3D cellulo des meubles et des objets portés, par familles (remplis par les tâches suivantes). Un meuble sans dessin propre
 // passe par la conversion de son modèle à boîtes (celFromModel) : il s'affiche tout de même, au même encombrement.
@@ -18,8 +18,9 @@ import './wood';
 import './storage';
 import './plants';
 import { PAPER } from './lights-pets'; // (s'inscrit aussi dans les registres)
+import './steampunk';
 
-export { CEL_ITEMS, CEL_MODELS, type CelBuilder, type CelItemBuilder } from './registry';
+export { CEL_ITEMS, CEL_MODELS, CEL_TRIMS, type CelBuilder, type CelItemBuilder, type CelTrimBuilder } from './registry';
 
 // Pièce du surplomb d'un meuble à socle (même règle que overhangOf, sur l'encombrement du maillage) : hors du socle à 0,5 cm près.
 function overhanging(P: CelPart, model: Model): boolean {
@@ -33,7 +34,7 @@ function overhanging(P: CelPart, model: Model): boolean {
   return x1 <= b.x + 0.5 || x0 >= b.x + b.w - 0.5 || z1 <= b.z + 0.5 || z0 >= b.z + b.d - 0.5;
 }
 
-// Pièces cellulo d'un meuble : son dessin propre (CEL_MODELS) sinon la conversion de son modèle, plus la garniture Steampunk ;
+// Pièces cellulo d'un meuble : son dessin propre (CEL_MODELS) sinon la conversion de son modèle, plus la garniture Steampunk (cellulo, cf. CEL_TRIMS) ;
 // `lit` : abat-jour allumé (lumineux) ; `part` : le socle seul ('base') ou le surplomb seul ('overhang') d'un meuble à socle.
 export function celPartsOf(kind: StandingKind, look: CelLook, life: LifeState, opts: { lit?: boolean; part?: 'base' | 'overhang' } = {}): CelPart[] {
   const model = FURNITURE_MODELS[kind];
@@ -47,8 +48,10 @@ export function celPartsOf(kind: StandingKind, look: CelLook, life: LifeState, o
     const kept = over ? pieces.filter((_, i) => over.pieces.has(i) === (opts.part === 'overhang')) : pieces;
     return celFromPieces(kept, model, look, lit ? { glow: (p) => p.fill === 'shade' && !p.tag } : {});
   }
-  const keep = CEL_TRIM_KEEP[kind];
-  let parts = [...builder(look, life), ...celFromPieces(keep ? trim.filter(keep) : trim, model, look)];
+  // Garniture Steampunk : son dessin cellulo (CEL_TRIMS, marqué `trim`) ; à défaut la conversion des pièces à boîtes.
+  const celTrim = CEL_TRIMS[kind];
+  const trims = look.style !== 'steampunk' ? [] : celTrim ? celTrim(look) : celFromPieces(trim, model, look).map((P) => ({ ...P, trim: true }));
+  let parts = [...builder(look, life), ...trims];
   if (opts.part && model.base) parts = parts.filter((P) => overhanging(P, model) === (opts.part === 'overhang'));
   // S'allume : toute pièce au ton `shade` (abat-jour, ampoule) et le papier de la lanterne (seul ton hors palette, cf. lights-pets).
   if (lit) parts = parts.map((P) => (P.col === look.tones.shade || P.col === PAPER ? { ...P, col: WARM_LIT, glow: true } : P));

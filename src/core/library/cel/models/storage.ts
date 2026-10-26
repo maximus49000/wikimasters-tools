@@ -1,12 +1,14 @@
 import type { CelLook, CelVariant } from '../looks';
-import { bent, lathe, part, place, superEll, tube, type CelPart, type Deform, type Vec3 } from '../mesh';
+import { bent, lathe, part, place, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
 import type { Tone } from '../tone';
 import { CEL_MODELS } from './registry';
 
 // Rangements, tables et tapis (G6, tâche 7) : étagère, bureau, commode, guéridon (porté de la maquette `gueridon`, l. 297), table
 // basse, tapis. Repère centré (origine au centre de la base, x à droite, y en haut, z vers le spectateur, cm). Couleurs : les clés
-// de palette du modèle à boîtes (`look.tones`) ; les pieds du bureau et de la table basse suivent `look.variant.legs`, le tapis lit
-// `look.variant.throw` (ourlet roulotté ou franges) et `look.variant.pattern` (bordure, losanges, rayures).
+// de palette du modèle à boîtes (`look.tones`) ; les pieds du bureau et de la table basse suivent `look.variant.legs` (compas rétro 70 :
+// évasés), le tapis lit `look.variant.throw` (ourlet roulotté ou franges) et `look.variant.pattern` (bordure, losanges, rayures, liseré
+// lumineux néon) ; en Néon, un liseré lumineux (`edge`, glow) souligne le bord avant du plateau du bureau, de la table basse et du
+// dessus de l'étagère, et les bandes du tapis s'allument.
 //
 // Logique des angles : la lumière est fixe dans la pièce (haut-gauche) et le meuble tourne dessous ; en cellulo l'ombre propre ne
 // naît que sur les surfaces qui tournent franchement vers la droite ou vers le bas. Les plaques (flancs, fonds, dessus) restent en
@@ -24,13 +26,45 @@ function legProfile(legs: CelVariant['legs'], h: number, r0 = 2.6): [number, num
     case 'block': return [[r0 * 1.1, 0], [r0 * 1.1, h]];
     case 'claw': return [[r0 * 1.3, 0], [r0 * 0.85, h * 0.3], [r0 * 1.08, h * 0.7], [r0 * 0.92, h]];
     case 'straight': return [[r0, 0], [r0, h]];
-    default: return [[r0, 0], [r0 * 0.78, h]];
+    case 'compass': return [[r0, 0], [r0 * 0.88, h]]; // compas : à peine fuselé (l'évasement fait le dessin), trapu
+    default: return [[r0, 0], [r0 * 0.78, h]]; // fuselé
   }
 }
 // Quatre pieds aux coins (±x, ±z), hauteur h, un peu évasés (`splay` rad : pieds dehors, haut rentré), sans trait d'arête.
 function legs(look: CelLook, col: Tone, x: number, z: number, h: number, splay = 0, r0 = 2.6): CelPart[] {
   const out: CelPart[] = [];
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) out.push(part(place(lathe(legProfile(look.variant.legs, h, r0), 12), { rz: sx * splay, rx: -sz * splay, t: [sx * x, 0, sz * z] }), col, { crease: false }));
+  const sp = splayOf(look, splay);
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      if (look.variant.legs === 'hairpin') out.push(...hairpin(col, [sx * x, 0, sz * z], h, sx, 3));
+      else out.push(part(place(lathe(legProfile(look.variant.legs, h, r0), 12), { rz: sx * sp, rx: -sz * sp, t: [sx * x, 0, sz * z] }), col, { crease: false }));
+    }
+  return out;
+}
+// Pied épingle (industriel) : deux tiges d'acier (r 1,25) qui partent du même pied et s'écartent en V (±spread en z) sous le meuble, un
+// peu rentrées en x ; patin rond au sol. Le point d'appui est celui des autres variantes.
+export function hairpin(col: Tone, foot: Vec3, h: number, sx: number, spread: number): CelPart[] {
+  const out: CelPart[] = [];
+  for (const sz of [-1, 1]) {
+    const top: Vec3 = [foot[0] - sx * 1.5, foot[1] + h, foot[2] + sz * spread];
+    out.push(part(tube([foot, [(foot[0] + top[0]) / 2, (foot[1] + top[1]) / 2, (foot[2] + top[2]) / 2], top], 1.25, 8), col, { crease: false }));
+  }
+  out.push(part(place(lathe([[0, 0], [1.5, 0], [1.6, 0.5], [1.4, 1.1], [0, 1.1]], 12), { t: foot }), col, { crease: false }));
+  return out;
+}
+// Évasement des pieds (rad) : celui du meuble, plus 0,07 pour les pieds compas (le pied reste posé au même endroit, le haut rentre).
+const splayOf = (look: CelLook, splay: number): number => splay + (look.variant.legs === 'compass' ? 0.07 : 0);
+// Liseré lumineux néon : tube fin au ton `edge`, lumineux (sans ombrage ni ombre portée), compté à part de l'encombrement.
+const neon = (look: CelLook, a: Vec3, b: Vec3, r = 0.8): CelPart => part(tube([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], b], r, 8), look.tones.edge, { glow: true, noshadow: true, crease: false, trim: true });
+// Réunion de maillages en un seul (indices décalés) : une pièce, pas d'encre de silhouette entre eux.
+function merge(ms: Mesh[]): Mesh {
+  const out: Mesh = { v: [], n: [], t: [] };
+  for (const m of ms) {
+    const o = out.v.length;
+    out.v.push(...m.v);
+    out.n.push(...m.n);
+    for (const [a, b, c] of m.t) out.t.push([a + o, b + o, c + o]);
+  }
   return out;
 }
 // Barreau rond entre deux points.
@@ -66,6 +100,7 @@ function shelf(look: CelLook): CelPart[] {
   P.push(part(tube([[-36, 5.5, 12], [0, 5.5, 12], [36, 5.5, 12]], 3, 14), W, { crease: false })); // nez de la tablette basse (2,5..8,5)
   // Dessus en bourrelet (177..180, dessus praticable 180) : au-dessus de l'œil, son dessous arrondi se lit en ombre à tous les angles.
   P.push(part(place(superEll(41.5, 1.5, 15, 0.8, 0.3, 10, 28), { t: [0, 178.5, 0] }), W));
+  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-40, 178.6, 15.1], [40, 178.6, 15.1], 0.7)); // liseré sur le nez du dessus
   // Fond : un panneau de bois (Ruling 23) en quatre planches jointives verticales : plaque mince à peine bombée vers l'arrière (0,7 cm
   // au milieu, cintrée par bent()), entre les montants arrière, du socle au dessus (bouts noyés dedans), et trois joints en V sur chaque
   // face (deux chanfreins de 2,2 cm à 40° par joint) : le chanfrein tourné vers la droite prend l'ombre, l'autre la lumière — c'est le
@@ -94,6 +129,7 @@ function desk(look: CelLook): CelPart[] {
   P.push(knob(T.metal, 0, 68.5, 26.9));
   P.push(rod([-54, 18, -24], [54, 18, -24], 1.5, T.leg)); // traverse arrière
   for (const sx of [-1, 1]) P.push(rod([sx * 54, 18, -24], [sx * 54, 18, 24], 1.5, T.leg)); // entretoises latérales
+  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-58, 72.3, 30.2], [58, 72.3, 30.2], 0.6)); // liseré sous le bord avant du plateau
   return P;
 }
 
@@ -151,13 +187,21 @@ function sideTable(look: CelLook): CelPart[] {
 function coffeeTable(look: CelLook): CelPart[] {
   const T = look.tones;
   const P: CelPart[] = [];
-  P.push(...legs(look, T.leg, 43, 20.5, 40, 0.05, 3.3));
+  P.push(...legs(look, T.leg, 43, 20.5, 40, 0.05, 3.8)); // pieds trapus (r 3,8 : une table basse ne montre d'ombre que par ses pieds et ses barreaux)
   P.push(part(place(superEll(50, 3, 27.5, 0.8, 0.45, 12, 28), { t: [0, 42, 0] }), T.desk)); // plateau épais 39..45 en galet (chant rond)
   // Porte-revues : deux traverses rondes entre les pieds et trois barreaux ronds posés dessus (leur dessous prend l'ombre de face).
   for (const sx of [-1, 1]) P.push(rod([sx * 43, 10, -20.5], [sx * 43, 10, 20.5], 1.8, T.woodDark));
-  for (const z of [-13, 0, 13]) P.push(rod([-43, 14, z], [43, 14, z], 2.6, T.woodDark));
-  // Ceinture ronde sous le plateau (devant et derrière, entre les pieds) : son dessous prend l'ombre de face.
-  for (const sz of [-1, 1]) P.push(rod([-43, 37.6, sz * 20.5], [43, 37.6, sz * 20.5], 2.5, T.leg));
+  for (const z of [-13, 0, 13]) P.push(rod([-43, 14, z], [43, 14, z], 3, T.woodDark));
+  if (look.variant.legs === 'hairpin') {
+    // Pieds épingle : le plateau est cerclé d'un cadre d'acier (c'est à lui que les épingles sont boulonnées), pas de ceinture ronde.
+    P.push(part(place(superEll(49.6, 1.3, 27.1, 0.3, 0.4, 6, 32), { t: [0, 38, 0] }), T.leg));
+  } else {
+    // Ceinture ronde sous le plateau (devant et derrière, entre les pieds) : son dessous prend l'ombre de face. Ses bouts finissent
+    // dans les pieds, là où ils passent à cette hauteur (pieds évasés : l'axe du pied est rentré de 37,6·sin(évasement)).
+    const sp = splayOf(look, 0.05), xe = 43 - 37.6 * Math.sin(sp) + 1, ze = 20.5 - 37.6 * Math.sin(sp) + 1;
+    for (const sz of [-1, 1]) P.push(rod([-xe, 37.6, sz * ze], [xe, 37.6, sz * ze], 2.5, T.leg));
+  }
+  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-48, 39.4, 27.3], [48, 39.4, 27.3], 0.6)); // liseré sous le bord avant du plateau
   return P;
 }
 
@@ -191,22 +235,33 @@ function rugLoop(hw: number, hd: number): Vec3[] {
 }
 function rug(look: CelLook): CelPart[] {
   const T = look.tones, F = T.rug, B = T.fabricDark;
-  const fringed = look.variant.throw === 'fringed';
-  const hw = fringed ? 97.5 : RUG_HW, hd = RUG_HD;
+  const fringed = look.variant.throw === 'fringed', lit = look.variant.pattern === 'neon-edge';
+  const hw = fringed ? 98.1 : RUG_HW, hd = RUG_HD; // à franges : la nappe recule de 0,9 cm (les mèches finissent à 99,9), même volume à 1 cm près
   const P: CelPart[] = [];
   P.push(part(place(superEll(hw, 0.6, hd, 0.3, 0.25, 6, 32), { t: [0, 0.6, 0] }), F, { noshadow: true })); // nappe 0..1,2
   // Bordure tissée : quatre bandes plates posées sur la nappe (0,35 cm au-dessus : pas de bataille de profondeur, pas d'encre), 5 cm de large à 8 cm du bord.
-  const band = (a: number, c: number, x: number, z: number): CelPart => part(place(superEll(a, 0.3, c, 0.3, 0.2, 4, 12), { t: [x, 1.25, z] }), B, { flat: true, noshadow: true });
+  // (Néon : les bandes sont des tubes lumineux `edge` au sol, un tapis à liseré de lumière.)
+  const band = (a: number, c: number, x: number, z: number): CelPart =>
+    lit ? part(place(superEll(a, 0.5, c, 0.3, 0.2, 4, 12), { t: [x, 1.3, z] }), T.edge, { glow: true, noshadow: true, crease: false }) : part(place(superEll(a, 0.3, c, 0.3, 0.2, 4, 12), { t: [x, 1.25, z] }), B, { flat: true, noshadow: true });
   const bx = hw - 8, bz = hd - 8;
   P.push(band(bx, 2.5, 0, bz), band(bx, 2.5, 0, -bz), band(2.5, bz - 5.2, bx, 0), band(2.5, bz - 5.2, -bx, 0)); // les latérales s'arrêtent avant les autres (pas de chevauchement)
   if (look.variant.pattern === 'diamonds') for (const x of [-45, -22.5, 0, 22.5, 45]) P.push(part(place(superEll(7, 0.3, 7, 1, 1, 4, 4), { ry: Math.PI / 4, t: [x, 1.25, 0] }), B, { flat: true, noshadow: true }));
   if (look.variant.pattern === 'stripes') for (const x of [-60, -30, 0, 30, 60]) P.push(band(3, bz - 10, x, 0));
-  // Ourlet roulotté : un boudin le long du bord (sa face du dessous prend l'ombre : le tapis a une épaisseur lisible).
-  if (fringed) {
-    for (const sz of [-1, 1]) P.push(part(tube([[-hw + 4, HEM_R, sz * (hd - HEM_R)], [0, HEM_R, sz * (hd - HEM_R)], [hw - 4, HEM_R, sz * (hd - HEM_R)]], HEM_R, 10), F, { crease: false, noshadow: true }));
-    // Franges couchées aux deux petits côtés : mèches effilées tous les 5 cm.
-    for (const sx of [-1, 1]) for (let z = -hd + 4; z <= hd - 4; z += 5) P.push(part(place(lathe([[0.8, 0], [0.6, 2.5], [0.25, 4]], 6), { rz: -sx * (Math.PI / 2), t: [sx * (hw - 0.5), 0.85, z] }), F, { crease: false, noshadow: true }));
-  } else P.push(part(tube(rugLoop(hw - HEM_R, hd - HEM_R), HEM_R, 10), F, { crease: false, noshadow: true }));
+  // Ourlet roulotté : un boudin tout autour (sa face du dessous prend l'ombre : le tapis a une épaisseur lisible) ; à franges, les
+  // mèches sortent de sous l'ourlet des deux petits côtés (tous les 5 cm, effilées).
+  // Ourlet et mèches ne font qu'UNE pièce : des mèches séparées encraient chacune leur silhouette sur l'ourlet derrière elles (épaississement
+  // du trait côté fond) et, à 1 px par px, mangeaient toute l'ombre de l'ourlet des petits côtés (0 % d'ombre aux angles 1 et 2).
+  if (!fringed) P.push(part(tube(rugLoop(hw - HEM_R, hd - HEM_R), HEM_R, 10), F, { crease: false, noshadow: true }));
+  else {
+    // Lisières nouées un peu plus épaisses (r 1,5 : le tapis reste à 3 cm, sa boîte) aux deux petits côtés — c'est là que les mèches sont
+    // nouées —, ourlets roulottés r 1,4 aux longs côtés (ils finissent dans les lisières), mèches courtes et basses (r 0,5, 2,8 cm, la
+    // pointe à 99,9 : même encombrement que le tapis uni à 1 cm près) couchées devant.  Ourlet, lisières et mèches : une seule pièce.
+    const KR = 1.5, locks: Mesh[] = [];
+    for (const sx of [-1, 1]) locks.push(tube([[sx * (hw - KR), KR, -(hd - HEM_R)], [sx * (hw - KR), KR, 0], [sx * (hw - KR), KR, hd - HEM_R]], KR, 12));
+    for (const sz of [-1, 1]) locks.push(tube([[-(hw - KR), HEM_R, sz * (hd - HEM_R)], [0, HEM_R, sz * (hd - HEM_R)], [hw - KR, HEM_R, sz * (hd - HEM_R)]], HEM_R, 10));
+    for (const sx of [-1, 1]) for (let z = -hd + 4; z <= hd - 4; z += 5) locks.push(place(lathe([[0.5, 0], [0.42, 1.8], [0.2, 2.8]], 6), { rz: -sx * (Math.PI / 2), t: [sx * (hw - 1), 0.5, z] }));
+    P.push(part(merge(locks), F, { crease: false, noshadow: true }));
+  }
   return P;
 }
 

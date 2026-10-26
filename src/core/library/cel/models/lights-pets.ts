@@ -3,7 +3,7 @@ import type { LifeState } from '../life-state';
 import type { CelLook } from '../looks';
 import { bent, lathe, leaf, normalize, part, place, smooth, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
 import type { Tone } from '../tone';
-import { CEL_MODELS, CEL_TRIM_KEEP } from './registry';
+import { CEL_MODELS } from './registry';
 
 // Lampes et coin des animaux (G6, tâche 9) : lampadaire (`lamp`), lampadaire arc (porté de la maquette `arcLamp`, l. 284), lanterne en
 // papier (porté de `lantern`, l. 342), panier, gamelle, niche, chargeur du robot. Repère centré (origine au centre de la base, x à
@@ -22,6 +22,12 @@ import { CEL_MODELS, CEL_TRIM_KEEP } from './registry';
 
 /** Ton papier de la lanterne (maquette l. 180) : la seule couleur hors palette, remplacée par WARM_LIT quand elle est allumée. */
 export const PAPER: Tone = Object.freeze({ base: '#FBE4A6', shade: '#EACB8A', hi: '#FFF2C8' });
+
+/** Rayon du globe de la lanterne à la hauteur y (ovoïde 7..53, ventre r 22,5 à 30) : les cerclages Steampunk l'épousent (steampunk.ts). */
+export const LANTERN_R = (y: number): number => {
+  const u = (y - 30) / 23;
+  return 6.4 + 16.2 * Math.pow(Math.max(0, 1 - u * u), 0.45);
+};
 
 /** Creux du coussin du panier : profondeur max (cm) et rayon (σ de la gaussienne, cm). */
 export const BASKET_DENT_DEPTH = 3, BASKET_DENT_SIGMA = 12;
@@ -141,13 +147,11 @@ function arcLamp(look: CelLook): CelPart[] {
   P.push(part(place(lathe([[13, -16.5], [12.6, -15], [5.2, 0], [0, 0]], 28, undefined, { caps: false, center: [0, -4, 0] }), at), T.metal)); // dôme
   P.push(part(place(lathe([[12.2, -16.1], [4.8, -1.2]], 28, undefined, { caps: false, center: [0, -30, 0] }), at), T.shade, { crease: false })); // intérieur (s'allume)
   P.push(part(place(lathe([[0, -11], [3, -10], [3.4, -7], [2.2, -4], [0, -4]], 12), at), T.shade, { crease: false, noshadow: true })); // ampoule
-  // Steampunk : le cerclage de laiton du dôme est redessiné sur le bord du dôme incliné (celui du modèle à boîtes, horizontal à
-  // l'ancienne place du dôme, est écarté par CEL_TRIM_KEEP : il transperçait le nouveau dôme).
-  if (look.style === 'steampunk') P.push(part(place(lathe([[13.1, -16.9], [13.7, -16.4], [13.7, -14.9], [13.2, -14.4]], 28), at), T.text, { crease: false, noshadow: true }));
+  // Steampunk : le cerclage de laiton du dôme est dessiné sur le bord du dôme incliné (celui du modèle à boîtes, horizontal à
+  // l'ancienne place du dôme, transperçait le nouveau dôme) ; le reste de la garniture (bandeau, pieds boule, bagues) : CEL_TRIMS (steampunk.ts).
+  if (look.style === 'steampunk') P.push(part(place(lathe([[13.1, -16.9], [13.7, -16.4], [13.7, -14.9], [13.2, -14.4]], 28), at), T.text, { crease: false, noshadow: true, trim: true }));
   return P;
 }
-// Garniture Steampunk du lampadaire arc : tout sauf le cerclage du dôme (le seul cylindre centré sur l'ancien dôme, cx 19 du modèle).
-CEL_TRIM_KEEP['arc-lamp'] = (p) => !(p.shape === 'cyl' && p.cx === 19);
 
 /* ---------- lanterne en papier (porté de la maquette) : chōchin en fuseau à côtes horizontales, anneaux de bois en haut et en bas,
    socle de bois, anse en cordon ---------- */
@@ -157,10 +161,7 @@ function paperLantern(look: CelLook): CelPart[] {
   P.push(part(lathe([[0, 0], [12, 0], [13.5, 1], [13.5, 3.6], [12.4, 4.4], [7.2, 4.7], [0, 4.7]], 24), T.woodDark, { creaseThr: 0.75 })); // socle
   P.push(part(lathe([[0, 4.5], [7.4, 4.5], [7.6, 6.8], [6.2, 7]], 16), T.woodDark, { crease: false })); // anneau du bas
   // Globe : rayon d'un ovoïde (7..53, ventre à 30), côtes alternées comme la maquette (crête +0,7, creux −0,5 tous les 2,6 cm).
-  const R = (y: number): number => {
-    const u = (y - 30) / 23;
-    return 6.4 + 16.2 * Math.pow(Math.max(0, 1 - u * u), 0.45);
-  };
+  const R = LANTERN_R;
   const prof: [number, number][] = [[0, 6.8], [6.2, 6.8], [R(8.2) - 0.4, 8.2]];
   for (let y = 9.5; y <= 50; y += 2.6) prof.push([R(y) + 0.7, y], [R(y + 1.3) - 0.5, y + 1.3]);
   prof.push([8.5, 52.3], [5.2, 53], [0, 53]);
@@ -203,8 +204,9 @@ function basket(look: CelLook, life: LifeState): CelPart[] {
     ring.push([Math.cos(a) * 28.7, rimH(a), Math.sin(a) * 28.7 * OVAL]);
   }
   P.push(part(tube(ring, 2.3, 10), T.warmDark, { crease: false }));
-  // Coussin : galette ovale bombée posée au fond (sommet à 12,2, à 1,2 du point de repos), creusée sous l'animal.
-  P.push(part(place(superEll(26.8, 4.2, 20.2, 0.5, 1, 14, 32, dentOf(life.dent, 4.2, px, pz)), { t: [0, 8, 0] }), T.fabricLight));
+  // Coussin : galette ovale bombée posée au fond (sommet à 12,2, à 1,2 du point de repos), creusée sous l'animal ; sa clé de palette
+  // est choisie par style (`look.pick.cushion`, tâche 10 : `fabricLight` se confondait avec la vannerie `warm` en Steampunk et Industriel).
+  P.push(part(place(superEll(26.8, 4.2, 20.2, 0.5, 1, 14, 32, dentOf(life.dent, 4.2, px, pz)), { t: [0, 8, 0] }), T[look.pick.cushion]));
   return P;
 }
 

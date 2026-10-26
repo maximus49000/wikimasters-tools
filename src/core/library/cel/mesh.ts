@@ -273,6 +273,7 @@ export function place(m: Mesh, o: Placement): Mesh {
 // Une pièce du meuble : maillage + teinte et options de rendu.
 // crease : encre des arêtes (false = jamais) ; creaseThr : seuil du cosinus entre normales (0,62) ; flat : aplat sans ombre propre ;
 // noshadow : pas d'ombre portée ; hi : rehaut (false = jamais) ; glow : lumineux (base seule, sans ombrage ni ombre portée) ;
-// interior : visible à travers une ouverture (fond, dessus des tablettes).
-export type CelPart = { m: Mesh; col: Tone; crease?: boolean; creaseThr?: number; flat?: boolean; noshadow?: boolean; hi?: boolean; glow?: boolean; interior?: boolean };
+// interior : visible à travers une ouverture (fond, dessus des tablettes) ; trim : garniture ou habillage (rivets, capitons, franges,
+// plaid, liseré, garniture Steampunk) compté à part de l'encombrement du meuble (le volume ne change pas d'un style à l'autre).
+export type CelPart = { m: Mesh; col: Tone; crease?: boolean; creaseThr?: number; flat?: boolean; noshadow?: boolean; hi?: boolean; glow?: boolean; interior?: boolean; trim?: boolean };
 export const part = (m: Mesh, col: Tone, o: Omit<CelPart, 'm' | 'col'> = {}): CelPart => ({ m, col, ...o });

@@ -5,6 +5,7 @@ import type { CelLook, CelVariant } from '../looks';
 import { bent, lathe, part, place, superEll, tube, type CelPart, type Deform, type Mesh, type Vec3 } from '../mesh';
 import type { Tone } from '../tone';
 import { CEL_MODELS } from './registry';
+import { hairpin } from './storage';
 
 // Bois, bascule, suspension et arbre à chat (G6, tâche 6) : rocking-chair (porté de la maquette `chair`, l. 231-247), chaise,
 // fauteuil œuf suspendu, fauteuil paon, arbre à chat (porté de `catTree`, l. 351). Repère centré (origine au centre de la base,
@@ -41,7 +42,8 @@ function dentOf(dent: number, b: number, cx: number, cz: number, px: number, pz:
 // Pied de chaise selon la variante du style : profil (r, y) de hauteur h.
 function legProfile(legs: CelVariant['legs'], h: number): [number, number][] {
   switch (legs) {
-    case 'taper': return [[2.8, 0], [2, h]];
+    case 'taper':
+    case 'compass': return [[2.8, 0], [2, h]];
     case 'turned': return [[2.6, 0], [2.6, h * 0.2], [1.9, h * 0.35], [2.9, h * 0.55], [2, h * 0.75], [2.4, h]];
     case 'hairpin': return [[1, 0], [1, h]];
     case 'block': return [[2.7, 0], [2.7, h]];
@@ -104,8 +106,15 @@ function chair(look: CelLook, life: LifeState): CelPart[] {
   const T = look.tones, W = T.wood;
   const [px, pz] = perchXZ('chair');
   const P: CelPart[] = [];
-  const h = 40, splay = 0.06;
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) P.push(part(place(lathe(legProfile(look.variant.legs, h), 10), { rz: sx * splay, rx: -sz * splay, t: [sx * 19.5, 0, sz * 21] }), T.leg, { crease: false }));
+  // Pieds : évasés (compas rétro 70 : franchement) ; le bord extérieur du pied reste à 22,1 / 23,6 quel que soit le rayon du profil
+  // (le volume du meuble ne change pas d'un style à l'autre : un pied épingle est posé plus au bord qu'un pied griffe).
+  const h = 40, splay = look.variant.legs === 'compass' ? 0.16 : 0.06;
+  const prof = legProfile(look.variant.legs, h), r0 = prof[0]![0];
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      if (look.variant.legs === 'hairpin') P.push(...hairpin(T.leg, [sx * (22.1 - 1.1), 0, sz * (23.6 - 1.1)], 40.5, sx, 2).map((Q, i) => (i < 2 ? { ...Q, m: place(Q.m, { rx: -sz * 0.06 }) } : Q))); // épingles rentrées vers l'assise (le haut sous le siège)
+      else P.push(part(place(lathe(prof, 10), { rz: sx * splay, rx: -sz * splay, t: [sx * (22.1 - r0), 0, sz * (23.6 - r0)] }), T.leg, { crease: false }));
+    }
   P.push(part(place(superEll(20.5, 2, 22, 0.5, 0.3, 10, 24), { t: [0, 42, 1] }), T.desk)); // assise 40..44
   P.push(part(place(superEll(17.5, 3.5, 19, 0.7, 0.5, 14, 28, dentOf(life.dent, 3.5, 0, 1, px, pz, 2.8)), { t: [0, 45, 1] }), T.fabric)); // galette dodue 41,5..48,5
   for (const sx of [-1, 1]) P.push(part(place(superEll(1.4, 1.1, 1.4, 1, 1, 6, 10), { t: [sx * 14, 47, -17.5] }), T.fabricDark, { crease: false, noshadow: true })); // nœuds de la galette
@@ -279,7 +288,7 @@ function catTree(look: CelLook, life: LifeState): CelPart[] {
   // Pompon suspendu sous le plateau du milieu : cordon + boule, balancés de `tassel` autour de l'accroche.
   const sw = { rz: life.tassel, t: TASSEL_PIVOT };
   P.push(part(place(lathe([[0.4, -16], [0.4, 0]], 6), sw), T.door, { crease: false, noshadow: true }));
-  P.push(part(place(place(superEll(3, 3, 3, 1, 1, 10, 14), { t: [0, -18.5, 0] }), sw), T.leaf, { crease: false }));
+  P.push(part(place(place(superEll(3, 3, 3, 1, 1, 10, 14), { t: [0, -18.5, 0] }), sw), T[look.pick.tassel], { crease: false })); // pompon : clé choisie par style (tâche 10)
   return P;
 }
 

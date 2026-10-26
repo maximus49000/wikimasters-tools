@@ -7,41 +7,37 @@ import { spriteKey } from '../../../src/core/library/cel/sprite-key';
 import { WARM_LIT } from '../../../src/core/library/cel/tone';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import { STANDING_KINDS } from '../../../src/core/library/library-types';
-import { checkCelModel, type CelCheck } from './furniture-cel-checks';
+import { checkCelModel } from './furniture-cel-checks';
 
 const look = lookOf('scandinave');
 
-// Limites connues du dessin de repli (modèle à boîtes converti), levées quand le meuble est redessiné (tâches 5 à 10) :
-// - 'shade' : boîtes vues de face avec la lumière du haut-gauche : face avant et dessus éclairés, le flanc ombré à peine visible
-//   (moins de 8 % d'ombre à l'angle 0, jusqu'à 0 % pour un tapis ou un pouf cube) ;
-// - 'fill' : encombrement déclaré du modèle plus large que ses pièces (feuillages bornés par leur demi-largeur sur chaque axe,
-//   anneaux du globe non convertis, pot plus étroit que la boîte) ;
-// - 'perch' : dessus praticable au-dessus d'un creux non converti (assise du pouf poire) ou d'un jour entre deux coussins (causeuse).
-const FALLBACK_LIMITS: Partial<Record<(typeof STANDING_KINDS)[number], CelCheck[]>> = {
-  telescope: ['fill', 'shade'],
-  globe: ['fill'],
-};
-
+// Depuis la tâche 10, les 36 meubles ont leur dessin propre : plus aucune limite de repli (FALLBACK_LIMITS vide, Ruling 11). La
+// conversion reste le dessin de secours d'un meuble qui n'aurait pas (encore) de dessin : testée en retirant un dessin le temps du test.
 describe('conversion des modèles à boîtes en maillages cellulo', () => {
-  it('un meuble sans dessin propre passe par la conversion de son modèle, pièce pour pièce', () => {
-    const pending = STANDING_KINDS.filter((k) => !CEL_MODELS[k]);
-    expect(pending.length).toBeGreaterThan(0);
-    for (const k of pending) expect(celPartsOf(k, look, REST_LIFE).length, k).toBe(celFromModel(FURNITURE_MODELS[k], look).length);
+  it('les 36 meubles ont un dessin propre ; un meuble sans dessin passe par la conversion de son modèle, pièce pour pièce', () => {
+    expect(STANDING_KINDS.filter((k) => !CEL_MODELS[k])).toEqual([]);
+    const k = 'bowl', saved = CEL_MODELS[k]!;
+    delete CEL_MODELS[k];
+    try {
+      expect(celPartsOf(k, look, REST_LIFE).length).toBe(celFromModel(FURNITURE_MODELS[k], look).length);
+    } finally {
+      CEL_MODELS[k] = saved;
+    }
   });
 
-  for (const k of STANDING_KINDS) it(`${k} : encombrement, dessus, déterminisme, ombre et encre, ouverture`, () => checkCelModel(k, look, REST_LIFE, FALLBACK_LIMITS[k]));
+  for (const k of STANDING_KINDS) it(`${k} : encombrement, dessus, déterminisme, ombre et encre, ouverture`, () => checkCelModel(k, look, REST_LIFE));
 
-  it('les exemptions du repli ne valent plus pour un meuble redessiné : seuils complets', () => {
-    // Un meuble encore en repli, exempté d'ombre ; « redessiné » à l'identique (même conversion), il doit échouer au seuil d'ombre complet.
-    const k = STANDING_KINDS.find((k) => !CEL_MODELS[k] && FALLBACK_LIMITS[k]?.includes('shade'))!;
-    expect(k).toBeDefined();
-    expect(() => checkCelModel(k, look, REST_LIFE, FALLBACK_LIMITS[k])).not.toThrow();
-    CEL_MODELS[k] = (l) => celFromModel(FURNITURE_MODELS[k], l);
+  it('les exemptions du repli ne valent pas pour un meuble redessiné : seuils complets', () => {
+    // Le modèle à boîtes de la lunette, converti, ne remplit pas sa boîte (trépied étroit) : en repli il passait avec 'fill' et 'shade' ;
+    // « redessiné » à l'identique (même conversion), les exemptions sont ignorées et le seuil complet tombe.
+    const k = 'telescope', saved = CEL_MODELS[k]!;
+    delete CEL_MODELS[k];
     try {
-      // (le télescope, dernier exempté : son premier seuil complet qui tombe est l'encombrement, avant la part d'ombre)
-      expect(() => checkCelModel(k, look, REST_LIFE, FALLBACK_LIMITS[k])).toThrow(/part d'ombre|dimension/);
+      expect(() => checkCelModel(k, look, REST_LIFE, ['fill', 'shade'])).not.toThrow();
+      CEL_MODELS[k] = (l) => celFromModel(FURNITURE_MODELS[k], l);
+      expect(() => checkCelModel(k, look, REST_LIFE, ['fill', 'shade'])).toThrow(/part d'ombre|dimension/);
     } finally {
-      delete CEL_MODELS[k];
+      CEL_MODELS[k] = saved;
     }
   });
 
@@ -84,7 +80,7 @@ describe('conversion des modèles à boîtes en maillages cellulo', () => {
 
   it('clés : version, résolution au quart', () => {
     const s = { kind: 'sofa', angle: 1, style: 'scandinave', side: 'left', cam: 'room', res: 3.1, lit: false, life: '' } as const;
-    expect(spriteKey(s)).toMatch(/^cel15\|/);
+    expect(spriteKey(s)).toMatch(/^cel16\|/);
     expect(spriteKey(s)).toBe(spriteKey({ ...s, res: 2.95 }));
     expect(spriteKey(s)).not.toBe(spriteKey({ ...s, res: 3.25 }));
     expect(spriteKey(s)).not.toBe(spriteKey({ ...s, part: 'base' }));
