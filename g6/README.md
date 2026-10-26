@@ -453,3 +453,93 @@
 ### kind-kennel_style-scandinave_res-3_cell-700.png
 
 ![kind-kennel_style-scandinave_res-3_cell-700.png](09-lampes-animaux-r2/kind-kennel_style-scandinave_res-3_cell-700.png)
+
+## 10-styles
+
+### kind-chair_desk_coffee_table_rug_style-industriel_res-2.png
+
+![kind-chair_desk_coffee_table_rug_style-industriel_res-2.png](10-styles/kind-chair_desk_coffee_table_rug_style-industriel_res-2.png)
+
+### kind-desk_armchair_paper_lantern_arc_lamp_style-steampunk_res-2.png
+
+![kind-desk_armchair_paper_lantern_arc_lamp_style-steampunk_res-2.png](10-styles/kind-desk_armchair_paper_lantern_arc_lamp_style-steampunk_res-2.png)
+
+### kind-globe_telescope_automaton_style-steampunk_res-3_cell-330.png
+
+![kind-globe_telescope_automaton_style-steampunk_res-3_cell-330.png](10-styles/kind-globe_telescope_automaton_style-steampunk_res-3_cell-330.png)
+
+### kind-sofa_armchair_coffee_table_chair_style-retro70_res-2.png
+
+![kind-sofa_armchair_coffee_table_chair_style-retro70_res-2.png](10-styles/kind-sofa_armchair_coffee_table_chair_style-retro70_res-2.png)
+
+### kind-sofa_club_chair_bench_square_pouf_style-neon_res-2.png
+
+![kind-sofa_club_chair_bench_square_pouf_style-neon_res-2.png](10-styles/kind-sofa_club_chair_bench_square_pouf_style-neon_res-2.png)
+
+### kind-sofa_loveseat_rug_chair_style-boheme_res-2.png
+
+![kind-sofa_loveseat_rug_chair_style-boheme_res-2.png](10-styles/kind-sofa_loveseat_rug_chair_style-boheme_res-2.png)
+
+### kind-sofa_rocking_chair_shelf_lamp_style-boheme_res-2.png
+
+![kind-sofa_rocking_chair_shelf_lamp_style-boheme_res-2.png](10-styles/kind-sofa_rocking_chair_shelf_lamp_style-boheme_res-2.png)
+
+### kind-sofa_rocking_chair_shelf_lamp_style-industriel_res-2.png
+
+![kind-sofa_rocking_chair_shelf_lamp_style-industriel_res-2.png](10-styles/kind-sofa_rocking_chair_shelf_lamp_style-industriel_res-2.png)
+
+### kind-sofa_rocking_chair_shelf_lamp_style-japandi_res-2.png
+
+![kind-sofa_rocking_chair_shelf_lamp_style-japandi_res-2.png](10-styles/kind-sofa_rocking_chair_shelf_lamp_style-japandi_res-2.png)
+
+### kind-sofa_rocking_chair_shelf_lamp_style-moderne_res-2.png
+
+![kind-sofa_rocking_chair_shelf_lamp_style-moderne_res-2.png](10-styles/kind-sofa_rocking_chair_shelf_lamp_style-moderne_res-2.png)
+
+### kind-sofa_rocking_chair_shelf_lamp_style-neon_res-2.png
+
+![kind-sofa_rocking_chair_shelf_lamp_style-neon_res-2.png](10-styles/kind-sofa_rocking_chair_shelf_lamp_style-neon_res-2.png)
+
+### kind-sofa_rocking_chair_shelf_lamp_style-retro70_res-2.png
+
+![kind-sofa_rocking_chair_shelf_lamp_style-retro70_res-2.png](10-styles/kind-sofa_rocking_chair_shelf_lamp_style-retro70_res-2.png)
+
+### kind-sofa_rocking_chair_shelf_lamp_style-scandinave_res-2.png
+
+![kind-sofa_rocking_chair_shelf_lamp_style-scandinave_res-2.png](10-styles/kind-sofa_rocking_chair_shelf_lamp_style-scandinave_res-2.png)
+
+### kind-sofa_rocking_chair_shelf_lamp_style-steampunk_res-2.png
+
+![kind-sofa_rocking_chair_shelf_lamp_style-steampunk_res-2.png](10-styles/kind-sofa_rocking_chair_shelf_lamp_style-steampunk_res-2.png)
+
+### style-boheme_h-10_nostore-1.png
+
+![style-boheme_h-10_nostore-1.png](10-styles/style-boheme_h-10_nostore-1.png)
+
+### style-industriel_h-10_nostore-1.png
+
+![style-industriel_h-10_nostore-1.png](10-styles/style-industriel_h-10_nostore-1.png)
+
+### style-japandi_h-10_nostore-1.png
+
+![style-japandi_h-10_nostore-1.png](10-styles/style-japandi_h-10_nostore-1.png)
+
+### style-moderne_h-10_nostore-1.png
+
+![style-moderne_h-10_nostore-1.png](10-styles/style-moderne_h-10_nostore-1.png)
+
+### style-neon_h-10_nostore-1.png
+
+![style-neon_h-10_nostore-1.png](10-styles/style-neon_h-10_nostore-1.png)
+
+### style-retro70_h-10_nostore-1.png
+
+![style-retro70_h-10_nostore-1.png](10-styles/style-retro70_h-10_nostore-1.png)
+
+### style-scandinave_h-10_nostore-1.png
+
+![style-scandinave_h-10_nostore-1.png](10-styles/style-scandinave_h-10_nostore-1.png)
+
+### style-steampunk_h-10_nostore-1.png
+
+![style-steampunk_h-10_nostore-1.png](10-styles/style-steampunk_h-10_nostore-1.png)
