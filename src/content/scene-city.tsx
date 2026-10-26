@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement, type Ref, type SVGProps } from 'react';
+import { FADE_S, useFadeLight } from './fade-light';
 import { doorsFor } from '../core/library/city/doors';
 import { FAR_WINDOW, cityFacades } from '../core/library/city/facades';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
@@ -31,6 +32,12 @@ import { treesSig, useStreetTreesReady, useStreetTreesScene } from './street-tre
 const FAR_LIGHT = 0.5;
 
 const FADE = 'opacity 1s ease';
+// Fenêtre allumable du rendu classique : opacité `opacity` allumée, fondu de 4 s, cachée éteinte au repos (fade-light.ts).
+const LAMP_FADE = `opacity ${FADE_S}s ease`;
+function FadeRect({ lit, opacity, ...rest }: { lit: boolean; opacity: number } & SVGProps<SVGRectElement>): ReactElement {
+  const f = useFadeLight(lit);
+  return <rect {...rest} ref={f.ref as Ref<SVGRectElement>} data-lit={lit ? 'true' : 'false'} opacity={f.on ? opacity : 0} display={f.display} style={{ transition: LAMP_FADE }} />;
+}
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Vrai pendant `ms` après être repassé à faux : laisse le temps au fondu de sortie de la ville peinte.
@@ -151,18 +158,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
         {b.farWindows.map((win, j) => {
           const lit = windowLit(win.u, minutes, city?.day, sky.daylight, gloom);
           return (
-            <rect
-              key={j}
-              data-far-lamp=""
-              data-lit={lit ? 'true' : 'false'}
-              x={win.x}
-              y={win.y}
-              width={FAR_WINDOW.w}
-              height={FAR_WINDOW.h}
-              fill={win.blue ? '#B8D0FF' : '#FFE3A0'}
-              opacity={lit ? dim * FAR_LIGHT : 0}
-              style={{ transition: 'opacity 4s ease' }}
-            />
+            <FadeRect key={j} lit={lit} opacity={dim * FAR_LIGHT} data-far-lamp="" x={win.x} y={win.y} width={FAR_WINDOW.w} height={FAR_WINDOW.h} fill={win.blue ? '#B8D0FF' : '#FFE3A0'} />
           );
         })}
       </g>
@@ -179,18 +175,7 @@ export function CityScene({ width, height, sky, minutes, seed, gloom = false, ra
           const lit = light ? light.lit : roomLit(lamp, minutes, city?.day, sky.daylight, gloom);
           const tone = light ? light.tone : roomTone(home, lamp.main, minutes);
           return (
-            <rect
-              key={j}
-              data-lamp=""
-              data-lit={lit ? 'true' : 'false'}
-              x={lamp.x}
-              y={lamp.y}
-              width={lamp.w}
-              height={lamp.h}
-              fill={tone === 'tv' ? '#9FC4FF' : tone === 'cool' ? '#C8DCFF' : '#FFD27A'}
-              opacity={lit ? dim : 0}
-              style={{ transition: 'opacity 4s ease' }}
-            />
+            <FadeRect key={j} lit={lit} opacity={dim} data-lamp="" x={lamp.x} y={lamp.y} width={lamp.w} height={lamp.h} fill={tone === 'tv' ? '#9FC4FF' : tone === 'cool' ? '#C8DCFF' : '#FFD27A'} />
           );
         })}
       </g>
