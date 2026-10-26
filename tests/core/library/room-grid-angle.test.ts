@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseLibraryState } from '../../../src/core/library/library-book';
 import { frontFaceRect } from '../../../src/core/library/footprint';
+import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
+import { projectOf } from '../../../src/core/library/furniture-render3d';
 import { angleOf, byDrawOrder, canPlace, isStanding, moveStanding, placeStanding, pxRect, rectOf, setAngle, shelfBoardsOf, boardAt, type Standing } from '../../../src/core/library/room-grid';
 import type { Layout } from '../../../src/core/library/library-types';
 
@@ -106,18 +108,23 @@ describe('pose avec angle', () => {
 describe('tablettes d’une étagère tournée', () => {
   const front = { id: 's', kind: 'shelf', col: 0, row: 6 } as const;
   it('de face : 3 tablettes posées sur les planches du modèle, dans la face', () => {
-    const face = frontFaceRect(0, pxRect(rectOf(front)!), 'shelf')!;
-    const k = face.h / 169; // face de l'étagère : 169 cm de haut (de 8 à 177 cm)
-    const at = (cm: number) => face.y + (177 - cm) * k;
+    const rect = pxRect(rectOf(front)!);
+    const face = frontFaceRect(0, rect, 'shelf')!;
+    // perspective G6 : hauteur écran d'une planche = projection du point de la face à cette hauteur (était une règle de trois sur la
+    // hauteur de la face, de 8 à 177 cm).
+    const at = (cm: number) => rect.y + projectOf(FURNITURE_MODELS.shelf, 0, [3, cm, 0])[1];
     const boards = shelfBoardsOf(front);
     expect(boards).toHaveLength(3);
     // Bas de chaque tablette = dessus de sa planche (121, 61 cm) ou bas de la face (8 cm, dessus du socle).
     [121, 61, 8].forEach((cm, i) => expect(boards[i]!.y + boards[i]!.h).toBeCloseTo(at(cm), 1));
     for (const b of boards) {
       expect(b.y).toBeGreaterThanOrEqual(face.y - 1e-6);
-      expect(b.x).toBeCloseTo(face.x, 3);
-      expect(b.x + b.w).toBeCloseTo(face.x + face.w, 3);
+      // perspective G6 : la face s'élargit vers le haut, chaque tablette tient dans la face (était : bords confondus au millième).
+      expect(b.x).toBeGreaterThanOrEqual(face.x - 1e-6);
+      expect(b.x + b.w).toBeLessThanOrEqual(face.x + face.w + 1e-6);
     }
+    expect(boards[0]!.x).toBeCloseTo(face.x, 3);
+    expect(boards[0]!.x + boards[0]!.w).toBeCloseTo(face.x + face.w, 3);
   });
   it('¾ : parallélogrammes sur la face inclinée ; le toucher suit le parallélogramme, pas le rectangle englobant', () => {
     for (const angle of [1, 7] as const) {
@@ -133,9 +140,11 @@ describe('tablettes d’une étagère tournée', () => {
         }
         expect(boardAt([three], b.x + b.w / 2, b.y + b.h / 2)).toMatchObject({ shelfId: 's', level: i });
       });
-      // Coin du rectangle englobant hors du parallélogramme (côté où le bord monte) : pas de tablette touchée à cet endroit.
+      // Coin du rectangle englobant hors du quadrilatère (côté où le bord du haut descend) : pas de tablette touchée à cet endroit.
+      // perspective G6 : le haut de l'étagère est au-dessus de l'œil, son bord descend vers le fond (le côté se lit sur le quadrilatère).
       const top = boards[0]!;
-      const corner = angle === 1 ? [top.x + top.w - 0.5, top.y + 0.5] : [top.x + 0.5, top.y + 0.5];
+      const leftLower = top.quad[0]![1] > top.quad[1]![1];
+      const corner = leftLower ? [top.x + 0.5, top.y + 0.5] : [top.x + top.w - 0.5, top.y + 0.5];
       expect(boardAt([three], corner[0]!, corner[1]!)?.level ?? null).not.toBe(0);
     }
     for (const angle of [2, 3, 4, 5, 6] as const) expect(shelfBoardsOf({ ...front, angle })).toEqual([]);

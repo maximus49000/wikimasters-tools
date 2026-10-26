@@ -1,4 +1,5 @@
 // Cœur du glissé au cm sur un plateau (vue Modifier) : conversion plateau ↔ écran et dépôt validé. Repère du meuble, jamais celui de l'écran.
+import { applyHomography, homographyOf, invertHomography, type Homography } from './footprint';
 import { FURNITURE_MODELS } from './furniture-models';
 import { PLUNGE_CAMERA, projectOf } from './furniture-render3d';
 import type { Layout } from './library-types';
@@ -18,15 +19,24 @@ export function topToScreen(f: ArrangeFrame, x: number, z: number): [number, num
   return [px0 * f.scale + f.origin[0], py0 * f.scale + f.origin[1]];
 }
 
-// Inverse exact sur le plan y = hauteur du plateau (la projection est affine : on résout le système 2×2 des images des axes x et z).
+// Plateau (x, z) cm → px du dessin (échelle 1) : homographie du plan y = hauteur du plateau (la perspective est exacte sur un plan),
+// déterminée par ses 4 coins ; mise en cache par porteur.
+const topHom = new Map<string, Homography>();
+function topHomOf(f: ArrangeFrame): Homography {
+  let H = topHom.get(f.hostKind);
+  if (!H) {
+    const m = FURNITURE_MODELS[f.hostKind];
+    const plane: [number, number][] = [[0, 0], [m.w, 0], [m.w, m.d], [0, m.d]];
+    H = homographyOf(plane, plane.map(([x, z]) => px(f, x, z)));
+    topHom.set(f.hostKind, H);
+  }
+  return H;
+}
+
+// Inverse exact sur le plan y = hauteur du plateau (homographie inverse).
 export function screenToTop(f: ArrangeFrame, sx: number, sy: number): { x: number; z: number } {
-  const o = px(f, 0, 0);
-  const ex = px(f, 1, 0);
-  const ez = px(f, 0, 1);
-  const [ax, ay, bx, by] = [ex[0] - o[0], ex[1] - o[1], ez[0] - o[0], ez[1] - o[1]];
-  const [dx, dy] = [(sx - f.origin[0]) / f.scale - o[0], (sy - f.origin[1]) / f.scale - o[1]];
-  const det = ax * by - bx * ay;
-  return { x: (dx * by - bx * dy) / det, z: (ax * dy - ay * dx) / det };
+  const [x, z] = applyHomography(invertHomography(topHomOf(f)), (sx - f.origin[0]) / f.scale, (sy - f.origin[1]) / f.scale);
+  return { x, z };
 }
 
 // x/z = coin avant gauche visé (l'appelant a déjà soustrait le décalage de saisie).

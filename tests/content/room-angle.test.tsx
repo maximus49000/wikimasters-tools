@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { RoomView } from '../../src/content/RoomView';
 import { STANDING_KINDS, type Layout, type Room } from '../../src/core/library/library-types';
 import { STEAMPUNK_ONLY } from '../../src/core/library/furniture-catalog';
-import { faceFrame } from '../../src/core/library/footprint';
+import { faceFrame, localPointAt } from '../../src/core/library/footprint';
 import { pxRect, rectOf, shelfFreeIn, shelfLayoutOf, topRectOn } from '../../src/core/library/room-grid';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -61,15 +61,14 @@ describe('meubles tournés', () => {
     const card = c.querySelector('[data-card="Daft_Punk"]')!;
     expect(card.querySelector('[data-item3d="cd"]')).not.toBeNull();
   });
-  it('petits objets sur un porteur tourné : dessinés du fond vers l’avant (le plus haut à l’écran d’abord)', () => {
+  it('petits objets sur un porteur tourné : dessinés du fond vers l’avant (le plus loin d’abord)', () => {
     // Trois plantes de 15 × 15 cm le long du dessus (80 × 30 cm), à mi-profondeur.
     const xs = [5, 32.5, 60];
     const smalls = xs.map((x, i) => ({ id: `o${i}`, kind: 'small', item: 'plant', hostId: 's', x, z: 7.5 }) as const);
     const order = (angle: 0 | 1 | 7) => [...mount([{ id: 's', kind: 'shelf', col: 0, row: 6, angle }, ...smalls]).querySelectorAll('[data-furniture="small"]')].map((e) => e.getAttribute('data-id'));
-    const byDepth = (angle: 1 | 7) => {
-      const host = pxRect(rectOf({ id: 's', kind: 'shelf', col: 0, row: 6, angle })!);
-      return xs.map((x, i) => ({ id: `o${i}`, y: topRectOn(host, 'shelf', angle, { x, z: 7.5, w: 15, d: 15 }).y })).sort((a, b) => a.y - b.y).map((o) => o.id);
-    };
+    // perspective G6 : le dessus de l'étagère est au-dessus de l'œil, le plus loin n'y est plus le plus haut à l'écran : l'ordre se lit
+    // sur la profondeur réelle (était : tri par le haut du rectangle dessiné, topRectOn).
+    const byDepth = (angle: 1 | 7) => xs.map((x, i) => ({ id: `o${i}`, d: localPointAt('shelf', angle, [x + 7.5, 180, 15]).z })).sort((a, b) => b.d - a.d).map((o) => o.id);
     expect(order(0)).toEqual(['o0', 'o1', 'o2']);
     expect(order(1)).toEqual(byDepth(1));
     expect(order(7)).toEqual(byDepth(7));

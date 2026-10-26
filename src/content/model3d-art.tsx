@@ -290,6 +290,7 @@ function runsOf(shapes: Drawn[]): { stored: boolean; shapes: [Drawn, number][] }
 }
 
 type Props = { kind: StandingKind; angle: Angle; rect: PxRect; palette: Palette; lit?: boolean; steampunk?: boolean; items?: ItemPlacement[]; content?: Record<string, ItemContent>; part?: ModelPart; camera?: Camera };
+export type Model3DArtProps = Props;
 
 // Meuble dessiné depuis son modèle 3D (vraies proportions), mis à l'échelle de son rectangle, avec les objets qui le garnissent (`items`, dans son repère).
 function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = false, items, content, part, camera }: Props): ReactElement {
@@ -304,12 +305,65 @@ function Model3DArtImpl({ kind, angle, rect, palette, lit = true, steampunk = fa
 }
 
 // Redessiné seulement si le meuble change (le rectangle et la liste d'objets arrivent neufs à chaque rendu : comparés par valeur).
-export const Model3DArt = memo(Model3DArtImpl, (a, b) => a.kind === b.kind && a.angle === b.angle && a.palette === b.palette && a.lit === b.lit
+export const sameModel3D = (a: Props, b: Props): boolean => a.kind === b.kind && a.angle === b.angle && a.palette === b.palette && a.lit === b.lit
   && a.steampunk === b.steampunk && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
-  && a.content === b.content && itemsKey(a.items) === itemsKey(b.items) && a.part === b.part && a.camera === b.camera);
+  && a.content === b.content && itemsKey(a.items) === itemsKey(b.items) && a.part === b.part && a.camera === b.camera;
+export const Model3DArt = memo(Model3DArtImpl, sameModel3D);
+
+// Décors des faces seuls (couverture, tranche, pages, écran), à la matrice de leur face, découpés à l'ouverture comme les objets rangés :
+// posés par-dessus une image peinte, ils ne passent jamais dans un canvas (images de sites tiers). null sans décor.
+function Decals({ g, palette, content, bodyColor }: Omit<DrawProps, 'lit' | 'lampShade'>): ReactElement | null {
+  const clipId = `wm-decors-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const one = (s: Drawn, i: number): ReactElement | null => {
+    if (s.tag !== 'polygon' || !s.decal) return null;
+    const d = s.decal;
+    const color = (s.body && bodyColor) || (s.color ?? palette[s.fill]);
+    // L'image peinte n'est jamais assombrie : l'atténuation d'un côté ombré ne porte que sur le décor lui-même. Décor partiel
+    // (titre de tranche, pages) : rendu plus transparent ; décor plein (couverture, écran, dos, façade) : voile limité à son cadre.
+    const partial = d.role === 'spine' || d.role === 'pages';
+    return (
+      <g key={i} transform={d.m}>
+        <g {...(partial && d.dim > 0 && { opacity: Math.round((1 - d.dim) * 100) / 100 })}>
+          <DecalArt d={d} content={content?.[d.item]} color={color} />
+        </g>
+        {!partial && d.dim > 0 && <rect data-decal-dim="" width={d.w} height={d.h} fill="#000000" opacity={d.dim} pointerEvents="none" />}
+      </g>
+    );
+  };
+  let clipped = false;
+  const runs = runsOf(g.shapes).flatMap((run) => {
+    const els = run.shapes.map(([s, i]) => one(s, i)).filter((e): e is ReactElement => e !== null);
+    if (els.length === 0) return [];
+    if (!run.stored || g.opening === undefined) return els;
+    if (!g.opening) return [];
+    clipped = true;
+    return [<g key={`c${run.shapes[0]![1]}`} clipPath={`url(#${clipId})`}>{els}</g>];
+  });
+  if (runs.length === 0) return null;
+  return (
+    <>
+      {clipped && g.opening && <clipPath id={clipId}><polygon points={g.opening} /></clipPath>}
+      {runs}
+    </>
+  );
+}
+
+// Décors des faces d'un meuble (et des objets qui le garnissent) seuls, dans le repère de Model3DArt : posés par-dessus son image peinte.
+export function ModelDecals({ kind, angle, rect, palette, steampunk = false, items, content, part, camera }: Props): ReactElement | null {
+  const g = geometryOf(kind, angle, steampunk, items, part, camera);
+  if (!g.shapes.some((s) => s.tag === 'polygon' && s.decal)) return null;
+  const sx = rect.w / (g.cols * CELL_W);
+  const sy = rect.h / (g.rows * CELL_H);
+  return (
+    <g data-decals="" transform={`translate(${r1(rect.x)} ${r1(rect.y)}) scale(${sx} ${sy})`}>
+      <Decals g={g} palette={palette} content={content} />
+    </g>
+  );
+}
 
 // Géométrie d'un objet seul, dans son propre repère, par (forme, présentation, angle, Steampunk, couleur) : la même pour tous les objets
-// de même forme, où qu'ils soient posés (la projection est affine : poser l'objet revient à translater son dessin).
+// de même forme, où qu'ils soient posés (dans la pièce, poser l'objet revient à translater son dessin : un petit objet garde sa perspective
+// à moins d'un px près ; sous une autre caméra, voir hostedItemGeometry).
 // La couleur propre du corps (dos d'un livre) n'entre pas dans la clé : le corps est marqué `body` et coloré au dessin (bodyColor).
 const BODY = '#B0D1E5';
 function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, steampunk: boolean, box?: BoxFormat, cam: Camera = FACE_CAMERA, flat = false): Geometry {
@@ -326,6 +380,21 @@ function itemGeometry(shape: ItemShape, display: ItemDisplay, angle: Angle, stea
     const own = m.pieces.find((q) => q.tag === 'body')?.color;
     const shapes = g.shapes.map((d): Drawn => (d.color === BODY ? { ...d, body: true, ...(own ? { color: own } : {}) } : d));
     return { ...g, shapes, origin: projectOf(model, angle, [0, 0, 0], cam) };
+  });
+}
+
+// Géométrie d'un objet posé, projeté à sa place dans la mise en page de son porteur : exacte sous la caméra plongeante (forte
+// perspective : l'objet translaté s'écarterait de quelques px) ; peu d'objets par vue (zoom, Modifier), la place entre dans la clé.
+function hostedItemGeometry(host: 'desk' | 'shelf', pl: ItemPlacement, angle: Angle, steampunk: boolean, cam: Camera): Geometry {
+  const display = pl.display ?? 'cover';
+  return cached(`hosted:${host}:${pl.shape}:${display}:${angle}:${steampunk ? 1 : 0}:${pl.box ?? ''}:${pl.flat ? 'flat' : ''}:${pl.x},${pl.y},${pl.z}${cameraKey(cam)}`, () => {
+    const m = itemModel(pl.shape, steampunk, pl.box);
+    const pieces = itemPieces({ key: 'item', shape: pl.shape, display, x: pl.x, y: pl.y, z: pl.z, color: BODY, ...(pl.box && { box: pl.box }), ...(pl.flat && { flat: true as const }) }, steampunk);
+    const g = geometryFrom({ ...FURNITURE_MODELS[host], pieces }, angle, false, cam);
+    const own = m.pieces.find((q) => q.tag === 'body')?.color;
+    const shapes = g.shapes.map((d): Drawn => (d.color === BODY ? { ...d, body: true, ...(own ? { color: own } : {}) } : d));
+    // Origine = le point de pose : la translation de CarriedItem3D est nulle.
+    return { ...g, shapes, origin: hostNativePx(host, angle, [pl.x, pl.y, pl.z], cam) };
   });
 }
 
@@ -350,18 +419,45 @@ export function Item3DArt({ shape, display = 'cover', angle, rect, palette, cont
 }
 
 type CarriedProps = { host: 'desk' | 'shelf'; angle: Angle; rect: PxRect; placement: ItemPlacement; palette: Palette; content?: ItemContent; steampunk?: boolean; camera?: Camera };
+export type CarriedItem3DProps = CarriedProps;
 
 // Objet porté (carte rangée, écran, petit objet) dessiné à sa place dans le repère de son porteur tourné (`rect` : rectangle du porteur) :
 // même angle, même échelle, même ombrage que le meuble ; sa géométrie est celle de l'objet seul, translatée.
-function CarriedItem3DImpl({ host, angle, rect, placement: pl, palette, content, steampunk = false, camera }: CarriedProps): ReactElement {
-  const g = itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.box, camera, pl.flat === true);
+// Repère d'un objet porté : sa géométrie, la taille (cases) de son porteur, la translation de l'objet chez lui (px du porteur) et la
+// transformation SVG complète (rectangle du porteur, échelle, translation).
+function carriedFrame({ host, angle, rect, placement: pl, steampunk = false, camera }: CarriedProps): { g: Geometry; w: number; h: number; dx: number; dy: number; transform: string } {
+  const g = camera && camera !== FACE_CAMERA ? hostedItemGeometry(host, pl, angle, steampunk, camera) : itemGeometry(pl.shape, pl.display ?? 'cover', angle, steampunk, pl.box, camera, pl.flat === true);
   const { w, h } = drawSize(host, angle, camera);
   const [hx, hy] = hostNativePx(host, angle, [pl.x, pl.y, pl.z], camera);
   const [ox, oy] = g.origin ?? [0, 0];
+  const [dx, dy] = [r1(hx - ox), r1(hy - oy)];
+  return { g, w, h, dx, dy, transform: `translate(${r1(rect.x)} ${r1(rect.y)}) scale(${r4(rect.w / (w * CELL_W))} ${r4(rect.h / (h * CELL_H))}) translate(${dx} ${dy})` };
+}
+const steampunkArt = (pl: ItemPlacement, steampunk: boolean) => (pl.shape === 'monitor' && steampunk ? { 'data-steampunk-art': 'analytical-engine' } : {});
+
+function CarriedItem3DImpl(props: CarriedProps): ReactElement {
+  const { placement: pl, palette, content, steampunk = false } = props;
+  const { g, transform } = carriedFrame(props);
   return (
-    <g data-item3d={pl.shape} {...(pl.shape === 'monitor' && steampunk && { 'data-steampunk-art': 'analytical-engine' })}
-      transform={`translate(${r1(rect.x)} ${r1(rect.y)}) scale(${r4(rect.w / (w * CELL_W))} ${r4(rect.h / (h * CELL_H))}) translate(${r1(hx - ox)} ${r1(hy - oy)})`}>
+    <g data-item3d={pl.shape} {...steampunkArt(pl, steampunk)} transform={transform}>
       <Shapes g={g} palette={palette} lit content={content ? { item: content } : undefined} bodyColor={pl.color} />
+    </g>
+  );
+}
+
+// Image peinte (sprite cellulo) : data URL et cadre en px de pièce, relatif au point d'ancrage du porteur (milieu du bas de son rectangle).
+export type SpriteDraw = { url: string; box: { x: number; y: number; w: number; h: number } };
+
+// Objet porté peint (G6) : même groupe et même transformation que CarriedItem3D (zone touchable, découpe, décors à la même matrice),
+// l'image cellulo à la place des formes, les décors des faces (couverture, tranche, écran) par-dessus, en SVG.
+export function CarriedItemSpriteArt(props: CarriedProps & { sprite: SpriteDraw }): ReactElement {
+  const { placement: pl, palette, content, steampunk = false, sprite } = props;
+  const { g, w, h, dx, dy, transform } = carriedFrame(props);
+  const { url, box } = sprite;
+  return (
+    <g data-item3d={pl.shape} {...steampunkArt(pl, steampunk)} transform={transform}>
+      <image data-sprite-image="" href={url} x={r1((w * CELL_W) / 2 + box.x - dx)} y={r1(h * CELL_H + box.y - dy)} width={r1(box.w)} height={r1(box.h)} preserveAspectRatio="none" />
+      <Decals g={g} palette={palette} content={content ? { item: content } : undefined} bodyColor={pl.color} />
     </g>
   );
 }
@@ -373,8 +469,9 @@ const sameSpine = (a: SpineData | undefined, b: SpineData | undefined): boolean 
   : a === b);
 
 // Redessiné seulement si l'objet, sa place, son porteur ou son contenu changent (comparés par valeur : un animal qui bouge ne refait rien).
-export const CarriedItem3D = memo(CarriedItem3DImpl, (a, b) => a.host === b.host && a.angle === b.angle && a.palette === b.palette && a.steampunk === b.steampunk && a.camera === b.camera
+export const sameCarried = (a: CarriedProps, b: CarriedProps): boolean => a.host === b.host && a.angle === b.angle && a.palette === b.palette && a.steampunk === b.steampunk && a.camera === b.camera
   && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
   && itemsKey([a.placement]) === itemsKey([b.placement])
   && a.content?.url === b.content?.url && a.content?.title === b.content?.title && a.content?.lit === b.content?.lit
-  && a.content?.backUrl === b.content?.backUrl && a.content?.back?.key === b.content?.back?.key && sameBand(a.content?.band, b.content?.band) && a.content?.printed === b.content?.printed && sameSpine(a.content?.spine, b.content?.spine) && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key);
+  && a.content?.backUrl === b.content?.backUrl && a.content?.back?.key === b.content?.back?.key && sameBand(a.content?.band, b.content?.band) && a.content?.printed === b.content?.printed && sameSpine(a.content?.spine, b.content?.spine) && a.content?.face?.key === b.content?.face?.key && a.content?.top?.key === b.content?.top?.key;
+export const CarriedItem3D = memo(CarriedItem3DImpl, sameCarried);

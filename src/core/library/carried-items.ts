@@ -1,7 +1,7 @@
 // src/core/library/carried-items.ts
 // Objets portés par un meuble (cartes rangées, écran, petits objets) posés en 3D dans le repère de leur porteur (cm) : la pièce, le zoom
-// et le calque de lumière les placent tous de la même façon. Un objet posé se dessine par translation de son propre dessin (la projection
-// est affine) : sa géométrie est calculée une fois par (forme, présentation, angle), quelle que soit sa place.
+// et le calque de lumière les placent tous de la même façon. Un objet posé se dessine par translation de son propre dessin (un petit objet
+// garde à peu près sa perspective où qu'il soit posé) : sa géométrie est calculée une fois par (forme, présentation, angle), quelle que soit sa place.
 import { drawSize, type Angle } from './footprint';
 import { FURNITURE_MODELS } from './furniture-models';
 import { CELL_H, CELL_W, FACE_CAMERA, cameraKey, levelsOf, localPointOf, pieceBounds, projectOf, type Camera, type V3t } from './furniture-render3d';
@@ -99,24 +99,10 @@ export function carriedPlacementOf(layout: Layout, p: Placed): { hostId: string;
   return null;
 }
 
-// Projection du porteur (affine) mise en cache par (porteur, angle) : origine et images des trois axes, en px de son dessin non mis à l'échelle.
-const affineCache = new Map<string, [number, number][]>();
-// Point du repère du porteur (cm) → px de son dessin à l'échelle 1 (repère du Model3DArt avant mise à l'échelle).
+// Point du repère du porteur (cm) → px de son dessin à l'échelle 1 (repère du Model3DArt avant mise à l'échelle) : projection exacte
+// du porteur (perspective), mise en page en cache dans furniture-render3d.
 export function hostNativePx(hostKind: HostKind, angle: Angle, p: V3t, cam: Camera = FACE_CAMERA): [number, number] {
-  const key = `${hostKind}:${angle}${cameraKey(cam)}`;
-  let a = affineCache.get(key);
-  if (!a) {
-    const m = FURNITURE_MODELS[hostKind];
-    const o = projectOf(m, angle, [0, 0, 0], cam);
-    const axis = (v: V3t): [number, number] => {
-      const q = projectOf(m, angle, v, cam);
-      return [q[0] - o[0], q[1] - o[1]];
-    };
-    a = [o, axis([1, 0, 0]), axis([0, 1, 0]), axis([0, 0, 1])];
-    affineCache.set(key, a);
-  }
-  const [o, ex, ey, ez] = a as [[number, number], [number, number], [number, number], [number, number]];
-  return [o[0] + p[0] * ex[0] + p[1] * ey[0] + p[2] * ez[0], o[1] + p[0] * ex[1] + p[1] * ey[1] + p[2] * ez[1]];
+  return projectOf(FURNITURE_MODELS[hostKind], angle, p, cam);
 }
 
 // Point du repère du porteur (cm) → px de la pièce, dans le rectangle `rect` du porteur tourné (même projection et même échelle que son dessin).

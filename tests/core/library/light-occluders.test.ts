@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { boxesOf, kOf, lampsOf, signatureOf } from '../../../src/core/library/light/occluders';
 import type { Layout } from '../../../src/core/library/library-types';
 import { SURF, buildSurfaceMap } from '../../../src/core/library/light/surfaces';
-import { DEPTH_PX_PER_CM, PX_PER_CM_X, PX_PER_CM_Y } from '../../../src/core/library/furniture-render3d';
+import { DEPTH_PX_PER_CM, PX_PER_CM_X, HEIGHT_PX_PER_CM } from '../../../src/core/library/furniture-render3d';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
 import { pxRect, rectOf, topRectOn } from '../../../src/core/library/room-grid';
 import { computerPlacement, placementRectPx } from '../../../src/core/library/carried-items';
@@ -11,7 +11,7 @@ import { drawSize } from '../../../src/core/library/footprint';
 
 const geom = { wallH: 340, floorH: 170 };
 // Dessus du bureau (75 cm) en px de hauteur, et bord avant d'un meuble dont le rectangle commence en `row` (bas en row + rows).
-const deskTop = 75 * PX_PER_CM_Y;
+const deskTop = 75 * HEIGHT_PX_PER_CM; // perspective G6 (hauteur : était PX_PER_CM_Y)
 const dFrontOf = (row: number, rows: number): number => ((row + rows) * (510 / 18) - geom.wallH) / kOf(geom);
 
 describe('nouvelles lampes', () => {
@@ -28,7 +28,7 @@ describe('boxesOf', () => {
     expect(boxes).toHaveLength(FURNITURE_MODELS.desk.pieces.length);
     const top = boxes.find((b) => b.z1 > deskTop - 1e-6)!;
     expect(top.z1).toBeCloseTo(deskTop, 6);
-    expect(top.z0).toBeCloseTo(72 * PX_PER_CM_Y, 6);
+    expect(top.z0).toBeCloseTo(72 * HEIGHT_PX_PER_CM, 6); // perspective G6 (hauteur : était PX_PER_CM_Y)
     // 120 cm centrés dans 6 colonnes (180 px) en x = 60.
     const off = (180 - 120 * PX_PER_CM_X) / 2;
     expect(top.x0).toBeCloseTo(60 + off, 6);
@@ -84,18 +84,20 @@ describe('boxesOf', () => {
     const [z0, z1] = [Math.min(...b.map((x) => x.z0)), Math.max(...b.map((x) => x.z1))];
     expect(z0).toBeCloseTo(deskTop, 6);
     // Jusqu'au haut de l'abat-jour (l'embout, minuscule, ne compte pas pour la lumière).
-    expect(z1).toBeGreaterThan(deskTop + 28 * PX_PER_CM_Y);
-    expect(z1).toBeLessThanOrEqual(deskTop + ITEM_MODELS['small-lamp'].h * PX_PER_CM_Y + 1e-6);
+    expect(z1).toBeGreaterThan(deskTop + 28 * HEIGHT_PX_PER_CM); // perspective G6 (hauteur : était PX_PER_CM_Y)
+    expect(z1).toBeLessThanOrEqual(deskTop + ITEM_MODELS['small-lamp'].h * HEIGHT_PX_PER_CM + 1e-6); // perspective G6 (hauteur : était PX_PER_CM_Y)
     const slot = topRectOn(pxRect(rectOf(l[0]!)!), 'desk', 0, { x: 7.5, z: 22.5, w: 15, d: 15 });
     const [x0, x1] = [Math.min(...b.map((x) => x.x0)), Math.max(...b.map((x) => x.x1))];
-    expect((x0 + x1) / 2).toBeCloseTo(slot.x + slot.w / 2, 6);
+    // perspective G6 : la lumière garde le repère de la grille en largeur, le dessin passe en perspective (près du bord du bureau,
+    // l'emplacement dessiné s'écarte de 2 px environ ; était égal au millionième).
+    expect(Math.abs((x0 + x1) / 2 - (slot.x + slot.w / 2))).toBeLessThan(2.5);
     const [d0, d1] = [Math.min(...b.map((x) => x.d0)), Math.max(...b.map((x) => x.d1))];
     const mid = dFrontOf(11, 5) - (30 * DEPTH_PX_PER_CM) / kOf(geom);
     expect((d0 + d1) / 2).toBeCloseTo(mid, 6);
     const src = lampsOf(l, geom);
     expect(src).toHaveLength(1);
     // Ampoule dans l'abat-jour du modèle.
-    expect(src[0]!.z).toBeGreaterThan(deskTop + 17.5 * PX_PER_CM_Y);
+    expect(src[0]!.z).toBeGreaterThan(deskTop + 17.5 * HEIGHT_PX_PER_CM); // perspective G6 (hauteur : était PX_PER_CM_Y)
     expect(src[0]!.z).toBeLessThan(z1);
   });
   it('une carte posée (trépied, à plat) arrête la lumière comme un petit objet : boîtes sur le plateau, plus basses couchée', () => {
@@ -117,7 +119,7 @@ describe('boxesOf', () => {
     const b = boxesOf(l, geom).filter((x) => x.owner === 'c');
     expect(b.length).toBeGreaterThan(0);
     expect(Math.min(...b.map((x) => x.z0))).toBeCloseTo(deskTop, 6);
-    expect(Math.max(...b.map((x) => x.z1))).toBeCloseTo(deskTop + ITEM_MODELS.monitor.h * PX_PER_CM_Y, 6);
+    expect(Math.max(...b.map((x) => x.z1))).toBeCloseTo(deskTop + ITEM_MODELS.monitor.h * HEIGHT_PX_PER_CM, 6); // perspective G6 (hauteur : était PX_PER_CM_Y)
     const drawn = placementRectPx('desk', 1, pxRect(rectOf(l[0]!)!), computerPlacement('c'));
     // Dans le rectangle de son dessin (8 coins de son encombrement), presque aussi large.
     const [x0, x1] = [Math.min(...b.map((x) => x.x0)), Math.max(...b.map((x) => x.x1))];
@@ -136,8 +138,8 @@ describe('boxesOf', () => {
     const low = boxes.filter((x) => x.owner === 's#2');
     expect(top).toHaveLength(1);
     expect(low).toHaveLength(1);
-    expect(top[0]!.z0).toBeCloseTo(121 * PX_PER_CM_Y, 6);
-    expect(top[0]!.z1).toBeCloseTo((121 + 23) * PX_PER_CM_Y, 6); // le livre, plus haut que le CD
+    expect(top[0]!.z0).toBeCloseTo(121 * HEIGHT_PX_PER_CM, 6); // perspective G6 (hauteur : était PX_PER_CM_Y)
+    expect(top[0]!.z1).toBeCloseTo((121 + 23) * HEIGHT_PX_PER_CM, 6); // le livre, plus haut que le CD // perspective G6 (hauteur : était PX_PER_CM_Y)
     // Du bord gauche de la face (3 cm) à la fin du livre (3 + 14 + 1 + 3 = 21 cm), centrés dans l'étagère.
     const sw = drawSize('shelf', 0).w * 30;
     const off = (sw - 80 * PX_PER_CM_X) / 2;

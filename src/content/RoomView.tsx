@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactElement } from 'react';
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactElement } from 'react';
 import { isOnBoard, type FurnitureKind, type Placed, type Room, type TimeSetting, type WeatherState } from '../core/library/library-types';
 import { CELL_H, CELL_W, HEIGHT, ROWS, VISIBLE_COLS, WALL_ROWS, angleOf, depthOf, floorTopRow, hitRectOf, isLamp, overhangRow, isLit, isStanding, pxRect, rectOf, shelfFreeIn, type BoardItem, type Cell, type PxRect, type Rect, type Standing } from '../core/library/room-grid';
 import { drawOrder } from '../core/library/depth-order';
@@ -18,7 +18,10 @@ import { NeonDefs, RoomBackdrop, neonOutline } from './room-backdrop';
 import { boundingRect, gapRects } from './window-gaps';
 import { SteampunkDecor } from './room-steampunk-decor';
 import { WallArt } from './library-card-art';
-import { CarriedItem3D, Model3DArt, type ItemContent, type ModelPart } from './model3d-art';
+import { CarriedItem3D, Model3DArt, type CarriedItem3DProps, type ItemContent, type ModelPart } from './model3d-art';
+import { CarriedSprite, FurnitureSprite, SpriteContext, SpriteRegistry, UntilSprite } from './furniture/sprite-host';
+import { roomLightSide } from '../core/library/cel/light';
+import { useArtStyle } from './art-setting';
 import { gameCoverUrl } from './game-box-content';
 import { imageOfPlaced, placedBoxContent } from './placed-image';
 import { STEAMPUNK_ONLY } from '../core/library/furniture-catalog';
@@ -211,6 +214,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
   const shops = useMemo(() => new ShopRegistry(`${worldId}-shop`), [worldId]);
   // Accessoires de rue Ghibli (G5) : une instance partagée par le décor fixe et les acteurs.
   const propSprites = useMemo(() => new PropRegistry(`${worldId}-prop`), [worldId]);
+  // Meubles peints en cellulo (G6, Ghibli seulement) : un registre par pièce, sauf s'il est fourni d'en haut (banc, tests).
+  const ghibli = useArtStyle()[0] === 'ghibli';
+  const outerSprites = useContext(SpriteContext);
+  const furnitureSprites = useMemo(() => outerSprites ?? new SpriteRegistry(`${worldId}-meubles`), [outerSprites, worldId]);
   // Fondu de la pièce : après 400 ms à 'hidden' (0 ms en mouvement réduit) les couches sont retirées du DOM (`gone`).
   const still = reducedMotion();
   const [gone, setGone] = useState(false);
@@ -270,6 +277,10 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     return rainLightsRef.current.lights;
   }, [weatherOn, room.scene, room.id, width, wallH, view.minutes, view.sky.daylight, forcedNight, shopViews, shopFrames]);
   const glasses = useMemo(() => windows.map((w) => glassRect(pxRect({ col: w.col, row: w.row, w: w.w, h: w.h }))), [room.layout]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Une seule direction de lumière par pièce pour le modelé des meubles peints : côté de la plus grande vitre.
+  const lightSide = useMemo(() => roomLightSide(glasses, width), [glasses, width]);
+  // Objet porté : peint en Ghibli (repli : son dessin à boîtes), dessin à boîtes sinon.
+  const carriedArt = (p: CarriedItem3DProps): ReactElement => (ghibli ? <CarriedSprite {...p} style={room.style} side={lightSide} /> : <CarriedItem3D {...p} />);
   // Pluie de la vue pièce : animée et dessinée dans l'englobant de TOUTES les vitres seulement (stable pendant un glissé).
   const rainClip = useMemo(() => boundingRect(glasses), [glasses]);
   // Occulteurs et lampes allumées du calque de lumière ; la signature change quand l'un d'eux bouge ou s'allume.
@@ -388,7 +399,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
         const active = placed.id === hifi.hifiId;
         content = hifiContent({ disc: active && !hideHifiDisc ? hifiDisc : null, spinning: active && hifi.spinning, title: active ? trackTitle : null, playing: active && player.track?.playing === true });
       } else content = { lit: isLit(placed) };
-      return { rect, art: <CarriedItem3D host={host.kind} angle={host.angle} rect={host.rect} placement={pl} palette={palette} steampunk={steampunk} content={content} /> };
+      return { rect, art: carriedArt({ host: host.kind, angle: host.angle, rect: host.rect, placement: pl, palette, steampunk, content }) };
     }
     if (placed.kind === 'window') {
       const rect = pxRect({ col: placed.col, row: placed.row, w: placed.w, h: placed.h });
@@ -410,7 +421,9 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     // Meubles exclusifs Steampunk : une donnée abîmée dans une autre pièce n'est pas dessinée.
     if (!steampunk && STEAMPUNK_ONLY.includes(placed.kind)) return null;
     // Tous les meubles debout, à tous les angles : leur modèle 3D (garnitures laiton et rivets dans une pièce Steampunk).
-    const model = <Model3DArt kind={placed.kind} angle={angleOf(placed)} rect={rect} palette={palette} lit={isLit(placed)} steampunk={steampunk} part={part} />;
+    const model = ghibli
+      ? <FurnitureSprite kind={placed.kind} angle={angleOf(placed)} rect={rect} palette={palette} lit={isLit(placed)} steampunk={steampunk} part={part} style={room.style} side={lightSide} />
+      : <Model3DArt kind={placed.kind} angle={angleOf(placed)} rect={rect} palette={palette} lit={isLit(placed)} steampunk={steampunk} part={part} />;
     if (placed.kind !== 'shelf' || !editing) return { rect, art: model };
     // Étagère en Aménager : l'espace libre de chaque tablette en pointillés, sur la face projetée (de profil ou de dos : aucun).
     const frame = faceFrame('shelf', angleOf(placed), rect);
@@ -558,7 +571,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
       if (!host || !pl || !openingOf(FURNITURE_MODELS.shelf, host.angle)) return null;
       const info = cards[placed.slug];
       // Vraie boîte posée sur sa tablette, tournée avec l'étagère : image de la carte sur la couverture, titre sur la tranche.
-      const art = <CarriedItem3D host="shelf" angle={host.angle} rect={host.rect} placement={pl} palette={palette} content={info ? { title: info.title, ...placedBoxContent(placed, imageOf) } : undefined} />;
+      const art = carriedArt({ host: 'shelf', angle: host.angle, rect: host.rect, placement: pl, palette, content: info ? { title: info.title, ...placedBoxContent(placed, imageOf) } : undefined });
       const quad = cardQuad(placed, host.angle, host.rect, pl)!;
       return { slug: placed.slug, rect: boxOfQuad(quad), art, quad };
     }
@@ -700,7 +713,11 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
     const cells = rectOf(p);
     if (!cells || (!steampunk && STEAMPUNK_ONLY.includes(p.kind))) return null;
     const pts = groundTrace(p.kind, angleOf(p), pxRect(cells)).map(([x, y]) => `${Math.round((x + 4) * 10) / 10},${Math.round((y + 3) * 10) / 10}`).join(' ');
-    return <polygon key={`gs-${p.id}`} data-ground-shadow={p.id} points={pts} fill="#1B1B24" fillOpacity={0.16} style={{ pointerEvents: 'none' }} />;
+    const shadow = <polygon key={`gs-${p.id}`} data-ground-shadow={p.id} points={pts} fill="#1B1B24" fillOpacity={0.16} style={{ pointerEvents: 'none' }} />;
+    // Meuble peint : son ombre est dans son image ; l'ombre du dessin à boîtes ne reste que tant que l'image n'est pas prête.
+    if (!ghibli) return shadow;
+    const part = overhangRow(p) !== null ? 'base' : undefined;
+    return <UntilSprite key={`gs-${p.id}`} kind={p.kind} angle={angleOf(p)} rect={pxRect(cells)} palette={palette} lit={isLit(p)} steampunk={steampunk} part={part} style={room.style} side={lightSide}>{shadow}</UntilSprite>;
   };
   const middle: ReactElement[] = order.map((p) => (
     <g key={`depth-${p.id}`} data-depth={depthOf(room.layout, p)}>
@@ -874,6 +891,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
         </>
       )}
       {showRoom && (
+      <SpriteContext.Provider value={furnitureSprites}>
       <g data-room-layers="" ref={layersRef} style={fadeStyle}>
       {gaps.map((r, i) => (
         <svg key={i} data-window-gap="" x={r.x} y={r.y} width={r.w} height={r.h} viewBox={`${r.x} ${r.y} ${r.w} ${r.h}`} overflow="hidden" style={{ pointerEvents: 'none' }}>
@@ -940,6 +958,7 @@ export function RoomView({ room, editing, cellsActive, selectedId, linkedId = nu
         />
       )}
       </g>
+      </SpriteContext.Provider>
       )}
     </svg>
   );
