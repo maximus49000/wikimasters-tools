@@ -240,12 +240,12 @@ CEL_TRIMS.lamp = (look) => {
   P.push(part(lathe([[0, 157.7], [11.4, 157.7], [11.7, 158.3], [11.4, 158.8], [0, 158.8]], 36), T.text, { crease: false, noshadow: true, trim: true })); // couvercle
   return P;
 };
-// Lanterne (lights-pets.ts : socle r 13,5 (0..4,7), globe R(y) de 7 à 53, anneaux de bois) : cerclages de laiton qui épousent le
-// globe (à 14 et 49,2), bague au socle, trois pieds boule.
+// Lanterne (lights-pets.ts : socle r 13,5 (0..4,7), globe R(y) de 7 à 53 à côtes ±0,7, anneaux de bois) : cerclages de laiton posés
+// sur les crêtes des côtes (à 14 et 49,2), bague au socle, trois pieds boule.
 CEL_TRIMS['paper-lantern'] = (look) => {
   const T = look.tones;
   const P: CelPart[] = [];
-  for (const y of [14, 49.2]) P.push(part(tube(loop([0, y, 0], LANTERN_R(y) + 0.35, 'y', 40), 0.7, 8), T.text, { crease: false, noshadow: true, trim: true }));
+  for (const y of [14, 49.2]) P.push(part(tube(loop([0, y, 0], LANTERN_R(y) + 0.85, 'y', 40), 0.75, 8), T.text, { crease: false, noshadow: true, trim: true })); // les côtes montent à R + 0,7 : l'axe à R + 0,85, le cerclage les coiffe
   P.push(ring(12.2, 13.2, 4.4, 6, T.text));
   for (const a of [90, 210, 330]) P.push(part(place(superEll(2, 2, 2, 1, 1, 8, 12), { t: [13.3 * Math.cos(deg(a)), 1.6, 13.3 * Math.sin(deg(a))] }), T.text, { crease: false, trim: true }));
   return P;

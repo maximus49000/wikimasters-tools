@@ -42,11 +42,11 @@ function legs(look: CelLook, col: Tone, x: number, z: number, h: number, splay =
   return out;
 }
 // Pied épingle (industriel) : deux tiges d'acier (r 1,25) qui partent du même pied et s'écartent en V (±spread en z) sous le meuble, un
-// peu rentrées en x ; patin rond au sol. Le point d'appui est celui des autres variantes.
-export function hairpin(col: Tone, foot: Vec3, h: number, sx: number, spread: number): CelPart[] {
+// peu rentrées en x (et de `inward` en plus) ; patin rond au sol. Le point d'appui est celui des autres variantes.
+export function hairpin(col: Tone, foot: Vec3, h: number, sx: number, spread: number, inward: Vec3 = [0, 0, 0]): CelPart[] {
   const out: CelPart[] = [];
   for (const sz of [-1, 1]) {
-    const top: Vec3 = [foot[0] - sx * 1.5, foot[1] + h, foot[2] + sz * spread];
+    const top: Vec3 = [foot[0] - sx * 1.5 + inward[0], foot[1] + h + inward[1], foot[2] + sz * spread + inward[2]];
     out.push(part(tube([foot, [(foot[0] + top[0]) / 2, (foot[1] + top[1]) / 2, (foot[2] + top[2]) / 2], top], 1.25, 8), col, { crease: false }));
   }
   out.push(part(place(lathe([[0, 0], [1.5, 0], [1.6, 0.5], [1.4, 1.1], [0, 1.1]], 12), { t: foot }), col, { crease: false }));
@@ -54,8 +54,33 @@ export function hairpin(col: Tone, foot: Vec3, h: number, sx: number, spread: nu
 }
 // Évasement des pieds (rad) : celui du meuble, plus 0,07 pour les pieds compas (le pied reste posé au même endroit, le haut rentre).
 const splayOf = (look: CelLook, splay: number): number => splay + (look.variant.legs === 'compass' ? 0.07 : 0);
-// Liseré lumineux néon : tube fin au ton `edge`, lumineux (sans ombrage ni ombre portée), compté à part de l'encombrement.
-const neon = (look: CelLook, a: Vec3, b: Vec3, r = 0.8): CelPart => part(tube([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], b], r, 8), look.tones.edge, { glow: true, noshadow: true, crease: false, trim: true });
+// Profondeur z ≥ 0 de la surface avant d'une superellipsoïde (demi-axes a, b, c, rondeurs e1, e2) au-dessus du point (x, y) de son
+// repère ; 0 hors de la silhouette. Hauteur y ≥ 0 du dessus au point (x, z). Les habillages (boutons, rayures, liserés) se posent AVEC
+// la surface, jamais en travers.
+export function superZ(a: number, b: number, c: number, e1: number, e2: number, x: number, y: number): number {
+  const Y = Math.min(1, Math.abs(y / b)) ** (2 / e1);
+  const s = (1 - Y) ** (e1 / e2) - Math.abs(x / a) ** (2 / e2);
+  return c * Math.max(0, s) ** (e2 / 2);
+}
+export function superY(a: number, b: number, c: number, e1: number, e2: number, x: number, z: number): number {
+  const s = Math.abs(x / a) ** (2 / e2) + Math.abs(z / c) ** (2 / e2);
+  return s >= 1 ? 0 : b * (1 - s ** (e2 / e1)) ** (e1 / 2);
+}
+/** Superellipsoïde posée (demi-axes, rondeurs, centre, inclinaison rx) : le volume sur lequel un liseré est posé. */
+export type Solid = { a: number; b: number; c: number; e1: number; e2: number; cx: number; cy: number; cz: number; rx?: number };
+// Liseré lumineux néon posé SUR une superellipsoïde : tube au ton `edge` (lumineux, sans ombrage ni ombre portée, compté à part), le
+// long de x de x0 à x1, soit sur la face avant à la hauteur locale `front` (y du repère du volume), soit sur le dessus à la profondeur
+// locale `top` (z) ; l'axe du tube est rentré de 0,35 r sous la surface (il en sort de 0,65 r, bien accroché, sans percer), échantillonné
+// tous les ~3 cm pour suivre les bouts ronds du volume. Testé : chaque anneau du tube à moins de 0,6 cm du corps du meuble.
+export function neonRim(look: CelLook, k: Solid, at: { front: number } | { top: number }, x0: number, x1: number, r = 1): CelPart {
+  const n = Math.max(2, Math.ceil((x1 - x0) / 3)), pts: Vec3[] = [];
+  for (let i = 0; i <= n; i++) {
+    const x = x0 + ((x1 - x0) * i) / n;
+    if ('front' in at) pts.push([x, at.front, superZ(k.a, k.b, k.c, k.e1, k.e2, x, at.front) - 0.35 * r]);
+    else pts.push([x, superY(k.a, k.b, k.c, k.e1, k.e2, x, at.top) - 0.35 * r, at.top]);
+  }
+  return part(place(tube(pts, r, 10), { rx: k.rx ?? 0, t: [k.cx, k.cy, k.cz] }), look.tones.edge, { glow: true, noshadow: true, crease: false, trim: true });
+}
 // Réunion de maillages en un seul (indices décalés) : une pièce, pas d'encre de silhouette entre eux.
 function merge(ms: Mesh[]): Mesh {
   const out: Mesh = { v: [], n: [], t: [] };
@@ -100,7 +125,7 @@ function shelf(look: CelLook): CelPart[] {
   P.push(part(tube([[-36, 5.5, 12], [0, 5.5, 12], [36, 5.5, 12]], 3, 14), W, { crease: false })); // nez de la tablette basse (2,5..8,5)
   // Dessus en bourrelet (177..180, dessus praticable 180) : au-dessus de l'œil, son dessous arrondi se lit en ombre à tous les angles.
   P.push(part(place(superEll(41.5, 1.5, 15, 0.8, 0.3, 10, 28), { t: [0, 178.5, 0] }), W));
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-40, 178.6, 15.1], [40, 178.6, 15.1], 0.7)); // liseré sur le nez du dessus
+  if (look.variant.pattern === 'neon-edge') P.push(neonRim(look, { a: 41.5, b: 1.5, c: 15, e1: 0.8, e2: 0.3, cx: 0, cy: 178.5, cz: 0 }, { front: 0 }, -40, 40, 0.8)); // liseré sur le nez du dessus
   // Fond : un panneau de bois (Ruling 23) en quatre planches jointives verticales : plaque mince à peine bombée vers l'arrière (0,7 cm
   // au milieu, cintrée par bent()), entre les montants arrière, du socle au dessus (bouts noyés dedans), et trois joints en V sur chaque
   // face (deux chanfreins de 2,2 cm à 40° par joint) : le chanfrein tourné vers la droite prend l'ombre, l'autre la lumière — c'est le
@@ -129,7 +154,7 @@ function desk(look: CelLook): CelPart[] {
   P.push(knob(T.metal, 0, 68.5, 26.9));
   P.push(rod([-54, 18, -24], [54, 18, -24], 1.5, T.leg)); // traverse arrière
   for (const sx of [-1, 1]) P.push(rod([sx * 54, 18, -24], [sx * 54, 18, 24], 1.5, T.leg)); // entretoises latérales
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-58, 72.3, 30.2], [58, 72.3, 30.2], 0.6)); // liseré sous le bord avant du plateau
+  if (look.variant.pattern === 'neon-edge') P.push(neonRim(look, { a: 60, b: 1.5, c: 30, e1: 0.45, e2: 0.3, cx: 0, cy: 73.5, cz: 0 }, { front: 0 }, -58, 58, 0.9)); // liseré sur le chant avant du plateau
   return P;
 }
 
@@ -201,7 +226,7 @@ function coffeeTable(look: CelLook): CelPart[] {
     const sp = splayOf(look, 0.05), xe = 43 - 37.6 * Math.sin(sp) + 1, ze = 20.5 - 37.6 * Math.sin(sp) + 1;
     for (const sz of [-1, 1]) P.push(rod([-xe, 37.6, sz * ze], [xe, 37.6, sz * ze], 2.5, T.leg));
   }
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-48, 39.4, 27.3], [48, 39.4, 27.3], 0.6)); // liseré sous le bord avant du plateau
+  if (look.variant.pattern === 'neon-edge') P.push(neonRim(look, { a: 50, b: 3, c: 27.5, e1: 0.8, e2: 0.45, cx: 0, cy: 42, cz: 0 }, { front: 0 }, -47, 47, 1)); // liseré à mi-chant du plateau-galet
   return P;
 }
 

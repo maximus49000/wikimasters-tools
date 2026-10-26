@@ -3,6 +3,7 @@ import '../../../src/core/library/cel/models/steampunk';
 import { ROOM_CAMERA, yawOf } from '../../../src/core/library/cel/camera';
 import { REST_LIFE } from '../../../src/core/library/cel/life-state';
 import { lookOf, type CelLook } from '../../../src/core/library/cel/looks';
+import type { Vec3 } from '../../../src/core/library/cel/mesh';
 import { CEL_MODELS, CEL_TRIMS, celPartsOf } from '../../../src/core/library/cel/models';
 import { renderCel } from '../../../src/core/library/cel/raster';
 import { spriteKey } from '../../../src/core/library/cel/sprite-key';
@@ -36,6 +37,40 @@ const lum = (c: string): number => {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 };
 const view = (angle: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7) => ({ cam: ROOM_CAMERA, yaw: yawOf(angle), side: 'left' as const, px: 1, ss: 1 });
+// Distance d'un point au triangle (A, B, C) (point le plus proche, Ericson), puis au plus proche triangle des maillages donnés.
+function distToTri(p: Vec3, A: Vec3, B: Vec3, C: Vec3): number {
+  const sub = (u: Vec3, v: Vec3): Vec3 => [u[0] - v[0], u[1] - v[1], u[2] - v[2]], dot = (u: Vec3, v: Vec3) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  const ab = sub(B, A), ac = sub(C, A), ap = sub(p, A);
+  const d1 = dot(ab, ap), d2 = dot(ac, ap);
+  const at = (q: Vec3) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  if (d1 <= 0 && d2 <= 0) return at(A);
+  const bp = sub(p, B), d3 = dot(ab, bp), d4 = dot(ac, bp);
+  if (d3 >= 0 && d4 <= d3) return at(B);
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+    const v = d1 / (d1 - d3);
+    return at([A[0] + ab[0] * v, A[1] + ab[1] * v, A[2] + ab[2] * v]);
+  }
+  const cp = sub(p, C), d5 = dot(ab, cp), d6 = dot(ac, cp);
+  if (d6 >= 0 && d5 <= d6) return at(C);
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+    const w = d2 / (d2 - d6);
+    return at([A[0] + ac[0] * w, A[1] + ac[1] * w, A[2] + ac[2] * w]);
+  }
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+    const w = (d4 - d3) / (d4 - d3 + (d5 - d6));
+    return at([B[0] + (C[0] - B[0]) * w, B[1] + (C[1] - B[1]) * w, B[2] + (C[2] - B[2]) * w]);
+  }
+  const denom = 1 / (va + vb + vc), v = vb * denom, w = vc * denom;
+  return at([A[0] + ab[0] * v + ac[0] * w, A[1] + ab[1] * v + ac[1] * w, A[2] + ab[2] * v + ac[2] * w]);
+}
+function distToMeshes(p: Vec3, parts: readonly { m: { v: Vec3[]; t: [number, number, number][] } }[]): number {
+  let best = Infinity;
+  for (const { m } of parts) for (const [a, b, c] of m.t) best = Math.min(best, distToTri(p, m.v[a]!, m.v[b]!, m.v[c]!));
+  return best;
+}
 // Garnitures et habillages (rivets, franges, plaid, liseré, garniture Steampunk) : comptés à part de l'encombrement.
 const body = (L: CelLook, k: StandingKind) => celPartsOf(k, L, REST_LIFE).filter((P) => !P.trim);
 
@@ -148,6 +183,27 @@ describe('styles cellulo', () => {
     expect(celPartsOf('sofa', r7, REST_LIFE).filter((P) => P.trim && P.col === r7.tones.warm).length).toBeGreaterThanOrEqual(3);
   });
 
+  it('néon : chaque liseré est posé sur le corps du meuble (tout anneau du tube à moins de 0,6 cm d’une face), jamais en travers d’un accoudoir', () => {
+    const ne = lookOf('neon');
+    for (const k of ['sofa', 'loveseat', 'armchair', 'club-chair', 'daybed', 'bench', 'desk', 'coffee-table', 'shelf'] as const) {
+      const parts = celPartsOf(k, ne, REST_LIFE);
+      const rims = parts.filter((P) => P.glow && P.col === ne.tones.edge), body = parts.filter((P) => !P.glow && !P.trim);
+      expect(rims.length, k).toBeGreaterThan(0);
+      for (const R of rims) {
+        // Anneaux du tube : nv + 1 = 11 sommets consécutifs chacun, puis les deux centres des bouchons.
+        const n = R.m.v.length - 2;
+        for (let ring = 0; ring * 11 < n; ring++) {
+          const d = Math.min(...R.m.v.slice(ring * 11, ring * 11 + 11).map((v) => distToMeshes(v, body)));
+          expect(d, `${k} : anneau ${ring} du liseré à ${d.toFixed(2)} cm du corps`).toBeLessThanOrEqual(0.6);
+        }
+      }
+    }
+    // Chauffeuse et canapé : le liseré de l'assise s'arrête avant les accoudoirs (faces intérieures à ±28 et ±78).
+    const xs = (k: StandingKind) => celPartsOf(k, ne, REST_LIFE).filter((P) => P.glow && P.m.v.every((v) => v[1] < 45)).flatMap((P) => P.m.v.map((v) => Math.abs(v[0])));
+    expect(Math.max(...xs('club-chair'))).toBeLessThan(28);
+    expect(Math.max(...xs('sofa'))).toBeLessThan(78);
+  });
+
   it('globe, télescope, automate : dessin propre, contrôles complets du modèle', () => {
     for (const k of ['globe', 'telescope', 'automaton'] as const) {
       expect(CEL_MODELS[k], k).toBeDefined();
@@ -171,11 +227,11 @@ describe('styles cellulo', () => {
       for (const k of kinds) checkCelModel(k, lookOf(s));
     }, 180_000);
 
-  it('planchers d’ombre par style : seulement les pieds épingle de l’Industriel (mesures dans furniture-cel-checks)', () => {
+  it('planchers d’ombre par style : pieds épingle de l’Industriel et tapis à franges bohème (mesures dans furniture-cel-checks)', () => {
     expect(SHADE_FLOOR_STYLE).toEqual({ industriel: { 'coffee-table': 0.03, chair: 0.06, desk: 0.06 }, boheme: { rug: 0.002 } });
   });
 
-  it('clé de sprite : version 16 du dessin', () => {
-    expect(spriteKey({ kind: 'sofa', angle: 0, style: 'neon', side: 'left', cam: 'room', res: 3, lit: false, life: '' })).toMatch(/^cel16\|/);
+  it('clé de sprite : version 17 du dessin', () => {
+    expect(spriteKey({ kind: 'sofa', angle: 0, style: 'neon', side: 'left', cam: 'room', res: 3, lit: false, life: '' })).toMatch(/^cel17\|/);
   });
 });

@@ -112,7 +112,7 @@ function chair(look: CelLook, life: LifeState): CelPart[] {
   const prof = legProfile(look.variant.legs, h), r0 = prof[0]![0];
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
-      if (look.variant.legs === 'hairpin') P.push(...hairpin(T.leg, [sx * (22.1 - 1.1), 0, sz * (23.6 - 1.1)], 40.5, sx, 2).map((Q, i) => (i < 2 ? { ...Q, m: place(Q.m, { rx: -sz * 0.06 }) } : Q))); // épingles rentrées vers l'assise (le haut sous le siège)
+      if (look.variant.legs === 'hairpin') P.push(...hairpin(T.leg, [sx * (22.1 - 1.1), 0, sz * (23.6 - 1.1)], 40.5, sx, 2, [0, 0, -sz * 2.4])); // épingles rentrées vers l'assise (le haut sous le siège, le pied au sol)
       else P.push(part(place(lathe(prof, 10), { rz: sx * splay, rx: -sz * splay, t: [sx * (22.1 - r0), 0, sz * (23.6 - r0)] }), T.leg, { crease: false }));
     }
   P.push(part(place(superEll(20.5, 2, 22, 0.5, 0.3, 10, 24), { t: [0, 42, 1] }), T.desk)); // assise 40..44

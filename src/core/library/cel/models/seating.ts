@@ -5,7 +5,7 @@ import type { CelLook, CelVariant } from '../looks';
 import { bent, lathe, part, place, superEll, tube, type CelPart, type Deform, type Vec3 } from '../mesh';
 import type { Tone } from '../tone';
 import { CEL_MODELS } from './registry';
-import { hairpin } from './storage';
+import { hairpin, neonRim, superZ } from './storage';
 
 // Assises en tissu (G6, tâche 5), portées de la maquette `sofa` (l. 248-283) et `beanbag` (l. 321) : canapé, causeuse, fauteuil,
 // chauffeuse, méridienne, banc, pouf tricoté, pouf carré, pouf poire. Repère centré (origine au centre de la base, x à droite, y en
@@ -65,13 +65,6 @@ function legs(look: CelLook, col: Tone, x: number, z: number, h: number): CelPar
   return out;
 }
 
-// Profondeur z ≥ 0 de la surface avant d'une superellipsoïde (demi-axes a, b, c, rondeurs e1, e2) au-dessus du point (x, y) de son
-// repère ; 0 hors de la silhouette. Les habillages (boutons, rayures) se posent AVEC la surface, jamais en travers.
-function superZ(a: number, b: number, c: number, e1: number, e2: number, x: number, y: number): number {
-  const Y = Math.min(1, Math.abs(y / b)) ** (2 / e1);
-  const s = (1 - Y) ** (e1 / e2) - Math.abs(x / a) ** (2 / e2);
-  return c * Math.max(0, s) ** (e2 / 2);
-}
 type Cushion = { a: number; b: number; c: number; e: number; cx: number; cy: number; cz: number; rx: number };
 // Coussin de dos capitonné : fossettes (gaussiennes σ 3,5, 1,3 cm) autour de chaque bouton sur la face avant.
 const TUFT_DEPTH = 1.3, TUFT_SIGMA = 3.5;
@@ -127,8 +120,15 @@ function stripes(col: Tone, k: Cushion): CelPart[] {
   }
   return out;
 }
-// Liseré lumineux néon : tube fin au ton `edge`, lumineux (sans ombrage ni ombre portée).
-const neon = (look: CelLook, a: Vec3, b: Vec3, r = 0.8): CelPart => part(tube([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], b], r, 8), look.tones.edge, { glow: true, noshadow: true, crease: false, trim: true });
+// Liserés lumineux néon (neonRim, storage.ts) posés sur les volumes : sur la face avant de l'assise entre les faces intérieures des
+// accoudoirs (jamais en travers d'un accoudoir), et sur la crête du dossier (il suit la retombée des bouts ronds).
+const SEAT_E = 0.22;
+function neonSeat(look: CelLook, a: number, c: number, cy: number, yl: number, x0: number, x1: number): CelPart {
+  return neonRim(look, { a, b: 15, c, e1: SEAT_E, e2: SEAT_E, cx: 0, cy, cz: 0 }, { front: yl }, x0, x1, 1);
+}
+function neonCrest(look: CelLook, a: number, b: number, c: number, cy: number, cz: number, x0: number, x1: number): CelPart {
+  return neonRim(look, { a, b, c, e1: SEAT_E, e2: SEAT_E, cx: 0, cy, cz }, { top: 0 }, x0, x1, 1);
+}
 // Plaid plié sur un accoudoir (dessus à `top`, demi-largeur `hw` en x, demi-longueur `hl` en z) : un pan sur le dessus, un pan qui
 // tombe à l'extérieur (x > 0), franges selon la variante. Ton : la clé choisie par style (`look.pick.throw`).
 function plaid(look: CelLook, x: number, top: number, hw: number, hl: number, z: number, drop: number): CelPart[] {
@@ -198,7 +198,7 @@ function sofa(look: CelLook, life: LifeState): CelPart[] {
     for (const sx of [-1, 1]) P.push(...rivets(look, [sx * 100, 60, -36], [sx * 100, 60, 36], [sx, 0, 0])); // flancs des accoudoirs (x ±100)
   }
   if (look.variant.pattern === 'diamonds') P.push(...diamonds(T.warm, [-62, -52, -42], 70, -18.3));
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-96, 41.2, 44.2], [96, 41.2, 44.2]), neon(look, [-96, 84.2, -37], [96, 84.2, -37]));
+  if (look.variant.pattern === 'neon-edge') P.push(neonSeat(look, 99, 44, 27, 10, -76, 76), neonCrest(look, 99, 21, 8, 63, -37, -96, 96)); // accoudoirs : faces intérieures à ±78
   if (look.variant.throw !== 'none') P.push(...plaid(look, 89, 67, 10.5, 22, -4, 22));
   return P;
 }
@@ -219,7 +219,7 @@ function loveseat(look: CelLook, life: LifeState): CelPart[] {
   P.push(...backDress(look, T.fabric, backs.map((b) => b.k)));
   if (look.variant.rivets) P.push(...rivets(look, [-55, 24, 43], [55, 24, 43], [0, 0, 1]));
   if (look.variant.pattern === 'diamonds') P.push(...diamonds(T.fabric, [-39, -29, -19], 65, -17.6));
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-56, 37.2, 43.2], [56, 37.2, 43.2]), neon(look, [-64, 82.2, -37], [64, 82.2, -37]));
+  if (look.variant.pattern === 'neon-edge') P.push(neonSeat(look, 74, 43, 23, 8, -56, 56), neonCrest(look, 66, 22, 7, 60, -37, -64, 64)); // accoudoirs roulés : faces intérieures à ±58
   return P;
 }
 
@@ -241,7 +241,7 @@ function armchair(look: CelLook, life: LifeState): CelPart[] {
     for (const sx of [-1, 1]) P.push(...rivets(look, [sx * 40, 56, -30], [sx * 40, 56, 30], [sx, 0, 0])); // flancs des accoudoirs (x ±40)
   }
   if (look.variant.pattern === 'diamonds') P.push(...diamonds(T.fabric, [-10, 0, 10], 70, -15.6));
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-36, 41.2, 39.2], [36, 41.2, 39.2]), neon(look, [-37, 90.2, -33], [37, 90.2, -33]));
+  if (look.variant.pattern === 'neon-edge') P.push(neonSeat(look, 39, 39, 27, 10, -24, 24), neonCrest(look, 39, 24, 7, 66, -33, -37, 37)); // accoudoirs : faces intérieures à ±26
   return P;
 }
 
@@ -260,7 +260,7 @@ function clubChair(look: CelLook, life: LifeState): CelPart[] {
   P.push(...backDress(look, T.warm, [back.k]));
   if (look.variant.rivets) P.push(...rivets(look, [-34, 24, 41.5], [34, 24, 41.5], [0, 0, 1]));
   if (look.variant.pattern === 'diamonds') P.push(...diamonds(T.warm, [-10, 0, 10], 64, -14.6));
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-41, 37.2, 41.7], [41, 37.2, 41.7]), neon(look, [-35, 80.2, -34], [35, 80.2, -34]));
+  if (look.variant.pattern === 'neon-edge') P.push(neonSeat(look, 44, 41.5, 23, 8, -26, 26), neonCrest(look, 37, 21, 8, 59, -34, -35, 35)); // accoudoirs roulés : faces intérieures à ±28
   return P;
 }
 
@@ -296,7 +296,7 @@ function daybed(look: CelLook, life: LifeState): CelPart[] {
   P.push(...backDress(look, T.fabric, [back.k]));
   if (look.variant.rivets) P.push(...rivets(look, [-80, 24, 34], [80, 24, 34], [0, 0, 1]));
   if (look.variant.pattern === 'diamonds') P.push(...diamonds(T.fabric, [60, 70, 80], 44, 31));
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-56, 37.2, 34.2], [80, 37.2, 34.2]));
+  if (look.variant.pattern === 'neon-edge') P.push(neonSeat(look, 82, 34, 23, 8, -57, 80)); // du grand accoudoir (face intérieure à −58,5) au bout droit
   return P;
 }
 
@@ -311,7 +311,7 @@ function bench(look: CelLook, life: LifeState): CelPart[] {
   P.push(seatCushion(T.fabric, 56, 3, 17, 0, 45, 0, px, pz, life.dent)); // coussin 42..48
   if (look.variant.rivets) P.push(...rivets(look, [-50, 39, 20], [50, 39, 20], [0, 0, 1]));
   if (look.variant.pattern === 'diamonds') for (const x of [-30, 0, 30]) P.push(part(place(superEll(2.6, 0.6, 2.6, 1, 1, 4, 4), { ry: Math.PI / 4, t: [x, 48.2, 0] }), T.warm, { flat: true, noshadow: true, trim: true })); // à plat sur le coussin (dessus 48)
-  if (look.variant.pattern === 'neon-edge') P.push(neon(look, [-58, 41.4, 20.2], [58, 41.4, 20.2], 0.7));
+  if (look.variant.pattern === 'neon-edge') P.push(neonRim(look, { a: 60, b: 3, c: 20, e1: 0.2, e2: 0.2, cx: 0, cy: 39, cz: 0 }, { front: 2.1 }, -57, 57, 0.7)); // haut du chant avant de l'assise de bois (à mi-chant, l'encre du tube mangeait la bande d'ombre du bas du chant : 7 % de face)
   return P;
 }
 
