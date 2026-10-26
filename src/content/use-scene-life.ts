@@ -6,8 +6,11 @@ import { decorTasks, halloweenPlanFor, type HwPlan } from '../core/library/city/
 import { homeState, type HomeState } from '../core/library/city/home-state';
 import { cityDwellings, type Dwelling } from '../core/library/city/households';
 import type { CityContext } from '../core/library/city/intensity';
-import { dayDraw, sceneDay, type SceneDay } from '../core/library/city/scene-day';
-import { buildSchedule, type LightTone, type Schedule } from '../core/library/city/schedules';
+import { dwellingDay, type DwellingDay, type DwellingPre } from '../core/library/city/dwelling-day';
+import { sceneDay, type SceneDay } from '../core/library/city/scene-day';
+import { householdDays, type HouseholdDays } from '../core/library/city/person-day';
+import type { Visit } from '../core/library/city/visitors';
+import { mealsOf, type LightTone, type Schedule } from '../core/library/city/schedules';
 import type { SunTimes } from '../core/library/sky';
 
 // Vie des logements d'une scène Ville (spec 2026-10-19 « vie au-dessus de la rue » §5.1) : foyers des façades, emplois du
@@ -19,28 +22,50 @@ import type { SunTimes } from '../core/library/sky';
 // byFacadeHome : logement par `${façade}:${logement}` (= `Dwelling.id`, `data-home` du calque des fenêtres) ; halloween : plan
 // des décors d'Halloween de l'édition en cours (null hors de la période), dont les poses et retraits du jour et de la veille
 // sont des scènes des emplois du temps.
-export type SceneLife = { dwellings: Dwelling[]; today: Map<string, Schedule>; yesterday: Map<string, Schedule>; day: SceneDay; byFacadeHome: Map<string, Dwelling>; halloween: HwPlan | null };
+// days / visits (prevDays / prevVisits pour la veille) : journées des habitants et visites par logement (`Dwelling.id`), les
+// mêmes que celles dont découlent les emplois du temps (tâche 11 : calculées une fois par jour, jamais par image).
+export type SceneLife = { dwellings: Dwelling[]; today: Map<string, Schedule>; yesterday: Map<string, Schedule>; days: Map<string, HouseholdDays>; prevDays: Map<string, HouseholdDays>; visits: Map<string, Visit[]>; prevVisits: Map<string, Visit[]>; day: SceneDay; byFacadeHome: Map<string, Dwelling>; halloween: HwPlan | null };
 type Weather = { precip: number; snow: boolean; storm: boolean };
 
-const schedulesOf = (dwellings: readonly Dwelling[], day: SceneDay, seed: number, ctx: DayContext, plan: HwPlan | null): Map<string, Schedule> =>
-  new Map(dwellings.map((d) => [d.id, buildSchedule(d, day, dayDraw(d, day, seed), decorTasks(plan, d.id, ctx.date))]));
+export type PreOf = (ctx: DayContext) => ReadonlyMap<string, DwellingPre>;
+type DayMaps = { schedules: Map<string, Schedule>; days: Map<string, HouseholdDays>; visits: Map<string, Visit[]> };
+function dayMapsOf(dwellings: readonly Dwelling[], day: SceneDay, seed: number, ctx: DayContext, plan: HwPlan | null, pre?: ReadonlyMap<string, DwellingPre>): DayMaps {
+  const schedules = new Map<string, Schedule>(), days = new Map<string, HouseholdDays>(), visits = new Map<string, Visit[]>();
+  for (const d of dwellings) {
+    const dd: DwellingDay = dwellingDay(d, ctx, day, seed, decorTasks(plan, d.id, ctx.date), pre?.get(d.id));
+    schedules.set(d.id, dd.schedule);
+    days.set(d.id, dd.hd);
+    visits.set(d.id, dd.visits);
+  }
+  return { schedules, days, visits };
+}
 
 // Calcul pur (tests, cache) : la veille vient de `day.yesterday` (useCityDay, mêmes périodes de vacances), à défaut d'un
 // contexte sans périodes ; même météo que le jour (celle de la veille n'est pas connue), aucun déménagement. `sun` : lever et
 // coucher du lieu (`CityContext.sun`), repris pour la veille (quelques minutes d'écart d'un jour à l'autre) ; absent, table de
 // Paris (`sceneDay`).
-export function buildSceneLife(facades: readonly Facade[], day: DayContext, weather: Weather, seed: number, moving: boolean, dwellings = cityDwellings(facades, seed), sun?: SunTimes): SceneLife {
+export function buildSceneLife(facades: readonly Facade[], day: DayContext, weather: Weather, seed: number, moving: boolean, dwellings = cityDwellings(facades, seed), sun?: SunTimes, pre?: PreOf): SceneLife {
   const today = sceneDay(day, weather, seed, moving, day.holidayWeek, sun);
-  const prevCtx = day.yesterday ?? dayContext(addDays(day.date, -1), []);
+  const prevCtx: DayContext = { ...(day.yesterday ?? dayContext(addDays(day.date, -1), [])), periods: day.yesterday?.periods ?? day.periods };
   const prev = sceneDay(prevCtx, weather, seed, false, prevCtx.holidayWeek, sun);
   const periods = day.periods ?? [];
   const plan = halloweenPlanFor(day.date, dwellings, facades, seed, periods);
   // Veille : même plan (même édition), sauf la veille de la période.
   const prevPlan = plan && halloweenPlanFor(prevCtx.date, dwellings, facades, seed, periods) ? plan : null;
+  // `pre` : journées et repas déjà calculés (cache par logement et par jour) : à minuit la veille est l'ancien jour du cache.
+  // La veille est lue d'abord : le nouveau jour, ajouté ensuite, ne peut pas l'avoir chassée du cache.
+  const preY = pre?.(prevCtx);
+  const preT = pre?.(day);
+  const t = dayMapsOf(dwellings, today, seed, day, plan, preT);
+  const y = dayMapsOf(dwellings, prev, seed, prevCtx, prevPlan, preY);
   return {
     dwellings,
-    today: schedulesOf(dwellings, today, seed, day, plan),
-    yesterday: schedulesOf(dwellings, prev, seed, prevCtx, prevPlan),
+    today: t.schedules,
+    yesterday: y.schedules,
+    days: t.days,
+    prevDays: y.days,
+    visits: t.visits,
+    prevVisits: y.visits,
     day: today,
     byFacadeHome: new Map(dwellings.map((d) => [d.id, d])),
     halloween: plan,
@@ -71,6 +96,22 @@ function dwellingsOf(facades: readonly Facade[], seed: number): { dwellings: Dwe
   return hit;
 }
 const lives = new Map<string, SceneLife>();
+// Journées des habitants et repas par (logements, graine, jour, périodes) : indépendants de la météo et du déménagement, ils
+// ne sont refaits ni à la bascule humide / sec ni au déménagement ; à minuit, le jour d'hier y est déjà (devient la veille).
+const pres = new Map<string, Map<string, DwellingPre>>();
+// Jours gardés : jour et veille de trois largeurs de façades (vue rue, pièce, aperçu) au plus.
+const PRES_MAX = 6;
+function preOf(sig: string, seed: number, dwellings: readonly Dwelling[], ctx: DayContext): Map<string, DwellingPre> {
+  const key = [sig, seed, dayKey(ctx), periodsKey(ctx)].join('#');
+  let hit = pres.get(key);
+  if (hit) pres.delete(key);
+  else {
+    hit = new Map(dwellings.map((d) => { const hd = householdDays(d, ctx, seed); return [d.id, { hd, meals: mealsOf(d, hd) }]; }));
+    while (pres.size >= PRES_MAX) pres.delete(pres.keys().next().value!);
+  }
+  pres.set(key, hit);
+  return hit;
+}
 const dayKey = (d: DayContext | undefined): string => (d ? [d.iso, d.kind, d.holidayWeek ?? '-'].join('/') : '-');
 // Vacances connues (absences des foyers sur toute la période d'Halloween).
 const periodsKey = (d: DayContext): string => (d.periods ?? []).map((p) => p.start + p.end).join(',');
@@ -83,7 +124,7 @@ export function sharedSceneLife(facades: readonly Facade[], day: DayContext, wet
   if (life) lives.delete(key); // replacée en dernier : la plus récente
   else {
     // sceneDay ne lit de la météo que l'état humide (même seuil) : précipitations 1 ou 0 suffisent.
-    life = buildSceneLife(facades, day, { precip: wet ? 1 : 0, snow: false, storm: false }, seed, moving, dwellings, sun);
+    life = buildSceneLife(facades, day, { precip: wet ? 1 : 0, snow: false, storm: false }, seed, moving, dwellings, sun, (c) => preOf(sig, seed, dwellings, c));
     while (lives.size >= CACHE_MAX) lives.delete(lives.keys().next().value!);
   }
   lives.set(key, life);

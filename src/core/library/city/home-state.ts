@@ -6,6 +6,9 @@ import type { Choreo, LightTone, Schedule, SceneDecor, Segment, Where } from './
 // Fonction pure de l'emploi du temps du jour, de celui de la veille et de la minute : la veille fournit la soirée qui déborde
 // après minuit (un segment de la veille compte à `m + 1440`) et la position des volets, rideaux et fenêtres à 0 h
 // (continuité). La chorégraphie (pose, déplacement, accessoires) est calculée en aval à partir de `choreo`, `p` et `t`.
+// Les emplois du temps viennent des journées de chaque habitant (dwelling-day.ts) : une pièce n'est allumée que si
+// quelqu'un est au logement (parfois laissée allumée derrière soi, schedules.ts) ; un retour de boîte après minuit est
+// rendu dans l'emploi du temps du jour (chambre, 10 min).
 
 // p : avancement dans la scène (0-1) ; t : minutes écoulées depuis son début ; culled : écartée par la borne (pose fixe à la
 // place du mouvement ; la lumière et les volets du logement ne changent pas).
@@ -53,6 +56,32 @@ export function trackValue(evts: readonly { t: number; to: number; dur: number }
 type Track = Extract<Segment, { k: 'shut' | 'curt' | 'win' }>;
 type Span = Exclude<Segment, Track | { k: 'return' | 'depart' }>;
 
+// Pistes des volets, rideaux et fenêtres d'un couple (jour, veille), triées, calculées une fois (pas à chaque image) : par
+// `${genre}|${pièce}`, la veille décalée de −1440 avant le jour (même ordre qu'un tri stable des deux listes).
+type TrackEvt = { t: number; to: number; dur: number };
+const NO_TRACK: readonly TrackEvt[] = [];
+const NO_EVE: Schedule = { dwelling: '', segments: [], shutUser: false, maxActors: 0 };
+const trackCache = new WeakMap<Schedule, WeakMap<Schedule, Map<string, TrackEvt[]>>>();
+function tracksOf(today: Schedule, yesterday: Schedule | null): Map<string, TrackEvt[]> {
+  let byEve = trackCache.get(today);
+  if (!byEve) trackCache.set(today, (byEve = new WeakMap()));
+  const eve = yesterday ?? NO_EVE;
+  let hit = byEve.get(eve);
+  if (!hit) {
+    hit = new Map();
+    for (const [s, off] of (yesterday ? [[yesterday, -DAY], [today, 0]] : [[today, 0]]) as [Schedule, number][]) {
+      for (const g of s.segments) {
+        if (g.k !== 'shut' && g.k !== 'curt' && g.k !== 'win') continue;
+        const key = `${g.k}|${g.room}`;
+        (hit.get(key) ?? hit.set(key, []).get(key)!).push({ t: g.t + off, to: g.to, dur: g.dur });
+      }
+    }
+    for (const list of hit.values()) list.sort((a, b) => a.t - b.t);
+    byEve.set(eve, hit);
+  }
+  return hit;
+}
+
 export function homeState(d: Dwelling, today: Schedule, yesterday: Schedule | null, m: number): HomeState {
   const st: HomeState = { lit: {}, tone: {}, shut: {}, curt: {}, win: {}, actors: [], sapin: false, party: false, dim: false };
   // Segments du jour à `m`, puis ceux de la veille à `m + 1440` ; décalage −1440 pour les pistes de la veille.
@@ -60,11 +89,8 @@ export function homeState(d: Dwelling, today: Schedule, yesterday: Schedule | nu
   // Volets fermés la nuit pour qui les ferme (valeur avant toute la piste, celle de la veille si elle est connue) ; sans
   // volets : toujours ouverts.
   const shutInit = d.shutters !== null && days[0]![0].shutUser ? 0 : 1;
-  const tracks = (k: Track['k'], room: Room) => {
-    const out: { t: number; to: number; dur: number }[] = [];
-    for (const [s, off] of days) for (const g of s.segments) if (g.k === k && g.room === room) out.push({ t: g.t + off, to: g.to, dur: g.dur });
-    return out.sort((a, b) => a.t - b.t);
-  };
+  const all = tracksOf(today, yesterday);
+  const tracks = (k: Track['k'], room: Room) => all.get(`${k}|${room}`) ?? NO_TRACK;
   for (const room of d.rooms) {
     st.shut[room] = d.shutters === null ? 1 : trackValue(tracks('shut', room), m, shutInit);
     // Rideaux tirés avant toute la piste dans une pièce qui en a une, ou au salon même sans piste ces deux jours (foyer

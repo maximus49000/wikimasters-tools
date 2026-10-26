@@ -72,6 +72,15 @@ function watch(el: Element): () => number {
 const shown = (layer: Element): Element[] => [...layer.querySelectorAll('[data-wl-fig]')].filter((g) => g.getAttribute('display') !== 'none');
 
 describe('calque de la vie derrière les fenêtres', () => {
+  it('sirène : un membre dont le premier passage du jour est un retour est dehors jusque-là', () => {
+    const d = cityDwellings(cityFacades(1440, H, 1), 1).find((x) => x.hh.members.length === 1)!;
+    const sch = (segments: Segment[]): Schedule => ({ dwelling: d.id, segments, shutUser: false, maxActors: 0 });
+    // Rentré de vacances à 16 h 40, lumière allumée dès le matin (logique) : personne à la maison avant son retour.
+    const today = sch([{ k: 'lit', room: 'salon', t0: 400, t1: 1400, tone: 'warm' }, { k: 'return', t: 1000, m: 0 }]);
+    expect(sirenPresent(d, today, null, 600)).toBe(false);
+    expect(sirenPresent(d, today, null, 1100)).toBe(true);
+  });
+
   it('windowOutfit : jamais de jupe ni de robe pour un homme, jamais chauve pour une femme', () => {
     const seen = { f: new Set<string>(), m: new Set<string>() };
     for (const seed of [1, 2, 3, 4, 5]) {
@@ -387,7 +396,9 @@ describe('calque de la vie derrière les fenêtres', () => {
       for (const g of dry.today.get(d.id)!.segments) {
         if (g.k !== 'act' || g.where !== 'balcony' || g.choreo !== 'leanRail' || g.t1 - g.t0 < 4 || g.t0 < 480 || g.t1 > 1380) continue;
         const rainy = wet.today.get(d.id)!.segments.some((s) => s.k === 'act' && s.where === 'balcony' && s.t0 < g.t1 && s.t1 > g.t0);
-        if (!rainy) {
+        // Et le membre n'enchaîne pas une autre scène juste après (le pantin doit disparaître à la fin de celle-ci).
+        const next = wet.today.get(d.id)!.segments.some((s) => s.k === 'act' && s.m === g.m && s.t0 < Math.ceil(g.t1) + 2 && s.t1 > g.t1);
+        if (!rainy && !next) {
           found = { id: d.id, m: g.m, t0: g.t0, t1: g.t1 };
           break;
         }

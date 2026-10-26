@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { dayContext, type YMD } from '../../../../src/core/library/city/calendar';
 import { cityFacades } from '../../../../src/core/library/city/facades';
 import { cityDwellings, type Dwelling, type HouseholdType } from '../../../../src/core/library/city/households';
-import { dayDraw, sceneDay, type Presence, type SceneDay } from '../../../../src/core/library/city/scene-day';
+import { dayDraw, sceneDay, type SceneDay } from '../../../../src/core/library/city/scene-day';
 
 const SEED = 7;
 const dry = { precip: 0, snow: false, storm: false };
 const rain = { precip: 1.2, snow: false, storm: false };
 const ds: Dwelling[] = [1, 2, 3].flatMap((s) => cityDwellings(cityFacades(1440, 340, s), s));
 const VAC = [{ name: 'Toussaint', start: '2026-10-17', end: '2026-11-02' }];
+const SUMMER = [{ name: 'Été', start: '2026-07-04', end: '2026-09-01' }];
 const dayOf = (date: YMD, weather = dry, periods = VAC): SceneDay => sceneDay(dayContext(date, periods), weather, SEED);
-// Logement fictif d'un type donné, à balcon (la présence et les scènes ne lisent que le foyer, les pièces et le balcon).
+// Logement fictif d'un type donné, à balcon (le tirage ne lit que le foyer, les pièces et le balcon).
 const ofType = (type: HouseholdType, i: number, extra: Partial<Dwelling['hh']> = {}): Dwelling => {
   const base = ds[i % ds.length]!;
   return { ...base, key: (base.key ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0, balcony: true, hh: { ...base.hh, type, ...extra } };
@@ -63,7 +64,7 @@ describe('tirage du jour', () => {
     const differ = sample.filter((d) => {
       const x = dayDraw(d, a, SEED);
       const y = dayDraw(d, b, SEED);
-      return x.wake !== y.wake || x.presence !== y.presence || JSON.stringify(x.optional) !== JSON.stringify(y.optional);
+      return x.guests !== y.guests || x.offOrder.join() !== y.offOrder.join() || JSON.stringify(x.optional) !== JSON.stringify(y.optional);
     }).length;
     expect(differ).toBeGreaterThanOrEqual(18);
   });
@@ -73,36 +74,17 @@ describe('tirage du jour', () => {
     for (const d of ds.slice(0, 30)) expect(dayDraw(d, day, SEED)).toEqual(dayDraw(d, dayOf({ y: 2026, m: 10, d: 13 }), SEED));
   });
 
-  it('décalages dans les amplitudes, extinctions = permutation des pièces', () => {
+  it('extinctions = permutation des pièces, graine entière, lecture sinon télé', () => {
     const week = dayOf({ y: 2026, m: 10, d: 13 });
-    const sat = dayOf({ y: 2026, m: 10, d: 10 });
-    const armistice = dayOf({ y: 2026, m: 11, d: 11 });
-    expect(armistice.kind).toBe('public-holiday');
-    let wideWake = 0;
-    let wideHoliday = 0;
     for (const d of ds) {
       const w = dayDraw(d, week, SEED);
-      expect(Math.abs(w.wake)).toBeLessThanOrEqual(25);
-      expect(w.back).toBeGreaterThanOrEqual(w.presence === 'late' ? -45 + 60 : -45);
-      expect(w.back).toBeLessThanOrEqual(w.presence === 'late' ? 45 + 150 : 45);
-      expect(Math.abs(w.evening)).toBeLessThanOrEqual(40);
-      expect(w.bed).toBeGreaterThanOrEqual(w.presence === 'guests' ? -35 + 45 : -35);
-      expect(w.bed).toBeLessThanOrEqual(w.presence === 'guests' ? 35 + 90 : 35);
       expect([...w.offOrder].sort()).toEqual([...new Set(d.rooms)].sort());
       expect(Number.isInteger(w.rng) && w.rng >= 0).toBe(true);
       expect(w.optional.read).toBe(!w.optional.tv);
-      const s = dayDraw(d, sat, SEED);
-      expect(Math.abs(s.wake)).toBeLessThanOrEqual(50);
-      if (Math.abs(s.wake) > 25) wideWake++;
-      expect(s.presence).not.toBe('late');
-      expect(Math.abs(dayDraw(d, armistice, SEED).wake)).toBeLessThanOrEqual(50);
-      if (Math.abs(dayDraw(d, armistice, SEED).wake) > 25) wideHoliday++;
     }
-    expect(wideHoliday).toBeGreaterThan(ds.length * 0.3);
-    expect(wideWake).toBeGreaterThan(ds.length * 0.3);
   });
 
-  it('vacances scolaires : plus de familles absentes', () => {
+  it('vacances scolaires : semaine de vacances fournie par l’appelant', () => {
     const holiday = dayOf({ y: 2026, m: 10, d: 20 });
     const school = dayOf({ y: 2026, m: 10, d: 13 });
     expect(holiday.kind).toBe('holiday');
@@ -113,40 +95,20 @@ describe('tirage du jour', () => {
     const satVac = sceneDay(dayContext({ y: 2026, m: 10, d: 24 }, VAC), dry, SEED, false, true);
     expect(satVac.kind).toBe('weekend');
     expect(satVac.holidayWeek).toBe(true);
-    const fams = pool('famille', 200);
-    const share = (day: SceneDay) => fams.filter((d) => dayDraw(d, day, SEED).presence === 'away').length / fams.length;
-    expect(share(holiday)).toBeGreaterThan(0.2);
-    expect(share(satVac)).toBeGreaterThan(0.2);
-    expect(share(school)).toBeLessThan(0.08);
+    // Semaine ISO et mois de son jeudi (été : semaine du lundi 27 juillet).
+    const summer = dayOf({ y: 2026, m: 7, d: 29 }, dry, SUMMER);
+    expect(summer.week).toBe(202631);
+    expect(summer.weekMonth).toBe(7);
   });
 
-  it('absent toute la semaine, week-end compris', () => {
-    const week = (d: number) => sceneDay(dayContext({ y: 2026, m: 10, d }, VAC), dry, SEED, false, true);
-    const mon = week(19);
-    const days = [20, 21, 22, 23, 24, 25].map(week);
-    const all = [...ds.slice(0, 100), ...pool('famille', 100)];
-    expect(all.length).toBe(200);
-    let away = 0;
-    for (const d of all) {
-      const isAway = dayDraw(d, mon, SEED).presence === 'away';
-      if (isAway) away++;
-      for (const day of days) expect(dayDraw(d, day, SEED).presence === 'away').toBe(isAway);
-    }
-    expect(away).toBeGreaterThan(20);
-    // Semaine suivante (lundi 26) : nouveau tirage.
-    const next = sceneDay(dayContext({ y: 2026, m: 10, d: 26 }, VAC), dry, SEED, false, true);
-    expect(all.some((d) => (dayDraw(d, mon, SEED).presence === 'away') !== (dayDraw(d, next, SEED).presence === 'away'))).toBe(true);
-  });
-
-  it('invités surtout le vendredi et le samedi soir, rentrés tard seulement en semaine', () => {
+  it('invités surtout le vendredi et le samedi soir', () => {
     const couples = pool('couple', 600);
-    const count = (day: SceneDay, p: Presence) => couples.filter((d) => dayDraw(d, day, SEED).presence === p).length / couples.length;
+    const share = (day: SceneDay) => couples.filter((d) => dayDraw(d, day, SEED).guests).length / couples.length;
     const fri = dayOf({ y: 2026, m: 10, d: 9 }, dry, []);
     const tue = dayOf({ y: 2026, m: 10, d: 13 }, dry, []);
-    const sun = dayOf({ y: 2026, m: 10, d: 11 }, dry, []);
-    expect(count(fri, 'guests')).toBeGreaterThan(count(tue, 'guests') * 1.6);
-    expect(count(tue, 'late')).toBeGreaterThan(0.06);
-    expect(count(sun, 'late')).toBe(0);
+    expect(share(fri)).toBeGreaterThan(share(tue) * 1.6);
+    expect(share(fri)).toBeGreaterThan(0.1);
+    expect(share(fri)).toBeLessThan(0.2);
   });
 
   it('pluie : ni arrosage ni tapis', () => {
@@ -169,11 +131,11 @@ describe('tirage du jour', () => {
       const w = dayDraw(d, sunny, SEED);
       expect(w.optional.water || w.optional.rug).toBe(false);
     }
-    // La pluie ne change que ce qu'elle coupe : présence et horaires identiques.
+    // La pluie ne change que ce qu'elle coupe : invités, télé et extinctions identiques.
     for (const d of olds.slice(0, 40)) {
       const a = dayDraw(d, wet, SEED);
       const b = dayDraw(d, sunny, SEED);
-      expect([a.presence, a.wake, a.back, a.bed, a.optional.tv]).toEqual([b.presence, b.wake, b.back, b.bed, b.optional.tv]);
+      expect([a.guests, a.optional.tv, a.offOrder, a.rng]).toEqual([b.guests, b.optional.tv, b.offOrder, b.rng]);
     }
   });
 

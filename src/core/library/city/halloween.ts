@@ -1,8 +1,8 @@
 import { hashString, mulberry32 } from '../scene-world';
-import { addDays, holidayWeekOf, weekdayOf, type HolidayPeriod, type YMD } from './calendar';
+import { addDays, weekdayOf, type HolidayPeriod, type YMD } from './calendar';
 import type { Facade } from './facades';
 import type { Dwelling, Room } from './households';
-import { awayInWeek, isoWeek } from './scene-day';
+import { awayState } from './leave-plan';
 import type { Schedule, Segment } from './schedules';
 import { dayNumber } from './shops/hours';
 
@@ -79,10 +79,10 @@ export function halloweenYear(date: YMD): number | null {
   return md >= FIRST.m * 100 + FIRST.d && md <= LAST.m * 100 + LAST.d ? date.y : null;
 }
 
-// Présence du foyer un jour donné : absence de sa semaine ISO, tirée comme dans `dayDraw` (vacances d'après `periods`).
+// Présence du foyer un jour donné : pas parti en vacances ce jour-là (le jour du départ et celui du retour comptent comme
+// présents), comme dans les journées des habitants (person-day.ts, `householdDays`).
 function presentOn(d: Dwelling, date: YMD, seed: number, periods: readonly HolidayPeriod[]): boolean {
-  const { week, thursday } = isoWeek(date, weekdayOf(date));
-  return !awayInWeek(d, seed, week, holidayWeekOf(date, periods), thursday.m);
+  return awayState(d, seed, date, periods).state !== 'away';
 }
 
 // Minute de tendance d'un geste : en journée le week-end et le 1er novembre (férié), après le travail en semaine, le 31 avant la

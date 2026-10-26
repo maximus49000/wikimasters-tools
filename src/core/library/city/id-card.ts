@@ -18,7 +18,7 @@ export type IdCard = {
 };
 
 // Quartiers parisiens d'où viennent les visiteurs (hors champ).
-const QUARTERS = [
+export const QUARTERS = [
   'Belleville', 'Ménilmontant', 'la Goutte-d’Or', 'les Batignolles', 'Montparnasse', 'la Butte-aux-Cailles', 'Charonne',
   'Bercy', 'Picpus', 'la Villette', 'Grenelle', 'Auteuil', 'les Épinettes', 'Plaisance', 'la Chapelle', 'Saint-Ambroise',
 ] as const;
@@ -28,6 +28,15 @@ const NANNY_KID_AGE = 11; // une nounou garde les enfants de moins de 11 ans
 type Rng = () => number;
 const int = (rng: Rng, lo: number, hi: number): number => lo + Math.floor(rng() * (hi - lo + 1));
 const pick = <T>(list: readonly T[], rng: Rng): T => list[Math.floor(rng() * list.length)]!;
+
+// Identité d'un visiteur (ami, famille, livreur…) : quartier puis prénom tirés dans cet ordre sur `rng` ; `taken` : prénoms
+// à éviter (ceux du foyer visité). Retraité dès 65 ans, sinon non-cadre ; `job` est le métier ou la situation affichés.
+export function visitorIdentity(rng: Rng, sex: Sex, age: number, job: string, taken: ReadonlySet<string> = new Set()): Omit<Visitor, 'id'> {
+  const quarter = pick(QUARTERS, rng);
+  const first = firstNameFor(sex, IDENTITY_YEAR - age, rng, taken);
+  const status = age >= 65 ? 'retraite' : 'non-cadre';
+  return { who: { first, sex, age, status, job, contract: null, partner: null, children: [], parents: [] }, quarter, job };
+}
 
 // Nounou d'un foyer : une famille avec un enfant de moins de 11 ans dont les deux parents travaillent en a une 6 fois sur 10
 // (contrat `particulier`, 25–60 ans). Appelée par `householdFor` une fois les identités posées.
