@@ -137,7 +137,7 @@ export function halloweenPlan(dwellings: readonly Dwelling[], facades: readonly 
     const rng = mulberry32(base ^ d.key ^ hashString('dwelling'));
     const rPump = rng(), rBal = rng(), rKind = rng(), rWin = rng(), rDay = rng(), rRem = rng(), rAt = rng(), rRat = rng();
     const v1 = rng(), v2 = rng(), off1 = rng(), off2 = rng(), rSlot = rng();
-    const m = Math.max(0, d.hh.members.findIndex((x) => x.size >= 0.9));
+    const m = Math.max(0, d.hh.members.findIndex((x) => !x.kid));
     const wins = windowsOf(d, f);
     const filant = d.balcony && !d.balconnet && wins.some((w) => w.room === 'salon' && w.kind === 'french');
     // Jours : tirés, puis glissés au premier jour de présence.

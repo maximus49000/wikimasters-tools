@@ -70,14 +70,18 @@ describe('foyers par logement', () => {
     expect(dormers).toBeGreaterThan(0);
   });
 
-  it('famille : au moins un enfant (kid, size 0,62/0,66) ; retraité : size 0,94/0,66 ; coloc : 2 à 3 membres', () => {
+  it('famille : au moins un enfant (kid, size selon l’âge : 0,58 / 0,64 / 0,8 / 0,92) ; retraité : size 0,94/0,66 ; coloc : 2 à 3 membres', () => {
     const seen = new Set<HouseholdType>();
     for (const { hh } of all) {
       seen.add(hh.type);
       if (hh.type === 'famille') {
-        expect(hh.members.some((m) => m.kid && m.size === 0.62)).toBe(true);
+        expect(hh.members.some((m) => m.kid)).toBe(true);
         expect(hh.members.filter((m) => !m.kid).length).toBe(2);
-        for (const m of hh.members) expect(m.kid).toBe(m.size < 0.8);
+        for (const m of hh.members) {
+          if (!m.kid) continue;
+          const a = m.who.age;
+          expect(m.size).toBe(a <= 5 ? 0.58 : a <= 10 ? 0.64 : a <= 14 ? 0.8 : 0.92);
+        }
       } else expect(hh.members.some((m) => m.kid)).toBe(false);
       if (hh.type === 'retraite') {
         expect(hh.members.length).toBeGreaterThanOrEqual(1);

@@ -163,9 +163,9 @@ describe('plan de la ville peinte', () => {
     expect(pairs).toBeGreaterThan(20);
   });
 
-  it('PAINT_VERSION vaut 15 (cache des tranches invalidé)', () => {
+  it('PAINT_VERSION vaut 16 (cache des tranches invalidé)', () => {
     const plan = cityPaintPlan(720, 340, 1);
-    expect(tileKey(plan, 0).startsWith('15|')).toBe(true);
+    expect(tileKey(plan, 0).startsWith('16|')).toBe(true);
   });
 });
 

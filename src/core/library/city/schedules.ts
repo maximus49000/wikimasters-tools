@@ -4,6 +4,8 @@ import { DECOR_SCENE, type DecorTask, type HwKind } from './halloween';
 import type { Dwelling, Room } from './households';
 import type { DayDraw, SceneDay } from './scene-day';
 
+const EARLY_RETIREES = 0.45; // probabilité, chaque jour, qu'un retraité soit debout vers 7 h
+
 // Emplois du temps d'un jour de scène (port de `buildSchedule`, docs/superpowers/maquettes/vie-etages/src/04-emplois.js ;
 // spec 2026-10-19 « vie au-dessus de la rue » §5.1 : imprévisible mais logique). Un emploi du temps est une liste de segments
 // en minutes depuis minuit du jour de scène (0-1800, après minuit = 1440 + x), fonction pure du logement, du jour et du
@@ -330,7 +332,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       break;
     }
     case 'famille': {
-      const kids = ms.filter((i) => hh.members[i]!.size < 0.8), adults = ms.filter((i) => hh.members[i]!.size >= 0.8);
+      const kids = ms.filter((i) => hh.members[i]!.kid), adults = ms.filter((i) => !hh.members[i]!.kid);
       const wake = (off ? 498 : 395) + W * 0.6, out = wake + 60;
       lit(K, wake, off ? out + 15 : out + 30); // en semaine, jusqu'au départ du second parent
       if (!off) lit(L, wake + 9, out + 28);
@@ -394,14 +396,18 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
       break;
     }
     case 'retraite': {
-      const wake = 462 + W * 0.5;
-      lit(K, wake, 546);
+      // Lever tiré chaque jour (aucune habitude figée) : un jour sur deux environ debout vers 7 h (6 h 45 - 7 h 25), sinon
+      // vers 7 h 35 - 8 h en semaine, jusqu'à 9 h le week-end.
+      const rw = mulberry32(draw.rng ^ 0x7e57);
+      const early = rw() < EARLY_RETIREES;
+      const wake = early ? 425 + W * 0.4 : 455 + W * 0.5 + rw() * (off ? 60 : 20);
+      lit(K, wake, Math.max(546, wake + 40));
       openShutters(K, wake + 4, 0, true);
       openShutters(L, wake + 11, 0, true);
       if (C) shut(C, wake + 18, 1, 1.8);
       openCurt(L, wake + 16.5, 0);
       meal(K, wake + 22, 32, ms);
-      lit(L, wake + 10.7, wake + 54); // salon allumé jusqu'à la fin du petit-déjeuner
+      lit(L, wake + 10.7, Math.max(wake + 54, 500)); // salon allumé après le petit-déjeuner (le lève-tôt y lit jusqu'à 8 h 20)
       // journée : arrosage, tapis, regarder la rue
       const tw = 643 + W * 0.8 + (r() - 0.5) * 20, tr = 675 + W * 0.9 + (r() - 0.5) * 20;
       if (opt.water) {
@@ -605,7 +611,7 @@ function compose(d: Dwelling, day: SceneDay, draw: DayDraw, plan: ShowPlan | nul
     if (!has(room)) continue;
     const { dur } = DECOR_SCENE[item.gesture];
     const x: ActExtra = { decor: { id: item.id, kind: item.kind, dx: item.dx }, ...(removing ? { reverse: true } : {}) };
-    const who = [item.m, ...ms.filter((i) => i !== item.m && hh.members[i]!.size >= 0.9)];
+    const who = [item.m, ...ms.filter((i) => i !== item.m && !hh.members[i]!.kid)];
     let s: number | null = null;
     for (const shift of DECOR_TRIES) {
       for (const m of who) {
@@ -704,7 +710,7 @@ export function buildSchedule(d: Dwelling, day: SceneDay, draw: DayDraw, decor: 
     const awake = (d.hh.type !== 'famille' && d.hh.type !== 'retraite') || res.bed > show.start;
     const a = show.start - 2, b = show.end + 1;
     // Adultes d'abord (trois places au balcon) ; les enfants déjà couchés ne regardent pas.
-    const kid = (m: number) => d.hh.members[m]!.size < 0.8;
+    const kid = (m: number) => d.hh.members[m]!.kid;
     const who = d.hh.members.map((_, i) => i)
       .filter((m) => !res.gone.some(([g, from, to]) => g === m && from - d.climb < b && to + d.climb > a))
       .filter((m) => !kid(m) || res.kidBed > show.start)

@@ -5,12 +5,13 @@ import { shopFrame, shopSlotsFor } from '../../../../src/core/library/city/shops
 import { cityPaintPlan } from '../../../../src/core/library/paint/city-plan';
 import { stageXs } from '../../../../src/core/library/city/install';
 import { createTraffic, streetFixtures } from '../../../../src/core/library/city/traffic/engine';
-import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_MIN_GAP, PIT_STAGE_CLEAR, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
+import { PIT_BUS_STOP_CLEAR, PIT_CROSSING_CLEAR, PIT_HALF, PIT_MIN_GAP, PIT_PITCH, PIT_REPLANT, PIT_SEARCH, PIT_STAGE_CLEAR, pitFootY, pitTopY, rueCuts, rueSlots, sectionOf, streetVerdure, type RueBox, type RueItem, type RuePit, type RuePots } from '../../../../src/core/library/paint/rue-verte-plan';
 import { hashString } from '../../../../src/core/library/scene-world';
 import { TILE, tileCount, tileItems } from '../../../../src/core/library/paint/city-painter';
 import { fondMoment, sweptKey, SUNNY } from '../../../../src/core/library/paint/fond-time';
-import { treeModel } from '../../../../src/core/library/paint/hill-trees';
-import { LEAF_BAND, paintRueVerdure, rueLeafCount, rueSpan, rueTreeModel } from '../../../../src/core/library/paint/rue-verte-painter';
+import { LEAF_BAND, paintRueVerdure, pitTopOf, rueLeafCount, rueSpan } from '../../../../src/core/library/paint/rue-verte-painter';
+import { rueTreeOf, rueYoungModel } from '../../../../src/core/library/paint/rue-sprites';
+import { rueTreeModelV5 } from '../../../../src/core/library/paint/rue-trees';
 import { recordingCtx } from './recording-ctx';
 
 const H = 340;
@@ -79,10 +80,12 @@ describe('verdure de la rue (streetVerdure)', () => {
         const { rue: _omit, ...rest } = plan;
         expect(streetVerdure(rest, width)).toEqual(streetVerdure(rest, width));
         expect(streetVerdure(rest, width)).toEqual(rue);
-        // Un arbre tous les 48-72 px (densifié le 2026-10-24, au lieu de 70-110) sur la rue hors des abords sans arbre, moins
-        // les pas sautés devant les portes et les lampadaires : plancher d'une fosse (vides comprises) par 85 px de longueur
-        // libre, arrondi à l'entier inférieur (mesuré : une par 76 à 103 px ; l'ancien pas donnait une par 115 à 180 px).
-        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((width - cleared) / 85));
+        // Boulevard (2026-10-24, notes §1 variante A) : une place tous les 60 px sur la rue hors des abords sans arbre, moins
+        // les places sautées devant les entrées, portes de local et lampadaires (une porte tous les 30 px environ dans une rue
+        // de locaux ; recherche à ± 20, porte vitrée contre le fût seulement) : plancher d'une fosse (vides comprises) par
+        // 90 px de longueur libre, arrondi à l'entier inférieur (mesuré sur les graines 1-40 avec l écart minimal de 34 px : une par 68-70 px en moyenne, plancher tenu avec 1 fosse de marge au
+        // pire ; l ancien pas de 48-72 px à ± 21 donnait une par 76 à 103 px).
+        expect(pits.length).toBeGreaterThanOrEqual(Math.floor((width - cleared) / 90));
       });
 
       it(`${tag} : fosses hors des entrées, portes des locaux, lampadaires, arbres et mobilier`, () => {
@@ -95,8 +98,8 @@ describe('verdure de la rue (streetVerdure)', () => {
           // Entrée (span ± 4 px) contre la grille réelle de la fosse.
           for (const d of doorSpans) expect(overlap(p.x0, p.x1, d.x0, d.x1)).toBe(false);
           for (const l of lamps) expect(overlap(a, b, l - 9, l + 9)).toBe(false);
-          // Porte vitrée ± 4 px contre la grille réelle de la fosse (x0 … x1). Le mobilier, côté façade, ne compte pas ici.
-          for (const d of shopDoors) expect(overlap(p.x0, p.x1, d.x - 4, d.x + d.w + 4)).toBe(false);
+          // Porte vitrée ± 4 px contre le fût seulement (la fosse peut passer devant). Le mobilier, côté façade, ne compte pas ici.
+          for (const d of shopDoors) expect(p.x > d.x - 4 && p.x < d.x + d.w + 4).toBe(false);
         }
         for (const v of rue.filter((v): v is RueBox => v.kind === 'bac')) {
           for (const d of shopDoors) expect(overlap(v.x0, v.x1, d.x - 4, d.x + d.w + 4)).toBe(false);
@@ -127,16 +130,73 @@ describe('verdure de la rue (streetVerdure)', () => {
         for (const v of rue.filter((v): v is RuePots => v.kind === 'pots')) expect(plan.doors.some((d) => d.x === v.x)).toBe(true);
       });
 
-      // Pas de 48-72 px, centre libre cherché à ± 21 px, jamais deux fosses à moins de PIT_MIN_GAP (34 px) : au moins la
-      // moitié des écarts entre 40 et 90 px (mesuré : 50 % au pire à 720 px, 59 à 81 % ailleurs ; le reste : essai décalé
-      // loin, ou pas sauté devant une suite de portes).
-      it(`${tag} : fosses dans l'ordre, au moins ${PIT_MIN_GAP} px, la moitié des écarts entre 40 et 90 px`, () => {
-        const all = pits.slice(1).map((p, i) => p.x - pits[i]!.x);
-        for (const g of all) expect(g).toBeGreaterThanOrEqual(PIT_MIN_GAP);
-        // Écarts de part et d'autre d'un abord sans arbre (placette de la scène, passage, arrêt) : hors de la règle du pas.
-        const gaps = pits.slice(1).filter((p, i) => !zones.some((z) => z.x - z.half < p.x && z.x + z.half > pits[i]!.x)).map((p) => p.x - pits[pits.indexOf(p) - 1]!.x);
-        const inRange = gaps.filter((g) => g >= 40 && g <= 90).length;
-        expect(inRange).toBeGreaterThanOrEqual(0.5 * gaps.length);
+      // Boulevard (notes §1, variante A) : une place tous les 60 px, centre cherché à ± 20 px, sinon la place reste vide.
+      it(`${tag} : pas constant de ${PIT_PITCH} px chaque fosse à ± ${PIT_SEARCH} px de sa place, deux fosses à ${PIT_MIN_GAP} px au moins l'une de l'autre`, () => {
+        const slots = rueSlots(seed, width);
+        for (let i = 1; i < pits.length; i++) {
+          const g = pits[i]!.x - pits[i - 1]!.x;
+          expect(g).toBeGreaterThanOrEqual(PIT_MIN_GAP);
+          expect(pits[i]!.slot).toBeGreaterThan(pits[i - 1]!.slot);
+        }
+        for (const p of pits) expect(Math.abs(p.x - slots[p.slot]!)).toBeLessThanOrEqual(PIT_SEARCH);
+        // Au moins une place sautée dans la rue (portes, lampadaires, abords) : sinon le test des voisins ne prouve rien.
+        if (width >= 1440) expect(pits.length).toBeLessThan(slots.length);
+      });
+
+      it(`${tag} : une place sautée ne décale pas ses voisins (mêmes fosses, mêmes tirages, sans les fosses voisines)`, () => {
+        // Chaque fosse ne dépend que de sa place : forcer une place vide ne bouge aucune autre fosse (sauf la suivante, qui peut
+        // cesser de céder à la fosse retirée), et ses tirages sont ceux de sa place, pas de son rang dans la rue.
+        const { rue: _omit, ...rest } = plan;
+        const victim = pits[Math.floor(pits.length / 2)]!.slot;
+        const without = streetVerdure(rest, width, new Set([victim])).filter((v): v is RuePit => v.kind === 'pit');
+        let compared = 0;
+        for (const p of pits) {
+          if (p.slot === victim || p.slot === victim + 1 || p.slot === victim + 2) continue;
+          const same = without.find((q) => q.slot === p.slot);
+          expect(same).toBeDefined();
+          expect(same!.x).toBe(p.x);
+          expect([same!.h, same!.r, same!.lean, same!.young, same!.empty]).toEqual([p.h, p.r, p.lean, p.young, p.empty]);
+          compared++;
+        }
+        expect(compared).toBeGreaterThan(0);
+        expect(without.some((q) => q.slot === victim)).toBe(false);
+      });
+
+      it(`${tag} : une essence par tronçon (coupé au passage piéton et à l'arrêt de bus), même âge, 1 replantation sur ${PIT_REPLANT} places`, () => {
+        const cuts = rueCuts(width, seed, plan.unit);
+        const bySection = new Map<number, Set<string>>();
+        for (const p of pits) {
+          expect(p.section).toBe(sectionOf(cuts, p.x));
+          bySection.set(p.section, (bySection.get(p.section) ?? new Set()).add(p.species));
+          expect(['platane', 'tilleul', 'robinier', 'frene', 'cerisier']).toContain(p.species);
+          if (p.young) {
+            expect(p.h).toBe(13 * plan.unit);
+            expect(p.r).toBe(4.5 * plan.unit);
+          } else {
+            expect(Math.abs(p.h - 42 * plan.unit)).toBeLessThanOrEqual(3 * plan.unit + 1e-9);
+            expect(Math.abs(p.r - 20 * plan.unit)).toBeLessThanOrEqual(1.5 * plan.unit + 1e-9);
+          }
+          expect(p.young && p.empty).toBe(false);
+          expect(p.finish).toBe(p.empty ? 'terre' : p.young ? 'herbe' : 'grille');
+        }
+        for (const s of bySection.values()) expect(s.size).toBe(1);
+        // Au plus une replantation (jeune ou vide) par dizaine de places consécutives.
+        const again = pits.filter((p) => p.young || p.empty).map((p) => p.slot);
+        for (let i = 1; i < again.length; i++) expect(again[i]! - again[i - 1]!).toBeGreaterThanOrEqual(PIT_REPLANT);
+        expect(new Set(again.map((s) => s % PIT_REPLANT)).size).toBeLessThanOrEqual(1);
+      });
+
+      it(`${tag} : pied du fût au centre du carré de terre (walkY + 0,6 → curb − 0,4)`, () => {
+        for (const p of pits) {
+          expect(p.y).toBeCloseTo(pitFootY(plan.curb, plan.unit), 9);
+          expect(pitTopY(plan.curb, plan.unit)).toBeGreaterThan(m.walkY);
+          expect(p.x0).toBe(p.x - PIT_HALF);
+          expect(p.x1).toBe(p.x + PIT_HALF);
+          expect(p.x0).toBeGreaterThanOrEqual(2);
+          expect(p.x1).toBeLessThanOrEqual(width - 2);
+        }
+        expect(pitFootY(plan.curb, plan.unit)).toBeCloseTo(255.4, 1);
+        expect(pitTopY(plan.curb, plan.unit)).toBeCloseTo(252.6, 6);
       });
 
       it(`${tag} : rien hors de [0, largeur]`, () => {
@@ -163,68 +223,98 @@ describe('verdure de la rue : peinture (paintRueVerdure)', () => {
     return fondMoment({ y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() }, 15 * 60, SUNNY);
   };
 
-  it('365 jours : squelette des arbres de rue fixe (trunkBox et span identiques chaque jour), graines 1, 7, 42', () => {
+  it('365 jours : squelette des arbres de rue fixe (axes V5 / segments des jeunes identiques chaque jour), graines 1, 7, 42', () => {
     for (const seed of [1, 7, 42]) {
       const plan = cityPaintPlan(1440, H, seed);
       const pits = plan.rue.filter((v): v is RuePit => v.kind === 'pit' && !v.empty);
       expect(pits.length).toBeGreaterThan(5);
-      const ref = pits.map((v) => JSON.stringify([rueTreeModel(v).trunkBox, rueTreeModel(v).span]));
+      const sig = (v: RuePit): number => {
+        const tr = rueTreeOf(v);
+        return hashString(JSON.stringify(tr.young ? tr.m.segs : tr.m.axes));
+      };
+      const ref = pits.map(sig);
       // Le modèle hors cache est le même (rien ne dépend de l'ordre des appels).
-      const v0 = pits[0]!;
-      const fresh = treeModel('rue' + Math.round(v0.x), v0.species, { x: v0.x, y: v0.y }, v0.h, v0.r * 2, v0.young ? 3 : 4, v0.r * (v0.young ? 0.42 : 0.3), v0.young ? 20 : 60, v0.young ? 0.7 : 1.3 + v0.r * 0.07);
-      expect(JSON.stringify([fresh.trunkBox, fresh.span])).toBe(ref[0]);
-      for (let doy = 0; doy < 365; doy++) {
-        const D = dayOf(doy);
-        paintRueVerdure(recordingCtx(), plan, plan.rue, D, 0, 1440);
-        expect(pits.map((v) => JSON.stringify([rueTreeModel(v).trunkBox, rueTreeModel(v).span]))).toEqual(ref);
+      for (const v of pits) expect(hashString(JSON.stringify(v.young ? rueYoungModel(v).segs : rueTreeModelV5(v).axes))).toBe(sig(v));
+      for (let doy = 0; doy < 365; doy += 3) {
+        paintRueVerdure(recordingCtx(), plan, plan.rue, dayOf(doy), 0, 1440);
+        expect(pits.map(sig)).toEqual(ref);
       }
     }
   });
 
-  it('jeune arbre : fût de 0,7 px, 3 niveaux, 20 touffes au plus ; adulte : fût de 1,3 + 0,07 r', () => {
+  it('jeune arbre (ancien modèle, comme la maquette) : fût de 0,7 px, 20 touffes au plus ; adulte : modèle V5', () => {
     const plan = cityPaintPlan(2880, H, 7);
     const pits = plan.rue.filter((v): v is RuePit => v.kind === 'pit' && !v.empty);
+    expect(pits.some((v) => v.young)).toBe(true);
     for (const v of pits) {
-      const m = rueTreeModel(v);
-      expect(m.w0).toBeCloseTo(v.young ? 0.7 : 1.3 + v.r * 0.07, 6);
-      expect(m.tufts.length).toBeLessThanOrEqual(v.young ? 20 : 60);
-      expect(m.foot).toEqual({ x: v.x, y: v.y });
+      const tr = rueTreeOf(v);
+      expect(tr.young).toBe(v.young);
+      if (tr.young) {
+        expect(tr.m.w0).toBeCloseTo(0.7, 6);
+        expect(tr.m.tufts.length).toBeLessThanOrEqual(20);
+      } else expect(tr.m.axes[0]!.level).toBe(1);
+      expect(tr.m.foot).toEqual({ x: v.x, y: v.y });
     }
   });
 
-  it('fosse vide : la grille et la terre seulement (ni tronc ni feuilles) ; fosse plantée : rien au-dessus du pied fleuri', () => {
+  it('fosse vide : le carré de terre seulement (bordure + terre) ; fosse plantée : rien au-dessus du carré ; jamais de grille dans la tranche', () => {
     let empties = 0;
+    let planted = 0;
     for (const seed of [1, 7, 42]) {
       const plan = cityPaintPlan(2880, H, seed);
       for (const v of plan.rue) {
         if (v.kind !== 'pit') continue;
+        const top = pitTopOf(v);
         // Des jours sans feuilles mortes au sol (tapis global, testé à part), dont un jour de pluie (flaque).
         for (const D of [july, dayOf(100), { ...dayOf(200), meteo: { cloud: 0.9, precip: 0.6, wind: 0.4, snow: false } }]) {
           const ctx = recordingCtx();
           paintRueVerdure(ctx, plan, [v], D, v.x - 30, v.x + 30);
-          const own = ctx.points;
+          // Terre sous chaque fosse : fond #5A4634 sur le carré de 14 px.
+          const earth = ctx.ops.findIndex((o) => o.op === 'fillRect' && Math.abs(o.args[0]! - (v.x - 7)) < 1e-9 && o.args[2] === 14 && Math.abs(o.args[1]! - top) < 1e-9);
+          expect(earth).toBeGreaterThanOrEqual(0);
+          // Plus de grille sur le béton : aucun trait, un seul rectangle encré (la bordure), aucun rectangle de l'ancienne grille
+          // (fond #4A4238 de 8 × 3,2).
+          expect(ctx.ops.filter((o) => o.op === 'stroke')).toEqual([]);
+          const inked = ctx.ops.filter((o) => o.op === 'strokeRect');
+          expect(inked).toHaveLength(1);
+          expect(inked[0]!.args.map((n) => Math.round(n * 1000) / 1000)).toEqual([Math.round((v.x - 7.8) * 1000) / 1000, Math.round((top - 0.8) * 1000) / 1000, 15.6, 6.8]);
+          let fi = 0;
+          for (const o of ctx.ops) {
+            if (o.op !== 'fill' && o.op !== 'fillRect') continue;
+            const color = ctx.fills[fi++];
+            if (o.op === 'fillRect') {
+              expect(color).not.toBe('#4A4238');
+              expect(o.args[2] === 8 && Math.abs(o.args[3]! - 3.2) < 1e-9).toBe(false);
+            }
+          }
           if (v.empty) {
             empties++;
-            for (const [x, y] of own) {
-              expect(Math.abs(x - v.x)).toBeLessThanOrEqual(4 + 1e-6);
-              expect(Math.abs(y - v.y)).toBeLessThanOrEqual(1.6 + 1e-6);
+            for (const [x, y] of ctx.points) {
+              expect(Math.abs(x - v.x)).toBeLessThanOrEqual(7.8 + 1e-6);
+              expect(y).toBeGreaterThanOrEqual(top - 0.8 - 1e-6);
+              expect(y).toBeLessThanOrEqual(top + 5.4 + 0.6 + 1e-6);
             }
-            expect(ctx.ops.filter((o) => o.op === 'arc').length).toBe(0);
-          } else for (const [, y] of own) expect(y).toBeGreaterThanOrEqual(v.y - 3.2);
+            expect(ctx.ops.filter((o) => o.op === 'arc' || o.op === 'ellipse').length).toBe(0);
+          } else {
+            planted++;
+            for (const [, y] of ctx.points) expect(y).toBeGreaterThanOrEqual(top - 0.8 - 1e-6);
+          }
         }
       }
     }
     expect(empties).toBeGreaterThan(0);
+    expect(planted).toBeGreaterThan(0);
   });
 
   const dates = (): ReturnType<typeof fondMoment>[] => [july, dayOf(20), { ...dayOf(40), meteo: { cloud: 1, precip: 0.5, wind: 0.3, snow: true } }, dayOf(110), dayOf(200), { ...dayOf(250), meteo: { cloud: 0.9, precip: 0.6, wind: 0.4, snow: false } }];
   const BOX_SHADOW = 'rgba(70,50,130,0.2)';
 
-  it('couloir des passants (doorY → walkY) : seulement l’ombre portée des bacs et parterres (au sol), jamais un objet', () => {
+  it('couloir des passants (doorY → walkY) : seulement l’ombre portée des bacs et parterres et le rebord du carré de terre (au sol), jamais un objet', () => {
     const m = cityMetrics(H);
     for (const seed of [1, 7, 42]) {
       const plan = cityPaintPlan(2880, H, seed);
       const boxes = plan.rue.filter((v): v is RueBox => v.kind === 'bac' || v.kind === 'parterre');
+      const pitsAll = plan.rue.filter((v): v is RuePit => v.kind === 'pit');
       for (const D of dates()) {
         // Sans le tapis de feuilles mortes (posé à plat sur tout le trottoir, sous les pieds des passants).
         const ctx = recordingCtx();
@@ -232,6 +322,8 @@ describe('verdure de la rue : peinture (paintRueVerdure)', () => {
         expect(rueLeafCount(plan, D)).toBe(0);
         for (const [x, y] of ctx.points) {
           if (y <= m.doorY || y >= m.walkY) continue;
+          // Bordure de pierre du carré (0,8 px au-dessus de la terre, à plat sur le trottoir, comme la maquette).
+          if (pitsAll.some((v) => Math.abs(x - v.x) <= 7.8 + 1e-6 && y >= pitTopOf(v) - 0.8 - 1e-6)) continue;
           // Ombre d'un bac ou d'un parterre : bande de 1,2 px sous son pied, décalée de 1 à 2,5 px à droite.
           expect(y).toBeLessThanOrEqual(m.doorY - 0.1 + 1.2 + 1e-6);
           expect(boxes.some((b) => x >= b.x0 + 1 - 1e-6 && x <= b.x1 + 2.5 + 1e-6)).toBe(true);
@@ -311,8 +403,179 @@ describe('verdure de la rue : peinture (paintRueVerdure)', () => {
       }
       const ctx = recordingCtx();
       paintRueVerdure(ctx, plan, it, D, t * TILE, Math.min(1080, (t + 1) * TILE));
-      // Toute fosse dont l'étendue touche la tranche y est peinte (grille : fillRect de 8 × 3,2).
-      for (const v of it) if (v.kind === 'pit') expect(ctx.ops.some((o) => o.op === 'fillRect' && o.args[0] === v.x - 4 && o.args[2] === 8)).toBe(true);
+      // Toute fosse dont l'étendue touche la tranche y est peinte (bordure : fillRect de 15,6 px de large).
+      for (const v of it) if (v.kind === 'pit') expect(ctx.ops.some((o) => o.op === 'fillRect' && Math.abs(o.args[0]! - (v.x - 7.8)) < 1e-9 && Math.abs(o.args[2]! - 15.6) < 1e-9)).toBe(true);
     }
+  });
+});
+
+// ── Couches cuites des arbres de rue (tâche 3 des arbres naturels) : couche fixe = tronc + lèvre + finition, couches au vent =
+// bois et nuages d'une charpentière (touffes seules pour les jeunes), boîte des sprites, vent par cisaillement. ──
+import { RUE_SHEAR_MAX, paintRueLayer, rueLayers, rueSpriteBox, rueTreePose } from '../../../../src/core/library/paint/rue-sprites';
+import { paintRueClouds, paintRueSkeleton, rueCloudItems, rueLayerOfMass, rueTreeKey, type RueAxis } from '../../../../src/core/library/paint/rue-trees';
+import { paintPitFront } from '../../../../src/core/library/paint/rue-verte-painter';
+import { paintLeaves } from '../../../../src/core/library/paint/hill-trees';
+import { foliageOf } from '../../../../src/core/library/paint/fond-time';
+import { windOf } from '../../../../src/core/library/paint/fond-vent';
+
+describe('arbres de rue : couches cuites (rue-sprites)', () => {
+  const day = (m: number, d: number, meteo: Partial<ReturnType<typeof fondMoment>['meteo']> = {}) => fondMoment({ y: 2026, m, d }, 15 * 60, { ...SUNNY, ...meteo });
+  const plans = [1, 7, 42].map((seed) => cityPaintPlan(2880, H, seed));
+  const planted = plans.flatMap((p) => p.rue.filter((v): v is RuePit => v.kind === 'pit' && !v.empty));
+  const adults = planted.filter((v) => !v.young);
+  const young = planted.filter((v) => v.young);
+  const isLip = (o: { op: string; args: number[] }, v: RuePit): boolean => o.op === 'ellipse' && o.args[0] === v.x && Math.abs(o.args[1]! - (v.y + 0.9)) < 1e-9 && o.args[2] === 3.6 && o.args[3] === 0.9;
+  const opsOf = (paint: (ctx: ReturnType<typeof recordingCtx>) => void) => {
+    const ctx = recordingCtx();
+    paint(ctx);
+    return ctx.ops;
+  };
+
+  it('il y a des adultes et des jeunes', () => {
+    expect(adults.length).toBeGreaterThan(20);
+    expect(young.length).toBeGreaterThan(0);
+  });
+
+  it('couches : ombre, couche fixe, puis une couche par charpentière', () => {
+    for (const v of planted) {
+      const tr = rueTreeOf(v);
+      const layers = rueLayers(tr);
+      expect(layers.slice(0, 2)).toEqual(['shadow', 'trunk']);
+      const n = tr.young ? tr.m.segs.filter((sg) => sg.lv === 1).length : tr.m.masses;
+      expect(layers.slice(2)).toEqual(Array.from({ length: Math.min(6, Math.max(1, n)) }, (_, k) => `c${k}`));
+    }
+  });
+
+  it('couche fixe : la lèvre de terre juste après le dernier trait du fût, puis la finition (grille des adultes, herbe des jeunes)', () => {
+    const D = day(1, 15, { snow: true, cloud: 1 });
+    for (const v of [...adults.slice(0, 30), ...young]) {
+      const tr = rueTreeOf(v);
+      const ops = opsOf((ctx) => paintRueLayer(ctx, v, 'trunk', D));
+      const front = opsOf((ctx) => paintPitFront(ctx, v));
+      // Le devant du carré est la fin exacte de la couche ; avant lui, tout le dessin du fût.
+      expect(ops.slice(ops.length - front.length)).toEqual(front);
+      const lip = ops.findIndex((o) => isLip(o, v));
+      expect(lip).toBe(ops.length - front.length + 1);
+      if (!tr.young) {
+        const skel = opsOf((ctx) => paintRueSkeleton(ctx, tr.m, { wet: 0, snow: true, layer: 'fixed' }));
+        expect(skel.length).toBeGreaterThan(0);
+        expect(ops.slice(0, skel.length)).toEqual(skel);
+        expect(skel.length).toBe(ops.length - front.length);
+      } else expect(ops.slice(0, lip).some((o) => o.op === 'fill')).toBe(true);
+      const after = ops.slice(lip + 1);
+      if (v.finish === 'grille') {
+        expect(v.young).toBe(false);
+        expect(after.some((o) => o.op === 'ellipse' && o.args[2] === 6.4 && Math.abs(o.args[3]! - 6.4 * 0.38) < 1e-9)).toBe(true);
+      } else {
+        expect(v.finish).toBe('herbe');
+        expect(v.young).toBe(true);
+        expect(after.some((o) => o.op === 'arc' && o.args[2] === 0.55)).toBe(true);
+      }
+    }
+  });
+
+  it('adultes : couche fixe = le tronc seul ; couche k = bois (niveaux ≥ 2) et nuages de sa charpentière ; ensemble, tout l’arbre', () => {
+    for (const D of [day(7, 7), day(11, 5, { precip: 0.5 }), day(4, 1)]) {
+      const wet = D.meteo.precip > 0 ? 1 : 0;
+      for (const v of adults.slice(0, 25)) {
+        const tr = rueTreeOf(v);
+        if (tr.young) continue;
+        let clouds = 0;
+        const seen = new Set<number>();
+        for (const l of rueLayers(tr).slice(2)) {
+          const k = Number(l.slice(1));
+          const got = opsOf((ctx) => paintRueLayer(ctx, v, l, D));
+          const want = opsOf((ctx) => {
+            paintRueSkeleton(ctx, tr.m, { wet, snow: false, layer: k });
+            paintRueClouds(ctx, tr.m, D, { mass: k, wet });
+          });
+          expect(got).toEqual(want);
+          clouds += rueCloudItems(tr.m, D, { mass: k }).length;
+          tr.m.axes.forEach((a, i) => a.level >= 2 && rueLayerOfMass(a.mass) === k && seen.add(i));
+        }
+        expect(clouds).toBe(rueCloudItems(tr.m, D).length);
+        // Chaque axe de niveau ≥ 2 dans exactement une couche de charpentière ; le tronc dans la couche fixe.
+        expect(seen.size).toBe(tr.m.axes.filter((a) => a.level >= 2).length);
+        expect(tr.m.axes.filter((a) => a.level === 1)).toHaveLength(1);
+      }
+    }
+  });
+
+  it('jeunes : couches au vent = leurs touffes seules (bois dans la couche fixe)', () => {
+    const D = day(7, 7);
+    for (const v of young) {
+      const tr = rueTreeOf(v);
+      if (!tr.young) continue;
+      const f = foliageOf(D, rueTreeKey(v), v.species);
+      for (const l of rueLayers(tr).slice(2)) {
+        const want = opsOf((ctx) => paintLeaves(ctx, tr.m, f, D, 0, { which: Number(l.slice(1)), wet: 0 }));
+        expect(opsOf((ctx) => paintRueLayer(ctx, v, l, D))).toEqual(want);
+      }
+    }
+  });
+
+  it('boîte des sprites : tout ce que les couches peignent y tient, couches de charpentière cisaillées au maximum comprises', () => {
+    const dates = [day(7, 7), day(11, 5, { precip: 0.6 }), day(1, 15, { snow: true, cloud: 1 }), day(4, 1), day(10, 20)];
+    for (const v of [...adults.slice(0, 60), ...young]) {
+      const b = rueSpriteBox(v);
+      const tr = rueTreeOf(v);
+      const y0s = rueTreePose(v, tr, 0, windOf({ cloud: 0, precip: 0, wind: 0, snow: false }, false)).masses.map((p) => p.y0);
+      for (const D of dates)
+        rueLayers(tr).forEach((l, li) => {
+          const ctx = recordingCtx();
+          paintRueLayer(ctx, v, l, D);
+          const y0 = l[0] === 'c' ? y0s[li - 2]! : null;
+          for (const sh of y0 === null ? [0] : [-RUE_SHEAR_MAX, RUE_SHEAR_MAX]) {
+            const out = ctx.points.filter(([x, y]) => {
+              const X = y0 === null ? x : x + sh * (y - y0);
+              return X < b.x - 1e-6 || X > b.x + b.w + 1e-6 || y < b.y - 1e-6 || y > b.y + b.h + 1e-6;
+            });
+            expect(out, `${v.x} ${l}`).toEqual([]);
+          }
+        });
+    }
+  });
+
+  it('vent (tempête sous la pluie, vent 0,5) : le haut bouge de plusieurs px, le pied des charpentières reste au tronc, chaque nuage reste sur son axe', () => {
+    const W = 2880;
+    const dist = (a: RueAxis, tf: (x: number, y: number) => [number, number], x: number, y: number): number => {
+      let best = Infinity;
+      const pts = a.pts.map(([px, py]) => tf(px, py));
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const [x0, y0] = pts[i]!;
+        const [x1, y1] = pts[i + 1]!;
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        const t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy || 1)));
+        best = Math.min(best, Math.hypot(x - x0 - t * dx, y - y0 - t * dy));
+      }
+      return best;
+    };
+    let topMax = 0;
+    for (const w of [windOf({ cloud: 1, precip: 1, wind: 1, snow: false }, true), windOf({ cloud: 0, precip: 0, wind: 0.5, snow: false }, false)]) {
+      for (const v of adults.slice(0, 30)) {
+        const tr = rueTreeOf(v);
+        if (tr.young) continue;
+        for (let t = 0; t < 40; t += 1.3) {
+          const p = rueTreePose(v, tr, 1000 + t, w, W);
+          p.masses.forEach((mv, k) => {
+            expect(Math.abs(mv.c)).toBeLessThanOrEqual(RUE_SHEAR_MAX + 1e-12);
+            // Matrice (1 0 c 1 e 0) : le pied (y = y0) ne bouge pas.
+            const tf = (x: number, y: number): [number, number] => [x + mv.c * y + mv.e, y];
+            expect(Math.abs(tf(0, mv.y0)[0])).toBeLessThan(1e-9);
+            const top = Math.min(...tr.m.axes.filter((a) => rueLayerOfMass(a.mass) === k && a.level >= 2).flatMap((a) => a.pts.map((q) => q[1])));
+            topMax = Math.max(topMax, Math.abs(mv.c * (top - mv.y0)));
+            // Après la même transformation, chaque nuage reste à moins de 1,3 r de son axe porteur (borne du modèle au repos).
+            for (const c of tr.m.clouds) {
+              if (rueLayerOfMass(c.mass) !== k) continue;
+              const [cx, cy] = tf(c.x, c.y);
+              expect(dist(tr.m.axes[c.axis]!, tf, cx, cy)).toBeLessThanOrEqual(1.3 * c.r + 1e-9);
+            }
+          });
+        }
+      }
+    }
+    // Comme les grappes d'avant : le haut des couronnes part de plusieurs px par grand vent.
+    expect(topMax).toBeGreaterThan(4);
   });
 });

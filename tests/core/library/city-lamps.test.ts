@@ -37,9 +37,16 @@ describe('lampLit', () => {
     expect(lampLit(late, 5, 0)).toBe(true); // 0 h 05
     expect(lampLit(late, 20, 0)).toBe(false); // 0 h 20
   });
-  it('reste éteint jusqu’à l’aube', () => {
+  it('reste éteint au cœur de la nuit', () => {
     expect(lampLit(late, h(3), 0)).toBe(false);
     expect(lampLit(early, h(5), 0.2)).toBe(false);
+    expect(lampLit(late, h(6) + 5, 0)).toBe(false); // se rallume à 6 h 10
+  });
+  it('se rallume vers 6 h jusqu’au lever du jour', () => {
+    expect(lampLit(early, h(6) - 5, 0)).toBe(true); // 5 h 55 (6 h − 10)
+    expect(lampLit(late, h(6) + 15, 0.1)).toBe(true);
+    expect(lampLit(late, h(7) + 50, 0.44)).toBe(true);
+    expect(lampLit(late, h(7) + 50, 0.45)).toBe(false); // le jour est levé
   });
   it('est toujours allumé en mode nuit forcée', () => {
     expect(lampLit(early, 0, 0, true)).toBe(true);
