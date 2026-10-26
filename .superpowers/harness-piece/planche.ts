@@ -21,6 +21,8 @@ const CELL = Math.max(60, Number(q.get('cell') ?? 190) || 190);
 const ANGLES = (q.get('angles') ?? '0,1,2,3,4,5,6,7').split(',').map(Number).filter((a): a is Angle => a >= 0 && a <= 7);
 const SHOW = CELL > 190 ? 4 : 1.5; // px écran par px de pièce (grande case : jusqu'à ×4)
 // `rustle=0..1` : bruissement du feuillage des plantes (état de vie), 0 au repos.
+// `lit=0` : lampes éteintes (allumées par défaut).
+const LIT = q.get('lit') !== '0';
 const LIFE = { ...REST_LIFE, rustle: Math.max(0, Math.min(1, Number(q.get('rustle') ?? 0) || 0)) };
 
 const out = document.getElementById('out')!;
@@ -43,7 +45,7 @@ void (async () => {
     name.style.cssText = 'padding:2px 6px;font-weight:bold;white-space:nowrap';
     for (const angle of ANGLES) {
       const frame = spriteFrameOf(FURNITURE_MODELS[kind], angle, FACE_CAMERA);
-      const parts = celPartsOf(kind, lookOf(style), LIFE, { lit: true });
+      const parts = celPartsOf(kind, lookOf(style), LIFE, { lit: LIT });
       const job = spriteJob(parts, { cam: frame.cam, yaw: yawOf(angle), side: 'left', px: res, ss: 2 }, frame.anchor);
       while (!job.step(8)) await new Promise((r) => setTimeout(r));
       const sp = job.finish();

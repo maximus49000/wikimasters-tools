@@ -67,7 +67,10 @@ describe('rangements, tables et tapis en cellulo', () => {
     expect(plain.every((P) => P.noshadow)).toBe(true);
     expect(Math.max(...plain.flatMap((P) => P.m.v.map((v) => v[1])))).toBeLessThanOrEqual(3);
     const withFringes = celPartsOf('rug', fringed, REST_LIFE);
-    expect(withFringes.length).toBeGreaterThan(plain.length);
+    // Les mèches font une seule pièce avec l'ourlet et les lisières (tâche 10 : pas d'encre entre elles) : pas plus de pièces.
+    expect(withFringes.length).toBe(plain.length);
+    const spanX = (parts: typeof plain) => Math.max(...parts.flatMap((P) => P.m.v.map((v) => Math.abs(v[0]))));
+    expect(spanX(withFringes)).toBeGreaterThan(spanX(plain)); // les mèches sortent au-delà de la nappe
     expect(withFringes.every((P) => P.noshadow)).toBe(true);
     const vs = withFringes.flatMap((P) => P.m.v);
     expect(Math.max(...vs.map((v) => Math.abs(v[0])))).toBeLessThanOrEqual(102);
@@ -79,8 +82,8 @@ describe('rangements, tables et tapis en cellulo', () => {
     expect(STANDING_KINDS.filter((k) => FURNITURE_MODELS[k].h <= FLAT_H)).toEqual(['rug']);
   });
 
-  it('le plancher d’ombre abaissé (Ruling 24) ne concerne que l’étagère, à 6,5 %', () => {
-    expect(SHADE_FLOOR).toEqual({ shelf: 0.065 });
+  it('le plancher d’ombre abaissé (Ruling 24) ne concerne que l’étagère (6,5 %), la niche (3 %) et le chargeur (2 %), mesures à l’appui', () => {
+    expect(SHADE_FLOOR).toEqual({ shelf: 0.065, kennel: 0.03, charger: 0.02 });
   });
 
   it('commode : trois tiroirs à deux poignées, poignées en métal devant la façade', () => {

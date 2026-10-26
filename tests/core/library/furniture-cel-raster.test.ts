@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bent, place, part, superEll } from '../../../src/core/library/cel/mesh';
+import { bent, lathe, place, part, superEll } from '../../../src/core/library/cel/mesh';
 import { celJob, renderCel } from '../../../src/core/library/cel/raster';
 import { ROOM_CAMERA } from '../../../src/core/library/cel/camera';
 import { tone } from '../../../src/core/library/cel/tone';
@@ -59,5 +59,17 @@ describe('moteur cellulo', () => {
     expect(outward(bent(ball, (x, y, z) => [-x, y, z]))).toBeGreaterThan(0.95); // miroir
     expect(outward(bent(ball, (x, y, z) => [x + 30, -z, y]))).toBeGreaterThan(0.95); // rotation (échange d'axes sans miroir)
     expect(outward(bent(ball, (x, y, z) => [x, z, y]))).toBeGreaterThan(0.95); // échange d'axes (miroir)
+  });
+  it('lathe : l’option center fixe le point d’où les triangles sont orientés « vers l’extérieur » (surface ouverte, dôme d’abat-jour)', () => {
+    // Un anneau plat (profil à y constant) : sans `center`, le milieu du profil est dans son plan et l'orientation est indécise ;
+    // avec un centre sous lui, toutes les normales regardent en haut ; au-dessus, en bas.
+    const ring = (center: [number, number, number]) => lathe([[5, 0], [14, 0]], 16, undefined, { caps: false, center });
+    expect(ring([0, -4, 0]).n.every((n) => n[1] > 0.99)).toBe(true);
+    expect(ring([0, 4, 0]).n.every((n) => n[1] < -0.99)).toBe(true);
+    // Dôme ouvert vers le bas (l'abat-jour du lampadaire arc, maquette l. 293) : centre dans le creux → normales vers le dehors (haut).
+    const dome = lathe([[14, -17], [13.6, -15.5], [5.5, 0], [0, 0]], 28, undefined, { caps: false, center: [0, -4, 0] });
+    expect(dome.n.filter((n) => n[1] > 0).length / dome.n.length).toBeGreaterThan(0.9);
+    // Sans l'option : même comportement qu'avant (centre au milieu des hauteurs).
+    expect(lathe([[14, -17], [5.5, 0], [0, 0]], 12).n).toEqual(lathe([[14, -17], [5.5, 0], [0, 0]], 12, undefined, { center: [0, -8.5, 0] }).n);
   });
 });

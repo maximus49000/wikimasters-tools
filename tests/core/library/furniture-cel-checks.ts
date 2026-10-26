@@ -8,7 +8,7 @@ import { CEL_MODELS, celPartsOf } from '../../../src/core/library/cel/models';
 import { renderCel } from '../../../src/core/library/cel/raster';
 import type { Angle } from '../../../src/core/library/footprint';
 import { FURNITURE_MODELS } from '../../../src/core/library/furniture-models';
-import type { StandingKind } from '../../../src/core/library/library-types';
+import type { StandingKind, StyleId } from '../../../src/core/library/library-types';
 import { INK } from '../../../src/core/library/paint/cel';
 
 const ANGLES: Angle[] = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -30,6 +30,22 @@ export function topAt(parts: readonly CelPart[], x: number, z: number): number {
   return best;
 }
 
+// Cadre [x0, x1, y0, y1, z0, z1] des maillages donnés (repère centré, cm) ; l'appelant écarte lui-même les garnitures (`P.trim`)
+// s'il veut l'encombrement du corps du meuble.
+export function boundsOf(parts: readonly CelPart[]): [number, number, number, number, number, number] {
+  const b: [number, number, number, number, number, number] = [Infinity, -Infinity, Infinity, -Infinity, Infinity, -Infinity];
+  for (const { m } of parts)
+    for (const [x, y, z] of m.v) {
+      if (x < b[0]) b[0] = x;
+      if (x > b[1]) b[1] = x;
+      if (y < b[2]) b[2] = y;
+      if (y > b[3]) b[3] = y;
+      if (z < b[4]) b[4] = z;
+      if (z > b[5]) b[5] = z;
+    }
+  return b;
+}
+
 // Contrôles d'un dessin cellulo de meuble : (a) encombrement ⊂ boîte du modèle à 2 cm près, chaque dimension ≥ 85 % ; (b) dessus
 // praticable à ±1,5 cm du maillage le plus haut sous son centre ; (c) rendu déterministe aux 8 angles ; (d) à chaque angle, ombre
 // propre entre 8 % (1 % pour un meuble plat, cf. FLAT_H ; 6,5 % pour l'étagère, cf. SHADE_FLOOR) et 65 % des pixels opaques et encre > 0,5 % ; (e) modèle à face : aucun sommet d'une pièce non `interior` dans
@@ -49,7 +65,19 @@ const FLAT_SHADE_MIN = 0.01, SHADE_MIN = 0.08;
 // Plancher d'ombre propre à un meuble (Ruling 24) : l'étagère à fond en panneau de bois plafonne à 7,4 % de face et 6,9 % de dos
 // (le fond lit, 25 000 px sur 28 500, est le dénominateur ; seuls les montants ronds, les chants et les nez des tablettes apportent
 // de l'ombre à 1 px par px). Plancher 6,5 % pour elle seule, 8 % pour tous les autres ; liste figée par un test.
-export const SHADE_FLOOR: Partial<Record<StandingKind, number>> = { shelf: 0.065 };
+// Tâche 9, mesures à 1 px par px (lumière du haut-gauche, élévation 46°) : la niche à pignon montre de face (angle 0 : 4,6 %) et de dos
+// (angle 4 : 3,5 %, tour 1 : dalles du toit refaites) une façade plate et des pans de toit tournés vers le haut, seul le flanc droit en perspective (un liseré) et les
+// arrondis (poteaux, faîtage, encadrement) sont à l'ombre ; le chargeur du robot (10 cm de haut, 40 × 30) n'est presque que dessus
+// et encre (64..81 % d'encre), ses seules surfaces à l'ombre sont les bouts arrondis du plateau, du dosseret et le flanc gauche de la
+// cuvette (angles 1 et 5 : 3,2 et 4,4 % au tour 1). Planchers posés sous ces mesures ; la liste reste figée par un test.
+export const SHADE_FLOOR: Partial<Record<StandingKind, number>> = { shelf: 0.065, kennel: 0.03, charger: 0.02 };
+// Plancher d'ombre par STYLE (tâche 10, dernier recours, mesures à l'appui) : les pieds épingle de l'Industriel sont deux tiges de 2,5 cm
+// (r 1,25) ; à 1 px par px la silhouette (2 px de chaque côté) les mange entièrement : plus aucun pixel d'ombre ne vient des pieds, qui
+// sont la première source d'ombre d'une table basse (angles 1/2 : 3,3 %), d'une chaise (angle 2 : 6,8 %) et du bureau (angle 5 : 6,6 %).
+// À 2 px par px les mêmes dessins montrent 8,4 / 15,0 / 13,6 % au pire angle (mesure du rapport T10). Tapis bohème à franges : de
+// profil (angles 2/6), les mèches couchées devant la lisière proche cachent la seule bande d'ombre d'un tapis (le bas de son ourlet,
+// 0,75 cm pour une lisière r 1,5 — la boîte du tapis fait 3 cm) : 0,2 % à 1 px par px (2,4 % à 2 px). Liste figée par le test de looks.
+export const SHADE_FLOOR_STYLE: Partial<Record<StyleId, Partial<Record<StandingKind, number>>>> = { industriel: { 'coffee-table': 0.03, chair: 0.06, desk: 0.06 }, boheme: { rug: 0.002 } };
 export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandinave'), life: LifeState = REST_LIFE, fallbackSkip: readonly CelCheck[] = []): void {
   const skip: readonly CelCheck[] = CEL_MODELS[kind] ? [] : fallbackSkip;
   const model = FURNITURE_MODELS[kind];
@@ -87,7 +115,7 @@ export function checkCelModel(kind: StandingKind, look: CelLook = lookOf('scandi
       else if (shades.has(c)) shade++;
     }
     if (!skip.includes('shade')) {
-      expect(shade / opaque, `${kind} : part d'ombre à l'angle ${angle}`).toBeGreaterThanOrEqual(model.h <= FLAT_H ? FLAT_SHADE_MIN : (SHADE_FLOOR[kind] ?? SHADE_MIN));
+      expect(shade / opaque, `${kind} : part d'ombre à l'angle ${angle}`).toBeGreaterThanOrEqual(SHADE_FLOOR_STYLE[look.style]?.[kind] ?? SHADE_FLOOR[kind] ?? (model.h <= FLAT_H ? FLAT_SHADE_MIN : SHADE_MIN));
       expect(shade / opaque, `${kind} : part d'ombre à l'angle ${angle}`).toBeLessThanOrEqual(0.65);
     }
     expect(ink / opaque, `${kind} : part d'encre à l'angle ${angle}`).toBeGreaterThan(0.005);
