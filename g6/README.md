@@ -543,3 +543,29 @@
 ### style-steampunk_h-10_nostore-1.png
 
 ![style-steampunk_h-10_nostore-1.png](10-styles/style-steampunk_h-10_nostore-1.png)
+
+## 10-styles-r1
+
+### kind-chair_style-industriel_res-3_cell-420_angles-0_2.png
+
+![kind-chair_style-industriel_res-3_cell-420_angles-0_2.png](10-styles-r1/kind-chair_style-industriel_res-3_cell-420_angles-0_2.png)
+
+### kind-coffee_table_desk_shelf_sofa_club_chair_style-neon_res-2.png
+
+![kind-coffee_table_desk_shelf_sofa_club_chair_style-neon_res-2.png](10-styles-r1/kind-coffee_table_desk_shelf_sofa_club_chair_style-neon_res-2.png)
+
+### kind-coffee_table_desk_shelf_sofa_club_chair_style-neon_res-3_angles-2_6_cell-420.png
+
+![kind-coffee_table_desk_shelf_sofa_club_chair_style-neon_res-3_angles-2_6_cell-420.png](10-styles-r1/kind-coffee_table_desk_shelf_sofa_club_chair_style-neon_res-3_angles-2_6_cell-420.png)
+
+### kind-kennel_cat_tree_style-scandinave_res-3_cell-330.png
+
+![kind-kennel_cat_tree_style-scandinave_res-3_cell-330.png](10-styles-r1/kind-kennel_cat_tree_style-scandinave_res-3_cell-330.png)
+
+### kind-paper_lantern_style-steampunk_res-3_cell-420_angles-0_2.png
+
+![kind-paper_lantern_style-steampunk_res-3_cell-420_angles-0_2.png](10-styles-r1/kind-paper_lantern_style-steampunk_res-3_cell-420_angles-0_2.png)
+
+### style-neon_h-10_nostore-1.png
+
+![style-neon_h-10_nostore-1.png](10-styles-r1/style-neon_h-10_nostore-1.png)
