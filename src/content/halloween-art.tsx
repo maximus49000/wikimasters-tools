@@ -3,6 +3,7 @@ import type { HwKind } from '../core/library/city/halloween';
 import { mulberry32 } from '../core/library/scene-world';
 import { INK, light, shade } from '../core/library/paint/cel';
 import { hexRgb, rgba } from '../core/library/paint/color';
+import { zeroDisplay } from './svg-write';
 
 // Dessins des décors d'Halloween des habitants (spec 2026-10-20 « Halloween » §2 ; port en SVG de `paintPumpkin`,
 // `paintWitch`, `paintSkeleton`, `paintCrow`, `paintSpider` de docs/superpowers/maquettes/halloween/src/09-halloween.js).
@@ -57,7 +58,8 @@ function facePath(face: number, r: number, ry: number, cy: number): string {
   return `M${n(-r * 0.5)} ${n(cy - ry * 0.05)}h${n(r)}v${n(ry * 0.12)}h${n(-r)}z`;
 }
 // Citrouille posée, pied en (0, 0), rayon `r`. `lit` : bougie allumée (lueur, visage jaune) ; sinon visage sombre (sauf la
-// citrouille non sculptée, sans visage de jour).
+// citrouille non sculptée, sans visage de jour). Lueurs et visages à opacité 0 cachés (display none : un nœud à opacité 0
+// reste peint et passe par la mise en calques à chaque image) ; sans transition, rien ne change à l'écran.
 export function Pumpkin({ v, r, lit, dark = 0 }: { v: number; r: number; lit: boolean; dark?: number }): ReactElement {
   const { hue, squash, face, lean } = pumpkinLook(v);
   const ry = r * squash;
@@ -71,8 +73,8 @@ export function Pumpkin({ v, r, lit, dark = 0 }: { v: number; r: number; lit: bo
   const on = lit ? 1 : 0;
   return (
     <g data-pumpkin={face} data-lit={lit ? 'true' : 'false'}>
-      <circle cx={0} cy={n(cy)} r={n(r * 2.6)} fill={GLOW_OUT} opacity={on} />
-      <circle cx={0} cy={n(cy)} r={n(r * 1.6)} fill={GLOW_IN} opacity={on} />
+      <circle cx={0} cy={n(cy)} r={n(r * 2.6)} fill={GLOW_OUT} opacity={on} display={zeroDisplay(on)} />
+      <circle cx={0} cy={n(cy)} r={n(r * 1.6)} fill={GLOW_IN} opacity={on} display={zeroDisplay(on)} />
       <path d={lobes} fill={css(hue, (c) => shade(c, 0.3))} />
       <path d={left} fill={css(hue, (c) => light(c, 0.08))} />
       <path d={front} fill={hue} />
@@ -80,8 +82,8 @@ export function Pumpkin({ v, r, lit, dark = 0 }: { v: number; r: number; lit: bo
       <path data-dark-veil="" d={body + stem} fill={DARK_VEIL} opacity={lit ? n(veil(dark) * 0.35) : veil(dark)} />
       <path d={body} fill="none" stroke={INK} strokeWidth={n(Math.max(0.25, r * 0.12))} />
       <path d={ellipse(0, cy, r * 0.5, ry * 0.98)} fill="none" stroke={INK} strokeWidth={n(Math.max(0.15, r * 0.06))} />
-      <path data-face="" d={fp} fill={FACE_DARK} opacity={face === 3 || lit ? 0 : 1} />
-      <path data-face-lit="" d={fp} fill={FACE_LIT} opacity={on} />
+      <path data-face="" d={fp} fill={FACE_DARK} opacity={face === 3 || lit ? 0 : 1} display={zeroDisplay(face === 3 || lit ? 0 : 1)} />
+      <path data-face-lit="" d={fp} fill={FACE_LIT} opacity={on} display={zeroDisplay(on)} />
     </g>
   );
 }

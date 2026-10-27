@@ -149,7 +149,7 @@ const ShopNodes = memo(
               <GhibliFigure outfit={SPARE} sky={LIT_SKY} rainy={false} umbrella={false} initial={REST} hidden />
             </g>
             <svg data-scene-door="" data-entry={i} data-active="false" display="none" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden">
-              <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity="0.00" />
+              <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity="0.00" display="none" />
               <g data-door-fig="">
                 <GhibliFigure outfit={SPARE} sky={LIT_SKY} rainy={false} umbrella={false} initial={REST} hidden />
               </g>

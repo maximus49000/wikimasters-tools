@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useContext, useEffect, useId, useMemo, useRef, type ReactElement } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, type ReactElement } from 'react';
 import { activeFestivities, addDays, isoDate, publicHolidays } from '../core/library/city/calendar';
 import { DOOR_WIDTH, TRIP_CYCLE, doorsFor, residentFlow, tripAt, tripHappens, tripsFor, type Trip } from '../core/library/city/doors';
 import { DOOR_DARK, doorDarkOpacity, entranceOpening, type Passage } from '../core/library/city/doorway';
@@ -40,6 +40,7 @@ import { poseEventArt } from './city-event-art';
 import { CityEventSprite, eventWalked, poseEventFigures } from './city-event-sprites';
 import { MarkHeld, markAnchor, markArms, markPhase } from './festive-marks';
 import { ShopCustomers, ShopOutdoors, ShopWorks, StaffLayer, collectPosedStaff, collectStaffWalks, collectSwaps, collectWorkers, dayShifts, placeCustomers, placeStaff, placeStaffWalks, placeSwaps, placeWorkers, setIfChanged, shopShutter, shopSpriteBudget, staffOutfit, warmCustomers, type CustomerWarmCache, type PlacedWorker, type PosedStaff, type Swap, type WalkingStaff } from './city-shops-life';
+import { setOpacity, zeroDisplay } from './svg-write';
 import { ShopScene, collectScene, muteScene, placeScene, sceneBudget, type SceneNodes } from './shop/shop-scene';
 import { staffSpans, type SceneShop } from './shop/scene-scores';
 import { MovingCrew, MovingTruck, collectMovers, movingLayout, placeMovers, type Crew } from './moving-truck';
@@ -64,9 +65,10 @@ import { GullsLayer } from './gulls-layer';
 import { useCityEvents } from './use-city-events';
 import { useStreetShops } from './use-street-shops';
 import { useWallClockLoop } from './use-wallclock-loop';
-import { HALL_TIMER_S, STAIR_RETURN_S, climbRun, crossingDoorX, hallLit, keepStairPick, passageDir, passageFloors, seedHallTimers, seedStairFloors, stairFigureAt, stairFloorsLit, stairNewPassage, type StairRun } from '../core/library/city/hall-lights';
+import { HALL_OFF_S, HALL_TIMER_S, STAIR_RETURN_S, climbRun, crossingDoorX, hallLit, keepStairPick, passageDir, passageFloors, seedHallTimers, seedStairFloors, stairFigureAt, stairFloorsLit, stairNewPassage, type StairRun } from '../core/library/city/hall-lights';
 import { HallLights, hallTransition } from './hall-lights';
 import { StairLights, placeStairFigures, stairTransition } from './stair-lights';
+import { fadeSettled, writeFades, type FadeWrite } from './fade-light';
 import { useSceneLife, type SceneLife } from './use-scene-life';
 import { WindowLifeLayer } from './window-life';
 import { RoofLifeLayer } from './roof-life-layer';
@@ -187,13 +189,15 @@ const pedShade = (p: Pedestrian, m: CityMetrics, width: number, t: number, litLa
 };
 
 // Pose l'ombre d'un passant (n'écrit que ce qui change ; sans ombre : opacité 0).
+// Ombre éteinte (opacité 0) cachée (display none) : un nœud à opacité 0 reste peint et passe par la mise en calques à chaque
+// image (svg-write.ts hideAtZero) ; sans transition CSS, rien ne change à l'écran.
 const placeShade = (node: Element, s: PedShade, fill: (side: 'r' | 'l') => string): void => {
   if (!s) {
-    setIfChanged(node, 'opacity', '0');
+    setOpacity(node, '0');
     return;
   }
   node.setAttribute('points', s.points);
-  setIfChanged(node, 'opacity', s.opacity.toFixed(2));
+  setOpacity(node, s.opacity.toFixed(2));
   setIfChanged(node, 'fill', fill(s.side));
 };
 
@@ -399,6 +403,12 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   // Minuterie des halls : fin de minuterie par porte, amorcée au montage d'après les passages des 2 dernières minutes, puis
   // relancée par la boucle à chaque habitant affiché sur un seuil. Remise à zéro si les trajets changent.
   const hallDark = sky.daylight < 0.45;
+  // Rendu React appliqué : HallLights et StairLights ont pu réécrire opacité et `data-lit` d'une lumière que la boucle avait
+  // cachée ; la boucle relit leur état (fadeSettled) à l'image suivante seulement, pas à chaque image.
+  const rendered = useRef(true);
+  useLayoutEffect(() => {
+    rendered.current = true;
+  });
   const hallUntil = useRef<Map<number, number>>(new Map());
   const hallFor = useRef<Trip[] | null>(null);
   // Cage d'escalier : étage atteint par porte, tiré une fois par passage (pas à chaque relance de la minuterie sur le seuil).
@@ -798,7 +808,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         const node = nodes.get(p.id);
         if (node && next !== prev) {
           setIfChanged(node, 'data-active', next ? 'true' : 'false');
-          setIfChanged(node, 'opacity', next ? '1' : '0');
+          setOpacity(node, next ? '1' : '0');
         }
         // Ghibli : un passant caché lâche ses sprites (<image> sans href), seulement à la bascule ou au premier placement.
         if (ghibli && !next && (first || next !== prev)) for (const fig of pedFigs.get(p.id) ?? []) hideFigure(figures, fig);
@@ -820,7 +830,9 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (!node) continue;
         node.setAttribute('transform', placementTransform(placeEvent(e, t, frame)));
         // Fondu des événements fixes (2 s à l'arrivée et au départ) ; n'écrire l'opacité que lorsqu'elle change.
-        if (e.layer === 'fixed') setIfChanged(node, 'opacity', eventOpacity(e, t, still));
+        if (e.layer === 'fixed') {
+          setOpacity(node, eventOpacity(e, t, still));
+        }
         // Ghibli : pas des figurants du trottoir réglés sur leur chemin (le ripeur du camion garde sa pose).
         else if (ghibli && e.layer === 'sidewalk') poseEventFigures(figures, node, e, t, metrics, still);
         // Ghibli : parties vectorielles calculées en t (feux d'artifice, traînée de l'avion, côté de la flèche de la grue).
@@ -874,7 +886,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         // Ghibli : nœud éteint (bascule ou premier placement) → figure cachée, sprite libéré.
         const streetOff = !v.street && (first || node.getAttribute('data-active') !== 'false');
         setIfChanged(node, 'data-active', v.street ? 'true' : 'false');
-        setIfChanged(node, 'opacity', v.street ? '1.00' : '0.00');
+        setOpacity(node, v.street ? '1.00' : '0.00');
         if (v.street && v.pos) {
           node.setAttribute('transform', residentTransform(trip, v.pos.x, metrics, !ghibli));
           if (ghibli) poseFigure(figures, node.querySelector(':scope > [data-figure]'), residentPose(trip, v.pos, metrics, still));
@@ -884,7 +896,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
         if (!dnode) continue;
         const doorOff = !v.door && (first || dnode.getAttribute('data-active') !== 'false');
         setIfChanged(dnode, 'data-active', v.door ? 'true' : 'false');
-        setIfChanged(dnode, 'opacity', v.door ? '1.00' : '0.00');
+        setOpacity(dnode, v.door ? '1.00' : '0.00');
         if (v.door && v.pos) {
           // Cadre large sur le seuil (parapluie compris), resserré sur l'ouverture avec la profondeur (door-passage.ts).
           placeSill(dnode, doorOpening(tripDoorX(trip, v.pos), metrics), v.pos, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir);
@@ -909,13 +921,18 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
           if ((stairUntil.current.get(x) ?? -Infinity) < wall) stairUntil.current.set(x, wall);
         }
       }
+      // Halls et cages éteints au repos : cachés (display none) après le fondu d'extinction, rallumés depuis 0 ; toutes les
+      // bascules de l'image écrites ensemble (fade-light.ts writeFades : un seul recalcul de style forcé).
+      const fades: FadeWrite[] = [];
+      // Juste après un rendu React : nœuds qu'il a pu réécrire relus (fadeSettled).
+      const repair = rendered.current;
+      rendered.current = false;
       // Halls : allumés tant que la minuterie court et qu'il fait sombre ; n'écrire qu'à la bascule (allumage franc, extinction douce).
       for (const [x, node] of hallNodes) {
         const on = hallLit(hallUntil.current, x, t, hallDark);
-        if (node.getAttribute('data-lit') === (on ? 'true' : 'false') && !first) continue;
-        (node as SVGElement).style.transition = hallTransition(on, still);
+        if (node.getAttribute('data-lit') === (on ? 'true' : 'false') && !first && (!repair || fadeSettled(node, on))) continue;
         node.setAttribute('data-lit', on ? 'true' : 'false');
-        node.setAttribute('opacity', on ? '1' : '0');
+        fades.push({ node, on, transition: hallTransition(on, still) });
       }
       // Descentes prévues qui commencent : la cage s'allume jusqu'à l'étage du foyer et le reste jusqu'à la fin de la minuterie
       // du hall que la sortie relancera.
@@ -941,16 +958,23 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
       for (const [x, list] of stairNodes) {
         const floors = stairFloors(x, t);
         const shown = stairShown.get(x);
-        if (shown === floors) continue;
+        if (shown === floors) {
+          // Rien n'a basculé ; juste après un rendu React, une fenêtre qu'il a réécrite est remise en place (fadeSettled).
+          if (repair) list.forEach((node, k) => {
+            if (!fadeSettled(node, k < floors)) fades.push({ node, on: k < floors, transition: stairTransition(k < floors, k, still) });
+          });
+          continue;
+        }
         stairShown.set(x, floors);
         list.forEach((node, k) => {
           const on = k < floors;
           // Table refaite (shown inconnu) : tout écrire ; sinon seulement les étages qui basculent.
           if (shown !== undefined && on === k < shown) return;
-          (node as SVGElement).style.transition = stairTransition(on, k, still);
-          node.setAttribute('opacity', on ? '1' : '0');
+          // Allumée depuis 0, avec son délai d'étage.
+          fades.push({ node, on, transition: stairTransition(on, k, still) });
         });
       }
+      if (fades.length > 0) writeFades(fades, still ? 0 : HALL_OFF_S);
       placeCustomers(nodes, shopVisits, gates, width, metrics, t, first, muted, { lock: visitLock.current, ghibli, figures });
       if (scene) placeScene(scene, t, figures, traffic.world.horns);
       placeSwaps(swaps, t);
@@ -1017,7 +1041,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
   if (!sceneClock.current || sceneClock.current.m !== city.minutes) sceneClock.current = { m: city.minutes, base: Math.floor(t0! / 60) * 60 };
   const sceneSeconds = city.minutes * 60 + (t0! - sceneClock.current.base);
   const eventNode = (e: CityEvent): ReactElement => (
-    <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)}>
+    <g key={e.key} data-life-id={e.key} data-event={e.id} data-active="true" transform={placementTransform(placeEvent(e, t0, frame))} opacity={eventOpacity(e, t0, still)} display={zeroDisplay(eventOpacity(e, t0, still))}>
       <CityEventSprite event={e} sky={sky} still={still} lights={lights} rainy={rainy} fests={fests} ghibli={ghibli} walked={e.layer === 'sidewalk' ? eventWalked(e, t0, metrics) : 0} now={t0} />
     </g>
   );
@@ -1166,13 +1190,13 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             );
           return (
             <Fragment key={trip.id}>
-              <g data-life-id={trip.id} data-trip-id={trip.id} data-resident="" data-trip={trip.kind} data-active={v.street ? 'true' : 'false'} transform={residentTransform(trip, sPos.x, metrics, !ghibli)} opacity={v.street ? '1.00' : '0.00'}>
+              <g data-life-id={trip.id} data-trip-id={trip.id} data-resident="" data-trip={trip.kind} data-active={v.street ? 'true' : 'false'} transform={residentTransform(trip, sPos.x, metrics, !ghibli)} opacity={v.street ? '1.00' : '0.00'} display={v.street ? undefined : 'none'}>
                 {sprite(sPos, v.street)}
               </g>
               {/* Nœud de porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche reste copiable par <use>, comme pour la fenêtre soulevée). */}
-              <svg data-resident-door="" data-trip-id={trip.id} data-active={v.door ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={v.door ? '1.00' : '0.00'}>
-                <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={v.door ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
-                <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir)} opacity={(1 - dPos.depth).toFixed(2)}>
+              <svg data-resident-door="" data-trip-id={trip.id} data-active={v.door ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={v.door ? '1.00' : '0.00'} display={v.door ? undefined : 'none'}>
+                <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={v.door ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} display={zeroDisplay(v.door ? doorDarkOpacity(dPos.depth).toFixed(2) : 0)} />
+                <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, residentScale(trip, metrics), ghibli ? 1 : trip.dir)} opacity={(1 - dPos.depth).toFixed(2)} display={zeroDisplay((1 - dPos.depth).toFixed(2))}>
                   {sprite(dPos, v.door)}
                 </g>
               </svg>
@@ -1215,7 +1239,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
             {peds.map((p) => {
               const active = still ? pedActive.has(p.id) : (shownPeds.current.get(p.id) ?? pedActive.has(p.id));
               const s = active ? pedShade(p, metrics, width, t0!, litLamps, dodgeZones) : null;
-              return <polygon key={p.id} data-shade-for={p.id} points={s?.points ?? ''} opacity={s ? s.opacity.toFixed(2) : '0'} fill={shadeFill(s?.side ?? 'r')} />;
+              return <polygon key={p.id} data-shade-for={p.id} points={s?.points ?? ''} opacity={s ? s.opacity.toFixed(2) : '0'} display={zeroDisplay(s ? s.opacity.toFixed(2) : 0)} fill={shadeFill(s?.side ?? 'r')} />;
             })}
           </g>
         )}
@@ -1237,6 +1261,7 @@ export function CityLifeLayer({ width, height, sky, seed, city, rainy, forcedNig
               data-active={active ? 'true' : 'false'}
               transform={pedTransform(p, metrics, width, t0, !ghibli, dodgeZones)}
               opacity={active ? 1 : 0}
+              display={active ? undefined : 'none'}
             >
               {/* Les enfants accompagnés suivent derrière le parent (repère du sprite : derrière = x négatif), à l'échelle 0,7.
                   Habitants 3D : chacun a sa graine (id du passant), les enfants un corps d'enfant (l'accompagnant de la

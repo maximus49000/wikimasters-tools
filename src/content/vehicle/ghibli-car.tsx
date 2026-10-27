@@ -163,7 +163,8 @@ export function GhibliCar({ look, dir, sky, rainy, lights, still = false, roll, 
       ))}
       {art.head.round && <circle cx={n2(head.x)} cy={n2(head.y)} r={1.3} fill={lights ? '#FFF2C0' : t('#E8E2D0')} stroke={t('#33241f')} strokeWidth={0.6} />}
       {lights && <Headlight id={beamId} x={head.x} y={head.y} dir={dir} rainy={rainy} tail={tail} />}
-      <g data-brake="" opacity={0}>
+      {/* Feu stop : écrit par la boucle de la voie (traffic-layer.tsx tailLamp), caché éteint (display none, pas d'opacité 0 peinte). */}
+      <g data-brake="" opacity={0} display="none">
         <circle cx={n2(tail.x)} cy={n2(tail.y)} r={2.4} fill="#FF3C28" opacity={0.3} />
         <circle cx={n2(tail.x)} cy={n2(tail.y)} r={1.1} fill="#FF3B2F" />
       </g>

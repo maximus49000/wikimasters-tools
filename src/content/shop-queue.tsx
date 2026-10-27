@@ -21,6 +21,7 @@ import { GhibliFigure, poseFigure, type CitizenIdentity, type PoseIn } from './f
 import '../core/library/paint/props/terrace';
 import { PropImage } from './prop/prop-host';
 import { useWallClockLoop } from './use-wallclock-loop';
+import { zeroDisplay } from './svg-write';
 
 // Boîte de nuit (vague 1b-iv-b) : cordon (deux potelets et une corde) devant la porte, deux videurs en costume noir, bras
 // croisés, de part et d'autre, et une file de 0 à 6 personnes (queue.ts) alignée le long de la façade, du côté de la vitrine,
@@ -432,8 +433,8 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
     const { clip, dark } = sillBox(v.rect, v.passage.depth, metrics, s);
     return (
       <svg key={w.id} data-club-walk={w.id} {...attrs} data-club-door="" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden">
-        <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(v.passage.depth).toFixed(2)} />
-        <g data-door-fig="" transform={sillFigTransform(v.passage, clip, metrics, s, sgnOf(v.pose.yaw))} opacity={(1 - v.passage.depth).toFixed(2)}>
+        <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(v.passage.depth).toFixed(2)} display={zeroDisplay(doorDarkOpacity(v.passage.depth).toFixed(2))} />
+        <g data-door-fig="" transform={sillFigTransform(v.passage, clip, metrics, s, sgnOf(v.pose.yaw))} opacity={(1 - v.passage.depth).toFixed(2)} display={zeroDisplay((1 - v.passage.depth).toFixed(2))}>
           {fig}
         </g>
       </svg>
@@ -473,8 +474,8 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
         const { clip, dark } = sillBox(arrivalDoor(a), a.passage.depth, metrics, k);
         return (
           <svg key={a.id} data-queue-id={a.id} data-club-arrival="" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden">
-            <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(a.passage.depth).toFixed(2)} />
-            <g data-door-fig="" data-queue-arriving="" transform={sillFigTransform(a.passage, clip, metrics, k, flip)} opacity={(1 - a.passage.depth).toFixed(2)}>
+            <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(a.passage.depth).toFixed(2)} display={zeroDisplay(doorDarkOpacity(a.passage.depth).toFixed(2))} />
+            <g data-door-fig="" data-queue-arriving="" transform={sillFigTransform(a.passage, clip, metrics, k, flip)} opacity={(1 - a.passage.depth).toFixed(2)} display={zeroDisplay((1 - a.passage.depth).toFixed(2))}>
               {person(outfitOf(a.outfitKey), arrivalPose(a))}
             </g>
           </svg>
@@ -490,8 +491,8 @@ export function NightclubDoor({ view, frame, metrics, minutes, date, reduced, sk
         const { clip, dark } = sillBox(frame.door, ps.depth, metrics, k);
         return (
           <svg key={f.ghost.id} data-queue-id={f.ghost.id} data-club-door="" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden">
-            <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(ps.depth).toFixed(2)} />
-            <g data-door-fig="" data-queue-entering="" transform={sillFigTransform(ps, clip, metrics, k, flip)} opacity={(1 - ps.depth).toFixed(2)}>
+            <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(ps.depth).toFixed(2)} display={zeroDisplay(doorDarkOpacity(ps.depth).toFixed(2))} />
+            <g data-door-fig="" data-queue-entering="" transform={sillFigTransform(ps, clip, metrics, k, flip)} opacity={(1 - ps.depth).toFixed(2)} display={zeroDisplay((1 - ps.depth).toFixed(2))}>
               {person(outfitOf(f.ghost.outfitKey), ghostSillPose(f.ghost))}
             </g>
           </svg>

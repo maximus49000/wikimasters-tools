@@ -28,6 +28,7 @@ import { ScriptedCar } from './vehicle/scripted-car';
 import { PropImage, PropInMirror } from './prop/prop-host';
 import { PIECE_LEN } from '../core/library/paint/props/moving';
 import '../core/library/paint/props/moving';
+import { zeroDisplay } from './svg-write';
 
 // Déménagement du matin (vague 1b-iv-b), le jour d'un changement de commerce (moving.ts) : un camion blanc et bleu arrive, se
 // gare au bord du trottoir juste après la porte du local (du côté opposé à la vitrine, pour qu'on la voie se vider puis se
@@ -508,8 +509,8 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
           <Fragment key={i}>
             {streetNode(i, p)}
             <svg data-mover-door="" data-mover-i={i} x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden" visibility={door ? 'visible' : 'hidden'}>
-              <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={door ? doorDarkOpacity(sp.depth).toFixed(2) : '0.00'} />
-              <g data-door-fig="" transform={sillFigTransform(sp, clip, metrics, kp, ghibli ? 1 : p.dir)} opacity={(1 - sp.depth).toFixed(2)}>
+              <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={door ? doorDarkOpacity(sp.depth).toFixed(2) : '0.00'} display={zeroDisplay(door ? doorDarkOpacity(sp.depth).toFixed(2) : '0.00')} />
+              <g data-door-fig="" transform={sillFigTransform(sp, clip, metrics, kp, ghibli ? 1 : p.dir)} opacity={(1 - sp.depth).toFixed(2)} display={zeroDisplay((1 - sp.depth).toFixed(2))}>
                 {figure(i, p, door)}
               </g>
             </svg>
@@ -520,7 +521,7 @@ export function MovingCrew({ view, frame, day, seed, width, metrics, sky, rainy,
         {pieceArt}
       </g>
       <svg data-piece-door="" x={pBox.clip.x.toFixed(2)} y={pBox.clip.y.toFixed(2)} width={pBox.clip.w.toFixed(2)} height={pBox.clip.h.toFixed(2)} overflow="hidden" visibility={piece?.where === 'door' ? 'visible' : 'hidden'}>
-        <g data-door-fig="" transform={sillFigTransform(piecePassage(piece?.depth ?? 1, g.a), pBox.clip, metrics, 1, 1)} opacity={(1 - (piece?.depth ?? 1)).toFixed(2)}>
+        <g data-door-fig="" transform={sillFigTransform(piecePassage(piece?.depth ?? 1, g.a), pBox.clip, metrics, 1, 1)} opacity={(1 - (piece?.depth ?? 1)).toFixed(2)} display={zeroDisplay((1 - (piece?.depth ?? 1)).toFixed(2))}>
           {pieceArt}
         </g>
       </svg>

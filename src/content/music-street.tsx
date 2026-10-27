@@ -19,6 +19,7 @@ import { GhibliFigure, poseFigure, type Held, type PoseIn } from './figure/ghibl
 import { BeerCup } from './music-sprites';
 import { useSceneDayStart } from './parade-layer';
 import { useWallClockLoop } from './use-wallclock-loop';
+import { zeroDisplay } from './svg-write';
 
 // Chaussée de la rue privatisée de la Fête de la musique (spec §7.6) : décors de la chaussée et leurs équipes (barrières en
 // travers, stands de bière, reçus d'install-layer.tsx), serveurs, clients et foule, dessinés du plus loin au plus proche
@@ -88,8 +89,8 @@ function Mover({ attrs, p, m, ghibli, children }: { attrs: Attrs; p: Moving; m: 
   const { clip, dark } = sillBox(openingAt(p.x, m), ps.depth, m, k);
   return (
     <svg {...attrs} data-door="true" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden">
-      <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(ps.depth).toFixed(2)} />
-      <g data-door-fig="" transform={sillFigTransform(ps, clip, m, k, ghibli ? 1 : p.dir)} opacity={(1 - ps.depth).toFixed(2)}>
+      <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(ps.depth).toFixed(2)} display={zeroDisplay(doorDarkOpacity(ps.depth).toFixed(2))} />
+      <g data-door-fig="" transform={sillFigTransform(ps, clip, m, k, ghibli ? 1 : p.dir)} opacity={(1 - ps.depth).toFixed(2)} display={zeroDisplay((1 - ps.depth).toFixed(2))}>
         {children}
       </g>
     </svg>

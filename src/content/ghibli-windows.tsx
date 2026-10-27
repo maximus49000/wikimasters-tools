@@ -1,4 +1,5 @@
-import { useId, useMemo, type ReactElement } from 'react';
+import { useId, useMemo, type ReactElement, type ReactNode, type Ref } from 'react';
+import { FADE_S, useFadeLight } from './fade-light';
 import { nightness, roomLit, roomTone, windowLit, type WindowDay } from '../core/library/city/window-lights';
 import { FAR_WINDOW, GROUND_FLOOR, type Facade, type FarWindow } from '../core/library/city/facades';
 import { PODIUM_H } from '../core/library/scene-world';
@@ -23,13 +24,25 @@ import { farLightK } from '../core/library/paint/fond-vie';
 //    de lumière dessinée de jour), teinte de la pièce ; rideaux et voilages laissés au calque de la vie aux fenêtres. Sans
 //    `life` (aperçus) : allumage du chantier 1, par logement (seuil commun), pièce principale seule selon l'heure
 //    (city/window-lights.ts), teinte du logement et télé le soir.
-// Rien n'apparaît ni ne disparaît sur place : tous les nœuds restent montés, seule l'opacité bascule (fondu de 4 s). La cage
+// Rien n'apparaît ni ne disparaît sur place : tous les nœuds restent montés, seule l'opacité bascule (fondu de 4 s) ; éteints au repos ils sont cachés (display none, fade-light.ts). La cage
 // d'escalier (minuterie des halls) est dans le calque des halls ; l'entresol ne s'allume jamais.
-const FADE = 'opacity 4s ease';
+const FADE = `opacity ${FADE_S}s ease`;
 
 // `shut` : part de la lumière qui passe les volets (fond vivant : 15 % derrière un volet fermé, farLightK de fond-vie.ts).
 function FarLight({ win, lit, dim, farLight, shut = 1 }: { win: FarWindow; lit: boolean; dim: number; farLight: number; shut?: number }): ReactElement {
-  return <rect data-far-lamp="" data-lit={lit ? 'true' : 'false'} x={win.x} y={win.y} width={FAR_WINDOW.w} height={FAR_WINDOW.h} fill={win.blue ? '#C4D8FF' : '#FFDFA0'} opacity={lit ? Number((dim * farLight * shut).toFixed(3)) : 0} style={{ transition: FADE }} />;
+  // Éteinte au repos : cachée (fade-light.ts).
+  const f = useFadeLight(lit);
+  return <rect ref={f.ref as Ref<SVGRectElement>} data-far-lamp="" data-lit={lit ? 'true' : 'false'} x={win.x} y={win.y} width={FAR_WINDOW.w} height={FAR_WINDOW.h} fill={win.blue ? '#C4D8FF' : '#FFDFA0'} opacity={f.on ? Number((dim * farLight * shut).toFixed(3)) : 0} display={f.display} style={{ transition: FADE }} />;
+}
+
+// Fenêtre allumable : opacité `dim` allumée, cachée éteinte au repos (fade-light.ts).
+function Lamp({ lit, dim, home, main, children }: { lit: boolean; dim: number; home: string; main: boolean; children: ReactNode }): ReactElement {
+  const f = useFadeLight(lit);
+  return (
+    <g ref={f.ref as Ref<SVGGElement>} data-lamp="" data-lit={lit ? 'true' : 'false'} data-home={home} data-main={main ? 'true' : 'false'} opacity={f.on ? dim : 0} display={f.display} style={{ transition: FADE }}>
+      {children}
+    </g>
+  );
 }
 
 const hex = (c: Rgb): string => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
@@ -115,9 +128,9 @@ export function GhibliWindows({ buildings, minutes, day, daylight, gloom, dim, f
         const shut = shuttered[k] ? Math.min(1, Math.max(0, st?.shut[room!] ?? 1)) : 1;
         const glowK = st && room ? Number((shut * (1 - 0.55 * (home.curtain ? (st.curt[room] ?? 0) : 0))).toFixed(2)) : 1;
         return (
-          <g key={k} data-lamp="" data-lit={lit ? 'true' : 'false'} data-home={group} data-main={win.main ? 'true' : 'false'} opacity={lit ? dim : 0} style={{ transition: FADE }}>
+          <Lamp key={k} lit={lit} dim={dim} home={group} main={win.main}>
             <LitWindow win={win} home={home} level={level} facadeX={facadeX} tone={tone} glow={glowId(prefix, win.w, win.h, dMax)} curtains={!life} glowK={glowK} />
-          </g>
+          </Lamp>
         );
       })}
     </g>

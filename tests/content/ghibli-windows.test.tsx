@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GhibliWindows } from '../../src/content/ghibli-windows';
 import { GLOW, LitWindow, NightGlass, amb, balconyOf, luminance, nightCurtain, nightGlass, nightVoile } from '../../src/content/ghibli-window-art';
 import { windowShutters } from '../../src/content/window-life-art';
@@ -95,6 +95,44 @@ describe('calque des fenêtres Ghibli', () => {
     expect(after.length).toBe(before.length);
     expect(after.every((el, i) => el === before[i])).toBe(true);
     expect(lamps().every((el) => (el as HTMLElement).style.transition === 'opacity 4s ease')).toBe(true);
+  });
+
+  it('éteintes au repos : cachées (display none) ; allumage depuis 0, extinction cachée après le fondu de 4 s', () => {
+    vi.useFakeTimers();
+    try {
+      // 22 h : des fenêtres allumées et d'autres éteintes.
+      render({ minutes: 22 * 60 });
+      const off = lamps().filter((el) => !lit(el));
+      const on = lamps().filter(lit);
+      expect(off.length).toBeGreaterThan(0);
+      expect(on.length).toBeGreaterThan(0);
+      expect(off.every((el) => el.getAttribute('display') === 'none' && el.getAttribute('opacity') === '0')).toBe(true);
+      expect(on.every((el) => !el.hasAttribute('display') && el.getAttribute('opacity') === '1')).toBe(true);
+      // Lumières du fond : même règle.
+      const far = [...layer().querySelectorAll('[data-far-lamp]')];
+      expect(far.filter((el) => !lit(el)).every((el) => el.getAttribute('display') === 'none')).toBe(true);
+      // Midi : tout s'éteint ; montrées à 0 le temps du fondu, cachées ensuite. Allumage : montrée à 0 (style relu) avant
+      // de passer à son opacité (le fondu CSS part de 0).
+      render({ minutes: 12 * 60, daylight: 1 });
+      expect(on.every((el) => !el.hasAttribute('display') && el.getAttribute('opacity') === '0')).toBe(true);
+      act(() => { vi.advanceTimersByTime(3900); });
+      expect(on.every((el) => !el.hasAttribute('display'))).toBe(true);
+      act(() => { vi.advanceTimersByTime(400); });
+      expect(on.every((el) => el.getAttribute('display') === 'none')).toBe(true);
+      const read: string[] = [];
+      const real = window.getComputedStyle.bind(window);
+      const spy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+        if (el === on[0]) read.push(`${el.getAttribute('display')}|${el.getAttribute('opacity')}`);
+        return real(el, pseudo);
+      });
+      render({ minutes: 22 * 60 });
+      spy.mockRestore();
+      expect(on.every((el) => !el.hasAttribute('display') && el.getAttribute('opacity') === '1')).toBe(true);
+      // Style relu montré (pas de display) et encore à 0, avant le passage à 1.
+      expect(read).toEqual(['null|0']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('pas plus de nœuds que sur main', () => {
@@ -286,6 +324,8 @@ describe('calque des fenêtres Ghibli', () => {
           expect(slabs).toHaveLength((balcony ? 1 : 0) + (w.box ? 1 : 0));
           for (const r of slabs) expect(r.getAttribute('opacity')).toBe(String(glowK));
           expect(container.querySelector('use[data-glow]')!.getAttribute('opacity')).toBe(String(glowK));
+          // Lueur éteinte (volet fermé, glowK 0) : cachée (display none), sinon montrée ; de même pour les reflets à 0.
+          for (const n of container.querySelectorAll('[opacity]')) expect(n.getAttribute('display') === 'none').toBe(Number(n.getAttribute('opacity')) === 0);
         }
       }
     }

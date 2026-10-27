@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fadeSettled, writeFade, writeFades } from '../../src/content/fade-light';
 import { HallLights } from '../../src/content/hall-lights';
 import { StairLights, placeStairFigures, stairTransition } from '../../src/content/stair-lights';
 import { climbRun, stairFigureAt } from '../../src/core/library/city/hall-lights';
@@ -148,5 +149,96 @@ describe('cage d’escalier (minuterie des halls)', () => {
     // Fin de la montée sous une table refaite : plus aucune silhouette.
     expect(placeStairFigures(nodes, undefined, -1)).toBe(-1);
     expect(nodes.every((n) => n.getAttribute('opacity') === '0')).toBe(true);
+  });
+
+  it('silhouettes à opacité 0 cachées (display none), montrées dans la même écriture que l’opacité 1', () => {
+    const host = mountStairs(true, false, () => true);
+    const nodes = [...host.querySelectorAll<SVGElement>(`[data-stair-figure="${doorX}"]`)].sort((a, b) => Number(a.getAttribute('data-floor')) - Number(b.getAttribute('data-floor')));
+    // Rendu : toutes cachées.
+    expect(nodes.every((n) => n.getAttribute('display') === 'none')).toBe(true);
+    let shown = placeStairFigures(nodes, undefined, 0);
+    const state = () => nodes.map((n) => `${n.getAttribute('opacity')}|${n.getAttribute('display') ?? ''}`);
+    expect(state()).toEqual(nodes.map((_, i) => (i === 0 ? '1|' : '0|none')));
+    shown = placeStairFigures(nodes, shown, 1);
+    expect(state()).toEqual(nodes.map((_, i) => (i === 1 ? '1|' : '0|none')));
+    placeStairFigures(nodes, shown, -1);
+    expect(nodes.every((n) => n.getAttribute('display') === 'none')).toBe(true);
+  });
+});
+
+describe('lumière basculée par la boucle (writeFade)', () => {
+  const node = (opacity: string): SVGElement => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('opacity', opacity);
+    return g;
+  };
+  it('premier placement éteint : caché tout de suite ; extinction : caché après le fondu ; rallumée pendant le fondu : jamais cachée', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const off = node('0');
+      writeFade(off, false, 'opacity 1s ease', 1);
+      expect(off.getAttribute('display')).toBe('none');
+      expect(fadeSettled(off, false)).toBe(true);
+      const g = node('1');
+      writeFade(g, false, 'opacity 1s ease', 1);
+      expect(g.getAttribute('opacity')).toBe('0');
+      expect(g.hasAttribute('display')).toBe(false);
+      expect(fadeSettled(g, false)).toBe(true);
+      vi.advanceTimersByTime(1000);
+      expect(g.hasAttribute('display')).toBe(false);
+      vi.advanceTimersByTime(200);
+      expect(g.getAttribute('display')).toBe('none');
+      // Rallumage d'un nœud caché : montré à 0, style relu, puis opacité 1 (le fondu et son délai d'étage partent de 0).
+      const read: string[] = [];
+      const real = window.getComputedStyle.bind(window);
+      const spy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+        if (el === g) read.push(`${el.getAttribute('display')}|${el.getAttribute('opacity')}|${(el as SVGElement).style.transition}`);
+        return real(el, pseudo);
+      });
+      writeFade(g, true, stairTransition(true, 2, false), 1);
+      spy.mockRestore();
+      expect(read).toEqual([`null|0|${stairTransition(true, 2, false)}`]);
+      expect(g.getAttribute('opacity')).toBe('1');
+      expect(fadeSettled(g, true)).toBe(true);
+      // Éteinte puis rallumée avant la fin du fondu : la minuterie est annulée.
+      writeFade(g, false, 'opacity 1s ease', 1);
+      vi.advanceTimersByTime(500);
+      writeFade(g, true, 'opacity 0.3s ease', 1);
+      vi.advanceTimersByTime(2000);
+      expect(g.hasAttribute('display')).toBe(false);
+      expect(g.getAttribute('opacity')).toBe('1');
+      // Montrée allumée par un rendu React alors qu'elle était cachée : pas « en place », la boucle la réécrit.
+      writeFade(g, false, 'none', 0);
+      expect(g.getAttribute('display')).toBe('none');
+      g.setAttribute('opacity', '1');
+      expect(fadeSettled(g, true)).toBe(false);
+      // … et la boucle le rallume depuis 0 : opacité remise à 0 avant de le montrer et de relire le style.
+      const again: string[] = [];
+      const spy2 = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+        if (el === g) again.push(`${el.getAttribute('display')}|${el.getAttribute('opacity')}`);
+        return real(el, pseudo);
+      });
+      writeFade(g, true, 'opacity 0.3s ease', 1);
+      spy2.mockRestore();
+      expect(again).toEqual(['null|0']);
+      expect(g.getAttribute('opacity')).toBe('1');
+      // Plusieurs nœuds à rallumer dans la même image : un seul recalcul de style forcé.
+      const many = [node('0'), node('0'), node('0')];
+      writeFades(many.map((n) => ({ node: n, on: false, transition: 'none' })), 0);
+      expect(many.every((n) => n.getAttribute('display') === 'none')).toBe(true);
+      let calls = 0;
+      const spy3 = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+        calls++;
+        expect(el.hasAttribute('display')).toBe(false);
+        expect(el.getAttribute('opacity')).toBe('0');
+        return real(el, pseudo);
+      });
+      writeFades(many.map((n) => ({ node: n, on: true, transition: 'opacity 0.3s ease' })), 1);
+      spy3.mockRestore();
+      expect(calls).toBe(1);
+      expect(many.every((n) => !n.hasAttribute('display') && n.getAttribute('opacity') === '1')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

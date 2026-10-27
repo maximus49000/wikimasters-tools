@@ -3,6 +3,7 @@
 import { doorDarkOpacity, type Passage } from '../core/library/city/doorway';
 import type { CityMetrics } from '../core/library/city/metrics';
 import type { Rect } from '../core/library/city/shops/slots';
+import { setOpacity } from './svg-write';
 
 // Cadre du <svg> (px du monde) : sur le seuil (profondeur 0), centre de l'ouverture ± DOOR_SILL_HALF et, en haut, le sommet de la
 // figure parapluie compris (m.doorY − DOOR_SILL_TOP unités du sprite × `k`, échelle de la figure) : elle est encore sur le trottoir,
@@ -42,13 +43,17 @@ const setRect = (node: Element | null, r: Rect): void => {
 };
 
 // Placement par la boucle d'un nœud de seuil actif (`node` : le <svg> ; enfants `[data-door-dark]` et `[data-door-fig]`).
+// Enfant à opacité 0 (ombre ou figure au fond de l'entrée) : caché (display none), montré dès qu'elle remonte (svg-write.ts
+// hideAtZero) ; les rendus React des seuils donnent le même `display` au premier dessin (zeroDisplay).
 export function placeSill(node: Element, o: Rect, p: Passage, m: CityMetrics, k: number, sgn: number): void {
   const box = sillBox(o, p.depth, m, k);
   setRect(node, box.clip);
   const dark = node.querySelector(':scope > [data-door-dark]');
   setRect(dark, box.dark);
-  set(dark, 'opacity', doorDarkOpacity(p.depth).toFixed(2));
+  const darkOp = doorDarkOpacity(p.depth).toFixed(2);
+  setOpacity(dark, darkOp);
   const fig = node.querySelector(':scope > [data-door-fig]');
   fig?.setAttribute('transform', sillFigTransform(p, box.clip, m, k, sgn));
-  set(fig, 'opacity', (1 - p.depth).toFixed(2));
+  const figOp = (1 - p.depth).toFixed(2);
+  setOpacity(fig, figOp);
 }
