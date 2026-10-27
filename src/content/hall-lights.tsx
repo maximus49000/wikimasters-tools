@@ -8,7 +8,7 @@ import { GhibliEntranceLight } from './shop/ghibli-entrance-lights';
 // Lumières des halls d'immeuble, dans le calque animé de la ville (devant le décor, derrière les habitants au seuil) :
 // une par entrée, allumée par la minuterie (city/hall-lights.ts). La boucle de city-life.tsx bascule l'opacité de chaque
 // `[data-hall-light]` (centre x de la porte) ; `lit` donne l'état du premier dessin. Éteinte, la lumière est cachée (display
-// none) par la boucle dès son premier placement et après chaque fondu d'extinction (fade-light.ts writeFade) ; le rendu React
+// none) par la boucle dès son premier placement et après chaque fondu d'extinction (fade-light.ts writeFades) ; le rendu React
 // ne touche pas `display`.
 export const hallTransition = (on: boolean, still: boolean): string => (still ? 'none' : `opacity ${on ? HALL_ON_S : HALL_OFF_S}s ease`);
 

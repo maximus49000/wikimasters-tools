@@ -88,7 +88,7 @@ export function writeFades(list: readonly FadeWrite[], offS: number): void {
 }
 export const writeFade = (node: Element, on: boolean, transition: string, offS: number): void => writeFades([{ node, on, transition }], offS);
 
-// Nœud déjà dans l'état que writeFade donnerait (allumé : montré ; éteint : caché ou en fondu de sortie). Le rendu React peut
+// Nœud déjà dans l'état que writeFades donnerait (allumé : montré ; éteint : caché ou en fondu de sortie). Le rendu React peut
 // réécrire l'opacité et `data-lit` d'une lumière que la boucle avait cachée (ou éteinte sans la cacher) : la boucle relit
 // cet état pour ne pas la laisser cachée allumée.
 export function fadeSettled(node: Element, on: boolean): boolean {

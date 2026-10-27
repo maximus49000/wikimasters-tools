@@ -63,7 +63,7 @@ export function placeStairFigures(nodes: readonly (Element | undefined)[], shown
 // Cages d'escalier, dans le calque animé de la ville : une fenêtre par étage au-dessus de chaque porte (stairsFor, de bas en
 // haut), montée en permanence ; la boucle de city-life.tsx bascule l'opacité de chaque `[data-stair-light]` (centre x de la
 // porte) / `[data-floor]` (0 = la plus basse) avec la minuterie de la cage. `lit` donne l'état du premier dessin ; éteinte, la
-// fenêtre est cachée par la boucle dès son premier placement (fade-light.ts writeFade), pas au rendu : le rendu React ne
+// fenêtre est cachée par la boucle dès son premier placement (fade-light.ts writeFades), pas au rendu : le rendu React ne
 // touche pas `display`, la boucle seule le gère avec ses fondus.
 // Ghibli, hors mouvement réduit : une silhouette par fenêtre (`[data-stair-figure]`, cachée), que la boucle montre un étage à
 // la fois pendant la montée d'un retour (ou la descente d'un départ) accroché à un passage.
