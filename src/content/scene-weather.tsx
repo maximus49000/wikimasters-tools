@@ -19,6 +19,7 @@ import { moonPlace, sunPlace } from './sky-place';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
 import type { RainTraffic } from './rain-traffic';
+import { hideAtZero } from './svg-write';
 
 // Scènes qui ont une météo : l'espace et la Terre vue de l'orbite n'en ont pas.
 export const WEATHER_SCENES: readonly SceneId[] = ['city', 'countryside', 'mountain', 'sea'];
@@ -159,6 +160,13 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
     };
     const set = (node: SVGElement | null, value: number): void => put(node, 'opacity', value.toFixed(3));
+    // Couche SVG (pas les voiles <foreignObject>, laissés tels quels) : cachée (display none) tant que son opacité vaut 0, montrée
+    // dans la même écriture que l'opacité qui remonte (svg-write.ts hideAtZero : un nœud à opacité 0 reste peint et passe par
+    // la mise en calques à chaque image). Opacités écrites image par image, sans transition CSS : rien ne change à l'écran.
+    const layer = (node: SVGElement | null, value: number): void => {
+      set(node, value);
+      if (node) hideAtZero(node, value.toFixed(3));
+    };
     const still = reducedMotion();
     // Variables posées sur le <svg> le plus extérieur de la pièce : elles descendent (héritage CSS) jusqu'au décor des fenêtres,
     // dessiné dans un <svg> imbriqué, et le calque de lumière (qui lit --wmt-sun-hidden) est hors de ce <svg> imbriqué.
@@ -276,13 +284,13 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
       m.drift = positiveMod(m.drift + dt * windSpeed(w.wind) * dir, width);
       put(nodes.drift, 'transform', `translate(${m.drift.toFixed(1)} 0)`);
 
-      set(nodes.fog, w.fog * 0.8);
-      set(nodes.snowFar, snow * 0.8);
-      set(nodes.snowNear, snow);
+      layer(nodes.fog, w.fog * 0.8);
+      layer(nodes.snowFar, snow * 0.8);
+      layer(nodes.snowNear, snow);
       // flaques déjà lisibles sous la bruine (sol à 0,35) : réponse relevée aux faibles valeurs, pleine dès 0,6
-      set(nodes.puddles, Math.min(1, w.wet * 1.7));
-      set(nodes.snowCover, w.snowCover);
-      set(nodes.rainbow, rainbowOf(w, daylight));
+      layer(nodes.puddles, Math.min(1, w.wet * 1.7));
+      layer(nodes.snowCover, w.snowCover);
+      layer(nodes.rainbow, rainbowOf(w, daylight));
       // Motifs : seulement s'ils se voient (et figés si moins de mouvement).
       // Brume peinte : bancs qui dérivent lentement (≈ 12 px/s), figés si moins de mouvement.
       if (patterns.fog && w.fog > 0) {
@@ -299,7 +307,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
 
       // Éclairs : jamais quand le mouvement est réduit (un flash figé plusieurs secondes serait pire).
       const flash = still ? null : lightningAt(w, now, seed);
-      set(nodes.flash, flash ? flash.strength * 0.55 : 0);
+      layer(nodes.flash, flash ? flash.strength * 0.55 : 0);
       if (nodes.bolt) {
         if (flash) {
           const x = flash.x * width;
@@ -307,8 +315,8 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
             const d = boltPath(x, height, Math.round(flash.x * 1e6));
             for (const line of boltLines) put(line, 'd', d);
           } else put(nodes.bolt, 'd', `M${x.toFixed(0)} 0 L${(x - 10).toFixed(0)} ${(height * 0.22).toFixed(0)} L${(x + 4).toFixed(0)} ${(height * 0.22).toFixed(0)} L${(x - 14).toFixed(0)} ${(height * 0.5).toFixed(0)}`);
-          set(nodes.bolt, flash.strength);
-        } else set(nodes.bolt, 0);
+          layer(nodes.bolt, flash.strength);
+        } else layer(nodes.bolt, 0);
       }
 
       // Filets de lumière et rayon des fenêtres : part de l'astre masquée (nuages visibles + voile continu), relue au plus

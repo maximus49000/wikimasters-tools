@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useReducer, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useReducer, type ReactElement, type ReactNode, type Ref } from 'react';
+import { FADE_S, useFadeLight } from './fade-light';
 import { lampLit, lampsFor } from '../core/library/city/lamps';
 import { STREET_SCALE, cityMetrics } from '../core/library/city/metrics';
 import { LANTERN, lampBlobs, patchBox, shopBlobs, wetHalfWidth, wetStrokes } from '../core/library/city/night-light';
@@ -34,7 +35,18 @@ type Props = {
   rainy: boolean;
 };
 
-const FADE = 'opacity 4s ease';
+const FADE = `opacity ${FADE_S}s ease`;
+// Lumière à fondu de 4 s (vitrine, réverbère, halo) : opacité `dim` allumée ; éteinte au repos, cachée (display none,
+// fade-light.ts : un nœud à opacité 0 reste peint et passe par la mise en calques à chaque image). Rien ne change à l'écran :
+// allumage depuis 0 (nœud montré, style relu), extinction cachée seulement après le fondu.
+function FadeG({ lit, dim, children, ...data }: { lit: boolean; dim: number; children: ReactNode } & Record<`data-${string}`, string | number>): ReactElement {
+  const f = useFadeLight(lit);
+  return (
+    <g ref={f.ref as Ref<SVGGElement>} {...data} opacity={f.on ? dim : 0} display={f.display} style={{ transition: FADE }}>
+      {children}
+    </g>
+  );
+}
 // Découpes et colonnes de pluie : au plus une peinture par image d'animation, partagées par toutes les scènes (même graine).
 const NIGHT_MAX = 160;
 let registry = new PaintRegistry('night-light', { max: NIGHT_MAX, perFrame: 1, schedule: (cb) => void idle(cb) });
@@ -167,15 +179,15 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
       {/* Vitrines allumées : découpe sur le mur autour et sur le trottoir (la devanture peinte passe par-dessus). */}
       <g data-night-shops="">
         {shopViews.map((v) => (
-          <g key={v.i} data-night-shop={v.i} data-lit={v.shop.lit ? 'true' : 'false'} opacity={v.shop.lit ? dim : 0} style={{ transition: FADE }}>
+          <FadeG key={v.i} lit={v.shop.lit} dim={dim} data-night-shop={v.i} data-lit={v.shop.lit ? 'true' : 'false'}>
             {patchImage(v.patchKey, v.box, true)}
-          </g>
+          </FadeG>
         ))}
       </g>
       {lampViews.map((v) => (
-        <g key={v.lamp.id} data-night-lamp={v.lamp.id} data-lit={v.lit ? 'true' : 'false'} opacity={v.lit ? dim : 0} style={{ transition: FADE }}>
+        <FadeG key={v.lamp.id} lit={v.lit} dim={dim} data-night-lamp={v.lamp.id} data-lit={v.lit ? 'true' : 'false'}>
           {patchImage(v.patchKey, v.box)}
-        </g>
+        </FadeG>
       ))}
       {/* Lumière « dans l'air », en screen : UN seul groupe de fusion (l'opacité du groupe de la découpe isolerait le mélange). */}
       <g style={{ mixBlendMode: 'screen' }}>
@@ -183,7 +195,7 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
           const gx = v.lamp.x + LANTERN.dx * k;
           const gy = m.curb + LANTERN.dy * k;
           return (
-            <g key={v.lamp.id} data-night-glow={v.lamp.id} opacity={v.lit ? dim : 0} style={{ transition: FADE }}>
+            <FadeG key={v.lamp.id} lit={v.lit} dim={dim} data-night-glow={v.lamp.id}>
               <circle data-bloom="" cx={gx.toFixed(1)} cy={gy.toFixed(1)} r={(6 * k).toFixed(2)} fill={`url(#${bloomId})`} />
               {rainy && (
                 <>
@@ -196,15 +208,15 @@ export function GhibliNightLight({ width, height, seed, minutes, daylight, dim, 
                   {column(v.wetKey, v.lamp.x + 3 * u, v.colW)}
                 </>
               )}
-            </g>
+            </FadeG>
           );
         })}
         {rainy && (
           <g data-night-shop-glow="">
             {shopViews.map((v) => (
-              <g key={v.i} opacity={v.shop.lit ? dim : 0} style={{ transition: FADE }}>
+              <FadeG key={v.i} lit={v.shop.lit} dim={dim}>
                 {column(v.wetKey, v.shop.x + v.shop.w / 2, v.colW)}
-              </g>
+              </FadeG>
             ))}
           </g>
         )}

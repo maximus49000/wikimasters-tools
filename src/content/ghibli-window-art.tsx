@@ -1,6 +1,7 @@
 import { useMemo, type ReactElement } from 'react';
 import type { FacadeLayout, FacadeWindow, Home, Level } from '../core/library/city/facade-layout';
 import type { LightTone } from '../core/library/city/schedules';
+import { zeroDisplay } from './svg-write';
 
 // Dessin des fenêtres du calque de nuit (vague Ghibli, décor cellulo) : composants de présentation seuls, branchés par
 // ghibli-windows.tsx (calque animé) et, pour la cage d'escalier, par le calque des halls. Port de la branche allumée de
@@ -253,7 +254,7 @@ function LitBalcony({ win, balcony, glowK }: { win: FacadeWindow; balcony: Balco
   const { by } = balcony;
   return (
     <>
-      <rect data-glow-slab="" x={x - 1.5} y={by - 0.4} width={w + 3} height={1.4} fill={GLOW_SLAB} opacity={glowK} />
+      <rect data-glow-slab="" x={x - 1.5} y={by - 0.4} width={w + 3} height={1.4} fill={GLOW_SLAB} opacity={glowK} display={zeroDisplay(glowK)} />
       <path d={barsPath(win, balcony)} fill="none" stroke={INK} strokeWidth={0.5} />
     </>
   );
@@ -280,10 +281,12 @@ export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = tr
   const cw = curtainWidth(w);
   return (
     <>
-      <use data-glow="" href={`#${glow}`} x={x} y={y} opacity={glowK} />
+      {/* Nœuds à opacité 0 (volet fermé, reflet de la télé ou de la vitre) cachés : un nœud à opacité 0 reste peint et passe
+          par la mise en calques à chaque image ; opacités fixées au rendu, sans transition propre : rien ne change à l'écran. */}
+      <use data-glow="" href={`#${glow}`} x={x} y={y} opacity={glowK} display={zeroDisplay(glowK)} />
       <rect x={x} y={y} width={w} height={h} fill={toneColor(tone)} />
-      <rect x={x} y={y} width={w} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0 : tone === 'cream' ? 0.3 : 0.2} />
-      <rect x={x + 0.6} y={y + h * 0.35} width={Math.max(0, w - 1.2)} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0.35 : 0} />
+      <rect x={x} y={y} width={w} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0 : tone === 'cream' ? 0.3 : 0.2} display={tv ? 'none' : undefined} />
+      <rect x={x + 0.6} y={y + h * 0.35} width={Math.max(0, w - 1.2)} height={h * 0.3} fill="#FFFFFF" opacity={tv ? 0.35 : 0} display={tv ? undefined : 'none'} />
       {curtain?.style === 'voile' && (
         <>
           <rect x={x} y={y} width={w} height={h} fill={VOILE} />
@@ -305,7 +308,7 @@ export function LitWindow({ win, home, level, facadeX, tone, glow, curtains = tr
       )}
       <path d={joineryPath(win)} fill="none" stroke={INK} strokeWidth={0.55} />
       {sill && <rect x={x - 1.2} y={y + h} width={w + 2.4} height={1} fill={SILL_LIT} />}
-      {win.box && <rect data-glow-slab="" x={x - 0.4} y={y + h + 0.2} width={w + 0.8} height={1.2} fill={GLOW_SLAB} opacity={glowK} />}
+      {win.box && <rect data-glow-slab="" x={x - 0.4} y={y + h + 0.2} width={w + 0.8} height={1.2} fill={GLOW_SLAB} opacity={glowK} display={zeroDisplay(glowK)} />}
       {balcony && <LitBalcony win={win} balcony={balcony} glowK={glowK} />}
     </>
   );

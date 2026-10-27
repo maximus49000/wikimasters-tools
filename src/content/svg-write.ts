@@ -8,3 +8,17 @@ export function setIfChanged(el: Element, name: string, value: string): void {
   w.set(name, value);
   if (el.getAttribute(name) !== value) el.setAttribute(name, value);
 }
+
+// Nœud SVG dont une boucle écrit l'opacité (sans transition CSS) : caché (display none) tant qu'elle vaut 0, montré dès
+// qu'elle remonte. Un nœud à opacité 0 reste peint et passe par la mise en calques à chaque image (Layerize de la vue rue,
+// mesure du 2026-10-26) ; caché, il ne coûte plus rien, et rien ne change à l'écran (il était invisible). Le DOM est relu
+// (pas de mémoire comme setIfChanged) : le rendu React peut avoir réécrit `display` entre deux images.
+export function hideAtZero(el: Element, opacity: string | number): void {
+  const hide = Number(opacity) === 0;
+  if (hide === (el.getAttribute('display') === 'none')) return;
+  if (hide) el.setAttribute('display', 'none');
+  else el.removeAttribute('display');
+}
+
+// Même règle au rendu React (premier dessin d'un nœud que la boucle écrit ensuite) : `display` du nœud pour cette opacité.
+export const zeroDisplay = (opacity: string | number): 'none' | undefined => (Number(opacity) === 0 ? 'none' : undefined);

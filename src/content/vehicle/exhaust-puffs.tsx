@@ -1,15 +1,18 @@
 // src/content/vehicle/exhaust-puffs.tsx
 import type { ReactElement } from 'react';
 import { puffView, type PuffPool } from '../../core/library/city/traffic/exhaust';
+import { hideAtZero } from '../svg-write';
 
 // Fumée d'échappement d'une voie (spec véhicules §3) : un pool FIXE de bouffées (core/…/exhaust.ts), chacune dessinée par
 // deux cercles créés une fois (corps, puis lumière en haut à gauche) ; la boucle de la voie n'écrit que cx, cy, r, fill et
 // opacity. Coordonnées du monde (groupe de la voie). Les bouffées sombres (accélération) sont grises, les autres pâles.
+// Bouffée éteinte (opacité 0) : son groupe est caché (display none, svg-write.ts hideAtZero) et montré dans la même écriture
+// que sa nouvelle opacité ; pas de transition CSS, donc rien ne change à l'écran.
 export function ExhaustPuffs({ pool }: { pool: PuffPool }): ReactElement {
   return (
     <g data-exhaust="">
       {pool.puffs.map((_, i) => (
-        <g key={i}>
+        <g key={i} display="none">
           <circle cx={0} cy={0} r={0} opacity={0} />
           <circle cx={0} cy={0} r={0} opacity={0} />
         </g>
@@ -31,8 +34,10 @@ export function placePuffs(el: Element | null, pool: PuffPool, t: number): void 
         body.setAttribute('opacity', '0');
         lit.setAttribute('opacity', '0');
       }
+      hideAtZero(g, 0);
       continue;
     }
+    hideAtZero(g, v.alpha.toFixed(3));
     const dark = pool.puffs[i]!.dark;
     body.setAttribute('cx', v.cx.toFixed(1));
     body.setAttribute('cy', v.cy.toFixed(1));

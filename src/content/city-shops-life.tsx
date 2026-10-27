@@ -31,6 +31,7 @@ import { GhibliShopGlass, ghibliAwningShift } from './shop/ghibli-shop-glass';
 import { FAMILY } from '../core/library/paint/shop/families';
 import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, SHUTTER_S, type ShutterState, type WorkerPose } from './shop-sprites';
 import { ShopTerrace, type TerraceSky } from './shop-terrace';
+import { hideAtZero, zeroDisplay } from './svg-write';
 
 // Vie des commerces dans le calque animé de la Ville (vague 1b-iv-a) : clients qui entrent, restent derrière la vitrine et
 // ressortent ; équipe du chantier du matin (deux ouvriers, une échelle, l'ancienne et la nouvelle enseigne). Vague 1b-iv-b :
@@ -129,11 +130,13 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
   };
   // Ghibli : objet emporté (rue, seuil) montré par `display` (la figure éteinte le cache avec elle).
   const carry = (node: Element, on: boolean): void => setIfChanged(carriedOf(node), 'display', on ? 'inline' : 'none');
-  // Ghibli : nœud qui s'éteint (ou premier placement) → figure cachée, sprite libéré ; n'écrit qu'à la bascule.
+  // Ghibli : nœud qui s'éteint (ou premier placement) → figure cachée, sprite libéré ; n'écrit qu'à la bascule. Éteint : caché
+  // (display none) dans la même écriture que l'opacité 0, montré dans celle qui la remet à 1 (svg-write.ts hideAtZero).
   const toggle = (node: Element, on: boolean): void => {
     const off = ghibli && !on && (first || node.getAttribute('data-active') !== 'false');
     setIfChanged(node, 'data-active', on ? 'true' : 'false');
     setIfChanged(node, 'opacity', onOff(on));
+    hideAtZero(node, on ? 1 : 0);
     if (off) hideFigure(opts.figures!, node.querySelector('[data-figure]'));
   };
   for (const v of visits) {
@@ -278,6 +281,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
                   data-active={on ? 'true' : 'false'}
                   transform={insideTransform(v, inner, innerY(f, shift), !ghibli)}
                   opacity={onOff(on)}
+                  display={on ? undefined : 'none'}
                 >
                   {ghibli ? (
                     // À sa place, le geste de la famille (objet à la main ou posé) ; en marchant, rien en main.
@@ -336,7 +340,7 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
           );
         return (
           <Fragment key={v.id}>
-            <g data-life-id={v.id} data-customer="" data-active={street ? 'true' : 'false'} transform={sidewalkTransform(v, street?.x ?? s.x, metrics, sgn)} opacity={onOff(street !== null)}>
+            <g data-life-id={v.id} data-customer="" data-active={street ? 'true' : 'false'} transform={sidewalkTransform(v, street?.x ?? s.x, metrics, sgn)} opacity={onOff(street !== null)} display={street !== null ? undefined : 'none'}>
               {sprite(street ? passagePose(v, street, metrics) : REST, umbrella, street !== null)}
               {/* Objet emporté du dessin classique (Ghibli : tenu par le pantin, voir `sprite`). */}
               {!ghibli && takes && (
@@ -346,9 +350,9 @@ export function ShopCustomers({ visits, frames, views, gates, width, metrics, t0
               )}
             </g>
             {/* Seuil d'une porte : <svg> imbriqué rogné à l'ouverture (ni clipPath ni masque : cette couche reste copiable par <use>, comme pour la fenêtre soulevée). */}
-            <svg data-life-id={doorId(v)} data-customer-door="" data-visit={v.id} data-active={atDoor ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={onOff(atDoor !== null)}>
-              <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
-              <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, streetScale(v, metrics), sgn)} opacity={(1 - dPos.depth).toFixed(2)}>
+            <svg data-life-id={doorId(v)} data-customer-door="" data-visit={v.id} data-active={atDoor ? 'true' : 'false'} x={o.x.toFixed(2)} y={o.y.toFixed(2)} width={o.w.toFixed(2)} height={o.h.toFixed(2)} overflow="hidden" opacity={onOff(atDoor !== null)} display={atDoor !== null ? undefined : 'none'}>
+              <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} display={zeroDisplay(atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : 0)} />
+              <g data-door-fig="" transform={sillFigTransform(dPos, o, metrics, streetScale(v, metrics), sgn)} opacity={(1 - dPos.depth).toFixed(2)} display={zeroDisplay((1 - dPos.depth).toFixed(2))}>
                 {sprite(passagePose(v, dPos, metrics), umbrella, atDoor !== null)}
               </g>
             </svg>
@@ -835,8 +839,8 @@ export function StaffLayer({ view, shifts, frame, metrics, minutes, reduced, dat
                 {fig(onStreet ? onStreet.pose : REST, onStreet !== null)}
               </g>
               <svg data-staff-door="" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden" visibility={atSill ? 'visible' : 'hidden'}>
-                <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atSill ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
-                <g data-door-fig="" transform={sillFigTransform(dPos, clip, metrics, k, 1)} opacity={(1 - dPos.depth).toFixed(2)}>
+                <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atSill ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} display={zeroDisplay(atSill ? doorDarkOpacity(dPos.depth).toFixed(2) : 0)} />
+                <g data-door-fig="" transform={sillFigTransform(dPos, clip, metrics, k, 1)} opacity={(1 - dPos.depth).toFixed(2)} display={zeroDisplay((1 - dPos.depth).toFixed(2))}>
                   {fig(atSill ? atSill.pose : REST, atSill !== null)}
                 </g>
               </svg>

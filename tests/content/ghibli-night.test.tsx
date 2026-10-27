@@ -100,7 +100,37 @@ describe('lumière de nuit Ghibli (deux peintures)', () => {
     expect(frames).toHaveLength(0);
     expect(qa('[data-night-lamp]').every((n) => n.getAttribute('opacity') === '0' && n.getAttribute('data-lit') === 'false')).toBe(true);
     expect(qa('[data-night-glow]').every((n) => n.getAttribute('opacity') === '0')).toBe(true);
+    // Éteints au repos : cachés (display none : un nœud à opacité 0 reste peint et passe par la mise en calques).
+    expect(qa('[data-night-lamp], [data-night-glow], [data-night-shop]').every((n) => n.getAttribute('display') === 'none')).toBe(true);
     expect(q('image[data-lit-patch]')).toBeNull();
+  });
+
+  it('extinction : montrée à 0 le temps du fondu de 4 s, cachée ensuite ; rallumage depuis 0', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await render({ shops: [{ x: 200, w: 40, top: 220, lit: true }] });
+      const lit = qa('[data-night-lamp], [data-night-glow], [data-night-shop]');
+      expect(lit.length).toBeGreaterThan(0);
+      expect(lit.every((n) => !n.hasAttribute('display') && n.getAttribute('opacity') === '0.95')).toBe(true);
+      await render({ minutes: 12 * 60, daylight: 0.6, dim: 0.7, shops: [{ x: 200, w: 40, top: 220, lit: false }] });
+      expect(lit.every((n) => !n.hasAttribute('display') && n.getAttribute('opacity') === '0')).toBe(true);
+      act(() => void vi.advanceTimersByTime(3900));
+      expect(lit.every((n) => !n.hasAttribute('display'))).toBe(true);
+      act(() => void vi.advanceTimersByTime(400));
+      expect(lit.every((n) => n.getAttribute('display') === 'none')).toBe(true);
+      const read: string[] = [];
+      const real = window.getComputedStyle.bind(window);
+      const spy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+        if (el === lit[0]) read.push(`${el.getAttribute('display')}|${el.getAttribute('opacity')}`);
+        return real(el, pseudo);
+      });
+      await render({ shops: [{ x: 200, w: 40, top: 220, lit: true }] });
+      spy.mockRestore();
+      expect(read).toEqual(['null|0']);
+      expect(lit.every((n) => !n.hasAttribute('display') && n.getAttribute('opacity') === '0.95')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('pluie la nuit : halo diffus et colonne de lumière sous chaque lampe', async () => {

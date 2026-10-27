@@ -19,6 +19,7 @@ import '../core/library/paint/props/parade';
 import { useSceneDayStart } from './parade-layer';
 import { collectCycles, CycledProp, placeCycles, PropContext, PropImage, type CycledNode } from './prop/prop-host';
 import { useWallClockLoop } from './use-wallclock-loop';
+import { zeroDisplay } from './svg-write';
 
 // Foule de spectateurs du 14 juillet (spec §7.4) : massée sur le trottoir, derrière les barrières (dessinées plus tard, sur la
 // chaussée), en trois rangs. Personne n'apparaît ni ne disparaît sur place : chaque spectateur arrive à pied (par une entrée
@@ -349,8 +350,8 @@ export function ParadeCrowd({ width, seed, sky, still, rainy, dayFests, minutes,
         const { clip, dark } = sillBox(openingAt(p.x, metrics), ps.depth, metrics, k);
         return (
           <svg key={`${s.id}@`} {...attrs} data-door="true" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden">
-            <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(ps.depth).toFixed(2)} />
-            <g data-door-fig="" transform={sillFigTransform(ps, clip, metrics, k, ghibli ? 1 : p.dir)} opacity={(1 - ps.depth).toFixed(2)}>
+            <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={doorDarkOpacity(ps.depth).toFixed(2)} display={zeroDisplay(doorDarkOpacity(ps.depth).toFixed(2))} />
+            <g data-door-fig="" transform={sillFigTransform(ps, clip, metrics, k, ghibli ? 1 : p.dir)} opacity={(1 - ps.depth).toFixed(2)} display={zeroDisplay((1 - ps.depth).toFixed(2))}>
               {walkerBody(s, p)}
             </g>
           </svg>

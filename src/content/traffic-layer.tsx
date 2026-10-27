@@ -27,6 +27,7 @@ import { EnterWait3D, GhibliFigure, gateEntering, poseFigure, prewarmCitizen, pr
 import { PropImage } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { useWallClockLoop } from './use-wallclock-loop';
+import { hideAtZero } from './svg-write';
 import { rainCarSlot, useRainTraffic } from './rain-traffic';
 import type { RainCar } from '../core/library/weather/rain-drops';
 
@@ -45,6 +46,14 @@ export type TrafficHandle = { world: TrafficWorld; env: TrafficEnv; wait3D?: Set
 const withCrews = (env: TrafficEnv): TrafficEnv => (CITIZENS_3D ? { ...env, keyedCrews: true } : env);
 // Avance des rendus d'occupants d'une arrivée planifiée (s avant son heure d'entrée).
 const CREW_WARM_S = 10;
+
+// Feu stop et feux de détresse écrits par la boucle (sans transition CSS) : éteints, cachés (display none) plutôt que peints à
+// opacité 0 (mise en calques de la vue rue, svg-write.ts hideAtZero) ; montrés dans la même écriture que l'opacité 1.
+function tailLamp(el: Element | null, on: boolean): void {
+  if (!el) return;
+  el.setAttribute('opacity', on ? '1' : '0');
+  hideAtZero(el, on ? 1 : 0);
+}
 
 // Moteur de la pièce : recréé (démarrage à chaud) quand la rue change ; l'environnement (demande, fermeture, arrivées
 // planifiées, livraisons) est relu à chaque pas.
@@ -245,8 +254,8 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
           const carNode = node.querySelector('[data-ghibli-car]');
           if (carNode && !still) placeCar(figures, cars, carNode, { look, dist: a.dist / k, v: a.v / k, lean: view.lean, seed: a.seed }, dir, t);
           if (a.special?.id === 'bus') placeMarquee(w, a, node, t);
-          node.querySelector('[data-brake]')?.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
-          node.querySelector(':scope > [data-hazard]')?.setAttribute('opacity', a.hazard && Math.floor(t * 1.6) % 2 === 0 ? '1' : '0');
+          tailLamp(node.querySelector('[data-brake]'), braking(a, w.unit));
+          tailLamp(node.querySelector(':scope > [data-hazard]'), a.hazard && Math.floor(t * 1.6) % 2 === 0);
           if (!still) {
             alive.add(a.id);
             const ex = look.art.exhaust;
@@ -254,10 +263,8 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
           }
           continue;
         }
-        const brake = node.querySelector(':scope > [data-brake]');
-        if (brake) brake.setAttribute('opacity', braking(a, w.unit) ? '1' : '0');
-        const hazard = node.querySelector(':scope > [data-hazard]');
-        if (hazard) hazard.setAttribute('opacity', a.hazard && Math.floor(t * 1.6) % 2 === 0 ? '1' : '0');
+        tailLamp(node.querySelector(':scope > [data-brake]'), braking(a, w.unit));
+        tailLamp(node.querySelector(':scope > [data-hazard]'), a.hazard && Math.floor(t * 1.6) % 2 === 0);
         // Cycliste, et livreur du vélo de livraison (G5) : pédalage réglé sur la distance parcourue.
         if (ghibli && (a.kind === 'bike' || a.kind === 'delivery-bike') && !still) poseFigure(figures, node.querySelector('[data-bike-rider] > [data-figure]'), riderPose(1, crankPhase(a.dist / kOf(a, metrics)), a.v < FOOT_DOWN_V * metrics.unit));
       }
@@ -307,15 +314,15 @@ export function TrafficLane({ handle, lane, metrics, sky, lights, rainy, still, 
             ) : (
               <VehicleSprite vehicle={asVehicle(a)} sky={sky} lights={lights} />
             )}
-            {!painted && a.kind !== 'bike' && a.kind !== 'delivery-bike' && <circle data-brake="" cx={-half + 1.2} cy={-9} r={1.5} fill="#FF3B2F" opacity={braking(a, w.unit) ? 1 : 0} />}
+            {!painted && a.kind !== 'bike' && a.kind !== 'delivery-bike' && <circle data-brake="" cx={-half + 1.2} cy={-9} r={1.5} fill="#FF3B2F" opacity={braking(a, w.unit) ? 1 : 0} display={braking(a, w.unit) ? undefined : 'none'} />}
             {look && a.kind === 'van' && (
-              <g data-hazard="" opacity={0} fill="#FFB020">
+              <g data-hazard="" opacity={0} display="none" fill="#FFB020">
                 <circle cx={look.art.tail.x * dir} cy={look.art.tail.y} r={1.3} />
                 <circle cx={look.art.head.x * dir} cy={look.art.head.y} r={1.3} />
               </g>
             )}
             {!painted && (a.kind === 'van' || a.kind === 'car') && (
-              <g data-hazard="" opacity={0} fill="#FFB020">
+              <g data-hazard="" opacity={0} display="none" fill="#FFB020">
                 <circle cx={-half + 1.2} cy={-11.5} r={1.3} />
                 <circle cx={half - 1.2} cy={-11.5} r={1.3} />
               </g>

@@ -8,6 +8,7 @@ import { facingYaw } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { GhibliFigure } from './figure/ghibli-figure';
 import { StairWindow } from './ghibli-window-art';
+import { hideAtZero } from './svg-write';
 
 // Délai d'allumage d'un étage à l'autre : la minuterie éclaire la cage du rez-de-chaussée vers l'étage atteint.
 export const STAIR_STEP_S = 0.5;
@@ -34,7 +35,7 @@ const StairFigure = memo(function StairFigure({ x, k, win, clip, sky }: { x: num
   const s = (FIG_H * win.h) / standHeight();
   const tr = `translate(${win.x + win.w / 2} ${win.y + FEET * win.h}) scale(${s.toFixed(4)})`;
   return (
-    <g data-stair-figure={x} data-floor={k} opacity={0} clipPath={`url(#${clip})`}>
+    <g data-stair-figure={x} data-floor={k} opacity={0} display="none" clipPath={`url(#${clip})`}>
       <g transform={tr}>
         <GhibliFigure outfit={FIG_OUTFIT} sky={sky} rainy={false} umbrella={false} initial={{ yaw: facingYaw(k % 2 ? -1 : 1), gait: 'walk', phase: 2, head: 0 }} flat silhouette />
       </g>
@@ -45,20 +46,29 @@ const StairFigure = memo(function StairFigure({ x, k, win, clip, sky }: { x: num
 // Silhouette montrée à la fenêtre `next` (-1 : aucune), `shown` étant celle montrée jusque-là : n'écrit que les deux nœuds
 // qui basculent. `shown` inconnu (table refaite par une nouvelle boucle, alors que le DOM garde les opacités de la
 // précédente) : écrit tous les nœuds. Renvoie la nouvelle fenêtre montrée.
+// Sans transition CSS : la silhouette éteinte est cachée (display none) dans la même écriture que son opacité 0, montrée dans
+// celle qui la remet à 1 (un nœud à opacité 0 reste peint et passe par la mise en calques, svg-write.ts hideAtZero).
 export function placeStairFigures(nodes: readonly (Element | undefined)[], shown: number | undefined, next: number): number {
+  const write = (n: Element | undefined, on: boolean): void => {
+    if (!n) return;
+    n.setAttribute('opacity', on ? '1' : '0');
+    hideAtZero(n, on ? 1 : 0);
+  };
   if (shown === undefined) {
-    nodes.forEach((n, k) => n?.setAttribute('opacity', k === next ? '1' : '0'));
+    nodes.forEach((n, k) => write(n, k === next));
     return next;
   }
   if (next === shown) return shown;
-  if (shown >= 0) nodes[shown]?.setAttribute('opacity', '0');
-  if (next >= 0) nodes[next]?.setAttribute('opacity', '1');
+  if (shown >= 0) write(nodes[shown], false);
+  if (next >= 0) write(nodes[next], true);
   return next;
 }
 
 // Cages d'escalier, dans le calque animé de la ville : une fenêtre par étage au-dessus de chaque porte (stairsFor, de bas en
 // haut), montée en permanence ; la boucle de city-life.tsx bascule l'opacité de chaque `[data-stair-light]` (centre x de la
-// porte) / `[data-floor]` (0 = la plus basse) avec la minuterie de la cage. `lit` donne l'état du premier dessin.
+// porte) / `[data-floor]` (0 = la plus basse) avec la minuterie de la cage. `lit` donne l'état du premier dessin ; éteinte, la
+// fenêtre est cachée par la boucle dès son premier placement (fade-light.ts writeFade), pas au rendu : le rendu React ne
+// touche pas `display`, la boucle seule le gère avec ses fondus.
 // Ghibli, hors mouvement réduit : une silhouette par fenêtre (`[data-stair-figure]`, cachée), que la boucle montre un étage à
 // la fois pendant la montée d'un retour (ou la descente d'un départ) accroché à un passage.
 export function StairLights({ stairs, ghibli, still, lit, sky }: { stairs: ReadonlyMap<number, readonly FacadeWindow[]>; ghibli: boolean; still: boolean; lit: (doorX: number, floor: number) => boolean; sky?: Sky }): ReactElement {

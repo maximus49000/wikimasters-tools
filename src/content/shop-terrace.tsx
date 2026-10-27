@@ -24,6 +24,7 @@ import '../core/library/paint/props/terrace';
 import { PropImage } from './prop/prop-host';
 import { AccessorySprite, GhibliPosed, applyGhibliPose, facingOfYaw, ghibliHandles, ghibliPoseOf, type GhibliPoseHandles } from './shop-gesture-sprites';
 import { useSceneDayStart } from './parade-layer';
+import { zeroDisplay } from './svg-write';
 
 // Terrasses (vague 1b-iv-b) : bar, café, restaurant, salon de thé et pizzeria sortent des tables rondes (deux chaises chacune)
 // sur le trottoir, devant la façade, selon le moteur (terrace.ts) : montage juste après l'ouverture (les tables glissent depuis
@@ -546,8 +547,8 @@ function TripBody({ v, trip, metrics, figure, ghibli }: { v: TripView; trip: Tri
         {figure(onStreet ? onStreet.pose : REST, onStreet !== null, onStreet?.item === true)}
       </g>
       <svg data-trip-door="" x={clip.x.toFixed(2)} y={clip.y.toFixed(2)} width={clip.w.toFixed(2)} height={clip.h.toFixed(2)} overflow="hidden" visibility={atDoor ? 'visible' : 'hidden'}>
-        <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} />
-        <g data-door-fig="" transform={sillFigTransform(dPos, clip, metrics, trip.k, sgnOf(atDoor?.pose))} opacity={(1 - dPos.depth).toFixed(2)}>
+        <rect data-door-dark="" x={dark.x.toFixed(2)} y={dark.y.toFixed(2)} width={dark.w.toFixed(2)} height={dark.h.toFixed(2)} fill={DOOR_DARK} opacity={atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00'} display={zeroDisplay(atDoor ? doorDarkOpacity(dPos.depth).toFixed(2) : '0.00')} />
+        <g data-door-fig="" transform={sillFigTransform(dPos, clip, metrics, trip.k, sgnOf(atDoor?.pose))} opacity={(1 - dPos.depth).toFixed(2)} display={zeroDisplay((1 - dPos.depth).toFixed(2))}>
           {figure(atDoor ? atDoor.pose : REST, atDoor !== null, atDoor?.item === true)}
         </g>
       </svg>

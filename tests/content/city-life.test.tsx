@@ -137,8 +137,17 @@ describe('CityLifeLayer', () => {
       if (on) expected++;
       expect(node.getAttribute('data-active')).toBe(on ? 'true' : 'false');
       if (!on) expect(node.getAttribute('opacity')).toBe('0.00');
+      // Absent : caché (display none, pas peint à opacité 0) ; présent : montré.
+      expect(node.getAttribute('display')).toBe(on ? null : 'none');
     }
     expect(active(c, '[data-resident]')).toBe(expected);
+  });
+  it('nœuds de la vie à opacité 0 cachés (display none) : passants, habitants, seuils, ombres ; visibles montrés', () => {
+    const c = make(8.25, { y: 2026, m: 10, d: 5 });
+    const nodes = [...c.querySelectorAll('[data-ped], [data-resident], svg[data-resident-door], [data-shade-for], [data-door-dark], [data-door-fig]')];
+    expect(nodes.length).toBeGreaterThan(0);
+    expect(nodes.some((n) => Number(n.getAttribute('opacity')) === 0)).toBe(true);
+    for (const n of nodes) expect(n.getAttribute('display') === 'none').toBe(Number(n.getAttribute('opacity')) === 0);
   });
   it('habitants : aucune transition CSS ; nœud de porte rogné par un <svg> imbriqué', () => {
     const c = make(8, { y: 2026, m: 10, d: 9 });

@@ -59,8 +59,18 @@ describe('voitures dans la circulation', () => {
     expect(puffs.length).toBe(96);
     // Premier placement : chaque voiture lâche sa première bouffée au pot.
     expect([...puffs].some((c) => Number(c.getAttribute('opacity')) > 0)).toBe(true);
+    // Bouffée éteinte (opacité 0) : son groupe est caché (display none, pas peint) ; allumée : montré.
+    const groups = [...g.host.querySelectorAll('[data-exhaust] > g')];
+    const shown = (p: Element) => Number(p.firstElementChild!.getAttribute('opacity')) > 0;
+    expect(groups.filter((p) => !shown(p)).length).toBeGreaterThan(0);
+    expect(groups.every((p) => (p.getAttribute('display') === 'none') === !shown(p))).toBe(true);
+    // Feux stop et de détresse éteints : cachés aussi ; allumés : montrés.
+    const lamps = [...g.host.querySelectorAll('[data-brake], [data-hazard]')];
+    expect(lamps.length).toBeGreaterThan(0);
+    expect(lamps.every((l) => (l.getAttribute('display') === 'none') === (l.getAttribute('opacity') === '0'))).toBe(true);
     const s = await lane('near', true, true);
     for (const c of s.host.querySelectorAll('[data-exhaust] circle')) expect(c.getAttribute('opacity') ?? '0').toBe('0');
+    expect([...s.host.querySelectorAll('[data-exhaust] > g')].every((p) => p.getAttribute('display') === 'none')).toBe(true);
     const k = await lane('near', false);
     expect(k.host.querySelector('[data-exhaust]')).toBeNull();
   });

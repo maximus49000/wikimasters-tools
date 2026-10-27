@@ -16,8 +16,17 @@ import { useWallClockLoop } from './use-wallclock-loop';
 // Étalonnage : au lieu d'un filtre (le recalculer à chaque image sur toute la largeur coûterait trop sur Android), les couleurs
 // sont passées dans la matrice de grade.ts (gradeHex) ; les lumières (fenêtres, réverbères, phares, cabines) ne le sont pas.
 // Mouvement réduit : poses fixes, ni voitures, ni piétons, ni oiseaux en route (fond-vie.ts).
+// Nœud à opacité 0 caché (display none) : un nœud SVG à opacité 0 reste peint et passe par la mise en calques à chaque image
+// (Layerize de la vue rue, mesure du 2026-10-26 sur le S26 : ~150 fenêtres éteintes du fond). Rien ne change à l'écran :
+// - lumière à fondu (`fade`, fenêtres, réverbères, monuments, cadran) : à l'extinction elle fond jusqu'à 0 et n'est cachée
+//   qu'après le fondu (4 s) ; à l'allumage, cachée par ce mécanisme, elle est d'abord montrée à 0, son style relu, puis elle
+//   passe à son opacité (le fondu CSS part de 0, comme avant). Premier placement (nœud jamais écrit) : écrite telle quelle ;
+// - autre nœud (sans transition) : caché dans la même écriture que son opacité 0, montré dans celle qui la remonte.
 const FRAME_MS = 66;
-const FADE = 'opacity 4s ease';
+const FADE_S = 4;
+const FADE = `opacity ${FADE_S}s ease`;
+// Marge après la fin du fondu avant de cacher une lumière éteinte (s).
+const HIDE_MARGIN_S = 0.15;
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Attributs SVG à trait d'union : nom React.
 const REACT_NAME: Record<string, string> = { 'stroke-width': 'strokeWidth', 'stroke-opacity': 'strokeOpacity', 'fill-opacity': 'fillOpacity', 'clip-path': 'clipPath' };
@@ -62,7 +71,36 @@ export function FondLife({ plan, moment, minutes, daylight, twilight, gloom, dim
   const clock = useRef<{ m: number; base: number } | null>(null);
   const mill = useRef<{ wind: number; offset: number[] } | null>(null);
   const lit = useRef<unknown>(null);
+  // Lumières à fondu en cours d'extinction : heure (s, horloge murale) à laquelle les cacher. `faded` : cachées par ce
+  // mécanisme (à rallumer par un fondu depuis 0).
+  const fading = useRef(new Map<Element, number>());
+  const faded = useRef(new WeakSet<Element>());
   const place = useMemo(() => {
+    // Lumière à fondu que le modèle montre à l'opacité `op` : cachée à 0 une fois le fondu de sortie fini (voir plus haut).
+    const fadeTo = (node: Element, op: string, now: number): void => {
+      const hidden = node.getAttribute('display') === 'none';
+      if (Number(op) === 0) {
+        const was = Number(node.getAttribute('opacity'));
+        setIfChanged(node, 'opacity', op);
+        // Cachée (déjà éteinte, ou par le modèle) : le reste ; un rallumage partira de 0 par un fondu, comme si elle était
+        // montrée à 0.
+        if (hidden) return void faded.current.add(node);
+        if (fading.current.has(node)) return;
+        // Montrée à 0 sans fondu en cours (premier placement) : cachée tout de suite ; sinon après le fondu de sortie.
+        if (was === 0) {
+          setIfChanged(node, 'display', 'none');
+          faded.current.add(node);
+        } else fading.current.set(node, now + FADE_S + HIDE_MARGIN_S);
+        return;
+      }
+      fading.current.delete(node);
+      setIfChanged(node, 'display', 'inline');
+      // Rallumage d'une lumière cachée éteinte : montrée à 0, style relu, puis son opacité (le fondu CSS part de 0). Cachée
+      // par le modèle (premier placement) : écrite telle quelle, sans fondu, comme avant.
+      if (hidden && faded.current.has(node)) void getComputedStyle(node).opacity;
+      faded.current.delete(node);
+      setIfChanged(node, 'opacity', op);
+    };
     return (now: number): void => {
       const el = root.current;
       if (!el) return;
@@ -94,11 +132,33 @@ export function FondLife({ plan, moment, minutes, daylight, twilight, gloom, dim
       lit.current = place;
       const frame = vieFrame(model, { T, D, daylight, gloom, dim, minutes, forcedNight, still, millOffset: mill.current!.offset, day, lights });
       const list = els.current.list;
+      // Fins de fondu : lumières éteintes cachées (le fondu de 4 s est fini).
+      for (const [node, until] of fading.current) {
+        if (now < until) continue;
+        fading.current.delete(node);
+        if (Number(node.getAttribute('opacity')) !== 0) continue;
+        setIfChanged(node, 'display', 'none');
+        faded.current.add(node);
+      }
       model.nodes.forEach((n, i) => {
         const node = list[i];
         const pose = frame[i]!;
         if (!node || (!lights && !n.mobile)) return;
-        for (const [k, v] of Object.entries(pose.a)) setIfChanged(node, k, COLOR.has(k) && !n.light ? graded(v) : v);
+        const op = pose.a.opacity;
+        if (op !== undefined && pose.a.display === 'inline') {
+          // Nœud montré par le modèle avec une opacité : caché tant qu'elle vaut 0 (voir plus haut).
+          for (const [k, v] of Object.entries(pose.a)) if (k !== 'opacity' && k !== 'display') setIfChanged(node, k, COLOR.has(k) && !n.light ? graded(v) : v);
+          if (n.fade && !still) fadeTo(node, op, now);
+          else {
+            fading.current.delete(node);
+            setIfChanged(node, 'display', Number(op) === 0 ? 'none' : 'inline');
+            setIfChanged(node, 'opacity', op);
+          }
+        } else {
+          fading.current.delete(node);
+          faded.current.delete(node);
+          for (const [k, v] of Object.entries(pose.a)) setIfChanged(node, k, COLOR.has(k) && !n.light ? graded(v) : v);
+        }
         if (pose.k) pose.k.forEach((attrs, j) => {
           const kid = node.children[j];
           const tpl = n.kids?.[j];
