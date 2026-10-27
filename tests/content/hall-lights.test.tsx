@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fadeSettled, writeFade } from '../../src/content/fade-light';
+import { fadeSettled, writeFade, writeFades } from '../../src/content/fade-light';
 import { HallLights } from '../../src/content/hall-lights';
 import { StairLights, placeStairFigures, stairTransition } from '../../src/content/stair-lights';
 import { climbRun, stairFigureAt } from '../../src/core/library/city/hall-lights';
@@ -212,6 +212,31 @@ describe('lumière basculée par la boucle (writeFade)', () => {
       expect(g.getAttribute('display')).toBe('none');
       g.setAttribute('opacity', '1');
       expect(fadeSettled(g, true)).toBe(false);
+      // … et la boucle le rallume depuis 0 : opacité remise à 0 avant de le montrer et de relire le style.
+      const again: string[] = [];
+      const spy2 = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+        if (el === g) again.push(`${el.getAttribute('display')}|${el.getAttribute('opacity')}`);
+        return real(el, pseudo);
+      });
+      writeFade(g, true, 'opacity 0.3s ease', 1);
+      spy2.mockRestore();
+      expect(again).toEqual(['null|0']);
+      expect(g.getAttribute('opacity')).toBe('1');
+      // Plusieurs nœuds à rallumer dans la même image : un seul recalcul de style forcé.
+      const many = [node('0'), node('0'), node('0')];
+      writeFades(many.map((n) => ({ node: n, on: false, transition: 'none' })), 0);
+      expect(many.every((n) => n.getAttribute('display') === 'none')).toBe(true);
+      let calls = 0;
+      const spy3 = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+        calls++;
+        expect(el.hasAttribute('display')).toBe(false);
+        expect(el.getAttribute('opacity')).toBe('0');
+        return real(el, pseudo);
+      });
+      writeFades(many.map((n) => ({ node: n, on: true, transition: 'opacity 0.3s ease' })), 1);
+      spy3.mockRestore();
+      expect(calls).toBe(1);
+      expect(many.every((n) => !n.hasAttribute('display') && n.getAttribute('opacity') === '1')).toBe(true);
     } finally {
       vi.useRealTimers();
     }

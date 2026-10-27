@@ -61,11 +61,17 @@ describe('calque des décors d’Halloween des habitants', () => {
     const pumpkins = host.querySelectorAll('[data-hw-kind="pumpkin"] [data-pumpkin]');
     expect(pumpkins.length).toBeGreaterThan(0);
     expect([...pumpkins].every((p) => p.getAttribute('data-lit') === 'true')).toBe(true);
+    // Nœuds à opacité 0 (visage sombre d'une citrouille allumée) cachés, lueurs et visage allumé montrés.
+    for (const n of host.querySelectorAll('[data-pumpkin] > *')) expect(n.getAttribute('display') === 'none').toBe(n.getAttribute('opacity') === '0');
   });
 
   it('de jour, citrouilles éteintes ; après la nuit du 31, plus allumées', () => {
     const noon = render(<svg><HalloweenLayer facades={facades} life={lifeOn(OCT31)} sky={skyOf(OCT31, 720)} minutes={720} /></svg>);
     expect([...noon.querySelectorAll('[data-pumpkin]')].every((p) => p.getAttribute('data-lit') === 'false')).toBe(true);
+    // Éteintes : lueurs et visage allumé (opacité 0) cachés.
+    const dark = noon.querySelectorAll('[data-pumpkin] > [data-face-lit], [data-pumpkin] > circle');
+    expect(dark.length).toBeGreaterThan(0);
+    expect([...dark].every((n) => n.getAttribute('display') === 'none')).toBe(true);
     const NOV2: YMD = { y: 2026, m: 11, d: 2 };
     const late = render(<svg><HalloweenLayer facades={facades} life={lifeOn(NOV2)} sky={skyOf(NOV2, 1260)} minutes={1260} /></svg>);
     expect([...late.querySelectorAll('[data-pumpkin]')].every((p) => p.getAttribute('data-lit') === 'false')).toBe(true);

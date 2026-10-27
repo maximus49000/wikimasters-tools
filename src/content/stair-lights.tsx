@@ -8,7 +8,7 @@ import { facingYaw } from '../core/library/figure/gait';
 import type { Sky } from '../core/library/sky';
 import { GhibliFigure } from './figure/ghibli-figure';
 import { StairWindow } from './ghibli-window-art';
-import { hideAtZero } from './svg-write';
+import { setOpacity } from './svg-write';
 
 // Délai d'allumage d'un étage à l'autre : la minuterie éclaire la cage du rez-de-chaussée vers l'étage atteint.
 export const STAIR_STEP_S = 0.5;
@@ -49,11 +49,7 @@ const StairFigure = memo(function StairFigure({ x, k, win, clip, sky }: { x: num
 // Sans transition CSS : la silhouette éteinte est cachée (display none) dans la même écriture que son opacité 0, montrée dans
 // celle qui la remet à 1 (un nœud à opacité 0 reste peint et passe par la mise en calques, svg-write.ts hideAtZero).
 export function placeStairFigures(nodes: readonly (Element | undefined)[], shown: number | undefined, next: number): number {
-  const write = (n: Element | undefined, on: boolean): void => {
-    if (!n) return;
-    n.setAttribute('opacity', on ? '1' : '0');
-    hideAtZero(n, on ? 1 : 0);
-  };
+  const write = (n: Element | undefined, on: boolean): void => setOpacity(n ?? null, on ? '1' : '0');
   if (shown === undefined) {
     nodes.forEach((n, k) => write(n, k === next));
     return next;

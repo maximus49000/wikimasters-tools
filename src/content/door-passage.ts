@@ -3,7 +3,7 @@
 import { doorDarkOpacity, type Passage } from '../core/library/city/doorway';
 import type { CityMetrics } from '../core/library/city/metrics';
 import type { Rect } from '../core/library/city/shops/slots';
-import { hideAtZero } from './svg-write';
+import { setOpacity } from './svg-write';
 
 // Cadre du <svg> (px du monde) : sur le seuil (profondeur 0), centre de l'ouverture ± DOOR_SILL_HALF et, en haut, le sommet de la
 // figure parapluie compris (m.doorY − DOOR_SILL_TOP unités du sprite × `k`, échelle de la figure) : elle est encore sur le trottoir,
@@ -51,11 +51,9 @@ export function placeSill(node: Element, o: Rect, p: Passage, m: CityMetrics, k:
   const dark = node.querySelector(':scope > [data-door-dark]');
   setRect(dark, box.dark);
   const darkOp = doorDarkOpacity(p.depth).toFixed(2);
-  set(dark, 'opacity', darkOp);
-  if (dark) hideAtZero(dark, darkOp);
+  setOpacity(dark, darkOp);
   const fig = node.querySelector(':scope > [data-door-fig]');
   fig?.setAttribute('transform', sillFigTransform(p, box.clip, m, k, sgn));
   const figOp = (1 - p.depth).toFixed(2);
-  set(fig, 'opacity', figOp);
-  if (fig) hideAtZero(fig, figOp);
+  setOpacity(fig, figOp);
 }

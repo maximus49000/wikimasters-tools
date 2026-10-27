@@ -106,10 +106,14 @@ describe('WeatherLayer', () => {
     expect(opacity('tint')).toBeLessThan(0.05);
     expect(visibleClouds()).toBeLessThan(8);
     expect(opacity('overcast')).toBe(0);
+    // Couches SVG à opacité 0 cachées (display none) ; voiles <foreignObject> laissés tels quels.
+    for (const name of ['snow-far', 'snow-near', 'puddles', 'snow-cover', 'fog', 'flash']) expect(wx(name)!.getAttribute('display')).toBe('none');
+    expect(wx('overcast')!.hasAttribute('display')).toBe(false);
   });
   it('brume : voile', () => {
     mount('fog');
     expect(opacity('fog')).toBeGreaterThan(0.4);
+    expect(wx('fog')!.hasAttribute('display')).toBe(false);
   });
   it('met à jour sans re-rendu quand le temps passe (la boucle lit l’horloge)', () => {
     const clock = createWeatherClock();

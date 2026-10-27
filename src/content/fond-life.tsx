@@ -7,6 +7,7 @@ import { gradeHex, millAngle, vieDay, vieFrame, vieModel, type VieEl, type VieGr
 import { gradeFor } from '../core/library/paint/grade';
 import { setIfChanged } from './svg-write';
 import { useWallClockLoop } from './use-wallclock-loop';
+import { FADE_S, HIDE_MARGIN_MS } from './fade-light';
 
 // Calque `vie-fond` de la ville peinte (chantier « fond vivant », PR 2b) : la vie animée de la colline et du mur du fond
 // (fond-vie.ts, port de `04-vie-fond.js` de la maquette). Entre les tranches peintes et la lumière de nuit, comme dans la
@@ -23,10 +24,7 @@ import { useWallClockLoop } from './use-wallclock-loop';
 //   passe à son opacité (le fondu CSS part de 0, comme avant). Premier placement (nœud jamais écrit) : écrite telle quelle ;
 // - autre nœud (sans transition) : caché dans la même écriture que son opacité 0, montré dans celle qui la remonte.
 const FRAME_MS = 66;
-const FADE_S = 4;
 const FADE = `opacity ${FADE_S}s ease`;
-// Marge après la fin du fondu avant de cacher une lumière éteinte (s).
-const HIDE_MARGIN_S = 0.15;
 const reducedMotion = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Attributs SVG à trait d'union : nom React.
 const REACT_NAME: Record<string, string> = { 'stroke-width': 'strokeWidth', 'stroke-opacity': 'strokeOpacity', 'fill-opacity': 'fillOpacity', 'clip-path': 'clipPath' };
@@ -77,6 +75,8 @@ export function FondLife({ plan, moment, minutes, daylight, twilight, gloom, dim
   const faded = useRef(new WeakSet<Element>());
   const place = useMemo(() => {
     // Lumière à fondu que le modèle montre à l'opacité `op` : cachée à 0 une fois le fondu de sortie fini (voir plus haut).
+    // Lumières à rallumer depuis 0 dans l'image : montrées à 0 ensemble, style relu une seule fois, puis leurs opacités.
+    const reveal: [Element, string][] = [];
     const fadeTo = (node: Element, op: string, now: number): void => {
       const hidden = node.getAttribute('display') === 'none';
       if (Number(op) === 0) {
@@ -90,16 +90,17 @@ export function FondLife({ plan, moment, minutes, daylight, twilight, gloom, dim
         if (was === 0) {
           setIfChanged(node, 'display', 'none');
           faded.current.add(node);
-        } else fading.current.set(node, now + FADE_S + HIDE_MARGIN_S);
+        } else fading.current.set(node, now + FADE_S + HIDE_MARGIN_MS / 1000);
         return;
       }
       fading.current.delete(node);
       setIfChanged(node, 'display', 'inline');
-      // Rallumage d'une lumière cachée éteinte : montrée à 0, style relu, puis son opacité (le fondu CSS part de 0). Cachée
-      // par le modèle (premier placement) : écrite telle quelle, sans fondu, comme avant.
-      if (hidden && faded.current.has(node)) void getComputedStyle(node).opacity;
+      // Rallumage d'une lumière cachée éteinte : montrée à 0, style relu, puis son opacité (le fondu CSS part de 0 ; écrite
+      // en fin d'image, voir `reveal`). Cachée par le modèle (premier placement) : écrite telle quelle, sans fondu, comme avant.
+      const again = hidden && faded.current.has(node);
       faded.current.delete(node);
-      setIfChanged(node, 'opacity', op);
+      if (again) reveal.push([node, op]);
+      else setIfChanged(node, 'opacity', op);
     };
     return (now: number): void => {
       const el = root.current;
@@ -166,6 +167,11 @@ export function FondLife({ plan, moment, minutes, daylight, twilight, gloom, dim
           for (const [k, v] of Object.entries(attrs)) setIfChanged(kid, k, COLOR.has(k) && !tpl?.light ? graded(v) : v);
         });
       });
+      if (reveal.length > 0) {
+        void getComputedStyle(reveal[0]![0]).opacity;
+        for (const [node, op] of reveal) setIfChanged(node, 'opacity', op);
+        reveal.length = 0;
+      }
     };
   }, [model, D, at, minutes, daylight, gloom, dim, forcedNight, still, day, graded]);
   useWallClockLoop(place, [place], { frameMs: FRAME_MS, enabled: true });

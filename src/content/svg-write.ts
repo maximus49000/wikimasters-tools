@@ -20,5 +20,13 @@ export function hideAtZero(el: Element, opacity: string | number): void {
   else el.removeAttribute('display');
 }
 
+// Opacité écrite par une boucle (si elle change, DOM relu) et `display` en même temps (hideAtZero) : les deux ne peuvent pas
+// être séparés par oubli.
+export function setOpacity(el: Element | null, opacity: string): void {
+  if (!el) return;
+  if (el.getAttribute('opacity') !== opacity) el.setAttribute('opacity', opacity);
+  hideAtZero(el, opacity);
+}
+
 // Même règle au rendu React (premier dessin d'un nœud que la boucle écrit ensuite) : `display` du nœud pour cette opacité.
 export const zeroDisplay = (opacity: string | number): 'none' | undefined => (Number(opacity) === 0 ? 'none' : undefined);

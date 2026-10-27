@@ -31,7 +31,7 @@ import { GhibliShopGlass, ghibliAwningShift } from './shop/ghibli-shop-glass';
 import { FAMILY } from '../core/library/paint/shop/families';
 import { CarriedPlacard, CarriedSign, LadderSprite, RollingShutter, SHUTTER_S, type ShutterState, type WorkerPose } from './shop-sprites';
 import { ShopTerrace, type TerraceSky } from './shop-terrace';
-import { hideAtZero, zeroDisplay } from './svg-write';
+import { setOpacity, zeroDisplay } from './svg-write';
 
 // Vie des commerces dans le calque animé de la Ville (vague 1b-iv-a) : clients qui entrent, restent derrière la vitrine et
 // ressortent ; équipe du chantier du matin (deux ouvriers, une échelle, l'ancienne et la nouvelle enseigne). Vague 1b-iv-b :
@@ -135,8 +135,7 @@ export function placeCustomers(nodes: ReadonlyMap<string, Element>, visits: Visi
   const toggle = (node: Element, on: boolean): void => {
     const off = ghibli && !on && (first || node.getAttribute('data-active') !== 'false');
     setIfChanged(node, 'data-active', on ? 'true' : 'false');
-    setIfChanged(node, 'opacity', onOff(on));
-    hideAtZero(node, on ? 1 : 0);
+    setOpacity(node, onOff(on));
     if (off) hideFigure(opts.figures!, node.querySelector('[data-figure]'));
   };
   for (const v of visits) {

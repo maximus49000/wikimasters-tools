@@ -324,6 +324,8 @@ describe('calque des fenêtres Ghibli', () => {
           expect(slabs).toHaveLength((balcony ? 1 : 0) + (w.box ? 1 : 0));
           for (const r of slabs) expect(r.getAttribute('opacity')).toBe(String(glowK));
           expect(container.querySelector('use[data-glow]')!.getAttribute('opacity')).toBe(String(glowK));
+          // Lueur éteinte (volet fermé, glowK 0) : cachée (display none), sinon montrée ; de même pour les reflets à 0.
+          for (const n of container.querySelectorAll('[opacity]')) expect(n.getAttribute('display') === 'none').toBe(Number(n.getAttribute('opacity')) === 0);
         }
       }
     }

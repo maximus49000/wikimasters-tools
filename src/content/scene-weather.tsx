@@ -19,7 +19,7 @@ import { moonPlace, sunPlace } from './sky-place';
 import { RainAirCanvas, RainGroundCanvas, rainWorldFor, useRainHub, weatherGroundFrac, weatherPuddles } from './rain-canvas';
 import type { RainLight } from './rain-art';
 import type { RainTraffic } from './rain-traffic';
-import { hideAtZero } from './svg-write';
+import { setOpacity } from './svg-write';
 
 // Scènes qui ont une météo : l'espace et la Terre vue de l'orbite n'en ont pas.
 export const WEATHER_SCENES: readonly SceneId[] = ['city', 'countryside', 'mountain', 'sea'];
@@ -163,10 +163,7 @@ function useWeatherLoop(sky: RefObject<SVGGElement | null>, ground: RefObject<SV
     // Couche SVG (pas les voiles <foreignObject>, laissés tels quels) : cachée (display none) tant que son opacité vaut 0, montrée
     // dans la même écriture que l'opacité qui remonte (svg-write.ts hideAtZero : un nœud à opacité 0 reste peint et passe par
     // la mise en calques à chaque image). Opacités écrites image par image, sans transition CSS : rien ne change à l'écran.
-    const layer = (node: SVGElement | null, value: number): void => {
-      set(node, value);
-      if (node) hideAtZero(node, value.toFixed(3));
-    };
+    const layer = (node: SVGElement | null, value: number): void => setOpacity(node, value.toFixed(3));
     const still = reducedMotion();
     // Variables posées sur le <svg> le plus extérieur de la pièce : elles descendent (héritage CSS) jusqu'au décor des fenêtres,
     // dessiné dans un <svg> imbriqué, et le calque de lumière (qui lit --wmt-sun-hidden) est hors de ce <svg> imbriqué.

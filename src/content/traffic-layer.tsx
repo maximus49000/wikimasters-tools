@@ -27,7 +27,7 @@ import { EnterWait3D, GhibliFigure, gateEntering, poseFigure, prewarmCitizen, pr
 import { PropImage } from './prop/prop-host';
 import '../core/library/paint/props/street';
 import { useWallClockLoop } from './use-wallclock-loop';
-import { hideAtZero } from './svg-write';
+import { setOpacity } from './svg-write';
 import { rainCarSlot, useRainTraffic } from './rain-traffic';
 import type { RainCar } from '../core/library/weather/rain-drops';
 
@@ -49,11 +49,7 @@ const CREW_WARM_S = 10;
 
 // Feu stop et feux de détresse écrits par la boucle (sans transition CSS) : éteints, cachés (display none) plutôt que peints à
 // opacité 0 (mise en calques de la vue rue, svg-write.ts hideAtZero) ; montrés dans la même écriture que l'opacité 1.
-function tailLamp(el: Element | null, on: boolean): void {
-  if (!el) return;
-  el.setAttribute('opacity', on ? '1' : '0');
-  hideAtZero(el, on ? 1 : 0);
-}
+const tailLamp = (el: Element | null, on: boolean): void => setOpacity(el, on ? '1' : '0');
 
 // Moteur de la pièce : recréé (démarrage à chaud) quand la rue change ; l'environnement (demande, fermeture, arrivées
 // planifiées, livraisons) est relu à chaque pas.

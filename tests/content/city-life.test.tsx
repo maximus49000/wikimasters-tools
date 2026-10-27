@@ -540,6 +540,81 @@ describe('CityLifeLayer : minuterie des halls', () => {
     }
   });
 
+  it('éteints cachés ; au passage à la nuit, rallumés depuis 0 malgré l’opacité 1 du rendu ; réparés après un rendu ; extinction non coupée', () => {
+    const { t, door } = crossing((x) => stairs.has(x));
+    vi.spyOn(Date, 'now').mockReturnValue((t + 30) * 1000);
+    vi.unstubAllGlobals();
+    let pending: ((ms: number) => void)[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: (ms: number) => void) => {
+      pending.push(cb);
+      return pending.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    const frame = (): void => {
+      const run = pending;
+      pending = [];
+      act(() => run.forEach((cb) => cb(1e6)));
+    };
+    const minutes = Math.round(night * 60);
+    const sky = skyAt(minutes, times);
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    const draw = (daylight: number): void =>
+      act(() => root.render(<svg><CityLifeLayer width={720} height={340} sky={{ ...sky, daylight }} seed={1} city={{ minutes, day: dayContext(ymd, []), precip: 0, snow: false, storm: false, daylight }} rainy={false} /></svg>));
+    const lights = () => [...host.querySelectorAll<SVGElement>('[data-hall-light], [data-stair-light]')];
+    const hidden = (n: Element) => n.getAttribute('display') === 'none';
+    // De jour : tout éteint, tout caché dès le premier placement.
+    draw(0.6);
+    expect(lights().length).toBeGreaterThan(0);
+    expect(lights().every((n) => n.getAttribute('opacity') === '0' && hidden(n))).toBe(true);
+    // Nuit (rendu de minute) : le rendu React écrit l'opacité 1 sur les nœuds cachés ; la boucle les remet à 0, les montre,
+    // relit le style une seule fois, puis passe à 1 : le fondu (0,3 s) et le délai d'étage partent de 0.
+    const reads: string[] = [];
+    const real = window.getComputedStyle.bind(window);
+    const spy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+      if (el.matches('[data-hall-light], [data-stair-light]')) reads.push(`${el.getAttribute('display')}|${el.getAttribute('opacity')}`);
+      return real(el, pseudo);
+    });
+    draw(0.1);
+    spy.mockRestore();
+    expect(reads).toEqual(['null|0']);
+    const hall = host.querySelector<SVGElement>(`[data-hall-light="${door}"]`)!;
+    expect(hall.getAttribute('data-lit')).toBe('true');
+    expect(hidden(hall)).toBe(false);
+    expect(hall.getAttribute('opacity')).toBe('1');
+    expect(hall.style.transition).toContain('0.3s');
+    const wins = [...host.querySelectorAll<SVGElement>(`[data-stair-light="${door}"]`)].sort((a, b) => Number(a.getAttribute('data-floor')) - Number(b.getAttribute('data-floor')));
+    expect(wins[0]!.getAttribute('opacity')).toBe('1');
+    wins.forEach((w, k) => {
+      expect(hidden(w)).toBe(w.getAttribute('opacity') === '0');
+      if (w.getAttribute('opacity') === '1' && k > 0) expect(w.style.transition).toContain(`${k * 0.5}s`);
+    });
+    for (const n of lights()) expect(hidden(n)).toBe(n.getAttribute('opacity') === '0');
+    // Rendu React sans nouvelle boucle : un nœud allumé qu'on retrouve caché est remontré à l'image suivante.
+    hall.setAttribute('display', 'none');
+    draw(0.1);
+    frame();
+    expect(hidden(hall)).toBe(false);
+    expect(hall.getAttribute('opacity')).toBe('1');
+    // Jour : extinction pendant que la transition tourne (getAnimations, absent de jsdom) : cachée seulement après 1 s.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      (hall as SVGElement & { getAnimations: () => Animation[] }).getAnimations = () => [{} as Animation];
+      draw(0.6);
+      expect(hall.getAttribute('opacity')).toBe('0');
+      expect(hidden(hall)).toBe(false);
+      act(() => void vi.advanceTimersByTime(1000));
+      expect(hidden(hall)).toBe(false);
+      act(() => void vi.advanceTimersByTime(200));
+      expect(hidden(hall)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('jamais allumée en continu : éteinte quand la minuterie des halls est échue', () => {
     const { t, door, trips, gateOf } = crossing((x) => stairs.has(x));
     // Premier instant après le passage où la minuterie de cette porte est échue (pas de nouveau passage depuis 2 min).
